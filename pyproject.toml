@@ -1,0 +1,14 @@
+[project]
+name = "my-zeta"
+version = "0.1.0"
+description = "Local-first OSS Character AI Runtime / Benchmark - Python Runtime"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.uv.workspace]
+members = ["runtime"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

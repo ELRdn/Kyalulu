@@ -1,0 +1,17 @@
+{
+  "name": "my-zeta",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Local-first Character AI Runtime / Benchmark - Monorepo",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "packageManager": "pnpm@10.30.1",
+  "engines": {
+    "node": ">=20"
+  }
+}

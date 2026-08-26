@@ -1,0 +1,18 @@
+{
+  "name": "@my-zeta/schemas",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -b"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "zod": "^3.24.0"
+  },
+  "dependencies": {
+    "zod": "^3.24.0"
+  }
+}
