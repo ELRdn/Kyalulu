@@ -205,7 +205,7 @@ export default function ChatPage() {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, overflow: "hidden" }}>
       {/* 会話選択バー */}
       <div style={{ padding: 8, borderBottom: "1px solid #e5e7eb", background: "#fff", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <select
@@ -267,7 +267,7 @@ export default function ChatPage() {
         )}
       </div>
 
-      <div ref={listRef} style={{ flex: 1, overflowY: "auto", padding: 16, display: "grid", gap: 12, background: "#f9fafb", alignContent: "start" }}>
+      <div ref={listRef} style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12, background: "#f9fafb" }}>
         {messages.length === 0 && (
           <div style={{ color: "#9ca3af", fontSize: 13, textAlign: "center", marginTop: 40 }}>
             モデルを選んで話しかけてみよう。会話は自動保存され、リフレッシュしても消えません。
@@ -280,7 +280,7 @@ export default function ChatPage() {
             <div
               key={i}
               style={{
-                justifySelf: m.role === "user" ? "end" : "start",
+                alignSelf: m.role === "user" ? "flex-end" : "flex-start",
                 maxWidth: "85%",
                 padding: "10px 14px",
                 borderRadius: 12,
@@ -290,6 +290,7 @@ export default function ChatPage() {
                 fontSize: 13,
                 lineHeight: 1.6,
                 overflow: "hidden",
+                wordBreak: "break-word",
               }}
             >
               {m.role === "user" ? (
@@ -310,7 +311,7 @@ export default function ChatPage() {
         </div>
       )}
 
-      <div style={{ padding: 12, borderTop: "1px solid #e5e7eb", background: "#fff", display: "flex", gap: 8 }}>
+      <div style={{ padding: 12, borderTop: "1px solid #e5e7eb", background: "#fff", display: "flex", gap: 8, flexShrink: 0 }}>
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
