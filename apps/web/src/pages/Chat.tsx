@@ -5,6 +5,7 @@ import {
   fetchSessions,
   clearHistory,
   streamChat,
+  fetchChatNonStream,
   type ModelInfo,
   type ChatMessage,
   type SessionInfo,
@@ -89,7 +90,7 @@ export default function ChatPage() {
     loadSessions();
   };
 
-  const send = () => {
+  const send = async () => {
     const text = input.trim();
     if (!text || streaming || !modelId) return;
     setError(null);
@@ -99,12 +100,16 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
     setStreaming(true);
     let acc = "";
+    let gotToken = false;
+    let streamFailed = false;
+
     const stop = streamChat(
       modelId,
       next,
       { session_id: sessionId },
       {
         onToken: (t) => {
+          gotToken = true;
           acc += t;
           setMessages((prev) => {
             const copy = [...prev];
@@ -114,22 +119,43 @@ export default function ChatPage() {
         },
         onDone: () => {
           setStreaming(false);
-          // 送信後にセッション一覧を更新（保持確認用）
           loadSessions();
+          // ストリームで何も来なかった場合は履歴から復元を試す
+          if (!gotToken) {
+            setTimeout(() => loadHistory(sessionId), 500);
+          }
         },
         onError: (e) => {
           console.error(e);
+          streamFailed = true;
           setError(e);
           setStreaming(false);
-          // エラー時は空のassistantを除去
-          setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (last?.role === "assistant" && !last.content) return prev.slice(0, -1);
-            return prev;
-          });
         },
       },
     );
+
+    // 8秒経ってもトークンが来なければ非ストリームにフォールバック
+    setTimeout(async () => {
+      if (!gotToken && !streamFailed && streaming) {
+        console.log("[Chat] no token after 8s, fallback to non-stream");
+        try {
+          const reply = await fetchChatNonStream(modelId, next, sessionId);
+          setMessages((prev) => {
+            const copy = [...prev];
+            copy[copy.length - 1] = { role: "assistant", content: reply };
+            return copy;
+          });
+          setStreaming(false);
+          loadSessions();
+        } catch (e) {
+          setError(String(e));
+          setStreaming(false);
+          // 失敗時は履歴から復元
+          loadHistory(sessionId);
+        }
+        stop();
+      }
+    }, 8000);
     void stop;
   };
 
