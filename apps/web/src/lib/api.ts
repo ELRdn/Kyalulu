@@ -92,9 +92,10 @@ export function streamChat(
     console.log("[streamChat] start", { model_id, messages: messages.length, session_id: opts.session_id });
     const res = await fetch(`${API_BASE}/api/chat/stream`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
       body: JSON.stringify({ model_id, messages, stream: true, temperature: opts.temperature ?? 0.8, session_id: opts.session_id ?? "default" }),
       signal: controller.signal,
+      cache: "no-store",
     });
     if (!res.ok || !res.body) {
       let body = "";
@@ -108,14 +109,20 @@ export function streamChat(
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = "";
+    console.log("[streamChat] response headers", [...res.headers.entries()]);
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      // SSEは "event: ...\ndata: ...\n\n" の塊
+      if (done) {
+        console.log("[streamChat] reader done, buf tail:", buf.slice(0, 100));
+        break;
+      }
+      const chunk = decoder.decode(value, { stream: true });
+      console.log("[streamChat] chunk", chunk.slice(0, 200).replace(/\n/g, "\\n"));
+      buf += chunk;
       const parts = buf.split("\n\n");
       buf = parts.pop() ?? "";
       for (const part of parts) {
+        if (!part.trim()) continue;
         const lines = part.split("\n");
         let event = "message";
         let data = "";
@@ -124,14 +131,15 @@ export function streamChat(
           else if (line.startsWith("data:")) data = line.slice(5).trim();
         }
         if (!data) continue;
+        console.log("[streamChat] event", event, data.slice(0, 100));
         try {
           const obj = JSON.parse(data);
           if (event === "token") handlers.onToken(obj.token ?? "");
           else if (event === "meta") handlers.onMeta?.(obj);
           else if (event === "done") handlers.onDone?.(obj.full ?? "");
           else if (event === "error") handlers.onError?.(obj.error ?? "unknown error");
-        } catch {
-          // ignore
+        } catch (e) {
+          console.warn("[streamChat] JSON parse failed", e, data);
         }
       }
     }
