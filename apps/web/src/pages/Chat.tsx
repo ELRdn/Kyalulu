@@ -104,6 +104,28 @@ export default function ChatPage() {
     let streamFailed = false;
     console.log("[Chat] send", { modelId, sessionId, nextLen: next.length });
 
+    // タイプライター用キュー（トークンが塊で来ても1文字ずつ流す）
+    const queue: string[] = [];
+    let typingTimer: number | null = null;
+    const flushQueue = () => {
+      if (queue.length === 0) return;
+      // 1フレームで最大3文字まで出す（速すぎず遅すぎず）
+      const chunk = queue.splice(0, 3).join("");
+      acc += chunk;
+      setMessages((prev) => {
+        if (prev.length === 0 || prev[prev.length - 1].role !== "assistant") return prev;
+        const copy = [...prev];
+        copy[copy.length - 1] = { role: "assistant", content: acc };
+        return copy;
+      });
+    };
+    const startTyping = () => {
+      if (typingTimer !== null) return;
+      typingTimer = window.setInterval(() => {
+        if (queue.length > 0) flushQueue();
+      }, 30);
+    };
+
     const stop = streamChat(
       modelId,
       next,
@@ -111,30 +133,36 @@ export default function ChatPage() {
       {
         onToken: (t) => {
           gotToken = true;
-          acc += t;
-          console.log("[Chat] onToken", t, "acc:", acc.slice(0, 50));
-          setMessages((prev) => {
-            // prevの末尾がassistantでなければ何もしない（履歴再読込との競合対策）
-            if (prev.length === 0 || prev[prev.length - 1].role !== "assistant") {
-              console.warn("[Chat] prev last not assistant", prev);
-              return prev;
-            }
-            const copy = [...prev];
-            copy[copy.length - 1] = { role: "assistant", content: acc };
-            return copy;
-          });
+          // トークンを1文字ずつキューへ
+          for (const ch of t) queue.push(ch);
+          startTyping();
+          console.log("[Chat] onToken", t, "queue:", queue.length);
         },
         onDone: () => {
-          setStreaming(false);
-          loadSessions();
-          // ストリームで何も来なかった場合は履歴から復元を試す
-          if (!gotToken) {
-            setTimeout(() => loadHistory(sessionId), 500);
-          }
+          // キューを一気に吐き出してから完了
+          const drain = () => {
+            if (queue.length > 0) {
+              flushQueue();
+              setTimeout(drain, 30);
+            } else {
+              if (typingTimer !== null) {
+                clearInterval(typingTimer);
+                typingTimer = null;
+              }
+              setStreaming(false);
+              loadSessions();
+              if (!gotToken) setTimeout(() => loadHistory(sessionId), 500);
+            }
+          };
+          drain();
         },
         onError: (e) => {
           console.error(e);
           streamFailed = true;
+          if (typingTimer !== null) {
+            clearInterval(typingTimer);
+            typingTimer = null;
+          }
           setError(e);
           setStreaming(false);
         },
@@ -145,19 +173,28 @@ export default function ChatPage() {
     setTimeout(async () => {
       if (!gotToken && !streamFailed) {
         console.log("[Chat] no token after 8s, fallback to non-stream");
+        if (typingTimer !== null) {
+          clearInterval(typingTimer);
+          typingTimer = null;
+        }
         try {
           const reply = await fetchChatNonStream(modelId, next, sessionId);
-          setMessages((prev) => {
-            const copy = [...prev];
-            copy[copy.length - 1] = { role: "assistant", content: reply };
-            return copy;
-          });
-          setStreaming(false);
-          loadSessions();
+          // フォールバックもタイプライターで流す
+          queue.length = 0;
+          for (const ch of reply) queue.push(ch);
+          const fallbackDrain = () => {
+            if (queue.length > 0) {
+              flushQueue();
+              setTimeout(fallbackDrain, 30);
+            } else {
+              setStreaming(false);
+              loadSessions();
+            }
+          };
+          fallbackDrain();
         } catch (e) {
           setError(String(e));
           setStreaming(false);
-          // 失敗時は履歴から復元
           loadHistory(sessionId);
         }
         stop();
