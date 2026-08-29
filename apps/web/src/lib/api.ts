@@ -18,8 +18,9 @@ export type ProviderHealth = {
 };
 
 export async function fetchModels(): Promise<ModelInfo[]> {
-  const r = await fetch("/api/models");
+  const r = await fetch(`/api/models?t=${Date.now()}`, { cache: "no-store" });
   const j = await r.json();
+  console.log("[fetchModels] got", j.models?.length, j.models?.map((m: ModelInfo) => m.id));
   return j.models ?? [];
 }
 
