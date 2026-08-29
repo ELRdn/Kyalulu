@@ -1,6 +1,6 @@
 # My Zeta — Local-first Character AI Runtime / Benchmark
 
-> **Status:** Project Definition v1.0 (2026-08-15) / Skeleton Milestone 1 準備中  
+> **Status:** Milestone 2 完了 — 最小チャット (SSE + 4 Providers + SQLite)  
 > 詳細仕様は [`PROJECT_SPEC.md`](./PROJECT_SPEC.md) を参照
 
 ## 概要
@@ -31,17 +31,33 @@ Model / Character / Prompt / Persona / World / State / Memory / Sampling / 評�
 - Python 3.11+ / [uv](https://docs.astral.sh/uv/) 0.12+
 - Node.js 20+ / pnpm 10+
 
-## クイックスタート（骨組み）
+## クイックスタート
 
 ```bash
-# Python ランタイム
-uv sync --directory runtime
-uv run --directory runtime fastapi dev python/api/main.py
+# 0. 環境変数 (初回)
+cp .env.example .env
+# → 必要なら .env を編集 (OLLAMA_URL / LM_STUDIO_URL / OPENAI_COMPATIBLE_URL)
 
-# Web フロントエンド
+# 1. Python ランタイム (http://127.0.0.1:8000)
+$env:UV_CACHE_DIR="D:\VibeCoding\my zeta\.uv-cache"  # Windowsでcache権限エラー時のみ
+uv sync --directory runtime
+uv run --directory runtime uvicorn python.api.main:app --reload --port 8000
+# 別: uv run --directory runtime fastapi dev python/api/main.py
+
+# 2. Web フロントエンド (http://localhost:5173)
 pnpm install
 pnpm dev
 ```
+
+### 動作確認 (MockでOK)
+
+- ブラウザで `http://localhost:5173` → モデル `Mock Echo` を選んで送信
+- 外部APIで試す: `.env` に `OPENAI_COMPATIBLE_URL` と `OPENAI_COMPATIBLE_API_KEY` を入れて再起動 → `gpt-4o-mini-external` で会話
+- API直接: `curl http://127.0.0.1:8000/api/models` / `/api/providers/health` / `POST /api/chat/stream` (SSE)
+
+### モデル追加
+
+`models/*.yaml` を追加 → 再起動で自動でDBへ同期 (YAMLが正, SQLiteはキャッシュ)
 
 ## 技術スタック
 

@@ -1,0 +1,11 @@
+id: gemma2-9b-lmstudio
+display_name: "Gemma2 9B (LM Studio例)"
+provider:
+  type: lm_studio
+  model: gemma-2-9b-it
+quantization: Q4_K_M
+context_length: 8192
+recommended_generation:
+  temperature: 0.8
+  top_p: 0.95
+notes: "LM Studioでロードしたモデルを使う例。model名はLM Studioの表示名に合わせてください。"
