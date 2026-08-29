@@ -131,7 +131,7 @@ async def chat_stream(req: ChatRequest, request: Request):
         except Exception as e:
             print(f"[chat] save failed {e}")
 
-    return EventSourceResponse(gen())
+    return EventSourceResponse(gen(), headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"})
 
 
 @router.get("/chat/history")
