@@ -95,13 +95,14 @@ export default function ChatPage() {
     if (!text || streaming || !modelId) return;
     setError(null);
     const next: ChatMessage[] = [...messages, { role: "user", content: text }];
-    setMessages(next);
+    const withAssistant: ChatMessage[] = [...next, { role: "assistant", content: "" }];
+    setMessages(withAssistant);
     setInput("");
-    setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
     setStreaming(true);
     let acc = "";
     let gotToken = false;
     let streamFailed = false;
+    console.log("[Chat] send", { modelId, sessionId, nextLen: next.length });
 
     const stop = streamChat(
       modelId,
@@ -111,7 +112,13 @@ export default function ChatPage() {
         onToken: (t) => {
           gotToken = true;
           acc += t;
+          console.log("[Chat] onToken", t, "acc:", acc.slice(0, 50));
           setMessages((prev) => {
+            // prevの末尾がassistantでなければ何もしない（履歴再読込との競合対策）
+            if (prev.length === 0 || prev[prev.length - 1].role !== "assistant") {
+              console.warn("[Chat] prev last not assistant", prev);
+              return prev;
+            }
             const copy = [...prev];
             copy[copy.length - 1] = { role: "assistant", content: acc };
             return copy;
@@ -136,7 +143,7 @@ export default function ChatPage() {
 
     // 8秒経ってもトークンが来なければ非ストリームにフォールバック
     setTimeout(async () => {
-      if (!gotToken && !streamFailed && streaming) {
+      if (!gotToken && !streamFailed) {
         console.log("[Chat] no token after 8s, fallback to non-stream");
         try {
           const reply = await fetchChatNonStream(modelId, next, sessionId);
