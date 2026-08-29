@@ -5,6 +5,7 @@ from .mock import MockProvider
 from .ollama import OllamaProvider
 from .lmstudio import LMStudioProvider
 from .openai_compat import OpenAICompatibleProvider
+from .responses import ResponsesProvider
 
 
 def get_provider(provider_type: str, **kwargs) -> ModelProvider:
@@ -15,6 +16,8 @@ def get_provider(provider_type: str, **kwargs) -> ModelProvider:
         return LMStudioProvider(**kwargs)
     if t in ("openai_compatible", "openai-compatible", "openai"):
         return OpenAICompatibleProvider(**kwargs)
+    if t in ("responses", "openai_responses", "opencode_responses"):
+        return ResponsesProvider(**kwargs)
     if t == "mock":
         return MockProvider()
     # フォールバックはMock

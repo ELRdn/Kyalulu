@@ -11,13 +11,16 @@ export default function ChatPage() {
   const [error, setError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  const reloadModels = () => {
     fetchModels()
       .then((ms) => {
         setModels(ms);
-        if (ms.length > 0) setModelId(ms[0].id);
+        if (ms.length > 0 && !modelId) setModelId(ms[0].id);
       })
       .catch(() => setError("モデル一覧の取得に失敗"));
+  };
+  useEffect(() => {
+    reloadModels();
   }, []);
 
   useEffect(() => {
@@ -62,7 +65,18 @@ export default function ChatPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
       <div style={{ padding: 12, borderBottom: "1px solid #e5e7eb", background: "#fff", display: "grid", gap: 8 }}>
-        <ModelSelector models={models} value={modelId} onChange={setModelId} />
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ flex: 1 }}>
+            <ModelSelector models={models} value={modelId} onChange={setModelId} />
+          </div>
+          <button
+            onClick={reloadModels}
+            title="モデル一覧を再読込"
+            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", fontSize: 12, cursor: "pointer" }}
+          >
+            ↻
+          </button>
+        </div>
         {models.find((m) => m.id === modelId) && (
           <div style={{ fontSize: 11, color: "#9ca3af" }}>
             provider: <code>{models.find((m) => m.id === modelId)?.provider_type}</code> / model:{" "}
