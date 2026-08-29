@@ -6,7 +6,7 @@ export default function MarkdownView({ content, isStreaming }: { content: string
   const display = isStreaming && content ? content + " ▍" : content;
 
   return (
-    <div className="md-view" style={{ fontSize: 13, lineHeight: 1.7 }}>
+    <div className="md-view" style={{ fontSize: 14, lineHeight: 1.8, wordBreak: "break-word", overflowWrap: "anywhere" }}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{

@@ -281,16 +281,20 @@ export default function ChatPage() {
               key={i}
               style={{
                 alignSelf: m.role === "user" ? "flex-end" : "flex-start",
-                maxWidth: "85%",
-                padding: "10px 14px",
-                borderRadius: 12,
+                width: "fit-content",
+                maxWidth: "92%",
+                minWidth: 120,
+                padding: "12px 16px",
+                borderRadius: 14,
                 background: m.role === "user" ? "#111827" : "#fff",
                 color: m.role === "user" ? "#fff" : "#111827",
                 border: m.role === "assistant" ? "1px solid #e5e7eb" : "none",
-                fontSize: 13,
-                lineHeight: 1.6,
-                overflow: "hidden",
+                fontSize: 14,
+                lineHeight: 1.7,
+                overflow: "visible",
                 wordBreak: "break-word",
+                overflowWrap: "anywhere",
+                boxShadow: m.role === "assistant" ? "0 1px 2px rgba(0,0,0,0.04)" : "none",
               }}
             >
               {m.role === "user" ? (
