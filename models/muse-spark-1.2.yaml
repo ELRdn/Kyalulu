@@ -2,7 +2,7 @@ id: muse-spark-1.2-contributor
 display_name: "Muse Spark 1.2 Contributor (opencode go)"
 provider:
   type: openai_compatible
-  model: opencode-go/muse-spark-1.2-contributor
+  model: muse-spark-1.2-contributor
 quantization: ""
 context_length: 1000000
 recommended_generation:
