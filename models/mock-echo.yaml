@@ -1,0 +1,11 @@
+id: mock-echo
+display_name: "Mock Echo (開発用ダミー)"
+provider:
+  type: mock
+  model: mock-echo
+quantization: ""
+context_length: 4096
+recommended_generation:
+  temperature: 0.8
+  top_p: 0.95
+notes: "外部APIなしでもUI開発できるダミーモデル。入力をオウム返しする。"

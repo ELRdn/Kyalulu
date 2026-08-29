@@ -1,0 +1,11 @@
+id: gpt-4o-mini-external
+display_name: "GPT-4o mini (外部API試運転用)"
+provider:
+  type: openai_compatible
+  model: gpt-4o-mini
+quantization: ""
+context_length: 128000
+recommended_generation:
+  temperature: 0.8
+  top_p: 1.0
+notes: "外部OpenAI互換APIで試運転する例。.envに OPENAI_COMPATIBLE_URL と OPENAI_COMPATIBLE_API_KEY を設定。"
