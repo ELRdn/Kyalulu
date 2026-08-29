@@ -1,11 +1,15 @@
 """設定管理 - pydantic-settings + .env"""
 
+from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# .env はプロジェクトルート (my zeta/.env) に置く。runtime/ からでも読めるよう絶対パスで指定
+_ENV_PATH = Path(__file__).resolve().parents[3] / ".env"
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(_ENV_PATH),
         env_file_encoding="utf-8",
         extra="ignore",
     )
