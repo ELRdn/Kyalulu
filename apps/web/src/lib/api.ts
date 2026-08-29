@@ -44,28 +44,28 @@ export type SessionInfo = {
   last_preview: string | null;
 };
 
-const API_BASE = "http://127.0.0.1:8000"; // SSEがVite proxyでバッファされる問題を避けるため直接叩く（CORSは許可済み）
+const API_BASE_STREAM = "http://127.0.0.1:8000"; // SSEだけ直接叩く（Vite proxyがバッファするため）
 
 export async function fetchHistory(sessionId?: string): Promise<(ChatMessage & { model_id?: string; created_at?: string; session_id?: string })[]> {
-  const url = sessionId ? `${API_BASE}/api/chat/history?session_id=${encodeURIComponent(sessionId)}` : `${API_BASE}/api/chat/history`;
+  const url = sessionId ? `/api/chat/history?session_id=${encodeURIComponent(sessionId)}` : "/api/chat/history";
   const r = await fetch(url, { cache: "no-store" });
   const j = await r.json();
   return j.history ?? [];
 }
 
 export async function fetchSessions(): Promise<SessionInfo[]> {
-  const r = await fetch(`${API_BASE}/api/chat/sessions`, { cache: "no-store" });
+  const r = await fetch("/api/chat/sessions", { cache: "no-store" });
   const j = await r.json();
   return j.sessions ?? [];
 }
 
 export async function clearHistory(sessionId?: string): Promise<void> {
-  const url = sessionId ? `${API_BASE}/api/chat/history?session_id=${encodeURIComponent(sessionId)}` : `${API_BASE}/api/chat/history`;
+  const url = sessionId ? `/api/chat/history?session_id=${encodeURIComponent(sessionId)}` : "/api/chat/history";
   await fetch(url, { method: "DELETE" });
 }
 
 export async function fetchChatNonStream(model_id: string, messages: ChatMessage[], session_id?: string): Promise<string> {
-  const r = await fetch(`${API_BASE}/api/chat`, {
+  const r = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model_id, messages, stream: false, session_id: session_id ?? "default" }),
@@ -90,7 +90,7 @@ export function streamChat(
   const controller = new AbortController();
   (async () => {
     console.log("[streamChat] start", { model_id, messages: messages.length, session_id: opts.session_id });
-    const res = await fetch(`${API_BASE}/api/chat/stream`, {
+    const res = await fetch(`${API_BASE_STREAM}/api/chat/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
       body: JSON.stringify({ model_id, messages, stream: true, temperature: opts.temperature ?? 0.8, session_id: opts.session_id ?? "default" }),

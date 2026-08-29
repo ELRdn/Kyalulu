@@ -205,7 +205,7 @@ export default function ChatPage() {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, overflow: "hidden" }}>
+    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
       {/* 会話選択バー */}
       <div style={{ padding: 8, borderBottom: "1px solid #e5e7eb", background: "#fff", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <select
