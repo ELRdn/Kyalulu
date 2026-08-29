@@ -37,11 +37,36 @@ export async function fetchHealth(): Promise<{ status: string; version: string }
 
 export type ChatMessage = { role: string; content: string };
 
+export type SessionInfo = {
+  session_id: string;
+  count: number;
+  last_at: string | null;
+  last_preview: string | null;
+};
+
+export async function fetchHistory(sessionId?: string): Promise<(ChatMessage & { model_id?: string; created_at?: string; session_id?: string })[]> {
+  const url = sessionId ? `/api/chat/history?session_id=${encodeURIComponent(sessionId)}` : "/api/chat/history";
+  const r = await fetch(url, { cache: "no-store" });
+  const j = await r.json();
+  return j.history ?? [];
+}
+
+export async function fetchSessions(): Promise<SessionInfo[]> {
+  const r = await fetch("/api/chat/sessions", { cache: "no-store" });
+  const j = await r.json();
+  return j.sessions ?? [];
+}
+
+export async function clearHistory(sessionId?: string): Promise<void> {
+  const url = sessionId ? `/api/chat/history?session_id=${encodeURIComponent(sessionId)}` : "/api/chat/history";
+  await fetch(url, { method: "DELETE" });
+}
+
 /** SSEストリーミングでチャット */
 export function streamChat(
   model_id: string,
   messages: ChatMessage[],
-  opts: { temperature?: number } = {},
+  opts: { temperature?: number; session_id?: string } = {},
   handlers: {
     onToken: (t: string) => void;
     onMeta?: (m: unknown) => void;
@@ -51,14 +76,20 @@ export function streamChat(
 ): () => void {
   const controller = new AbortController();
   (async () => {
+    console.log("[streamChat] start", { model_id, messages: messages.length, session_id: opts.session_id });
     const res = await fetch("/api/chat/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model_id, messages, stream: true, temperature: opts.temperature ?? 0.8 }),
+      body: JSON.stringify({ model_id, messages, stream: true, temperature: opts.temperature ?? 0.8, session_id: opts.session_id ?? "default" }),
       signal: controller.signal,
     });
     if (!res.ok || !res.body) {
-      handlers.onError?.(`HTTP ${res.status}`);
+      let body = "";
+      try {
+        body = await res.text();
+      } catch {}
+      console.error("[streamChat] HTTP error", res.status, body);
+      handlers.onError?.(`HTTP ${res.status} ${body.slice(0, 200)}`);
       return;
     }
     const reader = res.body.getReader();
@@ -92,6 +123,7 @@ export function streamChat(
       }
     }
   })().catch((e) => {
+    console.error("[streamChat] catch", e);
     if (e.name !== "AbortError") handlers.onError?.(String(e));
   });
   return () => controller.abort();

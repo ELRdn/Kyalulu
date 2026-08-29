@@ -29,6 +29,7 @@ class ChatRequest(BaseModel):
     messages: List[ChatMessage]
     stream: bool = True
     temperature: float = 0.8
+    session_id: str = "default"
 
 
 @router.get("/models")
@@ -72,9 +73,12 @@ async def chat_non_stream(req: ChatRequest):
     try:
         await init_db()
         async with aiosqlite.connect(DB_PATH) as db:
-            sid = "default"
-            for m in req.messages:
-                await db.execute("INSERT INTO chat_history (session_id, role, content, model_id) VALUES (?, ?, ?, ?)", (sid, m.role, m.content, req.model_id))
+            sid = req.session_id or "default"
+            # 重複保存を避けるため、最後の1往復のみ保存（既に履歴にある場合はスキップされる想定）
+            # 簡易: 最後のuserとassistantを保存
+            last_user = req.messages[-1] if req.messages else None
+            if last_user:
+                await db.execute("INSERT INTO chat_history (session_id, role, content, model_id) VALUES (?, ?, ?, ?)", (sid, last_user.role, last_user.content, req.model_id))
             await db.execute("INSERT INTO chat_history (session_id, role, content, model_id) VALUES (?, ?, ?, ?)", (sid, "assistant", text, req.model_id))
             await db.commit()
     except Exception:
@@ -118,30 +122,69 @@ async def chat_stream(req: ChatRequest, request: Request):
         try:
             await init_db()
             async with aiosqlite.connect(DB_PATH) as db:
-                sid = "default"
-                # 最後のuserのみ保存 (重複避け)
+                sid = req.session_id or "default"
                 last_user = req.messages[-1] if req.messages else None
                 if last_user:
                     await db.execute("INSERT INTO chat_history (session_id, role, content, model_id) VALUES (?, ?, ?, ?)", (sid, last_user.role, last_user.content, req.model_id))
                 await db.execute("INSERT INTO chat_history (session_id, role, content, model_id) VALUES (?, ?, ?, ?)", (sid, "assistant", full, req.model_id))
                 await db.commit()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[chat] save failed {e}")
 
     return EventSourceResponse(gen())
 
 
 @router.get("/chat/history")
-async def chat_history(limit: int = 20):
-    """直近履歴を取得"""
+async def chat_history(limit: int = 50, session_id: str | None = None):
+    """直近履歴を取得（session_id指定で絞り込み）"""
     try:
         await init_db()
         async with aiosqlite.connect(DB_PATH) as db:
             db.row_factory = aiosqlite.Row
-            cur = await db.execute("SELECT role, content, model_id, created_at FROM chat_history ORDER BY id DESC LIMIT ?", (limit,))
+            if session_id:
+                cur = await db.execute("SELECT role, content, model_id, created_at, session_id FROM chat_history WHERE session_id=? ORDER BY id DESC LIMIT ?", (session_id, limit))
+            else:
+                cur = await db.execute("SELECT role, content, model_id, created_at, session_id FROM chat_history ORDER BY id DESC LIMIT ?", (limit,))
             rows = await cur.fetchall()
-            # 古い順に返す
             rows = list(reversed(rows))
             return {"history": [dict(r) for r in rows]}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.get("/chat/sessions")
+async def list_sessions():
+    """会話（セッション）一覧を取得"""
+    try:
+        await init_db()
+        async with aiosqlite.connect(DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute("""
+                SELECT session_id, COUNT(*) as count, MAX(created_at) as last_at,
+                       (SELECT content FROM chat_history h2 WHERE h2.session_id = h.session_id ORDER BY id DESC LIMIT 1) as last_preview
+                FROM chat_history h
+                GROUP BY session_id
+                ORDER BY last_at DESC
+            """)
+            rows = await cur.fetchall()
+            sessions = [dict(r) for r in rows]
+            # デフォルトセッションがまだ無い場合でも空で返す
+            return {"sessions": sessions}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.delete("/chat/history")
+async def clear_history(session_id: str | None = None):
+    """履歴削除（session_id指定でその会話のみ、無指定で全削除）"""
+    try:
+        await init_db()
+        async with aiosqlite.connect(DB_PATH) as db:
+            if session_id:
+                await db.execute("DELETE FROM chat_history WHERE session_id=?", (session_id,))
+            else:
+                await db.execute("DELETE FROM chat_history")
+            await db.commit()
+            return {"ok": True}
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
