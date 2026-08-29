@@ -11,6 +11,7 @@ import {
   type SessionInfo,
 } from "../lib/api";
 import ModelSelector from "../components/ModelSelector";
+import MarkdownView from "../components/MarkdownView";
 
 const LS_SESSION = "my-zeta-session";
 const LS_MODEL = "my-zeta-model";
@@ -272,25 +273,35 @@ export default function ChatPage() {
             モデルを選んで話しかけてみよう。会話は自動保存され、リフレッシュしても消えません。
           </div>
         )}
-        {messages.map((m, i) => (
-          <div
-            key={i}
-            style={{
-              justifySelf: m.role === "user" ? "end" : "start",
-              maxWidth: "80%",
-              padding: "10px 12px",
-              borderRadius: 12,
-              background: m.role === "user" ? "#111827" : "#fff",
-              color: m.role === "user" ? "#fff" : "#111827",
-              border: m.role === "assistant" ? "1px solid #e5e7eb" : "none",
-              whiteSpace: "pre-wrap",
-              fontSize: 13,
-              lineHeight: 1.6,
-            }}
-          >
-            {m.content || (m.role === "assistant" && streaming && i === messages.length - 1 ? "▍" : "")}
-          </div>
-        ))}
+        {messages.map((m, i) => {
+          const isAssistant = m.role === "assistant";
+          const isStreaming = isAssistant && streaming && i === messages.length - 1;
+          return (
+            <div
+              key={i}
+              style={{
+                justifySelf: m.role === "user" ? "end" : "start",
+                maxWidth: "85%",
+                padding: "10px 14px",
+                borderRadius: 12,
+                background: m.role === "user" ? "#111827" : "#fff",
+                color: m.role === "user" ? "#fff" : "#111827",
+                border: m.role === "assistant" ? "1px solid #e5e7eb" : "none",
+                fontSize: 13,
+                lineHeight: 1.6,
+                overflow: "hidden",
+              }}
+            >
+              {m.role === "user" ? (
+                <div style={{ whiteSpace: "pre-wrap" }}>{m.content}</div>
+              ) : m.content ? (
+                <MarkdownView content={m.content} isStreaming={isStreaming} />
+              ) : isStreaming ? (
+                "▍"
+              ) : null}
+            </div>
+          );
+        })}
       </div>
 
       {error && (
