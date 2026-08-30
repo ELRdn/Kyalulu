@@ -6,7 +6,10 @@
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "dev": "pnpm --filter web dev",
+    "dev:desktop": "pnpm --filter desktop dev",
     "build": "pnpm -r build",
+    "build:desktop": "pnpm --filter desktop build",
+    "build:win": "pnpm --filter desktop build:win",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck"
   },

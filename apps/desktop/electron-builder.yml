@@ -1,0 +1,15 @@
+appId: com.kyalulu.app
+productName: Kyalulu
+directories:
+  output: out
+  buildResources: resources
+files:
+  - out/**/*
+  - "!out/**/*.map"
+win:
+  target: nsis
+  icon: resources/icon.ico
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
