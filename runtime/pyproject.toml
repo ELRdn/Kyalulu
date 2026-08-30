@@ -1,5 +1,5 @@
 [project]
-name = "my-zeta-runtime"
+name = "kyalulu-runtime"
 version = "0.1.0"
 description = "Character AI Runtime - Python Core + API"
 requires-python = ">=3.11"

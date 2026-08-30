@@ -29,5 +29,5 @@ def get_provider_for_model(model_cfg: dict) -> ModelProvider:
     provider = model_cfg.get("provider", {})
     if isinstance(provider, dict):
         ptype = provider.get("type", "mock")
-        return get_provider(ptype, base_url=provider.get("base_url"))
+        return get_provider(ptype, base_url=provider.get("base_url"), api_key=provider.get("api_key"))
     return MockProvider()

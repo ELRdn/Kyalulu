@@ -26,6 +26,8 @@ dist-ssr/
 *.db
 *.sqlite
 *.sqlite3
+runtime/data.db
+runtime/*.db
 
 # OS
 .DS_Store
@@ -39,6 +41,8 @@ Thumbs.db
 *.swo
 
 # Experiments / local data (local-first)
+experiments/*
+!experiments/.gitkeep
 experiments/results/
 experiments/runs/
 
@@ -46,3 +50,17 @@ experiments/runs/
 models/*.gguf
 models/*.bin
 models/*.safetensors
+
+# UV / caches
+.uv-cache/
+.venv/
+
+# Electron desktop build
+apps/desktop/dist/
+apps/desktop/out/
+apps/desktop/node_modules/
+out/
+
+# TS build info
+*.tsbuildinfo
+**/*.tsbuildinfo

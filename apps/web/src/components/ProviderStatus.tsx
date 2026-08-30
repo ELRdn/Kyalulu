@@ -36,29 +36,29 @@ export default function ProviderStatus() {
   }, []);
 
   return (
-    <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 12, background: "#fff" }}>
+    <div style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 12, background: "var(--bg-card)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>Provider 状態</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-muted)" }}>Provider 状態</div>
         <button
           onClick={load}
-          style={{ fontSize: 12, padding: "4px 8px", borderRadius: 6, border: "1px solid #e5e7eb", background: "#f9fafb", cursor: "pointer" }}
+          style={{ fontSize: 12, padding: "4px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-subtle)", color: "var(--text)", cursor: "pointer" }}
         >
           再確認
         </button>
       </div>
       {loading ? (
-        <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 8 }}>確認中...</div>
+        <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 8 }}>確認中...</div>
       ) : (
         <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
           {health.map((h) => (
             <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
               <span style={{ width: 8, height: 8, borderRadius: 99, background: dotColor(h.status), display: "inline-block" }} />
-              <span style={{ fontWeight: 600, minWidth: 120 }}>{h.id}</span>
-              <span style={{ color: "#6b7280" }}>{labelJa(h.status)}</span>
-              <span style={{ color: "#9ca3af", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.base_url ?? ""}</span>
+              <span style={{ fontWeight: 600, minWidth: 120, color: "var(--text)" }}>{h.id}</span>
+              <span style={{ color: "var(--text-faint)" }}>{labelJa(h.status)}</span>
+              <span style={{ color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.base_url ?? ""}</span>
             </div>
           ))}
-          <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
+          <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 4 }}>
             `{"{"}` .env で `OLLAMA_URL` / `LM_STUDIO_URL` / `OPENAI_COMPATIBLE_URL` を設定
           </div>
         </div>

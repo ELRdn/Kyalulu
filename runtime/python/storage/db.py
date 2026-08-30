@@ -35,14 +35,61 @@ CREATE TABLE IF NOT EXISTS providers (
     last_ok INTEGER,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS session_settings (
+    session_id TEXT PRIMARY KEY,
+    system_prompt TEXT NOT NULL DEFAULT '',
+    temperature REAL NOT NULL DEFAULT 0.8,
+    extra_json TEXT,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS prompt_presets (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    content TEXT NOT NULL,
+    temperature REAL NOT NULL DEFAULT 0.8,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS ratings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    experiment_id TEXT NOT NULL,
+    turn INTEGER NOT NULL,
+    score INTEGER NOT NULL CHECK(score >= 1 AND score <= 5),
+    comment TEXT NOT NULL DEFAULT '',
+    rater TEXT NOT NULL DEFAULT 'local',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(experiment_id, turn)
+);
 """
 
 
+# M3/M6/M7 マイグレーション
+MIGRATIONS = [
+    "ALTER TABLE session_settings ADD COLUMN character_id TEXT",
+    "ALTER TABLE session_settings ADD COLUMN persona_id TEXT",
+    "ALTER TABLE session_settings ADD COLUMN world_id TEXT",
+    "ALTER TABLE prompt_presets ADD COLUMN nsfw INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE prompt_presets ADD COLUMN nsfw_level TEXT",
+    "ALTER TABLE session_settings ADD COLUMN intro TEXT NOT NULL DEFAULT ''",
+]
+
+
 async def init_db() -> None:
-    """DB初期化（存在しなければ作成）"""
+    """DB初期化（存在しなければ作成）+ 軽量マイグレーション"""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript(DDL)
+        await db.commit()
+        # マイグレーション（列が無ければ追加、あれば無視）
+        for sql in MIGRATIONS:
+            try:
+                await db.execute(sql)
+            except Exception:
+                pass
         await db.commit()
 
 

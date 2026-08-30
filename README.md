@@ -1,7 +1,6 @@
-# My Zeta — Local-first Character AI Runtime / Benchmark
+# Kyalulu — Local-first Character AI Runtime / Benchmark
 
-> **Status:** Milestone 2 完了 — 最小チャット (SSE + 4 Providers + SQLite)  
-> 詳細仕様は [`PROJECT_SPEC.md`](./PROJECT_SPEC.md) を参照
+> **Status:** M6 Official Benchmark 着手中 — 詳細は [`docs/ROADMAP.md`](./docs/ROADMAP.md) / [`PROJECT_SPEC.md`](./PROJECT_SPEC.md) を参照
 
 ## 概要
 
@@ -68,11 +67,19 @@ pnpm dev
 
 ## ロードマップ
 
-- Phase 0 (v0.1): Runtime Core, Provider抽象化, 静的20ターン×3ラン ベンチ
-- Phase 1: Memory Lab
-- Phase 2: Advanced Benchmark (30/50/100ターン)
-- Phase 3: Immersion Product
-- Phase 4/5: Optimization / Post-training
+> 詳細: [`docs/ROADMAP.md`](./docs/ROADMAP.md)
+
+| Milestone | 概要 | 状態 |
+|---|---|---|
+| M1 Skeleton | monorepo / FastAPI / SQLite / provider interface | ✅ |
+| M2 First Chat | Ollama/LMStudio/OpenAI/Responses + SSE + 履歴/プリセット/ダークモード | ✅ |
+| M3 Character Runtime | Character/Persona/World YAML + Prompt Compiler + State + 右ドロワー | ✅ |
+| M4 Experiments | 20ターン×3ラン / metadata / JSON export | ✅ |
+| M5 Research UI | A/B/C Grid + Inspectors + Ratings + NSFWトグル | ✅ |
+| **M6 Official Benchmark** | E:mocha / M:senior_cool / H:butler + N-E:mocha_night / N-H:butler_night | 🚧 **着手中** |
+| M5 Research UI | A/B/C Grid + Inspectors + Ratings | ⬜ |
+| M6 Benchmark | 公式3キャラ (Easy/Med/Hard) | ⬜ |
+| M7 Immersion | 簡略チャット + Debug Drawer (30% - 現行チャットがプロトタイプ) | 🔶 |
 
 ## プライバシー
 

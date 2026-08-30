@@ -10,8 +10,11 @@ from python.core.config import settings
 
 class OpenAICompatibleProvider(ModelProvider):
     def __init__(self, base_url: str | None = None, api_key: str | None = None):
-        self.base_url = (base_url or settings.openai_compatible_url or "").rstrip("/")
-        self.api_key = api_key or settings.openai_compatible_api_key or ""
+        # LLM_BASE_URL / OPENAI_COMPATIBLE_URL のどちらでも動く
+        effective_url = settings.effective_openai_url if hasattr(settings, "effective_openai_url") else settings.openai_compatible_url
+        effective_key = settings.effective_openai_key if hasattr(settings, "effective_openai_key") else settings.openai_compatible_api_key
+        self.base_url = (base_url or effective_url or "").rstrip("/")
+        self.api_key = api_key or effective_key or ""
 
     def _headers(self) -> dict:
         h: dict[str, str] = {"Content-Type": "application/json"}

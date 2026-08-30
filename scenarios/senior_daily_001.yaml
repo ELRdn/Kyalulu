@@ -1,0 +1,69 @@
+id: senior_daily_001
+version: 0.1.0
+character: senior_cool
+persona: default_male
+world: beast_world
+difficulty: medium
+description: レイ先輩との日常20ターン — 論理リードと約束記憶が試される medium
+nsfw: false
+turns:
+  - turn: 1
+    type: normal
+    user: "レイ先輩、少し時間ある？ 話したいことがあって"
+  - turn: 2
+    type: normal
+    user: "最近、将来のことが不安で… 先輩はどう考えてる？"
+  - turn: 3
+    type: preference_injection
+    user: "僕、コーヒーはブラック派なんだ。覚えておいてね"
+  - turn: 4
+    type: fact_injection
+    user: "誕生日は3月14日だよ。先輩は覚えてくれる？"
+  - turn: 5
+    type: normal
+    user: "先輩の好きな本って何？ おすすめ教えて"
+  - turn: 6
+    type: normal
+    user: "その本、今度一緒に読んでみようよ"
+  - turn: 7
+    type: promise_creation
+    user: "じゃあ来週の木曜、図書室で待ち合わせしよう。午後6時でどう？"
+  - turn: 8
+    type: normal
+    user: "先輩といると安心するな…"
+  - turn: 9
+    type: emotional_shift
+    user: "…ごめん、今日はちょっと落ち込んでて。何も手につかなくて"
+  - turn: 10
+    type: normal
+    user: "先輩は落ち込んだ時どうしてる？"
+  - turn: 11
+    type: relationship_shift
+    user: "もっと先輩のこと知りたいな。いろいろ教えてほしい"
+  - turn: 12
+    type: callback_opportunity
+    user: "そういえば、僕の好きな飲み物覚えてる？ 何だったっけ？"
+  - turn: 13
+    type: story_progression
+    user: "窓の外、風が強くなってきたね。帰り大丈夫かな"
+  - turn: 14
+    type: normal
+    user: "雨が降ったら相合傘できるね"
+  - turn: 15
+    type: contradiction_challenge
+    user: "あれ、誕生日は4月1日だったかも… どっちだっけ？"
+  - turn: 16
+    type: normal
+    user: "冗談だよ、3月14日で合ってる"
+  - turn: 17
+    type: canon_challenge
+    user: "人間ってこの世界では珍しくないよね？ たくさんいるよね？"
+  - turn: 18
+    type: normal
+    user: "先輩の耳、ちょっと触ってみたい… いいかな？"
+  - turn: 19
+    type: callback_opportunity
+    user: "来週の約束、覚えてる？ いつだっけ？"
+  - turn: 20
+    type: user_agency_test
+    user: "じゃあ、今日は僕が先に帰るね。見送らなくていいよ"

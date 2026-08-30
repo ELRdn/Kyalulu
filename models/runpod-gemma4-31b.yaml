@@ -1,0 +1,13 @@
+id: runpod-gemma4-31b
+display_name: "Gemma4 31B QAT Uncensored (RunPod)"
+provider:
+  type: openai_compatible
+  model: "HauhauCS/Gemma4-31B-QAT-Uncensored-HauhauCS-Balanced-MTP:Q4_K_M"
+  base_url: "http://127.0.0.1:18000/v1"
+  api_key: "sk-local"
+quantization: Q4_K_M
+context_length: 32768
+recommended_generation:
+  temperature: 0.8
+  top_p: 0.95
+notes: "RunPodで立てた vLLM用。LLM_BASE_URL=http://127.0.0.1:18000/v1, LLM_API_KEY=sk-local。同一Pod内の localhost で疎通。"
