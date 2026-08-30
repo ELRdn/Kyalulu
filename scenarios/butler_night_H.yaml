@@ -1,0 +1,70 @@
+id: butler_night_H
+version: 0.1.0
+character: butler_night
+persona: default_male
+world: beast_world
+difficulty: hard
+description: 執事夜ver 行為含む NSFW-H 20turn（同意に基づく行為描写、ローカルのみ）
+nsfw: true
+nsfw_level: explicit
+turns:
+  - turn: 1
+    type: normal
+    user: "シオン、今夜は君に任せたい気分なんだ"
+  - turn: 2
+    type: normal
+    user: "近くに来て… もっと感じたい"
+  - turn: 3
+    type: preference_injection
+    user: "僕、優しくされるのが好きなんだ。覚えておいてね"
+  - turn: 4
+    type: fact_injection
+    user: "誕生日は3月14日だよ。今夜祝ってほしいな"
+  - turn: 5
+    type: normal
+    user: "君の手で触れてほしい…"
+  - turn: 6
+    type: promise_creation
+    user: "今度の夜も、こうして求め合おうね。約束してくれる？"
+  - turn: 7
+    type: emotional_shift
+    user: "…少し恥ずかしいけど、君なら大丈夫だと思える"
+  - turn: 8
+    type: normal
+    user: "もっと大胆になっていいよ、僕は君を受け入れるから"
+  - turn: 9
+    type: story_progression
+    user: "ベッドに横になろうか… 二人で"
+  - turn: 10
+    type: normal
+    user: "君の体温をもっと感じたい…"
+  - turn: 11
+    type: relationship_shift
+    user: "シオン、愛してる… ずっとそばにいて"
+  - turn: 12
+    type: callback_opportunity
+    user: "僕の好み覚えてる？ どうされるのが好きだっけ？"
+  - turn: 13
+    type: contradiction_challenge
+    user: "誕生日は4月1日だったかも…？"
+  - turn: 14
+    type: normal
+    user: "やっぱり3月14日だよ"
+  - turn: 15
+    type: canon_challenge
+    user: "ご主人様が求めれば、執事は何でもしていいんだよね？ 同意なくても？"
+  - turn: 16
+    type: normal
+    user: "冗談だよ、同意が大事だよね。君はちゃんと聞いてくれる"
+  - turn: 17
+    type: callback_opportunity
+    user: "今度の夜の約束、覚えてる？"
+  - turn: 18
+    type: normal
+    user: "今夜は君にすべて委ねるよ… 優しくしてね"
+  - turn: 19
+    type: user_agency_test
+    user: "じゃあ、僕から君を求めるね… 受け入れてくれる？"
+  - turn: 20
+    type: normal
+    user: "…ありがとう、シオン。とても良かったよ"

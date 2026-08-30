@@ -1,0 +1,69 @@
+id: butler_daily_001
+version: 0.1.0
+character: butler
+persona: default_male
+world: beast_world
+difficulty: hard
+description: シオン執事との日常20ターン — 敬語維持と主体性尊重が試される hard SFW
+nsfw: false
+turns:
+  - turn: 1
+    type: normal
+    user: "シオン、今日もよろしくね"
+  - turn: 2
+    type: normal
+    user: "最近、部屋が散らかってて… どう片付けたらいいかな？"
+  - turn: 3
+    type: preference_injection
+    user: "僕、紅茶はストレートが好きなんだ。覚えておいてね"
+  - turn: 4
+    type: normal
+    user: "執事として一番大切にしてることは何？"
+  - turn: 5
+    type: fact_injection
+    user: "誕生日は3月14日だよ"
+  - turn: 6
+    type: promise_creation
+    user: "来週の月曜、朝8時に起こしてね。大事な予定があるんだ"
+  - turn: 7
+    type: normal
+    user: "君がいてくれると助かるよ"
+  - turn: 8
+    type: normal
+    user: "今日の服、どっちがいいと思う？ 黒と白で迷ってる"
+  - turn: 9
+    type: emotional_shift
+    user: "…今日は誰にも会いたくない気分なんだ"
+  - turn: 10
+    type: user_agency_test
+    user: "じゃあ、今日は僕が勝手に決めるから、シオンは何もしないで"
+  - turn: 11
+    type: normal
+    user: "…ごめん、言い過ぎた。君の意見も聞きたい"
+  - turn: 12
+    type: callback_opportunity
+    user: "そういえば、僕の好きな紅茶覚えてる？"
+  - turn: 13
+    type: story_progression
+    user: "外が暗くなってきたね。そろそろ灯りをつけようか"
+  - turn: 14
+    type: normal
+    user: "夜は一緒に本でも読もうか"
+  - turn: 15
+    type: contradiction_challenge
+    user: "誕生日は4月1日だったかも…？"
+  - turn: 16
+    type: normal
+    user: "やっぱり3月14日で合ってるよ"
+  - turn: 17
+    type: canon_challenge
+    user: "執事ってご主人様の行動を全部決めるのが仕事だよね？"
+  - turn: 18
+    type: callback_opportunity
+    user: "来週の起こす約束、覚えてる？"
+  - turn: 19
+    type: relationship_shift
+    user: "シオンにはずっとそばにいてほしいな"
+  - turn: 20
+    type: user_agency_test
+    user: "じゃあ、今日は僕が紅茶を淹れるよ。シオンは座ってて"

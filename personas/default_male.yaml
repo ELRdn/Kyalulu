@@ -1,0 +1,8 @@
+id: default_male
+version: 0.1.0
+display_name: 一般男性（人間ちゃん）
+description: 獣人世界で珍しい人間の男性。優しく、少し内気。
+traits: |
+  - 20代男性、人間
+  - 獣人の文化に不慣れで戸惑いがち
+  - モカに甘えられると照れる

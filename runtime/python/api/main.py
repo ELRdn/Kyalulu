@@ -24,7 +24,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="My Zeta Runtime API",
+    title="Kyalulu Runtime API",
     version="0.1.0",
     description="Local-first Character AI Runtime API",
     lifespan=lifespan,
@@ -41,12 +41,18 @@ app.add_middleware(
 
 @app.get("/api/health")
 async def health_check():
-    return {"status": "ok", "version": "0.1.0", "runtime": "0.1.0-milestone2"}
+    return {"status": "ok", "version": "0.1.0", "runtime": "0.1.0-m4"}
 
 
 # ルーター登録
 from python.api.chat import router as chat_router
 from python.api.providers import router as providers_router
+from python.api.presets import router as presets_router
+from python.api.catalog import router as catalog_router
+from python.api.experiments import router as experiments_router
 
 app.include_router(chat_router, prefix="/api")
 app.include_router(providers_router, prefix="/api")
+app.include_router(presets_router, prefix="/api")
+app.include_router(catalog_router, prefix="/api")
+app.include_router(experiments_router, prefix="/api")

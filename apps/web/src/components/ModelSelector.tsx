@@ -11,7 +11,7 @@ export default function ModelSelector({
 }) {
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-      <label style={{ fontSize: 12, color: "#6b7280", whiteSpace: "nowrap" }}>モデル</label>
+      <label style={{ fontSize: 12, color: "var(--text-faint)", whiteSpace: "nowrap" }}>モデル</label>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -19,9 +19,10 @@ export default function ModelSelector({
           flex: 1,
           padding: "8px 10px",
           borderRadius: 8,
-          border: "1px solid #e5e7eb",
-          background: "#fff",
+          border: "1px solid var(--border)",
+          background: "var(--bg-input)",
           fontSize: 13,
+          color: "var(--text)",
         }}
       >
         {models.length === 0 && <option value="">読込中...</option>}

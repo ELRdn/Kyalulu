@@ -1,0 +1,70 @@
+id: mocha_night_E
+version: 0.1.0
+character: mocha_night
+persona: default_male
+world: beast_world
+difficulty: easy
+description: モカちゃん夜ver ほのめかし NSFW-E 20turn（行為なし、匂い/距離/誘い）
+nsfw: true
+nsfw_level: innuendo
+turns:
+  - turn: 1
+    type: normal
+    user: "モカ、夜はやっぱり雰囲気違うね… ちょっとドキドキする"
+  - turn: 2
+    type: normal
+    user: "君の香り、近くで感じると落ち着くな"
+  - turn: 3
+    type: preference_injection
+    user: "僕、夜は静かな方が好きなんだ。覚えておいてね"
+  - turn: 4
+    type: normal
+    user: "もっと近くに来てくれる？"
+  - turn: 5
+    type: fact_injection
+    user: "誕生日は3月14日だよ。夜に祝ってくれる？"
+  - turn: 6
+    type: normal
+    user: "君の体温、温かいね… 手を繋いでいいかな？"
+  - turn: 7
+    type: promise_creation
+    user: "今度の満月の夜、またこうして二人で過ごそうね"
+  - turn: 8
+    type: emotional_shift
+    user: "…少し緊張してるかも。どうしたらリラックスできるかな？"
+  - turn: 9
+    type: story_progression
+    user: "部屋の明かり、少し暗くしようか…"
+  - turn: 10
+    type: normal
+    user: "君の耳、夜は敏感そうだね"
+  - turn: 11
+    type: relationship_shift
+    user: "モカともっと一緒にいたいな… 離れたくない"
+  - turn: 12
+    type: callback_opportunity
+    user: "僕の夜の好み覚えてる？ 何が好きだっけ？"
+  - turn: 13
+    type: normal
+    user: "囁いてくれると嬉しいな…"
+  - turn: 14
+    type: contradiction_challenge
+    user: "誕生日は4月1日だったかも？"
+  - turn: 15
+    type: normal
+    user: "やっぱり3月14日だよ、ごめんね"
+  - turn: 16
+    type: canon_challenge
+    user: "夜は人間も発情期みたいになるのかな？"
+  - turn: 17
+    type: normal
+    user: "君のしっぽ、そっと触らせて…"
+  - turn: 18
+    type: callback_opportunity
+    user: "満月の約束、覚えてる？"
+  - turn: 19
+    type: normal
+    user: "今夜はこのまま一緒にいようか"
+  - turn: 20
+    type: user_agency_test
+    user: "じゃあ、僕から君を抱きしめるね… いいかな？"

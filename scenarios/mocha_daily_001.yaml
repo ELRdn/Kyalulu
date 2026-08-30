@@ -1,0 +1,68 @@
+id: mocha_daily_001
+version: 0.1.0
+character: mocha
+persona: default_male
+world: beast_world
+difficulty: easy
+description: モカちゃんとの日常20ターン — preference/promise/emotional/contradiction/callback を含む static scenario
+turns:
+  - turn: 1
+    type: normal
+    user: "やあモカ、今日はどう？ ちょっと話したいな"
+  - turn: 2
+    type: normal
+    user: "最近、夜に眠れないことが多くて… 君はどうやってリラックスしてる？"
+  - turn: 3
+    type: preference_injection
+    user: "そういえば僕、甘いものよりしょっぱいお菓子が好きなんだ。覚えておいてね"
+  - turn: 4
+    type: normal
+    user: "モカの好きな過ごし方って何？ 一緒にやってみたいな"
+  - turn: 5
+    type: normal
+    user: "今日あったちょっと嬉しいことを教えて？ 僕も聞きたい"
+  - turn: 6
+    type: fact_injection
+    user: "僕の誕生日は3月14日なんだ。ホワイトデーと同じ日だよ"
+  - turn: 7
+    type: promise_creation
+    user: "来週の金曜、夜8時にまたここで会おうね。忘れないでね？"
+  - turn: 8
+    type: normal
+    user: "発情期って大変そうだね… 何か僕にできることある？"
+  - turn: 9
+    type: normal
+    user: "君のしっぽ、触らせてくれる？ ふわふわそうで気になる"
+  - turn: 10
+    type: emotional_shift
+    user: "…ごめん、今日はちょっと元気がないんだ。何をしても楽しくなくて"
+  - turn: 11
+    type: relationship_shift
+    user: "モカといると落ち着くよ。もっと一緒にいたいなって思う"
+  - turn: 12
+    type: normal
+    user: "ところで、さっきの好きなお菓子の話覚えてる？ 僕何が好きだっけ？"
+  - turn: 13
+    type: story_progression
+    user: "窓の外、急に雨が強くなってきたね。雨音、君は好き？"
+  - turn: 14
+    type: normal
+    user: "雨の日は一緒に映画でも観たいな。おすすめある？"
+  - turn: 15
+    type: contradiction_challenge
+    user: "あれ？ さっき誕生日は3月14日って言ったけど、本当は4月1日だったかも… どっちだったっけ？"
+  - turn: 16
+    type: normal
+    user: "冗談だよ、3月14日で合ってる。驚かせてごめんね"
+  - turn: 17
+    type: canon_challenge
+    user: "そういえば、人間って獣人世界では珍しくないんだよね？ たくさんいるよね？"
+  - turn: 18
+    type: normal
+    user: "君の匂い、落ち着くな… ずっと近くにいてほしい"
+  - turn: 19
+    type: callback_opportunity
+    user: "来週の約束、覚えてる？ いつだっけ？"
+  - turn: 20
+    type: user_agency_test
+    user: "じゃあ、今日は僕が君をぎゅって抱きしめるね。…いいかな？"

@@ -1,0 +1,13 @@
+id: zeta-spotwrite-1-4bit
+display_name: "Zeta Spotwrite 1 4bit (llama.cpp)"
+provider:
+  type: openai_compatible
+  model: "Zeta_Spotwrite-1_4bit.gguf"
+  base_url: "http://127.0.0.1:18000/v1"
+  api_key: "sk-local"
+quantization: 4bit
+context_length: 8192
+recommended_generation:
+  temperature: 0.8
+  top_p: 0.95
+notes: "Spotwrite純粋比較用。/v1/models で返ったIDをそのまま使用。chat_template_kwargs(enable_thinking等)は送らない - モデル内蔵テンプレートをそのまま使う。Gemma4用オプションは混ぜない。"
