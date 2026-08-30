@@ -14,6 +14,7 @@
 | Phase 0 Foundation | **M5 Research UI** | A/B/C grid, inspectors, ratings, telemetry | ✅ 完了 |
 | Phase 0 Foundation | **M6 Official Benchmark** | E:mocha / M:senior_cool / H:butler + N-E:mocha_night(ほのめかし) / N-H:butler_night(行為) + 5シナリオ + nsfwフラグ + metrics/leaderboard | ✅ **完了** |
 | Phase 0 Foundation | M7 Immersion (experimental) | 同一ランタイムの簡略チャット + Debug Drawer (Ctrl+Shift+D) | ✅ **完了 (v0.1)** |
+| Phase 1 | **M8 Electron Desktop (Win)** | Electron + React (electron-vite) 案A薄ラッパー、IPC/CORS、nsisビルド | ✅ **scaffold完了** |
 | Phase 1 | Memory Lab | Semantic/Episodic/Relationship Memory | ⬜ |
 | Phase 2 | Advanced Benchmark | 30/50/100 turns, 長文脈 | ⬜ |
 
@@ -49,3 +50,13 @@
 - [x] Debug Drawer (`Ctrl+Shift+D`) — `Chat.tsx` で Researcherのみ表示、compiled prompt / token_breakdown / state を表示
 - [x] トークン内訳 (`prompt_compiler.py` `token_breakdown`) + `GET /api/chat/debug`
 - [x] Beginnerでは技術詳細をデフォルト非表示、没入UIを優先
+
+## M8 完了 — Electron Desktop (Win) scaffold
+- [x] `apps/desktop` 新設（electron-vite: `main` / `preload` / `renderer`）
+- [x] `src/main/index.ts` — BrowserWindow + IPC `get-app-path`/`get-api-base`/`check-python-health`、devは `http://localhost:5173` を薄ラッパー表示
+- [x] `src/preload/index.ts` — `contextBridge` + `sandbox:true`
+- [x] `src/renderer` — `@web/App` を再利用（`@web` エイリアス）
+- [x] `runtime/python/api/main.py` CORS 拡張（`allow_origin_regex=".*"` で `file://`/`app://` 対応）
+- [x] `electron-builder.yml`（nsis, `out/`）+ ルート `package.json` に `dev:desktop`/`build:win` 追加
+- [ ] `pnpm build:win` でインストーラ生成検証（次PR）
+- [ ] Python sidecar 同梱（案B）は Phase 1.5 で別途
