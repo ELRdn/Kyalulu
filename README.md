@@ -68,6 +68,8 @@ CCv2/v3 JSON・PNG、CCv3 CHARX、Kyaluluバックアップ、原本を書き出
 Discoverの「TavernCard」「SillyTavern Content」で検索し、「詳細を見る」→「取り込み内容を確認」でCreateへ進む。
 初期表示のライブラリではHubへ通信しない。SillyTavern Contentは確認済みのCoding Senseiの固定版から開始する。
 
+DiscoverとCreateの「外部Hubを開く」から、TavernCard・RisuRealm・SillyTavern Content・Tavernary・GitHub・Hugging Face・Character.AIを新しいタブで開ける。編集中の画面は残り、Character.AIは貼り付けによる手動移行に対応する。
+
 CreateのURL欄はTavernCard／RisuRealmのコンテンツページ、GitHub／Hugging Faceの公開ファイルURLに対応する。
 RisuRealmはブラウザーで取得し、CC・Lorebook・ST形式プリセットを選べる。独自Module・独自プリセット・CHARXの取得は対象外。
 区分不明のファイルは内容確認後にSFW／成人向けを選ぶ。同一原本は既存項目の更新または明示的な複製を選択する。

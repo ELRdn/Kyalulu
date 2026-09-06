@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Button from './ui/Button';
+import HubLinks from './HubLinks';
 import { Input } from './ui/Input';
 import { previewUrl, RisuFormatSchema, type UrlImport } from '../lib/hubs';
 import type { ImportPreview } from '../lib/library';
@@ -27,5 +28,6 @@ export default function UrlImportBox({ onPreview, disabled = false, onBusyChange
       {url.includes('realm.risuai.net') && <><label>RisuRealmの取得形式<select aria-label="RisuRealmの取得形式" value={format} onChange={e => setFormat(RisuFormatSchema.parse(e.target.value))}>{RisuFormatSchema.options.map(f => <option key={f}>{f}</option>)}</select></label><label><input type="checkbox" checked={nonCommercial} onChange={e => setNonCommercial(e.target.checked)} /> 非商用利用として取得する</label><small>独自Module・独自プリセット・CHARXの取得には対応していません。</small></>}
       <div className="k-hub-actions"><Button type="submit" disabled={busy || disabled || !url.trim()}>{busy ? '取得中…' : 'URLの内容を確認'}</Button>{busy && <Button variant="ghost" type="button" onClick={() => { active.current?.abort(); setBusy(false); onBusyChange?.(false); }}>取得をキャンセル</Button>}</div>
     </form>{error && <p role="alert">{error}</p>}
+    <HubLinks />
   </section>;
 }
