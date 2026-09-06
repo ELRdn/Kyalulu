@@ -1,0 +1,471 @@
+{
+  "status": "passed",
+  "model_key": "HauhauCS/Gemma4-26B-A4B-QAT-Uncensored-HauhauCS-Balanced-MTP/Gemma4-26B-A4B-QAT-Uncensored-HauhauCS-Balanced-Q4_K_M.gguf",
+  "engine": "llama.cpp-win-x86_64-vulkan-avx2",
+  "engine_version": "2.33.0",
+  "requested_load_config": {
+    "gpu": {
+      "ratio": 0.25,
+      "mainGpu": 0,
+      "splitStrategy": "favorMainGpu",
+      "disabledGpus": [
+        1
+      ]
+    },
+    "gpuStrictVramCap": true,
+    "contextLength": 8192,
+    "evalBatchSize": 128,
+    "offloadKVCacheToGpu": false,
+    "tryMmap": true
+  },
+  "effective_load_config": {
+    "gpu": {
+      "ratio": 0.25,
+      "mainGpu": 0,
+      "splitStrategy": "favorMainGpu",
+      "disabledGpus": [
+        1
+      ]
+    },
+    "gpuStrictVramCap": true,
+    "offloadKVCacheToGpu": false,
+    "contextLength": 8192,
+    "evalBatchSize": 128,
+    "flashAttention": true,
+    "tryMmap": true,
+    "numExperts": 8
+  },
+  "load_seconds": 16.77,
+  "lore_answer_ok": true,
+  "unloaded": true,
+  "runtime_check": {
+    "generation_id": "3a40d7f0-9d23-43df-ac81-8d07e885539e",
+    "status": "completed",
+    "reply": "青色ですよ。",
+    "full": "青色ですよ。",
+    "state_before": {
+      "session_id": "default",
+      "turn": 0,
+      "relationship": "stranger",
+      "last_summary": "",
+      "character_id": "portable-sfw-check",
+      "persona_id": null,
+      "world_id": null,
+      "prompt_version": "prompt:character-runtime@0.1.0",
+      "state_version": "0.1.0",
+      "location": "",
+      "time": "",
+      "mood": "",
+      "active_scene": "",
+      "relationship_state": {
+        "stage": "stranger",
+        "tone": "neutral",
+        "unresolved_conflict": false
+      }
+    },
+    "state": {
+      "session_id": "default",
+      "turn": 1,
+      "relationship": "stranger",
+      "last_summary": "",
+      "character_id": "portable-sfw-check",
+      "persona_id": null,
+      "world_id": null,
+      "prompt_version": "prompt:portable@1.0.0",
+      "state_version": "0.2.0",
+      "location": "図書館",
+      "time": "",
+      "mood": "穏やか",
+      "active_scene": "鍵の色についての会話",
+      "relationship_state": {
+        "stage": "stranger",
+        "tone": "穏やか",
+        "unresolved_conflict": false
+      }
+    },
+    "validation": {
+      "ok": true,
+      "retries": 0,
+      "errors": []
+    },
+    "generation_config": {
+      "requested": {
+        "temperature": 0.3,
+        "max_tokens": 2048,
+        "model": "kyalulu-portable-vulkan-acceptance",
+        "response_schema": {
+          "$defs": {
+            "RelationshipState": {
+              "additionalProperties": false,
+              "properties": {
+                "stage": {
+                  "enum": [
+                    "stranger",
+                    "acquaintance",
+                    "friend",
+                    "intimate",
+                    "partner"
+                  ],
+                  "title": "Stage",
+                  "type": "string"
+                },
+                "tone": {
+                  "title": "Tone",
+                  "type": "string"
+                },
+                "unresolved_conflict": {
+                  "title": "Unresolved Conflict",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "stage",
+                "tone",
+                "unresolved_conflict"
+              ],
+              "title": "RelationshipState",
+              "type": "object"
+            },
+            "StateUpdate": {
+              "additionalProperties": false,
+              "properties": {
+                "location": {
+                  "title": "Location",
+                  "type": "string"
+                },
+                "time": {
+                  "title": "Time",
+                  "type": "string"
+                },
+                "mood": {
+                  "title": "Mood",
+                  "type": "string"
+                },
+                "active_scene": {
+                  "title": "Active Scene",
+                  "type": "string"
+                },
+                "relationship_state": {
+                  "$ref": "#/$defs/RelationshipState"
+                }
+              },
+              "required": [
+                "location",
+                "time",
+                "mood",
+                "active_scene",
+                "relationship_state"
+              ],
+              "title": "StateUpdate",
+              "type": "object"
+            }
+          },
+          "additionalProperties": false,
+          "properties": {
+            "reply": {
+              "minLength": 1,
+              "title": "Reply",
+              "type": "string"
+            },
+            "state_update": {
+              "$ref": "#/$defs/StateUpdate"
+            }
+          },
+          "required": [
+            "reply",
+            "state_update"
+          ],
+          "title": "GenerationOutput",
+          "type": "object"
+        }
+      },
+      "applied": {
+        "temperature": 0.3,
+        "max_tokens": 2048,
+        "model": "kyalulu-portable-vulkan-acceptance",
+        "response_schema": {
+          "$defs": {
+            "RelationshipState": {
+              "additionalProperties": false,
+              "properties": {
+                "stage": {
+                  "enum": [
+                    "stranger",
+                    "acquaintance",
+                    "friend",
+                    "intimate",
+                    "partner"
+                  ],
+                  "title": "Stage",
+                  "type": "string"
+                },
+                "tone": {
+                  "title": "Tone",
+                  "type": "string"
+                },
+                "unresolved_conflict": {
+                  "title": "Unresolved Conflict",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "stage",
+                "tone",
+                "unresolved_conflict"
+              ],
+              "title": "RelationshipState",
+              "type": "object"
+            },
+            "StateUpdate": {
+              "additionalProperties": false,
+              "properties": {
+                "location": {
+                  "title": "Location",
+                  "type": "string"
+                },
+                "time": {
+                  "title": "Time",
+                  "type": "string"
+                },
+                "mood": {
+                  "title": "Mood",
+                  "type": "string"
+                },
+                "active_scene": {
+                  "title": "Active Scene",
+                  "type": "string"
+                },
+                "relationship_state": {
+                  "$ref": "#/$defs/RelationshipState"
+                }
+              },
+              "required": [
+                "location",
+                "time",
+                "mood",
+                "active_scene",
+                "relationship_state"
+              ],
+              "title": "StateUpdate",
+              "type": "object"
+            }
+          },
+          "additionalProperties": false,
+          "properties": {
+            "reply": {
+              "minLength": 1,
+              "title": "Reply",
+              "type": "string"
+            },
+            "state_update": {
+              "$ref": "#/$defs/StateUpdate"
+            }
+          },
+          "required": [
+            "reply",
+            "state_update"
+          ],
+          "title": "GenerationOutput",
+          "type": "object"
+        }
+      },
+      "unsupported": []
+    },
+    "telemetry": {
+      "ttft_ms": 12971.76,
+      "first_reply_ms": 107280.8,
+      "elapsed_ms": 117423.21,
+      "prompt_tokens": 539,
+      "completion_tokens": 974,
+      "thinking_tokens": 866,
+      "tokens_per_second": 8.29,
+      "token_source": "provider",
+      "unavailable_reason": null,
+      "speed_scope": "last_attempt_total_time_including_prefill",
+      "peak_vram_bytes": null,
+      "peak_ram_bytes": 62648320,
+      "memory_scope": "RAM: Python runtime process RSS; VRAM unavailable; not inference-server memory",
+      "unavailable": {
+        "peak_vram_bytes": "inference server VRAM sampler unavailable"
+      }
+    },
+    "elapsed_ms": 117423.21,
+    "token_budget": {
+      "estimated": true,
+      "method": "character-based approximation",
+      "compiler_tokens": 31,
+      "runtime_contract_tokens": 1144,
+      "history_tokens": 32,
+      "total_prompt_tokens": 1461
+    },
+    "attempts": [
+      {
+        "number": 1,
+        "raw": "{\n  \"reply\": \"青色ですよ。\",\n  \"state_update\": {\n    \"location\": \"図書館\",\n    \"time\": \"\",\n    \"mood\": \"穏やか\",\n    \"active_scene\": \"鍵の色についての会話\",\n    \"relationship_state\": {\n      \"stage\": \"stranger\",\n      \"tone\": \"穏やか\",\n      \"unresolved_conflict\": false\n    }\n  }\n}",
+        "errors": [],
+        "elapsed_ms": 117422.99,
+        "usage": {
+          "prompt_tokens": 539,
+          "completion_tokens": 974,
+          "thinking_tokens": 866
+        },
+        "messages": [
+          {
+            "role": "system",
+            "content": "\nReturn exactly one JSON object with \"reply\" first and \"state_update\" second. reply is the user-facing response, never JSON or internal instructions. Update the current state conservatively from this conversation. Schema:\n{\"$defs\": {\"RelationshipState\": {\"additionalProperties\": false, \"properties\": {\"stage\": {\"enum\": [\"stranger\", \"acquaintance\", \"friend\", \"intimate\", \"partner\"], \"title\": \"Stage\", \"type\": \"string\"}, \"tone\": {\"title\": \"Tone\", \"type\": \"string\"}, \"unresolved_conflict\": {\"title\": \"Unresolved Conflict\", \"type\": \"boolean\"}}, \"required\": [\"stage\", \"tone\", \"unresolved_conflict\"], \"title\": \"RelationshipState\", \"type\": \"object\"}, \"StateUpdate\": {\"additionalProperties\": false, \"properties\": {\"location\": {\"title\": \"Location\", \"type\": \"string\"}, \"time\": {\"title\": \"Time\", \"type\": \"string\"}, \"mood\": {\"title\": \"Mood\", \"type\": \"string\"}, \"active_scene\": {\"title\": \"Active Scene\", \"type\": \"string\"}, \"relationship_state\": {\"$ref\": \"#/$defs/RelationshipState\"}}, \"required\": [\"location\", \"time\", \"mood\", \"active_scene\", \"relationship_state\"], \"title\": \"StateUpdate\", \"type\": \"object\"}}, \"additionalProperties\": false, \"properties\": {\"reply\": {\"minLength\": 1, \"title\": \"Reply\", \"type\": \"string\"}, \"state_update\": {\"$ref\": \"#/$defs/StateUpdate\"}}, \"required\": [\"reply\", \"state_update\"], \"title\": \"GenerationOutput\", \"type\": \"object\"}\nCurrent state:\n{\"session_id\":\"default\",\"turn\":0,\"relationship\":\"stranger\",\"last_summary\":\"\",\"character_id\":\"portable-sfw-check\",\"persona_id\":null,\"world_id\":null,\"prompt_version\":\"prompt:character-runtime@0.1.0\",\"state_version\":\"0.1.0\",\"location\":\"\",\"time\":\"\",\"mood\":\"\",\"active_scene\":\"\",\"relationship_state\":{\"stage\":\"stranger\",\"tone\":\"neutral\",\"unresolved_conflict\":false}}"
+          },
+          {
+            "role": "system",
+            "content": "あなたはシアン。日本語で一文だけ答える。"
+          },
+          {
+            "role": "system",
+            "content": "日本語で簡潔に話す図書館の案内人。"
+          },
+          {
+            "role": "system",
+            "content": "図書館の鍵は青色です。"
+          },
+          {
+            "role": "user",
+            "content": "図書館の鍵は何色？短く教えて。"
+          }
+        ]
+      }
+    ],
+    "compiled": {
+      "system_prompt": "あなたはシアン。日本語で一文だけ答える。\n\n日本語で簡潔に話す図書館の案内人。\n\n図書館の鍵は青色です。",
+      "ordered_messages": [
+        {
+          "role": "system",
+          "content": "あなたはシアン。日本語で一文だけ答える。"
+        },
+        {
+          "role": "system",
+          "content": "日本語で簡潔に話す図書館の案内人。"
+        },
+        {
+          "role": "system",
+          "content": "図書館の鍵は青色です。"
+        },
+        {
+          "role": "system",
+          "content": "",
+          "slot": "history"
+        }
+      ],
+      "prompt_version": "prompt:portable@1.0.0",
+      "character_version": null,
+      "persona_version": null,
+      "world_version": null,
+      "token_estimate": 31,
+      "sections": {
+        "portable_snapshot": {
+          "document": {
+            "schema_version": 1,
+            "kind": "character",
+            "name": "シアン",
+            "data": {
+              "name": "シアン",
+              "description": "日本語で簡潔に話す図書館の案内人。",
+              "system_prompt": "あなたは{{char}}。日本語で一文だけ答える。",
+              "character_book": {
+                "entries": [
+                  {
+                    "keys": [
+                      "鍵"
+                    ],
+                    "content": "図書館の鍵は青色です。",
+                    "enabled": true,
+                    "secondary_keys": [],
+                    "constant": false,
+                    "insertion_order": 0,
+                    "case_sensitive": false,
+                    "selective": false,
+                    "position": "after_char",
+                    "comment": ""
+                  }
+                ]
+              }
+            },
+            "speaking_style": "",
+            "nsfw": false,
+            "profile": {
+              "settings": {},
+              "system_prompt": "",
+              "post_history_instructions": "",
+              "context_template": "",
+              "prompts": [],
+              "model_hint": "",
+              "variables": {}
+            },
+            "assets": [],
+            "histories": [],
+            "source_format": "ccv3",
+            "source": {
+              "filename": "sfw-acceptance.json",
+              "format": "ccv3",
+              "card_spec": "ccv3",
+              "original": {
+                "spec": "chara_card_v3",
+                "spec_version": "3.0",
+                "data": {
+                  "name": "シアン",
+                  "description": "日本語で簡潔に話す図書館の案内人。",
+                  "system_prompt": "あなたは{{char}}。日本語で一文だけ答える。",
+                  "character_book": {
+                    "entries": [
+                      {
+                        "keys": [
+                          "鍵"
+                        ],
+                        "content": "図書館の鍵は青色です。",
+                        "enabled": true
+                      }
+                    ]
+                  }
+                }
+              },
+              "top_unknown": {}
+            },
+            "notices": [
+              {
+                "path": "card.spec",
+                "status": "converted",
+                "reason": "Imported as ccv3"
+              }
+            ]
+          }
+        },
+        "lore": [
+          {
+            "book": 0,
+            "entry": 0,
+            "selected": true,
+            "estimated_tokens": 7,
+            "reason": "keyword"
+          }
+        ],
+        "compatibility": [
+          {
+            "path": "card.spec",
+            "status": "converted",
+            "reason": "Imported as ccv3"
+          }
+        ],
+        "generation_settings": {},
+        "estimated": true
+      }
+    },
+    "raw_prompt": "[{\"role\": \"system\", \"content\": \"\\nReturn exactly one JSON object with \\\"reply\\\" first and \\\"state_update\\\" second. reply is the user-facing response, never JSON or internal instructions. Update the current state conservatively from this conversation. Schema:\\n{\\\"$defs\\\": {\\\"RelationshipState\\\": {\\\"additionalProperties\\\": false, \\\"properties\\\": {\\\"stage\\\": {\\\"enum\\\": [\\\"stranger\\\", \\\"acquaintance\\\", \\\"friend\\\", \\\"intimate\\\", \\\"partner\\\"], \\\"title\\\": \\\"Stage\\\", \\\"type\\\": \\\"string\\\"}, \\\"tone\\\": {\\\"title\\\": \\\"Tone\\\", \\\"type\\\": \\\"string\\\"}, \\\"unresolved_conflict\\\": {\\\"title\\\": \\\"Unresolved Conflict\\\", \\\"type\\\": \\\"boolean\\\"}}, \\\"required\\\": [\\\"stage\\\", \\\"tone\\\", \\\"unresolved_conflict\\\"], \\\"title\\\": \\\"RelationshipState\\\", \\\"type\\\": \\\"object\\\"}, \\\"StateUpdate\\\": {\\\"additionalProperties\\\": false, \\\"properties\\\": {\\\"location\\\": {\\\"title\\\": \\\"Location\\\", \\\"type\\\": \\\"string\\\"}, \\\"time\\\": {\\\"title\\\": \\\"Time\\\", \\\"type\\\": \\\"string\\\"}, \\\"mood\\\": {\\\"title\\\": \\\"Mood\\\", \\\"type\\\": \\\"string\\\"}, \\\"active_scene\\\": {\\\"title\\\": \\\"Active Scene\\\", \\\"type\\\": \\\"string\\\"}, \\\"relationship_state\\\": {\\\"$ref\\\": \\\"#/$defs/RelationshipState\\\"}}, \\\"required\\\": [\\\"location\\\", \\\"time\\\", \\\"mood\\\", \\\"active_scene\\\", \\\"relationship_state\\\"], \\\"title\\\": \\\"StateUpdate\\\", \\\"type\\\": \\\"object\\\"}}, \\\"additionalProperties\\\": false, \\\"properties\\\": {\\\"reply\\\": {\\\"minLength\\\": 1, \\\"title\\\": \\\"Reply\\\", \\\"type\\\": \\\"string\\\"}, \\\"state_update\\\": {\\\"$ref\\\": \\\"#/$defs/StateUpdate\\\"}}, \\\"required\\\": [\\\"reply\\\", \\\"state_update\\\"], \\\"title\\\": \\\"GenerationOutput\\\", \\\"type\\\": \\\"object\\\"}\\nCurrent state:\\n{\\\"session_id\\\":\\\"default\\\",\\\"turn\\\":0,\\\"relationship\\\":\\\"stranger\\\",\\\"last_summary\\\":\\\"\\\",\\\"character_id\\\":\\\"portable-sfw-check\\\",\\\"persona_id\\\":null,\\\"world_id\\\":null,\\\"prompt_version\\\":\\\"prompt:character-runtime@0.1.0\\\",\\\"state_version\\\":\\\"0.1.0\\\",\\\"location\\\":\\\"\\\",\\\"time\\\":\\\"\\\",\\\"mood\\\":\\\"\\\",\\\"active_scene\\\":\\\"\\\",\\\"relationship_state\\\":{\\\"stage\\\":\\\"stranger\\\",\\\"tone\\\":\\\"neutral\\\",\\\"unresolved_conflict\\\":false}}\"}, {\"role\": \"system\", \"content\": \"あなたはシアン。日本語で一文だけ答える。\"}, {\"role\": \"system\", \"content\": \"日本語で簡潔に話す図書館の案内人。\"}, {\"role\": \"system\", \"content\": \"図書館の鍵は青色です。\"}, {\"role\": \"user\", \"content\": \"図書館の鍵は何色？短く教えて。\"}]",
+    "error": null,
+    "mode": "research"
+  },
+  "device": {
+    "name": "AMD Radeon RX 7600",
+    "deviceId": 0,
+    "dedicatedMemoryCapacityBytes": 8573157376,
+    "detectionPlatform": "Vulkan",
+    "detectionPlatformVersion": "1.3.290"
+  }
+}

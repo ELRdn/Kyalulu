@@ -1,7 +1,21 @@
 # Kyalulu ロードマップ
 
-更新: 2026-09-06。Phase 0 M1〜M7の実装とMock受け入れを完了。現行10ルートとデザインを採用。
-実装完了、試験合格、実モデルの評価範囲を区別する。詳細は [受け入れ結果](PHASE0_ACCEPTANCE.md)。
+更新: 2026-09-06（プリセット互換・キャラクター移行を先行実装）。現行10ルートとデザインを維持し、Createを実装した。
+Phase 0 M1〜M7のMock受け入れは維持。今回の互換実装と、Phase 0全体の実モデル受け入れ完了は区別する。
+
+## 今回の到達点
+
+- CC／SillyTavern／BYAF／Risu拡張／Character.AIの5系統を取り込み、編集・保存・チャット・書き出しへ接続した。
+- 原本と不変の編集版、画像、選択した履歴を保存。プレビュー／確定、再送防止、版競合、会話の版固定を実装した。
+- 外部キャラ用のロール別プロンプトと毎ターンのLore採用をChat／SSE／Runnerへ統合した。
+- Python 84試験、Web 6試験、型チェック・ビルドに合格。公式Mock 180ターンと既存画面4条件も回帰合格。
+- 互換画面は1440px／390px × ライト／ダークに合格。取り込み、保存失敗後の再試行、挨拶、表情、履歴復元、書き出し、BYAF履歴選択、STプリセット適用を確認した。
+- 指定Gemma 4をVulkan／RX7600限定で検証。取り込んだSFWキャラのLore応答と構造化Stateが再試行なしで合格。表示開始107.28秒、完了117.42秒で、速度改善は継続課題。
+
+対応範囲は [互換対応表](COMPATIBILITY.md)、試験手順と実測は [互換受け入れ記録](COMPATIBILITY_ACCEPTANCE.md) を参照。
+Kyalulu内の往復試験と外部アプリでの受け入れは別扱い。後者は未実施であり、全面的な互換保証とはしない。
+Webは `http://127.0.0.1:5174/`、APIは8000番。モデル検証後は専用の検証インスタンスをアンロードした。
+既存Desktop変更・ローカル設定・設計草稿は今回のコミットから除外する。
 
 ## Phase 0
 
@@ -16,7 +30,7 @@
 | M6 Research | 実スクロール同期、A/B Focus、6 Inspector、評価者/コメント/保存エラー、公式SFW識別、invalid/Mock除外 | Human品質評価の蓄積 |
 | M7 Immersion | ActiveChat、新規/キャラ紐付け/編集/再生成/復元/文体保存、Researcher Debug、Ctrl+Shift+D | 継続利用の快適さ・実機性能調整 |
 
-## 受け入れ状態
+## Phase 0の初回受け入れ記録
 
 - Python: 34試験合格。Provider模擬HTTP、分割JSON、日本語/エスケープ、検証再試行、通信失敗、中断、旧DB移行、排他・二重保存、編集・再生成を確認。
 - Web: 6単体試験合格。初回9秒待機でも生成要求1回、SSE途中切断、返答置換、中断を確認。
@@ -25,15 +39,47 @@
 - 型チェック: 全共有パッケージ/Web合格。schemasビルド/Web本番ビルド合格。
 - Gemma 4: 指定GGUFをLM Studio Vulkan / RX7600専用で読み込み、SFW構造化1ターンが初回検証で合格。最終測定の表示開始87.11秒、全体97.97秒。通常利用の速度は要改善。
 
-## 次の優先順位
+## 優先順位
 
-1. **Gemma 4実機性能**: 現在の25% offloadを基準に、RX7600 Vulkan限定でコンテキスト・思考/出力枠・メモリ使用量を調整する。計測値を比較して快適さを評価する。
-2. **実モデル受け入れ**: 20ターン×3回、複数シナリオの状態維持、Human評価、仕様94章の3モデル比較。単一ターン合格やMockを代用しない。
-3. **M8 Desktop**: Electron Router/ThemeProvider・API base/IPCを統合し、renderer build、NSIS生成、インストール/起動を確認する。現在はscaffold。今回の既存Desktop変更はコミット対象外。
-4. **後続**: Create/Character Sheet Builderの作成・保存API、Memory Lab、Python sidecar、30/50/100ターンの長文脈ベンチ。
+正式なフェーズ定義は [PROJECT_SPEC.md 91章](../PROJECT_SPEC.md#91-phase-roadmap) を維持する。
+Phase 3の互換／Creator機能を先行実装し、残作業を次の順に進める。
+
+| 順序 | 作業単位 | 成果物・完了条件 |
+|---|---|---|
+| 1 | 今回の互換フェーズ | 5系統の実装、Kyalulu内の形式・ランタイム・画面試験、GemmaのSFW短期確認は合格。外部アプリでの出力確認と実ユーザープリセットによる差分収集は継続。ST/BYAF専用形式への編集後export、スクリプト実行は対象外 |
+| 2 | Phase 0の残作業：実モデル性能と受け入れ | Gemma 4 / RX7600 Vulkan限定。現行25% offload・context 8192を基準に、返答開始/完了時間、構造化成功率を比較。短期試験で設定を決めてから20ターン×3回と3ローカルモデル比較へ進む |
+| 3 | M8 Desktop：日常利用の起動基盤 | WebのRouter/ThemeProvider、API base/IPCを統合。Web/APIの起動・停止、接続診断、モデル未ロードの案内。Windows起動・再起動と既存履歴／ライブラリ復元を確認 |
+| 4 | Phase 1：Memory Lab | 好み・事実、出来事、関係性の記憶を分離。由来と取り出した記憶をInspectorで確認し、Memory有無を同条件比較 |
+
+Phase 0の正式受け入れには、[仕様94章](../PROJECT_SPEC.md#94-initial-acceptance-test) の**3ローカルモデル比較**が残る。
+現在指定済みのGemma 4以外の2モデルと実行条件は未確定。モデル登録だけでは比較完了にならない。
+Muse Spark 1.3 Contributor APIは、ローカル性能が実用条件に届かない場合の代替候補として保持する。
+製品からのAPI接続・速度・品質は未検証であり、API比較を3ローカルモデルの条件に数えない。
+受け入れ前にM8の独立した作業を進める場合も、Phase 0の未完了項目は残して管理する。
+
+M8では、今回の手動再起動を減らすために起動・停止・状態確認の共通手順を先に作る。
+Python sidecar同梱は配布構成の別判断とし、APIを別起動する最初のDesktop版と区別する。
+
+## Phase 1の最初の実装範囲（提案）
+
+- Semantic / Episodic / Relationship Memoryのスキーマ、由来となる会話・時刻・バージョンを保存する。
+- 書き込み・検索・編集・削除と、セッションをまたいだ復元を実装する。現在のRuntime Stateとは別の保存領域として扱う。
+- Memory Inspectorに検索候補、採用した記憶、プロンプトへの追加量、検索時間を表示する。
+- 同一モデル・設定・シナリオでMemory無効/有効を比較する。事実忘れ、誤った記憶、矛盾、不要な記憶の混入を別々に集計する。
+- 完了条件：記憶の保存/訂正/削除/復元と比較実験を再現でき、モデルの能力とMemory機能の効果を区別して評価できること。
+
+## 仕様上の後続フェーズ
+
+| Phase | 内容 | 現在の状態 |
+|---|---|---|
+| 1 — Memory Lab | 3種の記憶、Memory Inspector、検索実験・失敗分類 | 未実装。上記の最小範囲を提案 |
+| 2 — Advanced Benchmark | 30/50/100ターン、キャラ/シナリオ拡張、長文脈、好みへの適応、自動指標拡充 | 未着手 |
+| 3 — Immersion Product | Character/Persona/World Creator、物語操作、import/export、Character Card対応 | 現行チャットと今回の互換／キャラ編集は先行実装済み。Persona/World Creator、物語操作などは後続 |
+| 4 — Optimization | 計測に基づくプロンプト/State/Memory/推論最適化、必要に応じたネイティブ化 | 未着手。直近のGemma設定調整とは別の拡張フェーズ |
+| 5 — Post-training Research | SFT、選好最適化、合成データ、キャラ特化学習 | RuntimeとBenchmarkが安定した後。未着手 |
 
 ## 境界
 
 既存の成人向け素材を保持し、公式SFW用に `mocha_sfw` と安全な文体ファイルを整備。
 通常のチャットでは技術情報を隠し、実プロンプト・保存状態・計測・失敗履歴はResearcher Debugへ集約。
-push、配布、Desktop本実装、外部APIでのMuse代替検証は実施していない。
+push、配布、Desktop本実装、製品からのMuse API代替検証は実施していない。今回のMuseコーディング補助は製品の推論検証には数えない。

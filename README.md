@@ -1,6 +1,6 @@
 # Kyalulu — Local-first Character AI Runtime / Benchmark
 
-> **Status (2026-09-06):** Phase 0 M1〜M7を実装し、Mock受け入れ試験に合格。Gemma 4 / LM Studio / RX7600 Vulkanの構造化1ターンを実機確認。長時間・3モデル比較は未完了。詳細: [ロードマップ](docs/ROADMAP.md) / [受け入れ結果](docs/PHASE0_ACCEPTANCE.md)
+> **Status (2026-09-06):** 5系統のプリセット互換・キャラクター移行を先行実装。Createから取り込み・編集・保存・会話・書き出しが可能。Gemma 4 / RX7600 VulkanでSFWのLore・構造化応答を確認。速度改善・3モデル比較と外部アプリでの互換確認は継続。 [ロードマップ](docs/ROADMAP.md) / [互換対応表](docs/COMPATIBILITY.md) / [検証結果](docs/COMPATIBILITY_ACCEPTANCE.md)
 
 ## 概要
 
@@ -54,6 +54,15 @@ pnpm dev
 - 外部APIで試す: `.env` に `OPENAI_COMPATIBLE_URL` と `OPENAI_COMPATIBLE_API_KEY` を入れて再起動 → `gpt-4o-mini-external` で会話
 - API直接: `curl http://127.0.0.1:8000/api/models` / `/api/providers/health` / `POST /api/chat/stream` (SSE)
 
+### キャラ・プリセットを移行する
+
+Createでファイルを選ぶか設定を貼り付け、内容を確認して保存する。「キャラを開く」で挨拶を選んで会話を始められる。
+既存キャラの編集、Lorebook、画像、保存済みプリセットの適用もCreateから行う。チャットの「✦ キャラ・プリセット」で会話用のLore・表情を選べる。
+CCv2/v3 JSON・PNG、CCv3 CHARX、Kyaluluバックアップ、原本を書き出せる。変換の制限はダウンロード前に表示する。
+
+原本と編集結果は別保存。同名でも上書きせず、既存会話は選んだ版を使い続ける。外部画像URL・スクリプト・認証・モデルロードを自動実行しない。
+詳しい形式と保持のみの項目は [互換対応表](docs/COMPATIBILITY.md) を参照。
+
 ### モデル追加
 
 `models/*.yaml` を追加 → 再起動で自動でDBへ同期 (YAMLが正, SQLiteはキャッシュ)
@@ -74,8 +83,9 @@ pnpm dev
 | M1〜M3 | 共通生成・構造化State・最大2回検証再試行・SQLite世代管理 | 実装・Mock試験合格 |
 | M4〜M6 | 実験保存・計測・Research・公式SFW 3シナリオ | 20ターン×3回×3シナリオ合格 |
 | M7 | ActiveChat・設定保存・履歴復元・Debug | 1440px/390px、ライト/ダーク合格 |
-| 実モデル | Gemma 4 26B A4B / RX7600 Vulkan | 構造化1ターン合格。表示開始約87秒、長時間評価待ち |
-| M8 / 後続 | Desktop / Create本実装 / Memory Lab / 3モデル比較 | 今回の対象外・未完了 |
+| 実モデル | Gemma 4 26B A4B / RX7600 Vulkan | 既存キャラと取込SFWキャラを短期確認。取込キャラ表示開始約107秒、長時間評価待ち |
+| 互換・Create（Phase 3先行） | CC / SillyTavern / BYAF / Risu / Character.AI、ライブラリ、Lore、入出力 | 実装・Mock・画面試験合格。外部アプリ検証は未実施 |
+| M8 / 後続 | Desktop / Memory Lab / 3モデル比較 | 未完了。互換の次は実モデル性能・受け入れを優先 |
 
 ### Gemma 4をRX7600で使用
 
@@ -100,6 +110,7 @@ pnpm --filter web test
 pnpm typecheck
 pnpm --filter @kyalulu/schemas build
 pnpm --filter web build
+# 互換画面・実モデルの専用検証手順は docs/COMPATIBILITY_ACCEPTANCE.md
 ```
 
 ## プライバシー
