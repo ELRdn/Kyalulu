@@ -2,7 +2,6 @@
 
 import argparse
 import asyncio
-import pathlib
 import sys
 
 from python.core.experiment import load_scenario, run_single, save_experiment
@@ -11,6 +10,7 @@ async def main_async(args):
     scenario = load_scenario(args.scenario)
     print(f"[exp] scenario: {scenario.id} v{scenario.version} ({len(scenario.turns)} turns)")
     print(f"[exp] model: {args.model}  runs: {args.runs}  temp: {args.temperature}")
+    completed = True
     for run in range(1, args.runs + 1):
         print(f"\n[exp] --- run {run}/{args.runs} ---")
         meta, turns, raw_prompt = await run_single(
@@ -22,9 +22,11 @@ async def main_async(args):
             extra_system_prompt=args.extra_system_prompt,
         )
         out_dir = save_experiment(meta, turns, raw_prompt)
-        print(f"[exp] saved: {out_dir}")
+        completed = completed and meta.status == "completed"
+        print(f"[exp] saved: {out_dir} status={meta.status}")
         print(f"[exp] id: {meta.experiment_id}  elapsed example: {turns[0]['elapsed_ms']}ms")
     print("\n[exp] done")
+    return completed
 
 def main():
     p = argparse.ArgumentParser(description="Kyalulu Experiment Runner")
@@ -48,7 +50,9 @@ def main():
         raise
     except Exception:
         pass
-    asyncio.run(main_async(args))
+    if not 1 <= args.runs <= 3:
+        p.error("runs must be 1..3")
+    sys.exit(0 if asyncio.run(main_async(args)) else 1)
 
 if __name__ == "__main__":
     main()

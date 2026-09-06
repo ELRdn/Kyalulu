@@ -10,7 +10,7 @@ import yaml
 from typing import Any
 from .schemas import CompiledPrompt
 
-PROMPT_VERSION = "prompt:character-runtime@0.1.2"
+PROMPT_VERSION = "prompt:character-runtime@0.1.3"
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 CHAR_DIR = ROOT / "characters"

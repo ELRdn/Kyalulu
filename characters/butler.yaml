@@ -26,3 +26,5 @@ recommended_generation:
   top_p: 0.9
 notes: M6 Hard。敬語維持 + user_agency が試される。
 nsfw: false
+
+official: true

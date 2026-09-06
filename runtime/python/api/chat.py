@@ -1,20 +1,23 @@
 """Chat API - SSEストリーミング対応"""
 
 import json
-import time
 import uuid
 from typing import List
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from python.providers.factory import get_provider_for_model
 from python.core.registry import load_yaml_registry, list_models_from_db
 from python.storage.db import init_db
 import aiosqlite
 from python.storage.db import DB_PATH
+
+from python.storage import generations
+from python.core.generation import generate_events
+from python.core.prompt_compiler import compile_prompt
 
 router = APIRouter()
 
@@ -27,6 +30,10 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     model_id: str
     messages: List[ChatMessage]
+    generation_id: str = Field(default_factory=lambda: str(uuid.uuid4()), min_length=1, max_length=128)
+    seed: int | None = None
+    regenerate_message_id: int | None = None
+    allow_nsfw: bool = False
     stream: bool = True
     temperature: float | None = None
     session_id: str = "default"
@@ -96,62 +103,15 @@ async def _load_settings(session_id: str) -> SessionSettings:
     """session_settings から取得、なければグローバル(__global__)→デフォルトをフォールバック"""
     await init_db()
     sid = session_id or "default"
-    try:
-        async with aiosqlite.connect(DB_PATH) as db:
-            db.row_factory = aiosqlite.Row
-            # セッション固有（新列が無いDBでも動くように try）
-            try:
-                cur = await db.execute("SELECT system_prompt, temperature, character_id, persona_id, world_id, intro FROM session_settings WHERE session_id=?", (sid,))
-            except Exception:
-                try:
-                    cur = await db.execute("SELECT system_prompt, temperature, character_id, persona_id, world_id FROM session_settings WHERE session_id=?", (sid,))
-                except Exception:
-                    cur = await db.execute("SELECT system_prompt, temperature FROM session_settings WHERE session_id=?", (sid,))
-            row = await cur.fetchone()
-            if row is not None:
-                # 列の有無を安全に取得
-                def _get(k, default=None):
-                    try:
-                        return row[k]
-                    except Exception:
-                        return default
-                return SessionSettings(
-                    session_id=sid,
-                    system_prompt=_get("system_prompt") or "",
-                    temperature=_get("temperature") if _get("temperature") is not None else 0.8,
-                    character_id=_get("character_id"),
-                    persona_id=_get("persona_id"),
-                    world_id=_get("world_id"),
-                    intro=_get("intro") or "",
-                )
-            # グローバルフォールバック
-            try:
-                cur = await db.execute("SELECT system_prompt, temperature, character_id, persona_id, world_id, intro FROM session_settings WHERE session_id='__global__'")
-            except Exception:
-                try:
-                    cur = await db.execute("SELECT system_prompt, temperature, character_id, persona_id, world_id FROM session_settings WHERE session_id='__global__'")
-                except Exception:
-                    cur = await db.execute("SELECT system_prompt, temperature FROM session_settings WHERE session_id='__global__'")
-            grow = await cur.fetchone()
-            if grow is not None:
-                def _gget(k, default=None):
-                    try:
-                        return grow[k]
-                    except Exception:
-                        return default
-                if _gget("system_prompt"):
-                    return SessionSettings(
-                        session_id=sid,
-                        system_prompt=_gget("system_prompt") or "",
-                        temperature=_gget("temperature") if _gget("temperature") is not None else 0.8,
-                        character_id=_gget("character_id"),
-                        persona_id=_gget("persona_id"),
-                        world_id=_gget("world_id"),
-                        intro=_gget("intro") or "",
-                    )
-    except Exception as e:
-        print(f"[settings] load failed {e}")
-    return SessionSettings(session_id=sid, system_prompt="", temperature=0.8)
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        row = await (await db.execute(
+            "SELECT * FROM session_settings WHERE session_id IN (?, '__global__') ORDER BY CASE WHEN session_id=? THEN 0 ELSE 1 END LIMIT 1",
+            (sid, sid))).fetchone()
+        if row:
+            return SessionSettings(session_id=sid, **{k: row[k] for k in
+                ("system_prompt", "temperature", "character_id", "persona_id", "world_id", "intro")})
+    return SessionSettings(session_id=sid)
 
 
 def _inject_system(messages: list[dict], system_prompt: str) -> list[dict]:
@@ -187,6 +147,8 @@ async def list_models():
                 }
             )
         return {"models": out}
+    except generations.Conflict as e:
+        return JSONResponse(status_code=409, content={"error": str(e)})
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
@@ -251,129 +213,111 @@ async def inject_intro(session_id: str = "default"):
         return {"ok": True, "injected": True, "intro": intro}
 
 
+async def prepare_generation(req: ChatRequest):
+    cfg = next((m for m in load_yaml_registry() if m.get("id") == req.model_id), None)
+    if cfg is None:
+        raise ValueError("model not found")
+    if not req.messages or req.messages[-1].role != "user":
+        raise ValueError("last message must be a user message")
+    await init_db()
+    if req.regenerate_message_id:
+        async with aiosqlite.connect(DB_PATH) as db:
+            row = await (await db.execute("SELECT id,role FROM chat_history WHERE session_id=? ORDER BY id DESC LIMIT 1", (req.session_id,))).fetchone()
+            if not row or row != (req.regenerate_message_id, "assistant"):
+                raise ValueError("only the latest assistant can be regenerated")
+    provider = get_provider_for_model(cfg)
+    settings = await _load_settings(req.session_id)
+    from python.core.prompt_compiler import _load_yaml, CHAR_DIR
+    if (_load_yaml(CHAR_DIR, settings.character_id) or {}).get("nsfw") and not req.allow_nsfw:
+        raise ValueError("NSFW execution requires allow_nsfw")
+    compiled = compile_prompt(character_id=settings.character_id, persona_id=settings.persona_id,
+        world_id=settings.world_id, extra_system_prompt=req.system_prompt if req.system_prompt is not None else settings.system_prompt)
+    requested = dict(cfg.get("recommended_generation") or {})
+    requested["temperature"] = req.temperature if req.temperature is not None else settings.temperature
+    if req.seed is not None:
+        requested["seed"] = req.seed
+    replay = await generations.reserve(req.generation_id, req.session_id,
+        req.model_dump(exclude={"stream", "generation_id"}))
+    return cfg, provider, settings, compiled, requested, replay
+
+
+async def run_chat(req, prepared):
+    cfg, provider, settings, compiled, requested, replay = prepared
+    if replay is not None:
+        yield {"type": "result", "result": replay}
+        return
+    journal = []
+    finished = False
+    runtime_source = None
+    try:
+        state = await generations.load_state(req.session_id, settings.model_dump())
+        if req.regenerate_message_id:
+            state = await generations.state_before(req.session_id, req.regenerate_message_id, settings.model_dump())
+        runtime_source = generate_events(provider, model=cfg["provider"]["model"],
+                messages=[m.model_dump() for m in req.messages], compiled=compiled, state=state,
+                requested=requested, generation_id=req.generation_id, journal=journal)
+        async for event in runtime_source:
+            if event["type"] == "result":
+                event["result"]["replace_message_id"] = req.regenerate_message_id
+                await generations.finish(req.generation_id, event["result"], req.messages[-1].model_dump(), req.model_id)
+                finished = True
+            yield event
+    finally:
+        if not finished:
+            # Persist diagnostic output even when the SSE disconnect cancels its task group.
+            import anyio
+            with anyio.CancelScope(shield=True):
+                if runtime_source is not None:
+                    await runtime_source.aclose()
+                await generations.finish(req.generation_id,
+                    {"generation_id": req.generation_id, "status": "cancelled", "reply": "",
+                     "error": "generation interrupted", "attempts": journal}, None, req.model_id)
+
+
 @router.post("/chat")
 async def chat_non_stream(req: ChatRequest):
-    """非ストリーミング (デバッグ用)"""
-    models = load_yaml_registry()
-    cfg = next((m for m in models if m.get("id") == req.model_id), None)
-    if not cfg:
-        return JSONResponse(status_code=404, content={"error": f"model {req.model_id} not found"})
-    provider = get_provider_for_model(cfg)
-    provider_cfg = cfg.get("provider", {}) if isinstance(cfg.get("provider"), dict) else {}
-    # 設定を解決：フロントから送られた値を優先（即時反映）、無ければDB
-    settings = await _load_settings(req.session_id)
-    sp = req.system_prompt if req.system_prompt is not None else settings.system_prompt
-    temp = req.temperature if req.temperature is not None else settings.temperature
-    # 自動保存（チャット送信時に設定も一緒に永続化）
-    if req.system_prompt is not None or req.temperature is not None:
-        try:
-            await _save_settings(req.session_id, sp, temp)
-        except Exception as e:
-            print(f"[chat] auto-save settings failed {e}")
-    # Character/Runtime: もしキャラ等が選択されていれば Compilerで最終system_promptを生成
-    final_sp = sp
     try:
-        if settings.character_id or settings.persona_id or settings.world_id:
-            from python.core.prompt_compiler import compile_prompt
-
-            compiled = compile_prompt(
-                character_id=settings.character_id,
-                persona_id=settings.persona_id,
-                world_id=settings.world_id,
-                extra_system_prompt=sp if sp and sp.strip() else None,
-            )
-            final_sp = compiled.system_prompt
-    except Exception as e:
-        print(f"[chat] compile failed {e}, fallback to raw sp")
-    messages = _inject_system([m.model_dump() for m in req.messages], final_sp)
-    text = await provider.generate("", messages=messages, model=provider_cfg.get("model"), temperature=temp)
-    # 簡易履歴保存
-    try:
-        await init_db()
-        async with aiosqlite.connect(DB_PATH) as db:
-            sid = req.session_id or "default"
-            # 重複保存を避けるため、最後の1往復のみ保存（既に履歴にある場合はスキップされる想定）
-            # 簡易: 最後のuserとassistantを保存
-            last_user = req.messages[-1] if req.messages else None
-            if last_user:
-                await db.execute("INSERT INTO chat_history (session_id, role, content, model_id) VALUES (?, ?, ?, ?)", (sid, last_user.role, last_user.content, req.model_id))
-            await db.execute("INSERT INTO chat_history (session_id, role, content, model_id) VALUES (?, ?, ?, ?)", (sid, "assistant", text, req.model_id))
-            await db.commit()
-    except Exception:
-        pass
-    return {"reply": text, "model_id": req.model_id}
+        prepared = await prepare_generation(req)
+    except generations.Conflict as exc:
+        return JSONResponse(status_code=409, content={"error": str(exc)})
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+    async for event in run_chat(req, prepared):
+        if event["type"] == "result":
+            result = event["result"]
+            return JSONResponse(status_code=200 if result.get("reply") else 422, content=result)
 
 
 @router.post("/chat/stream")
 async def chat_stream(req: ChatRequest, request: Request):
-    """SSEストリーミング"""
-    models = load_yaml_registry()
-    cfg = next((m for m in models if m.get("id") == req.model_id), None)
-    if not cfg:
-        async def err_gen():
-            yield {"event": "error", "data": json.dumps({"error": f"model {req.model_id} not found"}, ensure_ascii=False)}
-
-        return EventSourceResponse(err_gen())
-
-    provider = get_provider_for_model(cfg)
-    provider_cfg = cfg.get("provider", {}) if isinstance(cfg.get("provider"), dict) else {}
-    settings = await _load_settings(req.session_id)
-    sp = req.system_prompt if req.system_prompt is not None else settings.system_prompt
-    temp = req.temperature if req.temperature is not None else settings.temperature
-    # 自動保存（送信と同時に設定も永続化）
-    if req.system_prompt is not None or req.temperature is not None:
-        try:
-            await _save_settings(req.session_id, sp, temp)
-        except Exception as e:
-            print(f"[chat] auto-save settings failed {e}")
-    # Character/Runtime: Compilerで最終system_promptを生成
-    final_sp = sp
     try:
-        if settings.character_id or settings.persona_id or settings.world_id:
-            from python.core.prompt_compiler import compile_prompt
+        prepared = await prepare_generation(req)
+    except generations.Conflict as exc:
+        return JSONResponse(status_code=409, content={"error": str(exc)})
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
 
-            compiled = compile_prompt(
-                character_id=settings.character_id,
-                persona_id=settings.persona_id,
-                world_id=settings.world_id,
-                extra_system_prompt=sp if sp and sp.strip() else None,
-            )
-            final_sp = compiled.system_prompt
-    except Exception as e:
-        print(f"[chat] compile failed {e}, fallback to raw sp")
-    messages = _inject_system([m.model_dump() for m in req.messages], final_sp)
-
-    async def gen():
-        # meta
-        yield {"event": "meta", "data": json.dumps({"model_id": req.model_id, "provider_type": provider_cfg.get("type")}, ensure_ascii=False)}
-        full = ""
-        start = time.time()
+    async def stream():
+        source = run_chat(req, prepared)
         try:
-            async for chunk in provider.stream_generate("", messages=messages, model=provider_cfg.get("model"), temperature=temp):
-                if await request.is_disconnected():
-                    break
-                full += chunk
-                yield {"event": "token", "data": json.dumps({"token": chunk}, ensure_ascii=False)}
-        except Exception as e:
-            yield {"event": "error", "data": json.dumps({"error": str(e)}, ensure_ascii=False)}
-            return
-        # done
-        elapsed = time.time() - start
-        yield {"event": "done", "data": json.dumps({"full": full, "elapsed_ms": int(elapsed * 1000)}, ensure_ascii=False)}
-        # 保存 (fire-and-forget)
-        try:
-            await init_db()
-            async with aiosqlite.connect(DB_PATH) as db:
-                sid = req.session_id or "default"
-                last_user = req.messages[-1] if req.messages else None
-                if last_user:
-                    await db.execute("INSERT INTO chat_history (session_id, role, content, model_id) VALUES (?, ?, ?, ?)", (sid, last_user.role, last_user.content, req.model_id))
-                await db.execute("INSERT INTO chat_history (session_id, role, content, model_id) VALUES (?, ?, ?, ?)", (sid, "assistant", full, req.model_id))
-                await db.commit()
-        except Exception as e:
-            print(f"[chat] save failed {e}")
-
-    return EventSourceResponse(gen(), headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"})
+            yield {"event": "meta", "data": json.dumps({"generation_id": req.generation_id, "model_id": req.model_id})}
+            async for event in source:
+                kind = event["type"]
+                if kind == "result":
+                    result = event["result"]
+                    if result.get("reply"):
+                        payload = {k: v for k, v in result.items() if k not in {"attempts", "compiled", "raw_prompt"}}
+                        yield {"event": "done", "data": json.dumps(payload, ensure_ascii=False)}
+                    else:
+                        yield {"event": "error", "data": json.dumps({"error": result.get("error") or "generation validation failed", "generation_id": req.generation_id})}
+                else:
+                    yield {"event": kind, "data": json.dumps(event, ensure_ascii=False)}
+        finally:
+            import anyio
+            with anyio.CancelScope(shield=True):
+                await source.aclose()
+                await generations.cancel_pending(req.generation_id)
+    return EventSourceResponse(stream(), headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @router.get("/chat/history")
@@ -390,6 +334,8 @@ async def chat_history(limit: int = 50, session_id: str | None = None):
             rows = await cur.fetchall()
             rows = list(reversed(rows))
             return {"history": [dict(r) for r in rows]}
+    except generations.Conflict as e:
+        return JSONResponse(status_code=409, content={"error": str(e)})
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
@@ -408,12 +354,17 @@ async def update_history_message(msg_id: int, body: HistoryUpdateIn):
     try:
         await init_db()
         async with aiosqlite.connect(DB_PATH) as db:
-            cur = await db.execute("SELECT id FROM chat_history WHERE id=?", (msg_id,))
-            if not await cur.fetchone():
+            await db.execute("BEGIN IMMEDIATE")
+            cur = await db.execute("SELECT session_id FROM chat_history WHERE id=?", (msg_id,))
+            row = await cur.fetchone()
+            if not row:
                 return JSONResponse(status_code=404, content={"error": "message not found"})
+            await generations.invalidate(db, row[0], msg_id)
             await db.execute("UPDATE chat_history SET content=? WHERE id=?", (content, msg_id))
             await db.commit()
             return {"ok": True, "id": msg_id}
+    except generations.Conflict as e:
+        return JSONResponse(status_code=409, content={"error": str(e)})
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
@@ -423,12 +374,17 @@ async def delete_history_message(msg_id: int):
     try:
         await init_db()
         async with aiosqlite.connect(DB_PATH) as db:
-            cur = await db.execute("SELECT id FROM chat_history WHERE id=?", (msg_id,))
-            if not await cur.fetchone():
+            await db.execute("BEGIN IMMEDIATE")
+            cur = await db.execute("SELECT session_id FROM chat_history WHERE id=?", (msg_id,))
+            row = await cur.fetchone()
+            if not row:
                 return JSONResponse(status_code=404, content={"error": "message not found"})
+            await generations.invalidate(db, row[0], msg_id)
             await db.execute("DELETE FROM chat_history WHERE id=?", (msg_id,))
             await db.commit()
             return {"ok": True, "id": msg_id}
+    except generations.Conflict as e:
+        return JSONResponse(status_code=409, content={"error": str(e)})
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
@@ -451,6 +407,8 @@ async def list_sessions():
             sessions = [dict(r) for r in rows]
             # デフォルトセッションがまだ無い場合でも空で返す
             return {"sessions": sessions}
+    except generations.Conflict as e:
+        return JSONResponse(status_code=409, content={"error": str(e)})
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
@@ -478,17 +436,14 @@ async def chat_debug(session_id: str = "default"):
                     history_count = row[0]
         except Exception:
             pass
-        from python.core.state import infer_relationship
-        # turnは履歴件数から推定（user+assistantで2件=1往復の簡易）
-        approx_turn = max(0, history_count // 2)
-        return {
-            "session_id": session_id,
-            "settings": s.model_dump(),
-            "compiled": compiled.model_dump(),
-            "history_count": history_count,
-            "approx_turn": approx_turn,
-            "relationship": infer_relationship(approx_turn),
-        }
+        state = await generations.load_state(session_id, s.model_dump())
+        last = await generations.latest(session_id)
+        return {"session_id": session_id, "settings": s.model_dump(),
+            "compiled": last.get("compiled", compiled.model_dump()) if last else compiled.model_dump(),
+            "history_count": history_count, "approx_turn": state.turn,
+            "relationship": state.relationship, "state": state.model_dump(), "generation": last}
+    except generations.Conflict as e:
+        return JSONResponse(status_code=409, content={"error": str(e)})
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
@@ -498,11 +453,17 @@ async def clear_history(session_id: str | None = None):
     try:
         await init_db()
         async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute("BEGIN IMMEDIATE")
+            ids = [session_id] if session_id else [r[0] for r in await (await db.execute("SELECT session_id FROM runtime_states UNION SELECT session_id FROM chat_history")).fetchall()]
+            for sid in ids:
+                await generations.invalidate(db, sid)
             if session_id:
                 await db.execute("DELETE FROM chat_history WHERE session_id=?", (session_id,))
             else:
                 await db.execute("DELETE FROM chat_history")
             await db.commit()
             return {"ok": True}
+    except generations.Conflict as e:
+        return JSONResponse(status_code=409, content={"error": str(e)})
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})

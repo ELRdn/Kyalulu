@@ -64,3 +64,5 @@ out/
 # TS build info
 *.tsbuildinfo
 **/*.tsbuildinfo
+.artifacts/
+.pytest_cache/

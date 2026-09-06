@@ -27,3 +27,5 @@ recommended_generation:
   top_p: 0.9
 notes: M6 Medium。promise/callback記憶が試されるキャラ。
 nsfw: false
+
+official: true

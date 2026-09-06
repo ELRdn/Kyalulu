@@ -15,6 +15,7 @@ class RunRequest(BaseModel):
     temperature: float | None = None
     seed: int | None = None
     extra_system_prompt: str | None = None
+    allow_nsfw: bool = False
 
 @router.post("/experiments/run")
 async def run_experiments(req: RunRequest):
@@ -25,6 +26,8 @@ async def run_experiments(req: RunRequest):
     except Exception as e:
         return JSONResponse(status_code=404, content={"error": str(e)})
     results = []
+    if scenario.nsfw and not req.allow_nsfw:
+        return JSONResponse(status_code=403, content={"error": "NSFW execution requires allow_nsfw"})
     for run in range(1, req.runs + 1):
         meta, turns, raw_prompt = await run_single(
             scenario,
@@ -57,15 +60,17 @@ async def list_scenarios(include_nsfw: bool = False):
     for f in sorted(root.glob("*.yaml")):
         try:
             data = yaml.safe_load(f.read_text(encoding="utf-8"))
+            data["nsfw"] = load_scenario(str(f)).nsfw
             if not include_nsfw and data.get("nsfw"):
                 continue
-            out.append({"id": data.get("id"), "version": data.get("version"), "character": data.get("character"), "difficulty": data.get("difficulty"), "turns": len(data.get("turns", [])), "nsfw": bool(data.get("nsfw")), "nsfw_level": data.get("nsfw_level"), "path": str(f)})
+            from python.core.experiment import OFFICIAL_SCENARIOS
+            out.append({"official": not data["nsfw"] and OFFICIAL_SCENARIOS.get(data.get("id")) == data.get("character"), "id": data.get("id"), "version": data.get("version"), "character": data.get("character"), "difficulty": data.get("difficulty"), "turns": len(data.get("turns", [])), "nsfw": bool(data.get("nsfw")), "nsfw_level": data.get("nsfw_level"), "path": str(f)})
         except Exception as e:
             out.append({"path": str(f), "error": str(e)})
     return {"scenarios": out}
 
 # 追加: 詳細 + ratings
-import json, pathlib
+import json
 from python.storage.db import DB_PATH, init_db
 import aiosqlite
 
@@ -89,10 +94,11 @@ async def get_leaderboard(scope: str = "official", limit: int = 50):
         pass
 
     if not EXPERIMENTS_DIR.exists():
-        return {"scope": scope, "ranking": [], "generated_at": ""}
+        return {"scope": scope, "ranking": [], "generated_at": "", "total_experiments": 0, "excluded": {"invalid": 0, "mock": 0, "non_official": 0}}
 
     # 全 meta を走査
     entries = []
+    excluded = {"invalid": 0, "mock": 0, "non_official": 0}
     for d in EXPERIMENTS_DIR.iterdir():
         if not d.is_dir():
             continue
@@ -105,6 +111,15 @@ async def get_leaderboard(scope: str = "official", limit: int = 50):
             continue
         is_nsfw = bool(meta.get("nsfw"))
         if scope == "official" and is_nsfw:
+            continue
+        if meta.get("status", "completed") != "completed":
+            excluded["invalid"] += 1
+            continue
+        if scope == "official" and meta.get("provider") == "mock":
+            excluded["mock"] += 1
+            continue
+        if scope == "official" and not meta.get("official", False):
+            excluded["non_official"] += 1
             continue
         # metrics: meta.metrics があれば使う、なければ recompute
         metrics = meta.get("metrics")
@@ -124,6 +139,9 @@ async def get_leaderboard(scope: str = "official", limit: int = 50):
                         metrics = compute_metrics(turns)
                     except Exception:
                         metrics = None
+        if metrics and metrics.get("failure_rate", 0) > 0:
+            excluded["invalid"] += 1
+            continue
         meta["__metrics"] = metrics
         # human avg for this exp
         scores = ratings_by_exp.get(meta.get("experiment_id"), [])
@@ -181,13 +199,15 @@ async def get_leaderboard(scope: str = "official", limit: int = 50):
     ranking = ranking[:limit]
 
     from datetime import datetime, timezone
-    return {"scope": scope, "ranking": ranking, "generated_at": datetime.now(timezone.utc).isoformat(), "total_experiments": len(entries)}
+    return {"scope": scope, "ranking": ranking, "generated_at": datetime.now(timezone.utc).isoformat(), "total_experiments": len(entries), "excluded": excluded}
 
 @router.get("/experiments/{experiment_id}")
 async def get_experiment(experiment_id: str):
     try:
         from python.core.experiment import EXPERIMENTS_DIR
         d = EXPERIMENTS_DIR / experiment_id
+        if d.resolve().parent != EXPERIMENTS_DIR.resolve():
+            return JSONResponse(status_code=400, content={"error": "invalid experiment id"})
         if not d.exists():
             return JSONResponse(status_code=404, content={"error": "experiment not found"})
         meta = json.loads((d / "meta.json").read_text(encoding="utf-8")) if (d / "meta.json").exists() else {}
@@ -216,9 +236,9 @@ async def get_experiment(experiment_id: str):
         try:
             async with aiosqlite.connect(DB_PATH) as db:
                 db.row_factory = aiosqlite.Row
-                cur = await db.execute("SELECT turn, score, comment FROM ratings WHERE experiment_id=?", (experiment_id,))
+                cur = await db.execute("SELECT turn, score, comment, rater, updated_at FROM ratings WHERE experiment_id=?", (experiment_id,))
                 for r in await cur.fetchall():
-                    ratings[str(r["turn"])] = {"score": r["score"], "comment": r["comment"]}
+                    ratings[str(r["turn"])] = dict(r)
         except Exception:
             pass
         # metrics をトップにも出す（フロント互換）
@@ -234,6 +254,46 @@ class RatingIn(BaseModel):
     comment: str = ""
     rater: str = "local"
 
+
+@router.get("/experiments/{experiment_id}/export")
+async def export_experiment(experiment_id: str):
+    detail = await get_experiment(experiment_id)
+    if isinstance(detail, JSONResponse):
+        return detail
+    return JSONResponse(content=detail, headers={"Content-Disposition": 'attachment; filename="experiment.json"'})
+
+
+class ReplayRequest(BaseModel):
+    runs: int = 1
+    allow_nsfw: bool = False
+
+
+@router.post("/experiments/{experiment_id}/rerun")
+async def replay_experiment(experiment_id: str, body: ReplayRequest):
+    from python.core.schemas import ScenarioCard
+    detail = await get_experiment(experiment_id)
+    if isinstance(detail, JSONResponse):
+        return detail
+    meta = detail["meta"]
+    if not meta.get("scenario_snapshot") or not meta.get("model_config_snapshot"):
+        return JSONResponse(status_code=409, content={"error": "legacy experiment has no replay snapshots"})
+    if not 1 <= body.runs <= 3:
+        return JSONResponse(status_code=400, content={"error": "runs must be 1..3"})
+    scenario = ScenarioCard.model_validate(meta["scenario_snapshot"])
+    if scenario.nsfw and not body.allow_nsfw:
+        return JSONResponse(status_code=403, content={"error": "NSFW execution requires allow_nsfw"})
+    compiled = next((t["compiled"] for t in detail["turns"] if t.get("compiled")), None)
+    if not compiled:
+        return JSONResponse(status_code=409, content={"error": "compiled prompt snapshot missing"})
+    results = []
+    for run in range(1, body.runs + 1):
+        result, _, _ = await run_single(scenario, meta["model_id"], run,
+            seed=meta.get("seed"), temperature=meta.get("generation_config", {}).get("requested", {}).get("temperature"),
+            extra_system_prompt=meta.get("extra_system_prompt"), replay_config=meta["model_config_snapshot"],
+            compiled_snapshot=compiled)
+        results.append({"experiment_id": result.experiment_id, "meta": result.model_dump()})
+    return {"results": results}
+
 @router.post("/ratings")
 async def put_rating(body: RatingIn):
     if body.score < 1 or body.score > 5:
@@ -243,7 +303,7 @@ async def put_rating(body: RatingIn):
         await db.execute(
             """INSERT INTO ratings (experiment_id, turn, score, comment, rater, updated_at)
                VALUES (?, ?, ?, ?, ?, datetime('now'))
-               ON CONFLICT(experiment_id, turn) DO UPDATE SET score=excluded.score, comment=excluded.comment, updated_at=datetime('now')""",
+               ON CONFLICT(experiment_id, turn) DO UPDATE SET score=excluded.score, comment=excluded.comment, rater=excluded.rater, updated_at=datetime('now')""",
             (body.experiment_id, body.turn, body.score, body.comment, body.rater),
         )
         await db.commit()

@@ -28,6 +28,7 @@ export const CharacterCardSchema = z.object({
   recommended_generation: z.record(z.unknown()).default({}),
   notes: z.string().default(""),
   nsfw: z.boolean().default(false),
+  official: z.boolean().default(false),
 });
 export type CharacterCard = z.infer<typeof CharacterCardSchema>;
 
@@ -52,6 +53,18 @@ export const WorldCardSchema = z.object({
 export type WorldCard = z.infer<typeof WorldCardSchema>;
 
 // State
+export const RelationshipStateSchema = z.object({
+  stage: RelationshipSchema,
+  tone: z.string(),
+  unresolved_conflict: z.boolean(),
+}).strict();
+export const StateUpdateSchema = z.object({
+  location: z.string(), time: z.string(), mood: z.string(), active_scene: z.string(),
+  relationship_state: RelationshipStateSchema,
+}).strict();
+export const GenerationOutputSchema = z.object({
+  reply: z.string().min(1), state_update: StateUpdateSchema,
+}).strict();
 export const RuntimeStateSchema = z.object({
   session_id: z.string().default("default"),
   turn: z.number().int().min(0).default(0),
@@ -62,6 +75,9 @@ export const RuntimeStateSchema = z.object({
   world_id: z.string().nullable().default(null),
   prompt_version: z.string().default("prompt:character-runtime@0.1.0"),
   state_version: z.string().default("0.1.0"),
+  location: z.string().default(""), time: z.string().default(""),
+  mood: z.string().default(""), active_scene: z.string().default(""),
+  relationship_state: RelationshipStateSchema.default({ stage: "stranger", tone: "neutral", unresolved_conflict: false }),
 });
 export type RuntimeState = z.infer<typeof RuntimeStateSchema>;
 
@@ -95,7 +111,7 @@ export type ScenarioEventType = z.infer<typeof ScenarioEventTypeSchema>;
 
 export const ScenarioTurnSchema = z.object({
   turn: z.number().int().min(1),
-  type: ScenarioEventType.default("normal"),
+  type: ScenarioEventTypeSchema.default("normal"),
   user: z.string().min(1),
 });
 export type ScenarioTurn = z.infer<typeof ScenarioTurnSchema>;
@@ -140,5 +156,27 @@ export const ExperimentMetaSchema = z.object({
   status: z.string().default("completed"),
   nsfw: z.boolean().default(false),
   nsfw_level: z.string().nullable().default(null),
+  metrics: z.record(z.unknown()).nullable().default(null),
+  model_config_snapshot: z.record(z.unknown()).default({}),
+  scenario_snapshot: z.record(z.unknown()).default({}),
+  extra_system_prompt: z.string().nullable().default(null),
+  official: z.boolean().default(false),
 });
 export type ExperimentMeta = z.infer<typeof ExperimentMetaSchema>;
+
+export const GenerationSettingsSchema = z.object({
+  requested: z.record(z.unknown()), applied: z.record(z.unknown()), unsupported: z.array(z.string()),
+});
+export const GenerationValidationSchema = z.object({
+  ok: z.boolean(), retries: z.number().int().min(0).max(2), errors: z.array(z.string()),
+});
+export const GenerationRecordSchema = z.object({
+  generation_id: z.string(), status: z.enum(['completed', 'invalid', 'failed']),
+  reply: z.string(), full: z.string(), state_before: RuntimeStateSchema, state: RuntimeStateSchema,
+  validation: GenerationValidationSchema, generation_config: GenerationSettingsSchema,
+  telemetry: z.record(z.unknown()), elapsed_ms: z.number(), token_budget: z.record(z.unknown()),
+  attempts: z.array(z.object({number: z.number().int(), raw: z.string(), errors: z.array(z.string()),
+    messages: z.array(z.object({role: z.string(), content: z.string()})), elapsed_ms: z.number(), usage: z.record(z.unknown())})),
+  compiled: CompiledPromptSchema, raw_prompt: z.string(), error: z.string().nullable(), mode: z.enum(['immersion', 'research']),
+});
+export type GenerationRecord = z.infer<typeof GenerationRecordSchema>;
