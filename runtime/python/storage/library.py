@@ -92,8 +92,27 @@ def preview(filename, raw, documents, assets):
         con.execute('INSERT OR IGNORE INTO library_originals VALUES (?,?,?)', (source_hash, filename, raw))
         con.execute('INSERT INTO library_previews (id,original_id,documents_json) VALUES (?,?,?)',
                     (preview_id, source_hash, encode([d.model_dump() for d in documents])))
-    return dict(preview_id=preview_id, filename=filename, source_hash=source_hash,
-                documents=[d.model_dump() for d in documents])
+    return get_preview(preview_id)
+
+
+def source_matches(document):
+    remote = document.source.get('remote')
+    if not remote:
+        return []
+    return [item for item in list_items() if
+            all(item.document.source.get('remote', {}).get(k) == remote.get(k)
+                for k in ('source', 'source_id', 'sha256', 'document_index'))]
+
+
+def get_preview(preview_id):
+    with connect() as con:
+        row = con.execute('SELECT p.*,o.filename FROM library_previews p JOIN library_originals o ON p.original_id=o.id WHERE p.id=?', (preview_id,)).fetchone()
+        if not row:
+            raise ValueError('import preview not found')
+        documents = json.loads(row['documents_json'])
+    return dict(preview_id=preview_id, filename=row['filename'], source_hash=row['original_id'], documents=documents,
+                duplicates={str(i): [{'id': v.id, 'revision': v.revision, 'name': v.document.name}
+                    for v in source_matches(PortableDocument.model_validate(d))] for i, d in enumerate(documents)})
 
 
 def _write(con, document, original_id=None, target_id=None, expected_revision=None):
@@ -119,7 +138,12 @@ def _write(con, document, original_id=None, target_id=None, expected_revision=No
 def save_item(document, target_id=None, expected_revision=None):
     with connect() as con:
         con.execute('BEGIN IMMEDIATE')
-        old = con.execute('SELECT original_id FROM library_versions WHERE id=? ORDER BY revision DESC LIMIT 1', (target_id,)).fetchone()
+        old = con.execute('SELECT original_id,document_json FROM library_versions WHERE id=? ORDER BY revision DESC LIMIT 1', (target_id,)).fetchone()
+        document = document.model_copy(deep=True)
+        if old:
+            document.source = json.loads(old['document_json'])['source']
+        else:
+            document.source.pop('remote', None)
         return _write(con, document, old[0] if old else None, target_id, expected_revision)
 
 
@@ -146,6 +170,15 @@ def commit(preview_id: str, body: ImportCommit):
             source = PortableDocument.model_validate(sources[selection.index])
             # Provenance and preserved unsupported fields cannot be replaced by client assertions.
             doc.source, doc.source_format = source.source, source.source_format
+            remote = source.source.get('remote')
+            if remote:
+                if remote.get('content_rating') == 'unknown' and selection.content_rating is None:
+                    raise ValueError('Content rating must be selected before saving this URL import')
+                if source_matches(source) and not selection.target_id and selection.duplicate_action != 'copy':
+                    raise LibraryConflict('Already imported; select an existing item or explicitly copy')
+                # Declared adult content cannot be silently downgraded in the import flow.
+                doc.nsfw = (remote.get('content_rating') == 'nsfw' or source.nsfw or
+                            selection.content_rating == 'nsfw' or doc.nsfw)
             if any(not 0 <= idx < len(source.histories) for idx in selection.history_indices):
                 raise ValueError('invalid history selection')
             doc.histories = [source.histories[idx] for idx in sorted(set(selection.history_indices))]

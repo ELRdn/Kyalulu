@@ -1,0 +1,11 @@
+{
+  "revision": "72acaca394237790106fa7b33e57ee50ea197127",
+  "reviewed_at": "2026-09-06",
+  "review": "Parent reviewed full embedded card text and portrait. Coding assistant, clothed headshot. Assets are downloaded on request, not bundled.",
+  "cards": [{
+    "id": "default_CodingSensei.png",
+    "sha256": "acf5d73bd90fbe94dda3ffbaca4fe4b254f52cce1125ff0dac460fc5c78aad83",
+    "author": "RossAscends",
+    "license": null
+  }]
+}

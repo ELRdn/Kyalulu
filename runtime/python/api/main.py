@@ -68,6 +68,7 @@ from python.api.presets import router as presets_router
 from python.api.catalog import router as catalog_router
 from python.api.experiments import router as experiments_router
 from python.api.library import router as library_router
+from python.api.hubs import router as hubs_router
 
 app.include_router(chat_router, prefix="/api")
 app.include_router(providers_router, prefix="/api")
@@ -75,3 +76,4 @@ app.include_router(presets_router, prefix="/api")
 app.include_router(catalog_router, prefix="/api")
 app.include_router(experiments_router, prefix="/api")
 app.include_router(library_router, prefix="/api")
+app.include_router(hubs_router, prefix="/api")

@@ -182,3 +182,4 @@ export const GenerationRecordSchema = z.object({
   compiled: CompiledPromptSchema, raw_prompt: z.string(), error: z.string().nullable(), mode: z.enum(['immersion', 'research']),
 });
 export type GenerationRecord = z.infer<typeof GenerationRecordSchema>;
+export * from './hub';
