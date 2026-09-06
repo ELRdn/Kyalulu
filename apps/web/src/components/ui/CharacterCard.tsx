@@ -22,17 +22,19 @@ export default function CharacterCard({
   hook,
   creator = "Local",
   tags = [],
+  portraitUrl,
 }: {
   id: string;
   displayName: string;
   hook: string;
   creator?: string;
   tags?: string[];
+  portraitUrl?: string | null;
 }) {
   return (
     <Link to={`/characters/${encodeURIComponent(id)}`} className="k-media-card">
       <div className="k-media-card__art" style={{ background: gradientFor(id) }}>
-        {displayName.trim().charAt(0)}
+        {portraitUrl ? <img src={portraitUrl} alt={displayName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : displayName.trim().charAt(0)}
       </div>
       <div className="k-media-card__body">
         <div className="k-media-card__title">{displayName}</div>

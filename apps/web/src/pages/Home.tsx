@@ -113,7 +113,7 @@ export default function Home() {
         ) : (
           <div className="k-grid k-grid--characters">
             {characters.map((c) => (
-              <CharacterCard key={c.id} id={c.id} displayName={c.display_name} hook={c.description} creator={c.official ? "Kyalulu Official · SFW" : "Local"} tags={c.tags ?? []} />
+              <CharacterCard key={c.id} id={c.id} displayName={c.display_name} hook={c.description} creator={c.official ? "Kyalulu Official · SFW" : "Local"} tags={c.tags ?? []} portraitUrl={c.portrait_url} />
             ))}
           </div>
         )}

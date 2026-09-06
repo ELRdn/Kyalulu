@@ -1,5 +1,6 @@
 import { SSEDecoder } from "./sse";
 import type { GenerationRecord } from "../../../../packages/schemas/src";
+import type { LibraryBinding } from '../../../../packages/schemas/src/portable';
 /** API クライアント - Milestone 2 */
 
 export type ModelInfo = {
@@ -93,6 +94,7 @@ export type SessionSettings = {
   persona_id?: string | null;
   world_id?: string | null;
   intro?: string;
+  library_binding?: LibraryBinding | null;
 };
 
 export async function fetchSettings(sessionId: string): Promise<SessionSettings> {
@@ -106,6 +108,7 @@ export async function fetchSettings(sessionId: string): Promise<SessionSettings>
     persona_id: j.persona_id ?? null,
     world_id: j.world_id ?? null,
     intro: j.intro ?? "",
+    library_binding: j.library_binding ?? null,
   };
 }
 
@@ -128,7 +131,7 @@ export async function saveSettings(s: SessionSettings): Promise<void> {
   }
 }
 
-export type CharacterInfo = { official?: boolean; id: string; display_name: string; version: string; description: string; intro?: string; difficulty?: string; tags?: string[] };
+export type CharacterInfo = { official?: boolean; id: string; display_name: string; version: string; description: string; intro?: string; difficulty?: string; tags?: string[]; portrait_url?: string | null; library_revision?: number; alternate_greetings?: string[]; recommended_generation?: Record<string, unknown> };
 export type PersonaInfo = { id: string; display_name: string; version: string; description: string };
 export type WorldInfo = { id: string; display_name: string; version: string; description: string };
 
@@ -155,9 +158,10 @@ export type CompiledPrompt = {
   persona_version: string | null;
   world_version: string | null;
   token_estimate: number;
-  sections: Record<string, string>;
+  sections: Record<string, unknown>;
+  ordered_messages?: Record<string, unknown>[];
 };
-export async function compilePrompt(p: { character_id?: string | null; persona_id?: string | null; world_id?: string | null; extra_system_prompt?: string | null }): Promise<CompiledPrompt> {
+export async function compilePrompt(p: { character_id?: string | null; persona_id?: string | null; world_id?: string | null; extra_system_prompt?: string | null; library_binding?: SessionSettings["library_binding"] }): Promise<CompiledPrompt> {
   const r = await fetch("/api/prompt/compile", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
