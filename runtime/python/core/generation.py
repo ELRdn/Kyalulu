@@ -76,6 +76,9 @@ async def generate_events(provider, *, model: str, messages: list[dict], compile
                           generation_id: str | None = None, journal: list | None = None):
     """Yield token/reset/result events. A result is NOT persisted until the caller commits."""
     generation_id = generation_id or str(uuid4())
+    if compiled.sections.get('portable_snapshot'):
+        from .portable_prompt import compile_portable
+        compiled = compile_portable(compiled.sections['portable_snapshot'], messages)
     attempts = journal if journal is not None else []
     schema = GenerationOutput.model_json_schema()
     config = provider.generation_config({**requested, "model": model, "response_schema": schema})
@@ -87,7 +90,8 @@ async def generate_events(provider, *, model: str, messages: list[dict], compile
         + '\nCurrent state:\n' + state.model_dump_json()
     )
     system = compiled.system_prompt + instruction
-    base = [{"role": "system", "content": system}] + [dict(m) for m in messages if m["role"] != "system"]
+    from .portable_prompt import assemble_messages
+    base = assemble_messages(compiled, messages, instruction)
     start = time.perf_counter()
     status, reply, error = "invalid", "", None
     next_state = state.model_copy(deep=True)
@@ -173,10 +177,10 @@ async def generate_events(provider, *, model: str, messages: list[dict], compile
         "validation": {"ok": status == "completed", "retries": max(0, len(attempts) - 1),
                        "errors": [e for a in attempts for e in a["errors"]]},
         "attempts": attempts, "telemetry": telemetry, "elapsed_ms": elapsed,
-        "generation_config": config, "compiled": compiled.model_dump(), "raw_prompt": system,
+        "generation_config": config, "compiled": compiled.model_dump(), "raw_prompt": json.dumps(base, ensure_ascii=False) if compiled.ordered_messages else system,
         "error": error, "mode": mode}
     result["token_budget"] = {"estimated": True, "method": "character-based approximation",
         "compiler_tokens": compiled.token_estimate, "runtime_contract_tokens": _estimate_tokens(instruction),
-        "history_tokens": _estimate_tokens(json.dumps(base[1:], ensure_ascii=False)),
-        "total_prompt_tokens": _estimate_tokens(system) + _estimate_tokens(json.dumps(base[1:], ensure_ascii=False))}
+        "history_tokens": _estimate_tokens(json.dumps(messages, ensure_ascii=False)),
+        "total_prompt_tokens": _estimate_tokens(json.dumps(base, ensure_ascii=False))}
     yield {"type": "result", "result": GenerationRecord.model_validate(result).model_dump()}

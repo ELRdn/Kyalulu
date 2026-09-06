@@ -22,6 +22,10 @@ SKILL_SFW_PATH = ROOT / "prompts" / "Zeta-style-skill_SFW.md"
 SKILL_NSFW_PATH = ROOT / "prompts" / "Zeta-style-skill_NSFW.md"
 
 def _load_yaml(dir_path: pathlib.Path, id_: str) -> dict[str, Any] | None:
+    if dir_path == CHAR_DIR and id_ and id_.startswith('lib_'):
+        from python.storage.library import get_item, character_info
+        item = get_item(id_)
+        return character_info(item) if item and item.document.kind == 'character' else None
     if not id_ or not dir_path.exists():
         return None
     p = dir_path / f"{id_}.yaml"
@@ -152,17 +156,65 @@ def _get_skill_contents(char: dict | None) -> list[tuple[str, str]]:
             print(f"[compiler] skill load failed: {e}")
     return out
 
+def _portable_snapshot(character_id, persona_id, world_id, extra_system_prompt, binding=None):
+    from python.storage.library import get_item
+    from .portable_schema import PortableDocument
+    binding = binding or {}
+    ref = binding.get('character')
+    item = get_item(ref['id'], ref['revision']) if ref else get_item(character_id) if character_id and character_id.startswith('lib_') else None
+    if character_id and character_id.startswith('lib_') and not item:
+        raise ValueError('portable character revision not found')
+    if not item and not binding.get('profile') and not binding.get('lorebooks'):
+        return None
+    if item:
+        if item.document.kind != 'character' or item.id != character_id:
+            raise ValueError('invalid character binding')
+        doc = item.document.model_copy(deep=True)
+        revision = f'1.0.{item.revision}'
+    else:
+        native = _load_yaml(CHAR_DIR, character_id) or {}
+        doc = PortableDocument(name=native.get('display_name') or 'Assistant', data={
+            'description': native.get('description', ''), 'personality': native.get('personality', ''),
+            'first_mes': native.get('intro', '')}, speaking_style=native.get('speaking_style', ''), nsfw=bool(native.get('nsfw')))
+        revision = native.get('version')
+    lorebooks = []
+    if binding.get('profile'):
+        profile = get_item(**{'item_id': binding['profile']['id'], 'revision': binding['profile']['revision']})
+        if not profile or profile.document.kind != 'profile':
+            raise ValueError('profile revision not found')
+        doc.profile = profile.document.profile.model_copy(deep=True)
+        doc.nsfw = doc.nsfw or profile.document.nsfw
+        doc.notices.extend(profile.document.notices)
+        if profile.document.data.get('character_book'):
+            lorebooks.append(profile.document.data['character_book'])
+    for ref in binding.get('lorebooks', []):
+        lore = get_item(ref['id'], ref['revision'])
+        if not lore or lore.document.kind != 'lorebook':
+            raise ValueError('lorebook revision not found')
+        lorebooks.append(lore.document.data.get('character_book', {}))
+        doc.nsfw = doc.nsfw or lore.document.nsfw
+        doc.notices.extend(lore.document.notices)
+    return {'document': doc.model_dump(), 'character_version': revision, 'library_binding': binding,
+            'lorebooks': lorebooks, 'persona': _load_yaml(PERSONA_DIR, persona_id),
+            'world': _load_yaml(WORLD_DIR, world_id), 'extra_system_prompt': extra_system_prompt}
+
+
 def compile_prompt(
     character_id: str | None = None,
     persona_id: str | None = None,
     world_id: str | None = None,
     extra_system_prompt: str | None = None,
+    library_binding: dict | None = None,
 ) -> CompiledPrompt:
     """
     優先順位: World rules → Character personality/speaking_style → Persona traits → extra_system_prompt
     extra_system_prompt はユーザーが直書きした system_prompt（プリセット等）。あれば末尾に追記。
     新: prompts/kyalulu_base.md があればテンプレを {{char}}/{{user}} でレンダリング（全キャラ対応）。
     """
+    portable = _portable_snapshot(character_id, persona_id, world_id, extra_system_prompt, library_binding)
+    if portable:
+        from .portable_prompt import compile_portable
+        return compile_portable(portable)
     sections: dict[str, str] = {}
     char = _load_yaml(CHAR_DIR, character_id) if character_id else None
     persona = _load_yaml(PERSONA_DIR, persona_id) if persona_id else None

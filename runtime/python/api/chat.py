@@ -18,6 +18,7 @@ from python.storage.db import DB_PATH
 from python.storage import generations
 from python.core.generation import generate_events
 from python.core.prompt_compiler import compile_prompt
+from python.core.portable_schema import LibraryBinding
 
 router = APIRouter()
 
@@ -48,6 +49,7 @@ class SessionSettings(BaseModel):
     persona_id: str | None = None
     world_id: str | None = None
     intro: str = ""
+    library_binding: LibraryBinding | None = None
 
 
 async def _save_settings(
@@ -62,6 +64,8 @@ async def _save_settings(
     _has_persona: bool = False,
     _has_world: bool = False,
     _has_intro: bool = False,
+    library_binding: LibraryBinding | None = None,
+    _has_binding: bool = False,
 ) -> None:
     """設定をupsert（部分更新対応）"""
     await init_db()
@@ -75,6 +79,27 @@ async def _save_settings(
     per_id = persona_id if _has_persona else cur_settings.persona_id
     w_id = world_id if _has_world else cur_settings.world_id
     intro_val = intro if _has_intro else cur_settings.intro
+    from python.storage.library import get_item
+    binding = library_binding.model_dump() if library_binding else {} if _has_binding else cur_settings.library_binding.model_dump() if cur_settings.library_binding else {}
+    if char_id != cur_settings.character_id and not (_has_binding and (binding.get('character') or {}).get('id') == char_id):
+        binding.pop('character', None)
+        binding['expression_asset_id'] = None
+    if char_id and char_id.startswith('lib_'):
+        ref = binding.get('character')
+        item = get_item(char_id, ref['revision'] if ref and ref['id'] == char_id else None)
+        if not item or item.document.kind != 'character':
+            raise ValueError('character revision not found')
+        binding['character'] = {'id': item.id, 'revision': item.revision}
+    else:
+        binding.pop('character', None)
+    # Validate related revisions before saving, without changing an existing conversation.
+    from python.core.prompt_compiler import _portable_snapshot
+    snapshot = _portable_snapshot(char_id, per_id, w_id, sp, binding)
+    previous_binding = cur_settings.library_binding.model_dump() if cur_settings.library_binding else {}
+    if temperature is None and snapshot and (binding.get('character') != previous_binding.get('character') or binding.get('profile') != previous_binding.get('profile')):
+        suggested = snapshot['document']['profile']['settings'].get('temperature')
+        if isinstance(suggested, (int, float)):
+            temp = max(0.0, min(2.0, suggested))
     if intro_val is not None and len(intro_val) > 10000:
         intro_val = intro_val[:10000]
     if sp is not None and len(sp) > 10000:
@@ -83,8 +108,8 @@ async def _save_settings(
         # 既存レコードの有無で分岐せず、常に全列をupsert（存在しない列はマイグレーション後に作成済み）
         await db.execute(
             """
-            INSERT INTO session_settings (session_id, system_prompt, temperature, character_id, persona_id, world_id, intro, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            INSERT INTO session_settings (session_id, system_prompt, temperature, character_id, persona_id, world_id, intro, library_binding, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
             ON CONFLICT(session_id) DO UPDATE SET
                 system_prompt=excluded.system_prompt,
                 temperature=excluded.temperature,
@@ -92,9 +117,10 @@ async def _save_settings(
                 persona_id=excluded.persona_id,
                 world_id=excluded.world_id,
                 intro=excluded.intro,
+                library_binding=excluded.library_binding,
                 updated_at=datetime('now')
             """,
-            (sid, sp or "", temp, char_id, per_id, w_id, intro_val or ""),
+            (sid, sp or "", temp, char_id, per_id, w_id, intro_val or "", json.dumps(binding)),
         )
         await db.commit()
 
@@ -109,7 +135,7 @@ async def _load_settings(session_id: str) -> SessionSettings:
             "SELECT * FROM session_settings WHERE session_id IN (?, '__global__') ORDER BY CASE WHEN session_id=? THEN 0 ELSE 1 END LIMIT 1",
             (sid, sid))).fetchone()
         if row:
-            return SessionSettings(session_id=sid, **{k: row[k] for k in
+            return SessionSettings(session_id=sid, library_binding=json.loads(row['library_binding']) if row['library_binding'] else None, **{k: row[k] for k in
                 ("system_prompt", "temperature", "character_id", "persona_id", "world_id", "intro")})
     return SessionSettings(session_id=sid)
 
@@ -179,6 +205,8 @@ async def put_settings(body: SessionSettings):
         _has_persona=body.persona_id is not None or "persona_id" in body.model_fields_set,
         _has_world=body.world_id is not None or "world_id" in body.model_fields_set,
         _has_intro="intro" in body.model_fields_set,
+        library_binding=body.library_binding,
+        _has_binding='library_binding' in body.model_fields_set,
     )
     s = await _load_settings(body.session_id)
     return {"ok": True, **s.model_dump()}
@@ -189,16 +217,22 @@ async def inject_intro(session_id: str = "default"):
     """イントロを chat_history に初回アシスタントメッセージとして注入（重複防止）"""
     await init_db()
     s = await _load_settings(session_id)
-    intro = (s.intro or "").strip()
+    intro = s.intro or ""
     # キャラのデフォイントロをフォールバック
     if not intro and s.character_id:
         from python.core.prompt_compiler import _load_yaml, CHAR_DIR
-        char = _load_yaml(CHAR_DIR, s.character_id)
+        if s.library_binding and s.library_binding.character:
+            from python.storage.library import get_item, character_info
+            ref = s.library_binding.character
+            char = character_info(get_item(ref.id, ref.revision))
+        else:
+            char = _load_yaml(CHAR_DIR, s.character_id)
         if char and char.get("intro"):
             intro = char["intro"].strip()
     if not intro:
         return JSONResponse(status_code=400, content={"error": "intro is empty (set session intro or character intro)"})
     async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute('BEGIN IMMEDIATE')
         cur = await db.execute("SELECT COUNT(*) as c FROM chat_history WHERE session_id=?", (session_id,))
         row = await cur.fetchone()
         if row and row[0] > 0:
@@ -207,6 +241,7 @@ async def inject_intro(session_id: str = "default"):
             first = await cur2.fetchone()
             if first and first[0] == intro:
                 return {"ok": True, "injected": False, "reason": "already injected"}
+            return {'ok': True, 'injected': False, 'reason': 'conversation already started'}
         # history が空 or まだintroが未注入なら追加（モデルは intro）
         await db.execute("INSERT INTO chat_history (session_id, role, content, model_id) VALUES (?, ?, ?, ?)", (session_id, "assistant", intro, "intro"))
         await db.commit()
@@ -228,11 +263,15 @@ async def prepare_generation(req: ChatRequest):
     provider = get_provider_for_model(cfg)
     settings = await _load_settings(req.session_id)
     from python.core.prompt_compiler import _load_yaml, CHAR_DIR
-    if (_load_yaml(CHAR_DIR, settings.character_id) or {}).get("nsfw") and not req.allow_nsfw:
+    if not (settings.character_id or '').startswith('lib_') and (_load_yaml(CHAR_DIR, settings.character_id) or {}).get("nsfw") and not req.allow_nsfw:
         raise ValueError("NSFW execution requires allow_nsfw")
     compiled = compile_prompt(character_id=settings.character_id, persona_id=settings.persona_id,
-        world_id=settings.world_id, extra_system_prompt=req.system_prompt if req.system_prompt is not None else settings.system_prompt)
+        world_id=settings.world_id, extra_system_prompt=req.system_prompt if req.system_prompt is not None else settings.system_prompt,
+        library_binding=settings.library_binding.model_dump() if settings.library_binding else None)
+    if compiled.sections.get('portable_snapshot', {}).get('document', {}).get('nsfw') and not req.allow_nsfw:
+        raise ValueError('NSFW execution requires allow_nsfw')
     requested = dict(cfg.get("recommended_generation") or {})
+    requested.update(compiled.sections.get('generation_settings', {}))
     requested["temperature"] = req.temperature if req.temperature is not None else settings.temperature
     if req.seed is not None:
         requested["seed"] = req.seed
@@ -424,6 +463,7 @@ async def chat_debug(session_id: str = "default"):
             persona_id=s.persona_id,
             world_id=s.world_id,
             extra_system_prompt=s.system_prompt,
+            library_binding=s.library_binding.model_dump() if s.library_binding else None,
         )
         # session の履歴件数と簡易state
         await init_db()

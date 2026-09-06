@@ -4,6 +4,7 @@
  */
 
 import { z } from "zod";
+export * from './portable';
 
 export const VersionSchema = z.string().regex(/^\d+\.\d+\.\d+$/);
 export const DifficultySchema = z.enum(["easy", "medium", "hard"]);
@@ -84,12 +85,13 @@ export type RuntimeState = z.infer<typeof RuntimeStateSchema>;
 // Compiled Prompt
 export const CompiledPromptSchema = z.object({
   system_prompt: z.string(),
+  ordered_messages: z.array(z.record(z.unknown())).default([]),
   prompt_version: z.string().default("prompt:character-runtime@0.1.0"),
   character_version: z.string().nullable().default(null),
   persona_version: z.string().nullable().default(null),
   world_version: z.string().nullable().default(null),
   token_estimate: z.number().int().min(0).default(0),
-  sections: z.record(z.string()).default({}),
+  sections: z.record(z.unknown()).default({}),
 });
 export type CompiledPrompt = z.infer<typeof CompiledPromptSchema>;
 

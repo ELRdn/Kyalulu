@@ -6,6 +6,7 @@ Runtime Core は FastAPI に依存しない設計 (PROJECT_SPEC.md 8章)
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from python.storage.db import init_db
 from python.core.registry import load_yaml_registry, sync_to_db
@@ -31,6 +32,12 @@ app = FastAPI(
     description="Local-first Character AI Runtime API",
     lifespan=lifespan,
 )
+
+
+@app.exception_handler(ValueError)
+async def invalid_input(_request, exc):
+    from python.storage.library import LibraryConflict
+    return JSONResponse({'error': str(exc)}, status_code=409 if isinstance(exc, LibraryConflict) else 400)
 
 app.add_middleware(
     CORSMiddleware,
@@ -60,9 +67,11 @@ from python.api.providers import router as providers_router
 from python.api.presets import router as presets_router
 from python.api.catalog import router as catalog_router
 from python.api.experiments import router as experiments_router
+from python.api.library import router as library_router
 
 app.include_router(chat_router, prefix="/api")
 app.include_router(providers_router, prefix="/api")
 app.include_router(presets_router, prefix="/api")
 app.include_router(catalog_router, prefix="/api")
 app.include_router(experiments_router, prefix="/api")
+app.include_router(library_router, prefix="/api")
