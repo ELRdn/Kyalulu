@@ -11,6 +11,7 @@ MAX_UPLOAD_BYTES = 32 * 1024 * 1024
 MAX_EXPANDED_BYTES = 128 * 1024 * 1024
 MAX_FILES = 512
 MAX_SINGLE_BYTES = 32 * 1024 * 1024
+MAX_PNG_CHUNKS = 8192  # Streaming encoders may emit hundreds of small IDAT chunks.
 
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
@@ -35,6 +36,8 @@ def parse_png_chunks(raw: bytes) -> list:
     if not isinstance(raw, (bytes, bytearray)) or bytes(raw[:8]) != PNG_MAGIC:
         raise ValueError("Not a PNG file")
     raw = bytes(raw)
+    if len(raw) > MAX_UPLOAD_BYTES:
+        raise ValueError('PNG exceeds 32 MiB')
     if len(raw) < 33:
         raise ValueError("Truncated PNG file")
     pos = 8
@@ -44,7 +47,7 @@ def parse_png_chunks(raw: bytes) -> list:
             raise ValueError("Truncated PNG chunk header")
         (length,) = struct.unpack(">I", raw[pos:pos + 4])
         ctype = raw[pos + 4:pos + 8]
-        if length > 50 * 1024 * 1024:
+        if length > MAX_UPLOAD_BYTES:
             raise ValueError("PNG chunk too large")
         end = pos + 8 + length + 4
         if end > len(raw):
@@ -61,10 +64,10 @@ def parse_png_chunks(raw: bytes) -> list:
             raise ValueError("Invalid PNG chunk type")
         chunks.append((name, data))
         pos = end
+        if len(chunks) > MAX_PNG_CHUNKS:
+            raise ValueError("Too many PNG chunks")
         if ctype == b"IEND":
             break
-        if len(chunks) > 200:
-            raise ValueError("Too many PNG chunks")
         if pos >= len(raw):
             raise ValueError("Missing PNG IEND chunk")
     return chunks
@@ -73,6 +76,7 @@ def parse_png_chunks(raw: bytes) -> list:
 def get_png_texts(raw: bytes) -> dict:
     """Extract tEXt/iTXt keyword/value pairs (first value wins)."""
     texts = {}
+    expanded_text_bytes = 0
     for ctype, data in parse_png_chunks(raw):
         if ctype == "tEXt":
             idx = data.find(b"\x00")
@@ -84,6 +88,7 @@ def get_png_texts(raw: bytes) -> dict:
             except Exception:
                 continue
             texts.setdefault(keyword, value)
+            expanded_text_bytes += len(data)
         elif ctype == "iTXt":
             try:
                 idx = data.find(b"\x00")
@@ -98,14 +103,17 @@ def get_png_texts(raw: bytes) -> dict:
                     if len(text) > 8 * 1024 * 1024:
                         continue
                     decoder = zlib.decompressobj()
-                    text = decoder.decompress(text, MAX_UPLOAD_BYTES + 1)
-                    if len(text) > MAX_UPLOAD_BYTES or not decoder.eof:
+                    text = decoder.decompress(text, MAX_UPLOAD_BYTES - expanded_text_bytes + 1)
+                    if len(text) + expanded_text_bytes > MAX_UPLOAD_BYTES or not decoder.eof:
                         raise ValueError('Expanded PNG text exceeds limit')
+                expanded_text_bytes += len(text)
                 texts.setdefault(keyword, text.decode("utf-8", "replace"))
             except ValueError:
                 raise
             except Exception:
                 continue
+        if expanded_text_bytes > MAX_UPLOAD_BYTES:
+            raise ValueError('Expanded PNG text exceeds limit')
     return texts
 
 

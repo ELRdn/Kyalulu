@@ -1,6 +1,6 @@
 """Two-phase local imports and versioned library editing/export."""
 from urllib.parse import quote
-from fastapi import APIRouter, UploadFile, File
+from fastapi import APIRouter, UploadFile, File, Form, Request
 from fastapi.routing import APIRoute
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
@@ -27,11 +27,25 @@ router = APIRouter(route_class=LibraryRoute)
 
 
 @router.post('/imports/preview')
-async def preview_file(file: UploadFile = File(...)):
+async def preview_file(request: Request, file: UploadFile = File(...), remote: str | None = Form(None)):
     from python.core.portable_formats import parse_import
     raw = await file.read(32 * 1024 * 1024 + 1)
     if len(raw) > 32 * 1024 * 1024:
         raise ValueError('File exceeds 32 MiB')
+    if remote:
+        from python.api.hubs import trusted_origin, service, remote_preview, failure
+        from python.core.hub_schema import UrlImport, HubError
+        try:
+            trusted_origin(request)
+            body = UrlImport.model_validate_json(remote)
+            # Only the documented, browser-only source may supply bytes and claimed provenance.
+            from urllib.parse import urlsplit
+            if urlsplit(body.url).hostname != 'realm.risuai.net':
+                raise ValueError('Browser provenance is only supported for RisuRealm')
+            resolved = await service.resolve(body)
+            return remote_preview(resolved, raw)
+        except HubError as exc:
+            return failure(exc)
     docs, assets = parse_import(file.filename or 'import', raw)
     return library.preview(file.filename or 'import', raw, docs, assets)
 

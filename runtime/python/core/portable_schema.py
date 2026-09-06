@@ -76,6 +76,7 @@ class ImportPreview(BaseModel):
     filename: str
     source_hash: str
     documents: list[PortableDocument]
+    duplicates: dict[str, list[dict]] = Field(default_factory=dict)
 
 
 class ImportSelection(BaseModel):
@@ -84,6 +85,8 @@ class ImportSelection(BaseModel):
     history_indices: list[int] = Field(default_factory=list)
     target_id: str | None = None
     expected_revision: int | None = None
+    content_rating: Literal['sfw', 'nsfw'] | None = None
+    duplicate_action: Literal['copy'] | None = None
 
 
 class ImportCommit(BaseModel):

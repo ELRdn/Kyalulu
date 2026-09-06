@@ -1,0 +1,12 @@
+import { z } from 'zod';
+export const HubSourceIdSchema = z.enum(['taverncard', 'sillytavern', 'risurealm', 'github', 'huggingface']);
+export const RisuFormatSchema = z.enum(['png-v3', 'json-v3', 'lorebook-v2', 'lorebook-v3', 'preset-st-chat']);
+export const UrlImportSchema = z.object({ url: z.string().min(1).max(2048), format: RisuFormatSchema.default('png-v3'), non_commercial: z.boolean().default(false) }).strict();
+export const RemoteSourceSchema = z.object({ source: HubSourceIdSchema, source_url: z.string(), source_id: z.string(), download_url: z.string(), filename: z.string(), transport: z.enum(['server', 'browser']), revision: z.string().nullable(), author: z.string().nullable(), license: z.string().nullable(), content_rating: z.enum(['sfw', 'nsfw', 'unknown']), expected_hash: z.string().nullable(), format: z.string().nullable() });
+export const HubItemSchema = z.object({ source: HubSourceIdSchema, id: z.string(), name: z.string(), description: z.string(), source_url: z.string(), author: z.string().nullable(), license: z.string().nullable(), format: z.string(), thumbnail_url: z.string().nullable(), content_rating: z.literal('sfw'), imported_ids: z.array(z.string()) });
+export const HubResultsSchema = z.object({ source: HubSourceIdSchema, items: z.array(HubItemSchema), page: z.number().int().positive(), has_more: z.boolean(), total: z.number().int().nullable() });
+export const HubSourcesSchema = z.object({ sources: z.array(z.object({ id: HubSourceIdSchema, name: z.string(), searchable: z.boolean(), url: z.string() })) });
+export type HubItem = z.infer<typeof HubItemSchema>;
+export type HubResults = z.infer<typeof HubResultsSchema>;
+export type UrlImport = z.infer<typeof UrlImportSchema>;
+export type RemoteSource = z.infer<typeof RemoteSourceSchema>;
