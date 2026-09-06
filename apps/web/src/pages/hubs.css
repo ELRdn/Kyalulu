@@ -11,3 +11,10 @@
 .k-hub-external { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; }
 .k-url-import { display: grid; gap: 12px; margin-bottom: 24px; }
 .k-url-import input[type=url] { width: 100%; box-sizing: border-box; }
+.k-hub-links { display: grid; gap: 12px; min-width: 0; }
+.k-hub-links h2 { margin: 0; font-size: 16px; color: var(--text-primary); }
+.k-hub-links p { margin: 0; font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+.k-hub-links__buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.k-hub-links__link { min-height: 44px; max-width: 100%; box-sizing: border-box; white-space: normal; line-height: 1.4; text-decoration: none; }
+.k-hub-links__link small { font-size: 11px; font-weight: 400; }
+.k-hub-links__link:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 3px; }

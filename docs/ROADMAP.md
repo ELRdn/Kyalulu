@@ -6,6 +6,7 @@ Phase 0 M1〜M7のMock受け入れは維持。今回の互換実装と、Phase 0
 ## 今回の到達点
 
 - TavernCardの内蔵SFW検索、SillyTavern Contentの確認済み一覧、RisuRealm／GitHub／Hugging Faceの公開URL取り込みを追加した。
+- DiscoverとCreateに7サイトの外部Hubボタンを追加。新しいタブで開き、取り込み途中の入力を維持する。PC／スマホ・ライト／ダークで操作確認済み。
 - 出典・原本ハッシュ・取得経路・版を保存。下書き復元、同一原本の明示的な複製／更新、限定取得先とOrigin検証を実装した。
 - Hub画面4条件、Risuの実ブラウザー取得、公開TavernCard PNG／GitHubカード／HF生成設定JSONの取り込みに合格。詳しくは [Hub受け入れ記録](HUB_ACCEPTANCE.md)。
 

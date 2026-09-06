@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import HubBrowser from '../components/HubBrowser';
+import HubLinks from '../components/HubLinks';
 import { fetchCharacters, fetchWorlds, type CharacterInfo, type WorldInfo } from "../lib/api";
 import { Input } from "../components/ui/Input";
 import CharacterCard from "../components/ui/CharacterCard";
@@ -68,7 +69,10 @@ export default function Discover() {
       </div>
 
       <nav className="k-chip-row" aria-label="コンテンツの出典">{(['library', 'taverncard', 'sillytavern'] as const).map(value => <button key={value} className={`k-chip ${source === value ? 'k-chip--active' : ''}`} aria-pressed={source === value} onClick={() => setSource(value)}>{({ library: 'ライブラリ', taverncard: 'TavernCard', sillytavern: 'SillyTavern Content' })[value]}</button>)}</nav>
-      <div className="k-hub-external"><Link to="/create?import=url">URLから取り込む</Link><a href="https://realm.risuai.net" target="_blank" rel="noopener noreferrer">RisuRealmを開く ↗</a><a href="https://tavernary.org" target="_blank" rel="noopener noreferrer">Tavernaryを開く ↗</a><Link to="/create?import=characterai">Character.AIから移行</Link></div>
+      <div className="k-hubs">
+        <HubLinks />
+        <div className="k-hub-external"><Link to="/create?import=url">URLから取り込む</Link><Link to="/create?import=characterai">Character.AIから移行</Link></div>
+      </div>
       {source !== 'library' ? <HubBrowser key={source} source={source} /> : <>
       <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="キャラクターを検索..." aria-label="キャラクターを検索" />
 
