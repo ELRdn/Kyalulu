@@ -19,6 +19,34 @@ STのWorld InfoとCharacter.AIが受け付ける共通Lore JSONは内容だけ�
 
 ## 使い方
 
+### Hub検索・URL取り込み（追加）
+
+| ソース | 操作・範囲 | 制約 |
+|---|---|---|
+| TavernCard | Discoverで公開SFW検索・詳細・CC PNG取り込み | 配布元の`is_nsfw=false`を再確認。未分類の検索結果は表示しない |
+| SillyTavern Content | index内の確認済みCharacterを一覧表示 | Coding Senseiの固定コミット／SHA-256を登録。新規項目・変更版・拡張機能・音声は自動掲載しない |
+| RisuRealm | 公開URLからブラウザーでCC PNG/JSON、Lorebook v2/v3、ST形式プリセットを取得 | guest・CORS。非商用指定は利用者が明示した場合のみ。独自Module・独自プリセット・CHARX取得・非公開検索APIは対象外 |
+| GitHub／Hugging Face | 公開ファイルURLを解決し、既存Importerへ接続 | ブランチはコミットへ解決。GitHub LFSと許可したHF CDNへ対応。リポジトリ全体・モデル重み・認証必須ファイルは対象外 |
+| Tavernary／Character.AI | 外部ディレクトリへのリンク／既存手動移行の案内 | 自動取得・アカウント連携は行わない |
+
+Discover → 詳細 →「取り込み内容を確認」、またはCreateのURL欄から進む。URLだけでは保存しない。
+不明な内容区分はプレビューで指定し、元データで成人向けとされた項目は取り込み時に自動でSFWへ下げない。
+同一出典・原本ハッシュ・文書位置が既存項目と一致した場合、既存を開く／版を指定して更新／明示的に複製する。
+会話で使用中の版は自動更新しない。下書きと保存要求IDは同じタブのsessionStorageに残し、サーバーのプレビューと組み合わせて復元する。
+
+出典URL、ソースID、作者、ライセンス原文、取得時刻、原本SHA-256、リビジョン、アダプター版を保存する。
+RisuRealmの出典はブラウザー側の申告として記録し、サーバーで取得元を検証した記録とは区別する。
+ライセンスが取得できない場合は不明のまま保持し、サイト全体やリポジトリのライセンスを作品へ自動適用しない。
+通常チャットへ出典データをプロンプトとして挿入せず、Researcher DebugとKyaluluバックアップへ保持する。
+公開ファイルの取得は許可したHTTPSホスト・パスのみ。DNSで得た公開IPへ接続を固定し、リダイレクト先も検証する。認証情報・Cookieを転送しない。
+取り込み前に32 MiBの受信量制限、既存の画像・アーカイブ検証を適用する。PNGは最大8,192チャンク、テキスト展開合計32 MiBで、多数のIDAT分割にも対応する。
+
+取得APIは標準Web Origin（localhost／127.0.0.1の5173・5174番）と`KYALULU_TRUSTED_ORIGINS`で明示したOriginから利用できる。
+外部Hub自体の表示内容はKyalulu内のSFW一覧とは別。第三者コンテンツの同梱や自前Hubへの再配布は行わない。
+検証済みの公開サンプルと実機結果は [Hub受け入れ記録](HUB_ACCEPTANCE.md) を参照。
+
+### ファイル・貼り付け
+
 1. Createにファイルをドロップするか、Character.AIの設定・Loreを貼り付ける。
 2. プレビューでキャラ・履歴を選び、設定・画像・変換結果を確認する。同名でも初期選択は新規作成。更新する場合だけ保存先を指定する。
 3. 内容を保存し、「キャラを開く」で挨拶を選んで会話を始める。
@@ -87,6 +115,10 @@ SQLiteにはライブラリの不変な版、原本SHA-256、プレビュー、�
 | 操作 | エンドポイント |
 |---|---|
 | ファイル／テキストのプレビュー | `POST /api/imports/preview`（multipart） / `POST /api/imports/text/preview` |
+| Hubソース一覧／検索／詳細 | `GET /api/hubs/sources` / `GET /api/hubs/{source}/items?q=...&page=1` / `GET /api/hubs/{source}/items/{id}` |
+| 公開URL解決／プレビュー | `POST /api/imports/url/resolve` / `POST /api/imports/url/preview`。body: `url`, `format`, `non_commercial` |
+| ブラウザー取得のプレビュー | 既存`POST /api/imports/preview`へ`file`と`remote`（UrlImport JSON文字列）を送る。RisuRealmのみ |
+| 保存前プレビューの復元 | `GET /api/imports/{preview_id}`。同一原本の既存項目候補も返す |
 | プレビューの確定 | `POST /api/imports/{preview_id}/commit` |
 | 一覧／作成 | `GET /api/library` / `POST /api/library` |
 | 指定版の取得／編集 | `GET /api/library/{id}?revision=N` / `PUT /api/library/{id}`（expected_revision必須） |
@@ -95,6 +127,7 @@ SQLiteにはライブラリの不変な版、原本SHA-256、プレビュー、�
 
 既存Character／Session／Chat APIは維持。Sessionの `library_binding`、CompiledPromptの `ordered_messages` を追加した。
 `system_prompt` と従来のSSE `token`／`done.full` も維持する。Pydantic・Zod・Web型は共通のライブラリ契約を使用する。
+Hub追加後の確定selectionには、未判定時の`content_rating`（sfw/nsfw）、複製時の`duplicate_action: "copy"`を追加した。従来のファイル取り込みでは省略できる。
 
 ## 参照仕様
 
