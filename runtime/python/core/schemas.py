@@ -85,6 +85,7 @@ class RuntimeState(BaseModel):
 # Prompt Compiler 出力
 class CompiledPrompt(BaseModel):
     system_prompt: str
+    ordered_messages: list[dict] = Field(default_factory=list)
     prompt_version: str = "prompt:character-runtime@0.1.0"
     character_version: str | None = None
     persona_version: str | None = None

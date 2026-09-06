@@ -81,6 +81,7 @@ async def run_single(scenario: ScenarioCard, model_id: str, run_number: int = 1,
         character_id=scenario.character, persona_id=scenario.persona, world_id=scenario.world,
         extra_system_prompt=extra_system_prompt)
     gen_cfg = dict(cfg.get("recommended_generation") or {})
+    gen_cfg.update(compiled.sections.get('generation_settings', {}))
     if temperature is not None:
         gen_cfg["temperature"] = temperature
     gen_cfg.setdefault("temperature", 0.8)
@@ -119,6 +120,7 @@ async def run_single(scenario: ScenarioCard, model_id: str, run_number: int = 1,
             save_experiment(meta, turns_out, compiled.system_prompt)
             raise
         turns_out.append({**result, "turn": turn.turn, "type": turn.type, "user": turn.user, "assistant": result["reply"]})
+        compiled = CompiledPrompt.model_validate(result['compiled'])
         if result["status"] != "completed":
             meta.status = "invalid" if result["status"] == "invalid" else "failed"
             break

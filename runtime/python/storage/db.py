@@ -83,6 +83,28 @@ CREATE TABLE IF NOT EXISTS generations (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS one_active_generation
 ON generations(session_id) WHERE status = 'pending';
+
+CREATE TABLE IF NOT EXISTS library_versions (
+    id TEXT NOT NULL, revision INTEGER NOT NULL, document_json TEXT NOT NULL,
+    original_id TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY(id, revision)
+);
+CREATE TABLE IF NOT EXISTS library_originals (
+    id TEXT PRIMARY KEY, filename TEXT NOT NULL, content BLOB NOT NULL
+);
+CREATE TABLE IF NOT EXISTS library_previews (
+    id TEXT PRIMARY KEY, original_id TEXT NOT NULL, documents_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS library_commits (
+    request_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, result_json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS library_assets (
+    id TEXT PRIMARY KEY, media_type TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS imported_history (
+    message_id INTEGER PRIMARY KEY, origin_json TEXT NOT NULL
+);
 """
 
 
@@ -94,6 +116,7 @@ MIGRATIONS = [
     "ALTER TABLE prompt_presets ADD COLUMN nsfw INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE prompt_presets ADD COLUMN nsfw_level TEXT",
     "ALTER TABLE session_settings ADD COLUMN intro TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE session_settings ADD COLUMN library_binding TEXT",
 ]
 
 
