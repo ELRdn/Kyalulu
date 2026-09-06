@@ -1,0 +1,13 @@
+.k-hubs { display: grid; gap: 20px; min-width: 0; }
+.k-hub-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.k-hub-actions input { flex: 1; min-width: 160px; }
+.k-hub-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 20px; }
+.k-hub-grid h2 { font-size: 19px; overflow-wrap: anywhere; }
+.k-hub-thumb { width: 100%; height: 190px; object-fit: cover; border-radius: 12px; }
+.k-hub-portrait { width: min(100%, 260px); max-height: 320px; object-fit: contain; border-radius: 12px; }
+.k-hub-excerpt { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.k-hub-description { white-space: pre-wrap; overflow-wrap: anywhere; }
+.k-hubs dd { margin: 4px 0 12px; overflow-wrap: anywhere; }
+.k-hub-external { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; }
+.k-url-import { display: grid; gap: 12px; margin-bottom: 24px; }
+.k-url-import input[type=url] { width: 100%; box-sizing: border-box; }

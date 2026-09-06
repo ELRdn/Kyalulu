@@ -873,6 +873,9 @@ export default function ActiveChat() {
               <DebugSection title="互換設定・Loreの採用結果">
                 <DebugJson value={{ messages: debugData.compiled?.ordered_messages, lore: debugData.compiled?.sections?.lore, compatibility: debugData.compiled?.sections?.compatibility, binding: debugData.settings.library_binding }} />
               </DebugSection>
+              <DebugSection title="Hubの出典・取得記録">
+                <DebugJson value={(debugData.compiled?.sections?.portable_snapshot as { document?: { source?: { remote?: unknown } } } | undefined)?.document?.source?.remote} />
+              </DebugSection>
               <DebugSection title="🔢 推定トークン内訳">
                 <DebugJson value={debugData.generation?.token_budget ?? { estimated: true, compiler_tokens: debugData.compiled?.token_estimate }} />
               </DebugSection>
