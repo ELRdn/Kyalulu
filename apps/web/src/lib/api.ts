@@ -1,3 +1,5 @@
+import { SSEDecoder } from "./sse";
+import type { GenerationRecord } from "../../../../packages/schemas/src";
 /** API クライアント - Milestone 2 */
 
 export type ModelInfo = {
@@ -44,7 +46,7 @@ export type SessionInfo = {
   last_preview: string | null;
 };
 
-const API_BASE_STREAM = "http://127.0.0.1:8000"; // SSEだけ直接叩く（Vite proxyがバッファするため）
+const API_BASE_STREAM = ""; // Same-origin SSE through the tested Vite proxy.
 
 export async function fetchHistory(sessionId?: string): Promise<(ChatMessage & { id?: number; model_id?: string; created_at?: string; session_id?: string })[]> {
   const url = sessionId ? `/api/chat/history?session_id=${encodeURIComponent(sessionId)}&t=${Date.now()}` : `/api/chat/history?t=${Date.now()}`;
@@ -126,7 +128,7 @@ export async function saveSettings(s: SessionSettings): Promise<void> {
   }
 }
 
-export type CharacterInfo = { id: string; display_name: string; version: string; description: string; intro?: string; difficulty?: string; tags?: string[] };
+export type CharacterInfo = { official?: boolean; id: string; display_name: string; version: string; description: string; intro?: string; difficulty?: string; tags?: string[] };
 export type PersonaInfo = { id: string; display_name: string; version: string; description: string };
 export type WorldInfo = { id: string; display_name: string; version: string; description: string };
 
@@ -166,7 +168,7 @@ export async function compilePrompt(p: { character_id?: string | null; persona_i
   return j;
 }
 
-export async function fetchChatDebug(sessionId: string): Promise<{ session_id: string; settings: SessionSettings; compiled: CompiledPrompt; history_count: number; approx_turn: number; relationship: string }> {
+export async function fetchChatDebug(sessionId: string): Promise<{ session_id: string; settings: SessionSettings; compiled: CompiledPrompt; history_count: number; approx_turn: number; relationship: string; state: Record<string, unknown>; generation: GenerationResult | null }> {
   const r = await fetch(`/api/chat/debug?session_id=${encodeURIComponent(sessionId)}`, { cache: "no-store" });
   const j = await r.json();
   if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
@@ -246,9 +248,9 @@ export async function fetchScenarios(include_nsfw = false): Promise<{ id: string
 }
 export type ExperimentDetail = {
   meta: ExperimentMeta & { metrics?: ExperimentMetrics };
-  turns: { turn: number; type: string; user: string; assistant: string; elapsed_ms: number; state: Record<string, unknown> }[];
+  turns: { turn: number; type: string; user: string; assistant: string; elapsed_ms: number; state: Record<string, unknown>; status?: string; token_budget?: Record<string, unknown>; telemetry?: Record<string, unknown>; compiled?: CompiledPrompt; generation_config?: GenerationResult["generation_config"]; validation?: GenerationResult["validation"]; raw_prompt?: string; state_before?: Record<string, unknown>; attempts?: unknown[] }[];
   raw_prompt: string;
-  ratings: Record<string, { score: number; comment: string }>;
+  ratings: Record<string, { score: number; comment: string; rater?: string; updated_at?: string }>;
   metrics?: ExperimentMetrics | null;
 };
 export async function fetchExperimentDetail(id: string): Promise<ExperimentDetail> {
@@ -257,11 +259,11 @@ export async function fetchExperimentDetail(id: string): Promise<ExperimentDetai
   if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
   return j;
 }
-export async function putRating(experiment_id: string, turn: number, score: number, comment = ""): Promise<void> {
+export async function putRating(experiment_id: string, turn: number, score: number, comment = "", rater = "local"): Promise<void> {
   const r = await fetch("/api/ratings", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ experiment_id, turn, score, comment }),
+    body: JSON.stringify({ experiment_id, turn, score, comment, rater }),
   });
   if (!r.ok) {
     const j = await r.json().catch(() => ({}));
@@ -273,11 +275,11 @@ export async function fetchRatings(experiment_id: string): Promise<{ turn: numbe
   const j = await r.json();
   return j.ratings ?? [];
 }
-export async function runExperiments(scenario: string, model_id: string, runs = 1, temperature?: number): Promise<{ experiment_id: string }[]> {
+export async function runExperiments(scenario: string, model_id: string, runs = 1, temperature?: number, allow_nsfw = false): Promise<{ experiment_id: string }[]> {
   const r = await fetch("/api/experiments/run", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ scenario, model_id, runs, temperature }),
+    body: JSON.stringify({ scenario, model_id, runs, temperature, allow_nsfw }),
   });
   const j = await r.json();
   if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
@@ -285,7 +287,7 @@ export async function runExperiments(scenario: string, model_id: string, runs = 
 }
 
 export type LeaderboardEntry = { model_id: string; runs: number; avg_human: number | null; auto_score: number | null; avg_chars: number | null; avg_failure_rate: number | null; avg_repetition: number | null };
-export type Leaderboard = { scope: string; ranking: LeaderboardEntry[]; generated_at: string; total_experiments: number };
+export type Leaderboard = { scope: string; ranking: LeaderboardEntry[]; generated_at: string; total_experiments: number; excluded?: Record<string, number> };
 export async function fetchLeaderboard(scope: "official" | "all" = "official"): Promise<Leaderboard> {
   const r = await fetch(`/api/leaderboard?scope=${scope}`, { cache: "no-store" });
   const j = await r.json();
@@ -312,76 +314,67 @@ export async function fetchChatNonStream(model_id: string, messages: ChatMessage
 export function streamChat(
   model_id: string,
   messages: ChatMessage[],
-  opts: { temperature?: number | null; system_prompt?: string | null; session_id?: string } = {},
+  opts: { temperature?: number | null; system_prompt?: string | null; session_id?: string; generation_id?: string; regenerate_message_id?: number; allow_nsfw?: boolean } = {},
   handlers: {
     onToken: (t: string) => void;
     onMeta?: (m: unknown) => void;
-    onDone?: (full: string) => void;
+    onReset?: (full: string) => void;
+    onDone?: (full: string, result?: GenerationResult) => void;
     onError?: (e: string) => void;
   },
 ): () => void {
   const controller = new AbortController();
   (async () => {
-    console.log("[streamChat] start", { model_id, messages: messages.length, session_id: opts.session_id });
-    const body: Record<string, unknown> = { model_id, messages, stream: true, session_id: opts.session_id ?? "default" };
-    if (opts.temperature !== undefined && opts.temperature !== null) body.temperature = opts.temperature;
-    if (opts.system_prompt !== undefined && opts.system_prompt !== null) body.system_prompt = opts.system_prompt;
-    const res = await fetch(`${API_BASE_STREAM}/api/chat/stream`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-      body: JSON.stringify(body),
+    const response = await fetch(`${API_BASE_STREAM}/api/chat/stream`, {
+      method: "POST", headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
       signal: controller.signal,
-      cache: "no-store",
+      body: JSON.stringify({ model_id, messages, ...opts, generation_id: opts.generation_id ?? crypto.randomUUID(), stream: true }),
     });
-    if (!res.ok || !res.body) {
-      let body = "";
-      try {
-        body = await res.text();
-      } catch {}
-      console.error("[streamChat] HTTP error", res.status, body);
-      handlers.onError?.(`HTTP ${res.status} ${body.slice(0, 200)}`);
-      return;
+    if (!response.ok || !response.body) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error ?? `HTTP ${response.status}`);
     }
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = "";
-    console.log("[streamChat] response headers", [...res.headers.entries()]);
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        console.log("[streamChat] reader done, buf tail:", buf.slice(0, 100));
-        break;
-      }
-      const chunk = decoder.decode(value, { stream: true });
-      console.log("[streamChat] chunk", chunk.slice(0, 200).replace(/\n/g, "\\n"));
-      buf += chunk;
-      const parts = buf.split("\n\n");
-      buf = parts.pop() ?? "";
-      for (const part of parts) {
-        if (!part.trim()) continue;
-        const lines = part.split("\n");
-        let event = "message";
-        let data = "";
-        for (const line of lines) {
-          if (line.startsWith("event:")) event = line.slice(6).trim();
-          else if (line.startsWith("data:")) data = line.slice(5).trim();
+    const reader = response.body.getReader();
+    const text = new TextDecoder();
+    const parser = new SSEDecoder();
+    let terminal = false;
+    try {
+      while (!terminal) {
+        const { done, value } = await reader.read();
+        for (const event of parser.feed(text.decode(value, { stream: !done }), done)) {
+          const data = JSON.parse(event.data);
+          if (event.event === "token") handlers.onToken(data.token ?? "");
+          else if (event.event === "reset") handlers.onReset?.(data.full ?? "");
+          else if (event.event === "meta") handlers.onMeta?.(data);
+          else if (event.event === "done") {
+            terminal = true;
+            handlers.onDone?.(data.full ?? "", data);
+          } else if (event.event === "error") {
+            terminal = true;
+            handlers.onError?.(data.error ?? "Generation failed");
+          }
         }
-        if (!data) continue;
-        console.log("[streamChat] event", event, data.slice(0, 100));
-        try {
-          const obj = JSON.parse(data);
-          if (event === "token") handlers.onToken(obj.token ?? "");
-          else if (event === "meta") handlers.onMeta?.(obj);
-          else if (event === "done") handlers.onDone?.(obj.full ?? "");
-          else if (event === "error") handlers.onError?.(obj.error ?? "unknown error");
-        } catch (e) {
-          console.warn("[streamChat] JSON parse failed", e, data);
-        }
+        if (done) break;
       }
-    }
-  })().catch((e) => {
-    console.error("[streamChat] catch", e);
-    if (e.name !== "AbortError") handlers.onError?.(String(e));
-  });
+      if (!terminal) throw new Error("応答の途中で接続が終了しました。再送は自動実行しません。");
+    } finally { await reader.cancel().catch(() => {}); }
+  })().catch(e => { if (!controller.signal.aborted) handlers.onError?.(String(e)); });
   return () => controller.abort();
+}
+
+export type GenerationResult = {
+  generation_id: string; status: string; reply: string; full: string;
+  state: Record<string, unknown>; telemetry: Record<string, unknown>;
+  generation_config: GenerationRecord['generation_config'];
+  validation: GenerationRecord['validation'];
+  raw_prompt?: string; attempts?: { number: number; raw: string; errors: string[]; messages: ChatMessage[] }[];
+  snapshot_valid?: boolean; token_budget?: Record<string, unknown>;
+};
+export async function replayExperiment(id: string, allow_nsfw = false): Promise<{ experiment_id: string }[]> {
+  const r = await fetch(`/api/experiments/${encodeURIComponent(id)}/rerun`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runs: 1, allow_nsfw }),
+  });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+  return j.results;
 }

@@ -1,74 +1,208 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ============================================================
+   Kyalulu Design Tokens — DESIGN.md 4-9章
+   ============================================================ */
 :root {
-  --bg: #ffffff;
-  --bg-subtle: #f9fafb;
-  --bg-card: #ffffff;
-  --bg-input: #ffffff;
-  --bg-code: #f3f4f6;
-  --bg-code-block: #1f2937;
-  --bg-code-block-text: #e5e7eb;
-  --border: #e5e7eb;
-  --border-strong: #d1d5db;
-  --text: #111827;
-  --text-muted: #374151;
-  --text-faint: #6b7280;
-  --text-dim: #9ca3af;
-  --accent: #111827;
-  --accent-text: #ffffff;
-  --accent-hover: #1f2937;
-  --user-bg: #111827;
-  --user-text: #ffffff;
-  --assistant-bg: #ffffff;
-  --assistant-text: #111827;
-  --assistant-border: #e5e7eb;
-  --error-bg: #fef2f2;
-  --error-text: #dc2626;
-  --error-border: #fecaca;
-  --overlay-shadow: 0 1px 2px rgba(0,0,0,0.06);
+  /* --- 4.1 Primary --- */
+  --kyalulu-white: #F6F6FA;
+  --mystic-lilac: #BFA7FF;
+  --deep-violet: #6C5CE7;
+  --void-gray: #1E1B24;
+  --blush-pink: #FFB8D8;
+
+  /* --- 4.2 Secondary --- */
+  --mist-blue: #CFE3FF;
+  --lavender-gray: #E2DDF3;
+  --orchid: #D7B4FF;
+  --mint-aqua: #B8F2E6;
+  --cream: #FFF5E6;
+
+  /* --- 4.3 Neutral scale --- */
+  --gray-900: #0E0D12;
+  --gray-800: #1E1B24;
+  --gray-700: #2E2A38;
+  --gray-600: #4B4758;
+  --gray-500: #6B6678;
+  --gray-400: #8E899E;
+  --gray-300: #B9B4CB;
+  --gray-200: #E3E1EB;
+  --gray-100: #F0EFFF;
+
+  /* --- 4.4 Gradients (world-building accents only) --- */
+  --gradient-kyalulu-glow: linear-gradient(135deg, #6C5CE7 0%, #BFA7FF 100%);
+  --gradient-mystic-dream: linear-gradient(135deg, #BFA7FF 0%, #CFE3FF 100%);
+  --gradient-parallel-world: linear-gradient(135deg, #1E1B24 0%, #6C5CE7 100%);
+  --gradient-tyarai-mode: linear-gradient(135deg, #FF7AB8 0%, #FFB8D8 100%);
+  --gradient-mint-breeze: linear-gradient(135deg, #B8F2E6 0%, #CFE3FF 100%);
+
+  /* --- 5.1 Semantic tokens (light) --- */
+  --bg-canvas: #F6F6FA;
+  --bg-surface: #FFFFFF;
+  --bg-surface-soft: #F0EFFF;
+  --bg-surface-warm: #FFF5E6;
+  --bg-hover: #F1EDFB;
+
+  --text-primary: #1E1B24;
+  --text-secondary: #4B4758;
+  --text-muted: #8E899E;
+  --text-on-accent: #F6F6FA;
+
+  --border-subtle: #E2DDF3;
+  --border-strong: #B9B4CB;
+
+  --accent-primary: #6C5CE7;
+  --accent-secondary: #BFA7FF;
+  --accent-pink: #FFB8D8;
+  --accent-blue: #CFE3FF;
+  --accent-mint: #B8F2E6;
+  --accent-orchid: #D7B4FF;
+
+  --danger: #E4494B;
+  --danger-bg: #FDECEC;
+  --danger-border: #F5C6C6;
+  --success: #1F9D7C;
+
+  --focus-ring: rgba(108, 92, 231, 0.18);
+
+  /* --- legacy aliases (既存コードの段階的移行用) --- */
+  --bg: var(--bg-canvas);
+  --bg-subtle: var(--bg-surface-soft);
+  --bg-card: var(--bg-surface);
+  --bg-input: var(--bg-surface);
+  --bg-code: var(--bg-surface-soft);
+  --bg-code-block: #1E1B24;
+  --bg-code-block-text: #E3E1EB;
+  --border: var(--border-subtle);
+  --border-strong-legacy: var(--border-strong);
+  --text: var(--text-primary);
+  --text-muted-legacy: var(--text-secondary);
+  --text-faint: var(--text-secondary);
+  --text-dim: var(--text-muted);
+  --accent: var(--accent-primary);
+  --accent-text: var(--text-on-accent);
+  --accent-hover: #5A4BD4;
+  --user-bg: var(--accent-primary);
+  --user-text: var(--text-on-accent);
+  --assistant-bg: var(--bg-surface);
+  --assistant-text: var(--text-primary);
+  --assistant-border: var(--border-subtle);
+  --error-bg: var(--danger-bg);
+  --error-text: var(--danger);
+  --error-border: var(--danger-border);
+  --overlay-shadow: 0 2px 12px rgba(30, 27, 36, 0.08);
+
+  /* --- 8. Spacing (4px base) --- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+
+  /* --- 9. Radius --- */
+  --radius-sm: 8px;
+  --radius-input: 11px;
+  --radius-card: 16px;
+  --radius-panel: 20px;
+  --radius-hero: 28px;
+  --radius-pill: 999px;
+
+  --ease-kyalulu: cubic-bezier(0.22, 1, 0.36, 1);
 }
+
+/* --- 5.2 Dark theme (not a simple inversion) --- */
 [data-theme="dark"] {
-  --bg: #0f1117;
-  --bg-subtle: #151821;
-  --bg-card: #1a1d25;
-  --bg-input: #1e222e;
-  --bg-code: #262b3a;
-  --bg-code-block: #0d0f14;
-  --bg-code-block-text: #cbd5e1;
-  --border: #2a2f3e;
-  --border-strong: #353b4e;
-  --text: #e5e7eb;
-  --text-muted: #a1a8b8;
-  --text-faint: #8b93a5;
-  --text-dim: #6b7280;
-  --accent: #e5e7eb;
-  --accent-text: #0f1117;
-  --accent-hover: #d1d5db;
-  --user-bg: #2b3245;
-  --user-text: #e5e7eb;
-  --assistant-bg: #1e222e;
-  --assistant-text: #e5e7eb;
-  --assistant-border: #2a2f3e;
-  --error-bg: #2a1214;
-  --error-text: #f87171;
-  --error-border: #7f1d1d;
-  --overlay-shadow: 0 1px 8px rgba(0,0,0,0.4);
+  --bg-canvas: #0E0D12;
+  --bg-surface: #1E1B24;
+  --bg-surface-soft: #2E2A38;
+  --bg-surface-warm: #2E2A38;
+  --bg-hover: #3A3446;
+
+  --text-primary: #F6F6FA;
+  --text-secondary: #E3E1EB;
+  --text-muted: #B9B4CB;
+  --text-on-accent: #1E1B24;
+
+  --border-subtle: #2E2A38;
+  --border-strong: #4B4758;
+
+  --accent-primary: #BFA7FF;
+  --accent-secondary: #D7B4FF;
+  --accent-pink: #FFB8D8;
+  --accent-blue: #CFE3FF;
+  --accent-mint: #B8F2E6;
+  --accent-orchid: #D7B4FF;
+
+  --danger: #F87171;
+  --danger-bg: #2A1214;
+  --danger-border: #7F1D1D;
+  --success: #4ADE80;
+
+  --focus-ring: rgba(191, 167, 255, 0.22);
+
+  --bg: var(--bg-canvas);
+  --bg-subtle: var(--bg-surface-soft);
+  --bg-card: var(--bg-surface);
+  --bg-input: var(--bg-surface-soft);
+  --bg-code: var(--bg-surface-soft);
+  --bg-code-block: #0E0D12;
+  --bg-code-block-text: #E3E1EB;
+  --border: var(--border-subtle);
+  --text: var(--text-primary);
+  --text-faint: var(--text-secondary);
+  --text-dim: var(--text-muted);
+  --accent: var(--accent-primary);
+  --accent-text: var(--text-on-accent);
+  --accent-hover: #D7B4FF;
+  --user-bg: var(--accent-primary);
+  --user-text: var(--text-on-accent);
+  --assistant-bg: var(--bg-surface-soft);
+  --assistant-text: var(--text-primary);
+  --assistant-border: var(--border-subtle);
+  --error-bg: var(--danger-bg);
+  --error-text: var(--danger);
+  --error-border: var(--danger-border);
+  --overlay-shadow: 0 2px 20px rgba(0, 0, 0, 0.45);
 }
+
 html, body { height: 100%; }
 body {
-  background: var(--bg);
-  color: var(--text);
+  background: var(--bg-canvas);
+  color: var(--text-primary);
   transition: background 0.2s, color 0.2s;
-  font-family: "Noto Sans JP", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
+  font-family: Inter, "Noto Sans JP", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", system-ui, sans-serif;
   font-weight: 500;
-  letter-spacing: 0.015em;
+  letter-spacing: 0.01em;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
-code { background: var(--bg-code); padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+code { background: var(--bg-surface-soft); padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 99px; }
 ::-webkit-scrollbar-track { background: transparent; }
-[data-theme="dark"] ::-webkit-scrollbar-thumb { background: #353b4e; }
-select, input, textarea { color: var(--text); background: var(--bg-input); border-color: var(--border); }
-select option { background: var(--bg-card); color: var(--text); }
-input::placeholder, textarea::placeholder { color: var(--text-dim); }
+select, input, textarea { color: var(--text-primary); background: var(--bg-surface); border-color: var(--border-subtle); font-family: inherit; }
+select option { background: var(--bg-surface); color: var(--text-primary); }
+input::placeholder, textarea::placeholder { color: var(--text-muted); }
+
+button { font-family: inherit; }
+a { color: var(--accent-primary); }
+
+:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
