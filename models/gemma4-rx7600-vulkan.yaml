@@ -1,0 +1,15 @@
+id: gemma4-rx7600-vulkan
+display_name: Gemma 4 26B A4B · RX7600 Vulkan
+quantization: Q4_K_M
+context_length: 8192
+provider:
+  type: lm_studio
+  base_url: http://127.0.0.1:1234/v1
+  # This identifier exists only after the explicit Vulkan loader has run.
+  # Never use a model file key here: automatic loading could use a different GPU.
+  model: kyalulu-gemma4-rx7600-test
+  structured_output: true
+recommended_generation:
+  temperature: 0.3
+  max_tokens: 2048
+notes: Load using scripts/verify_lmstudio_vulkan.py --load-only --keep-loaded. Validated one structured turn; interactive latency is high.

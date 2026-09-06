@@ -1,6 +1,6 @@
 # Kyalulu — Local-first Character AI Runtime / Benchmark
 
-> **Status (2026-09-06):** M1〜M6基盤実装あり（一部要件未完了） / M7 UI移行中 / M8 Desktop scaffold / Consumer UI刷新は未コミット・検証待ち — 詳細は [`docs/ROADMAP.md`](./docs/ROADMAP.md) / [`PROJECT_SPEC.md`](./PROJECT_SPEC.md) を参照
+> **Status (2026-09-06):** Phase 0 M1〜M7を実装し、Mock受け入れ試験に合格。Gemma 4 / LM Studio / RX7600 Vulkanの構造化1ターンを実機確認。長時間・3モデル比較は未完了。詳細: [ロードマップ](docs/ROADMAP.md) / [受け入れ結果](docs/PHASE0_ACCEPTANCE.md)
 
 ## 概要
 
@@ -17,7 +17,7 @@ Model / Character / Prompt / Persona / World / State / Memory / Sampling / 評�
 ├─ apps/web/          # TypeScript + React + Vite フロントエンド
 ├─ runtime/python/    # Python FastAPI + Character Runtime
 ├─ packages/
-│  ├─ schemas/        # 共通スキーマ (Zod / Pydantic 対応予定)
+│  ├─ schemas/        # 共通スキーマ (Zod / Pydantic 共通契約)
 │  └─ ui/             # 共通UIコンポーネント
 ├─ benchmarks/official/
 ├─ characters/ personas/ worlds/ prompts/ models/
@@ -44,7 +44,7 @@ uv run --directory runtime uvicorn python.api.main:app --reload --port 8000
 # 別: uv run --directory runtime fastapi dev python/api/main.py
 
 # 2. Web フロントエンド (http://localhost:5173)
-pnpm install
+pnpm install --frozen-lockfile
 pnpm dev
 ```
 
@@ -63,7 +63,7 @@ pnpm dev
 - Frontend: TypeScript + React + Vite
 - Backend: Python + FastAPI + Pydantic
 - Storage: SQLite
-- Providers: Ollama / LM Studio / OpenAI互換
+- Providers: Ollama / LM Studio / OpenAI互換 / Responses / Mock
 
 ## ロードマップ
 
@@ -71,14 +71,36 @@ pnpm dev
 
 | Milestone | 概要 | 状態 |
 |---|---|---|
-| M1〜M3 Foundation / Runtime | monorepo、Provider、SSE、履歴、Character / Persona / World、Prompt Compiler | 最小実装済み。構造化State更新・検証は未完了 |
-| M4〜M6 Experiments / Research / Benchmark | シナリオ実行、A/B/C比較、評価、5シナリオ、簡易metrics / leaderboard | 実装あり。詳細telemetry・実動作再検証は未完了 |
-| M7 Immersion | 簡略チャット、Researcher設定、Debug | 旧UI実装済み／新UIへの移行確認中 |
-| M8 Electron Desktop (Win) | Electron薄ラッパー、IPC、NSIS設定 | scaffoldのみ。新UI統合・配布検証は未完了 |
-| Consumer UX刷新 | Home / Discover / Chats / Character Entry / Profile / Studio / Status | 未コミットの実装あり・受け入れ前。Createは予告画面 |
-| 後続 | Character Sheet Builder、Memory Lab、Python sidecar、長文脈ベンチ | 未完了 |
+| M1〜M3 | 共通生成・構造化State・最大2回検証再試行・SQLite世代管理 | 実装・Mock試験合格 |
+| M4〜M6 | 実験保存・計測・Research・公式SFW 3シナリオ | 20ターン×3回×3シナリオ合格 |
+| M7 | ActiveChat・設定保存・履歴復元・Debug | 1440px/390px、ライト/ダーク合格 |
+| 実モデル | Gemma 4 26B A4B / RX7600 Vulkan | 構造化1ターン合格。表示開始約87秒、長時間評価待ち |
+| M8 / 後続 | Desktop / Create本実装 / Memory Lab / 3モデル比較 | 今回の対象外・未完了 |
 
-2026-09-06の確認では、依存不足により型チェック・ビルド・pytest収集が停止。詳細と次の受け入れ条件は [`docs/ROADMAP.md`](./docs/ROADMAP.md) を参照。
+### Gemma 4をRX7600で使用
+
+LM StudioでVulkanランタイムを選択し、ローカルAPIサーバーを1234番で起動する。
+指定モデルのGPU設定を確実にするため、読み込みスクリプトを使用する。
+
+```powershell
+uv sync --directory runtime --extra dev --frozen
+.venv/Scripts/python.exe scripts/verify_lmstudio_vulkan.py --load-only --keep-loaded
+```
+
+チャットのResearcher設定で `gemma4-rx7600-vulkan` を選ぶ。専用識別子で読み込んだモデルにだけ接続する。
+GPU offload 25%、RX7600のみ、context 8192。8GB VRAMに対してモデルは約16.8GBのためCPU/RAMも使用する。
+詳細な検証も実行する場合は `--load-only` を外す。既に同じ識別子が読み込まれている場合は二重起動せず、LM Studioで確認する。
+読み込みは1時間のアイドルTTL付き。速度と実測の範囲は[受け入れ結果](docs/PHASE0_ACCEPTANCE.md)を参照。
+
+### 自動試験
+
+```powershell
+.venv/Scripts/python.exe -m pytest -q
+pnpm --filter web test
+pnpm typecheck
+pnpm --filter @kyalulu/schemas build
+pnpm --filter web build
+```
 
 ## プライバシー
 

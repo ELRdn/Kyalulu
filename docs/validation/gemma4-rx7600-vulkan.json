@@ -1,0 +1,329 @@
+{
+  "engine": "llama.cpp-win-x86_64-vulkan-avx2",
+  "engine_version": "2.33.0",
+  "device": {
+    "name": "AMD Radeon RX 7600",
+    "deviceId": 0,
+    "totalMemoryCapacityBytes": 87244341248,
+    "dedicatedMemoryCapacityBytes": 8573157376,
+    "integrationType": "discrete",
+    "detectionPlatform": "Vulkan",
+    "detectionPlatformVersion": "1.3.290",
+    "otherInfo": {
+      "deviceLUIDValid": "true",
+      "deviceLUID": "f369010000000000",
+      "deviceUUID": "00000000030000000000000000000000",
+      "driverID": "1",
+      "driverName": "AMD proprietary driver",
+      "driverInfo": "26.8.1 (LLPC)",
+      "vendorID": "4098"
+    }
+  },
+  "requested_load_config": {
+    "gpu": {
+      "ratio": 0.25,
+      "mainGpu": 0,
+      "splitStrategy": "favorMainGpu",
+      "disabledGpus": [
+        1
+      ]
+    },
+    "gpuStrictVramCap": true,
+    "contextLength": 8192,
+    "evalBatchSize": 128,
+    "offloadKVCacheToGpu": false,
+    "tryMmap": true
+  },
+  "effective_load_config": {
+    "gpu": {
+      "ratio": 0.25,
+      "mainGpu": 0,
+      "splitStrategy": "favorMainGpu",
+      "disabledGpus": [
+        1
+      ]
+    },
+    "gpuStrictVramCap": true,
+    "offloadKVCacheToGpu": false,
+    "contextLength": 8192,
+    "evalBatchSize": 128,
+    "flashAttention": true,
+    "tryMmap": true,
+    "numExperts": 8
+  },
+  "model_key": "HauhauCS/Gemma4-26B-A4B-QAT-Uncensored-HauhauCS-Balanced-MTP/Gemma4-26B-A4B-QAT-Uncensored-HauhauCS-Balanced-Q4_K_M.gguf",
+  "status": "runtime_pass",
+  "load_seconds": 12.39,
+  "simple_greeting": {
+    "elapsed_seconds": 11.46,
+    "reply": "こんにちは。",
+    "usage": {
+      "prompt_tokens": 24,
+      "completion_tokens": 145,
+      "total_tokens": 169,
+      "completion_tokens_details": {
+        "reasoning_tokens": 138
+      }
+    }
+  },
+  "structured_turn": {
+    "status": "completed",
+    "validation": {
+      "ok": true,
+      "retries": 0,
+      "errors": []
+    },
+    "telemetry": {
+      "ttft_ms": 24804.4,
+      "first_reply_ms": 87108.88,
+      "elapsed_ms": 97969.09,
+      "prompt_tokens": 1487,
+      "completion_tokens": 741,
+      "thinking_tokens": 617,
+      "tokens_per_second": 7.56,
+      "token_source": "provider",
+      "unavailable_reason": null,
+      "speed_scope": "last_attempt_total_time_including_prefill",
+      "peak_vram_bytes": null,
+      "peak_ram_bytes": 61370368,
+      "memory_scope": "RAM: Python runtime process RSS; VRAM unavailable; not inference-server memory",
+      "unavailable": {
+        "peak_vram_bytes": "inference server VRAM sampler unavailable"
+      }
+    },
+    "generation_config": {
+      "requested": {
+        "temperature": 0.3,
+        "max_tokens": 2048,
+        "model": "kyalulu-gemma4-rx7600-test",
+        "response_schema": {
+          "$defs": {
+            "RelationshipState": {
+              "additionalProperties": false,
+              "properties": {
+                "stage": {
+                  "enum": [
+                    "stranger",
+                    "acquaintance",
+                    "friend",
+                    "intimate",
+                    "partner"
+                  ],
+                  "title": "Stage",
+                  "type": "string"
+                },
+                "tone": {
+                  "title": "Tone",
+                  "type": "string"
+                },
+                "unresolved_conflict": {
+                  "title": "Unresolved Conflict",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "stage",
+                "tone",
+                "unresolved_conflict"
+              ],
+              "title": "RelationshipState",
+              "type": "object"
+            },
+            "StateUpdate": {
+              "additionalProperties": false,
+              "properties": {
+                "location": {
+                  "title": "Location",
+                  "type": "string"
+                },
+                "time": {
+                  "title": "Time",
+                  "type": "string"
+                },
+                "mood": {
+                  "title": "Mood",
+                  "type": "string"
+                },
+                "active_scene": {
+                  "title": "Active Scene",
+                  "type": "string"
+                },
+                "relationship_state": {
+                  "$ref": "#/$defs/RelationshipState"
+                }
+              },
+              "required": [
+                "location",
+                "time",
+                "mood",
+                "active_scene",
+                "relationship_state"
+              ],
+              "title": "StateUpdate",
+              "type": "object"
+            }
+          },
+          "additionalProperties": false,
+          "properties": {
+            "reply": {
+              "minLength": 1,
+              "title": "Reply",
+              "type": "string"
+            },
+            "state_update": {
+              "$ref": "#/$defs/StateUpdate"
+            }
+          },
+          "required": [
+            "reply",
+            "state_update"
+          ],
+          "title": "GenerationOutput",
+          "type": "object"
+        }
+      },
+      "applied": {
+        "temperature": 0.3,
+        "max_tokens": 2048,
+        "model": "kyalulu-gemma4-rx7600-test",
+        "response_schema": {
+          "$defs": {
+            "RelationshipState": {
+              "additionalProperties": false,
+              "properties": {
+                "stage": {
+                  "enum": [
+                    "stranger",
+                    "acquaintance",
+                    "friend",
+                    "intimate",
+                    "partner"
+                  ],
+                  "title": "Stage",
+                  "type": "string"
+                },
+                "tone": {
+                  "title": "Tone",
+                  "type": "string"
+                },
+                "unresolved_conflict": {
+                  "title": "Unresolved Conflict",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "stage",
+                "tone",
+                "unresolved_conflict"
+              ],
+              "title": "RelationshipState",
+              "type": "object"
+            },
+            "StateUpdate": {
+              "additionalProperties": false,
+              "properties": {
+                "location": {
+                  "title": "Location",
+                  "type": "string"
+                },
+                "time": {
+                  "title": "Time",
+                  "type": "string"
+                },
+                "mood": {
+                  "title": "Mood",
+                  "type": "string"
+                },
+                "active_scene": {
+                  "title": "Active Scene",
+                  "type": "string"
+                },
+                "relationship_state": {
+                  "$ref": "#/$defs/RelationshipState"
+                }
+              },
+              "required": [
+                "location",
+                "time",
+                "mood",
+                "active_scene",
+                "relationship_state"
+              ],
+              "title": "StateUpdate",
+              "type": "object"
+            }
+          },
+          "additionalProperties": false,
+          "properties": {
+            "reply": {
+              "minLength": 1,
+              "title": "Reply",
+              "type": "string"
+            },
+            "state_update": {
+              "$ref": "#/$defs/StateUpdate"
+            }
+          },
+          "required": [
+            "reply",
+            "state_update"
+          ],
+          "title": "GenerationOutput",
+          "type": "object"
+        }
+      },
+      "unsupported": []
+    },
+    "token_budget": {
+      "estimated": true,
+      "method": "character-based approximation",
+      "compiler_tokens": 1159,
+      "runtime_contract_tokens": 1138,
+      "history_tokens": 38,
+      "total_prompt_tokens": 2335
+    },
+    "reply": "*にっこりと微笑んで手を振るよ* いらっしゃい、人間ちゃん♡",
+    "state_before": {
+      "session_id": "default",
+      "turn": 0,
+      "relationship": "stranger",
+      "last_summary": "",
+      "character_id": "mocha_sfw",
+      "persona_id": null,
+      "world_id": null,
+      "prompt_version": "prompt:character-runtime@0.1.0",
+      "state_version": "0.1.0",
+      "location": "",
+      "time": "",
+      "mood": "",
+      "active_scene": "",
+      "relationship_state": {
+        "stage": "stranger",
+        "tone": "neutral",
+        "unresolved_conflict": false
+      }
+    },
+    "state": {
+      "session_id": "default",
+      "turn": 1,
+      "relationship": "acquaintance",
+      "last_summary": "",
+      "character_id": "mocha_sfw",
+      "persona_id": null,
+      "world_id": null,
+      "prompt_version": "prompt:character-runtime@0.1.3",
+      "state_version": "0.2.0",
+      "location": "カフェ",
+      "time": "昼間",
+      "mood": "Happy",
+      "active_scene": "カフェでの再会",
+      "relationship_state": {
+        "stage": "acquaintance",
+        "tone": "friendly",
+        "unresolved_conflict": false
+      }
+    }
+  },
+  "date": "2026-09-06",
+  "scope": "One SFW structured turn. Not a 20-turn benchmark or three-model comparison."
+}
