@@ -1,6 +1,6 @@
 # Kyalulu — Local-first Character AI Runtime / Benchmark
 
-> **Status:** M6 Official Benchmark 着手中 — 詳細は [`docs/ROADMAP.md`](./docs/ROADMAP.md) / [`PROJECT_SPEC.md`](./PROJECT_SPEC.md) を参照
+> **Status (2026-09-06):** M1〜M6基盤実装あり（一部要件未完了） / M7 UI移行中 / M8 Desktop scaffold / Consumer UI刷新は未コミット・検証待ち — 詳細は [`docs/ROADMAP.md`](./docs/ROADMAP.md) / [`PROJECT_SPEC.md`](./PROJECT_SPEC.md) を参照
 
 ## 概要
 
@@ -71,15 +71,14 @@ pnpm dev
 
 | Milestone | 概要 | 状態 |
 |---|---|---|
-| M1 Skeleton | monorepo / FastAPI / SQLite / provider interface | ✅ |
-| M2 First Chat | Ollama/LMStudio/OpenAI/Responses + SSE + 履歴/プリセット/ダークモード | ✅ |
-| M3 Character Runtime | Character/Persona/World YAML + Prompt Compiler + State + 右ドロワー | ✅ |
-| M4 Experiments | 20ターン×3ラン / metadata / JSON export | ✅ |
-| M5 Research UI | A/B/C Grid + Inspectors + Ratings + NSFWトグル | ✅ |
-| **M6 Official Benchmark** | E:mocha / M:senior_cool / H:butler + N-E:mocha_night / N-H:butler_night | 🚧 **着手中** |
-| M5 Research UI | A/B/C Grid + Inspectors + Ratings | ⬜ |
-| M6 Benchmark | 公式3キャラ (Easy/Med/Hard) | ⬜ |
-| M7 Immersion | 簡略チャット + Debug Drawer (30% - 現行チャットがプロトタイプ) | 🔶 |
+| M1〜M3 Foundation / Runtime | monorepo、Provider、SSE、履歴、Character / Persona / World、Prompt Compiler | 最小実装済み。構造化State更新・検証は未完了 |
+| M4〜M6 Experiments / Research / Benchmark | シナリオ実行、A/B/C比較、評価、5シナリオ、簡易metrics / leaderboard | 実装あり。詳細telemetry・実動作再検証は未完了 |
+| M7 Immersion | 簡略チャット、Researcher設定、Debug | 旧UI実装済み／新UIへの移行確認中 |
+| M8 Electron Desktop (Win) | Electron薄ラッパー、IPC、NSIS設定 | scaffoldのみ。新UI統合・配布検証は未完了 |
+| Consumer UX刷新 | Home / Discover / Chats / Character Entry / Profile / Studio / Status | 未コミットの実装あり・受け入れ前。Createは予告画面 |
+| 後続 | Character Sheet Builder、Memory Lab、Python sidecar、長文脈ベンチ | 未完了 |
+
+2026-09-06の確認では、依存不足により型チェック・ビルド・pytest収集が停止。詳細と次の受け入れ条件は [`docs/ROADMAP.md`](./docs/ROADMAP.md) を参照。
 
 ## プライバシー
 
