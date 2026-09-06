@@ -1,0 +1,87 @@
+.k-chat-layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+/* --- 左: セッションレール --- */
+.k-chat-rail {
+  width: 272px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.k-chat-rail__head { padding: var(--space-3); border-bottom: 1px solid var(--border-subtle); display: grid; gap: var(--space-2); }
+.k-chat-rail__list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  padding: var(--space-2) var(--space-4) var(--space-2) var(--space-2);
+  display: grid;
+  gap: 2px;
+  align-content: start;
+}
+@media (max-width: 1023px) {
+  .k-chat-rail { display: none; }
+}
+
+/* --- 中央 --- */
+.k-chat-main { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; background: var(--bg-canvas); }
+.k-chat-header {
+  height: 60px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
+.k-chat-header__name { font-size: 14px; font-weight: 700; color: var(--text-primary); }
+.k-chat-header__sub { font-size: 11px; color: var(--text-muted); }
+.k-chat-header__actions { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+
+.k-chat-messages { flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-5) var(--space-4); }
+.k-chat-messages__inner {
+  max-width: 920px;
+  min-width: 0;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+@media (max-width: 767px) {
+  .k-chat-messages { padding: var(--space-3) var(--space-2); }
+}
+
+.k-chat-msg-actions { display: flex; gap: 6px; }
+
+/* --- 右: ContextPanel --- */
+.k-chat-context-wrap {
+  width: 320px;
+  flex-shrink: 0;
+  overflow: hidden;
+  transition: width 0.22s var(--ease-kyalulu);
+}
+.k-chat-context-wrap--collapsed { width: 0; }
+@media (max-width: 1279px) {
+  .k-chat-context-wrap:not(.k-chat-context-wrap--overlay) { display: none; }
+}
+
+.k-narration-style-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.k-narration-style-chip {
+  padding: 6px 11px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface-soft);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.k-narration-style-chip--active { background: var(--accent-primary); color: var(--text-on-accent); border-color: var(--accent-primary); }

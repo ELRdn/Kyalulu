@@ -1,0 +1,18 @@
+.k-research-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.k-research-grid.is-focus { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.k-research-col { min-width: 0; }
+.k-research-col > div:first-child { flex-shrink: 0; }
+.k-research-mobile-tabs { display: none; }
+@media (max-width: 900px) {
+  .k-research-grid, .k-research-grid.is-focus { grid-template-columns: minmax(0, 1fr); min-height: 480px !important; }
+  .k-research-col { display: none !important; }
+  .k-research-col.is-mobile-active { display: flex !important; }
+  .k-research-mobile-tabs { display: flex; gap: 8px; padding: 8px 12px; }
+  .k-research-mobile-tabs button { border: 1px solid var(--border); border-radius: 8px; padding: 8px 20px; background: var(--bg-card); color: var(--text); }
+  .k-research-mobile-tabs button[aria-pressed=true] { background: var(--accent); color: var(--accent-text); }
+}
+
+@media (max-width: 900px) {
+  .k-experiment-choice { display: grid !important; grid-template-columns: auto minmax(0, 1fr); }
+  .k-experiment-choice > span:last-child { grid-column: 2; overflow-wrap: anywhere; }
+}

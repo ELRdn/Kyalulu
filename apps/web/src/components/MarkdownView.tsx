@@ -56,9 +56,22 @@ export default function MarkdownView({ content, isStreaming }: { content: string
           table: (props) => <table style={{ width: "100%", borderCollapse: "collapse", margin: "8px 0", fontSize: 12 }} {...props} />,
           th: (props) => <th style={{ border: "1px solid var(--border)", padding: "6px 8px", background: "var(--bg-subtle)", textAlign: "left", fontWeight: 600 }} {...props} />,
           td: (props) => <td style={{ border: "1px solid var(--border)", padding: "6px 8px" }} {...props} />,
-          a: (props) => <a style={{ color: "#60a5fa", textDecoration: "underline" }} target="_blank" rel="noopener noreferrer" {...props} />,
+          a: (props) => <a style={{ color: "var(--accent-primary)", textDecoration: "underline" }} target="_blank" rel="noopener noreferrer" {...props} />,
           hr: (props) => <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "12px 0" }} {...props} />,
-          em: (props) => <em style={{ fontStyle: "normal", fontWeight: 400, color: "var(--text-muted)", opacity: 0.95 }} {...props} />,
+          // narration表記（*仕草描写*）の視覚的強調。構造化ロールが無いため、あくまでインラインの見た目強化に留める。
+          em: (props) => (
+            <em
+              style={{
+                fontStyle: "normal",
+                fontWeight: 500,
+                color: "var(--accent-secondary)",
+                background: "var(--bg-surface-soft)",
+                borderRadius: 4,
+                padding: "0 3px",
+              }}
+              {...props}
+            />
+          ),
           strong: (props) => <strong style={{ fontWeight: 700, color: "var(--text)" }} {...props} />,
         }}
       >
