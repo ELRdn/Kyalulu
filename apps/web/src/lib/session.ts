@@ -1,4 +1,4 @@
-import { saveSettings } from "./api";
+import { saveSettings, injectIntro } from "./api";
 
 /** 新規チャットセッションIDを発行する（Chat.tsx / CharacterEntry.tsx で共通利用） */
 export function newSessionId(): string {
@@ -15,18 +15,20 @@ export async function startNewSession(opts?: {
   personaId?: string | null;
   worldId?: string | null;
   intro?: string;
+  temperature?: number;
 }): Promise<string> {
   const sessionId = newSessionId();
   if (opts && (opts.characterId || opts.personaId || opts.worldId || opts.intro)) {
     await saveSettings({
       session_id: sessionId,
       system_prompt: "",
-      temperature: 0.8,
+      temperature: opts.temperature ?? 0.8,
       character_id: opts.characterId ?? null,
       persona_id: opts.personaId ?? null,
       world_id: opts.worldId ?? null,
       intro: opts.intro ?? "",
     });
+    if (opts.intro?.trim()) await injectIntro(sessionId);
   }
   return sessionId;
 }

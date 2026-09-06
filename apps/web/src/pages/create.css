@@ -1,0 +1,26 @@
+.k-create { max-width: 1040px; }
+.k-create h2 { font-size: 18px; margin: 8px 0 12px; }
+.k-create h3 { font-size: 15px; margin: 8px 0; }
+.k-create p, .k-create small { color: var(--text-secondary); line-height: 1.7; }
+.k-create fieldset { border: 0; padding: 0; min-width: 0; }
+.k-create-drop { display: grid; justify-items: center; gap: 8px; padding: 28px 16px; text-align: center; border: 1px dashed var(--border-subtle); border-radius: 14px; background: var(--bg-surface-soft); margin-bottom: 18px; }
+.k-create-drop > span { font-size: 30px; color: var(--accent-primary); }
+.k-create-drop h2, .k-create-drop p { margin: 0; }
+.k-create-file { display: grid; gap: 8px; font-weight: 600; max-width: 100%; }
+.k-create input[type=file] { max-width: 100%; width: 300px; font-size: 12px; }
+.k-create-grid, .k-create-library { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.k-create-stack, .k-portable-editor { display: grid; gap: 16px; }
+.k-create-field { display: grid; gap: 7px; font-size: 13px; margin: 12px 0; min-width: 0; }
+.k-create-field select, .k-create select { background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border-subtle); padding: 10px; border-radius: 8px; max-width: 100%; }
+.k-create-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
+.k-create details { margin: 12px 0; min-width: 0; }
+.k-create summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+.k-create pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; font-size: 11px; background: var(--bg-surface-soft); padding: 12px; border-radius: 8px; }
+.k-create-notices { font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; padding-left: 18px; }
+.k-create-alert { color: var(--error-text); background: var(--bg-surface-soft); padding: 14px; border-radius: 10px; overflow-wrap: anywhere; }
+.k-create-assets { display: flex; flex-wrap: wrap; gap: 16px; }
+.k-create-assets figure { margin: 0; width: 140px; }
+.k-create-assets img { width: 140px; height: 160px; object-fit: contain; border-radius: 12px; background: var(--bg-surface-soft); }
+.k-create-assets figcaption { overflow-wrap: anywhere; }
+.k-lore-entry { padding: 12px; border: 1px solid var(--border-subtle); border-radius: 10px; }
+@media (max-width: 620px) { .k-create-grid, .k-create-library { grid-template-columns: minmax(0, 1fr); } .k-create-drop { padding: 18px 8px; } }

@@ -24,6 +24,7 @@ export default function CharacterEntry() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [greetingIndex, setGreetingIndex] = useState(0);
 
   useEffect(() => {
     Promise.all([fetchCharacters(true).catch(() => []), fetchWorlds().catch(() => [])])
@@ -41,7 +42,8 @@ export default function CharacterEntry() {
     setStarting(true);
     setError(null);
     try {
-      const sessionId = await startNewSession({ characterId: character.id, intro: character.intro ?? "" });
+      const greetings = [character.intro ?? '', ...(character.alternate_greetings ?? [])];
+      const sessionId = await startNewSession({ characterId: character.id, intro: greetings[greetingIndex] ?? '', temperature: character.recommended_generation?.temperature });
       navigate(`/chats/${encodeURIComponent(sessionId)}`);
     } catch (e) {
       setError(`会話を作成できませんでした: ${String(e)}`);
@@ -77,7 +79,7 @@ export default function CharacterEntry() {
     <div className="k-page" style={{ maxWidth: 960 }}>
       <div className="k-char-entry">
         <div className="k-char-entry__art" style={{ background: gradientFor(character.id) }}>
-          {character.display_name.trim().charAt(0)}
+          {character.portrait_url ? <img src={character.portrait_url} alt={character.display_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : character.display_name.trim().charAt(0)}
         </div>
         <div className="k-char-entry__body">
           <h1 className="k-char-entry__name">{character.display_name}</h1>
@@ -96,6 +98,8 @@ export default function CharacterEntry() {
             </div>
           )}
           {error && <p role="alert">{error}</p>}
+          {character.library_revision && <Link to={`/create?edit=${character.id}`}>キャラの設定を編集</Link>}
+          {(character.alternate_greetings?.length > 0) && <label style={{ display: 'grid', gap: 8, marginTop: 12 }}>最初の挨拶を選ぶ<select aria-label="最初の挨拶を選ぶ" value={greetingIndex} onChange={e => setGreetingIndex(Number(e.target.value))}>{[character.intro, ...character.alternate_greetings].map((g: string, i: number) => <option key={i} value={i}>{i + 1}. {g.slice(0, 70)}</option>)}</select><p style={{ whiteSpace: 'pre-wrap' }}>{[character.intro, ...character.alternate_greetings][greetingIndex]}</p></label>}
           <Button variant="primary" size="lg" onClick={handleStart} disabled={starting} style={{ marginTop: 8, width: "fit-content" }}>
             {starting ? "準備中..." : "Start Chat ✦"}
           </Button>

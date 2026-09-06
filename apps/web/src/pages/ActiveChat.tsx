@@ -31,6 +31,8 @@ import {
   type GenerationResult,
 } from "../lib/api";
 import ModelSelector from "../components/ModelSelector";
+import PortableSessionControls from '../components/PortableSessionControls';
+import { fetchLibraryItem, assetUrl, type LibraryItem, type LibraryBinding } from '../lib/library';
 import MarkdownView from "../components/MarkdownView";
 import Avatar from "../components/ui/Avatar";
 import IconButton from "../components/ui/IconButton";
@@ -114,6 +116,9 @@ export default function ActiveChat() {
   const [personaId, setPersonaId] = useState<string | null>(null);
   const [worldId, setWorldId] = useState<string | null>(null);
   const [intro, setIntro] = useState("");
+  const [libraryBinding, setLibraryBinding] = useState<LibraryBinding | null>(null);
+  const [portableCharacter, setPortableCharacter] = useState<LibraryItem | null>(null);
+  const [portableOpen, setPortableOpen] = useState(false);
   const [characters, setCharacters] = useState<CharacterInfo[]>([]);
   const [personas, setPersonas] = useState<PersonaInfo[]>([]);
   const [worlds, setWorlds] = useState<WorldInfo[]>([]);
@@ -142,7 +147,16 @@ export default function ActiveChat() {
 
   const activeCharacter = characters.find((c: any) => c.id === characterId) as any;
   const activeWorld = worlds.find((w) => w.id === worldId);
-  const headerName = activeCharacter?.display_name ?? (sessionId === "default" ? "きゃるる" : sessionId);
+  const headerName = portableCharacter?.document.name ?? activeCharacter?.display_name ?? (sessionId === "default" ? "きゃるる" : sessionId);
+  const portrait = assetUrl(libraryBinding?.expression_asset_id) ?? assetUrl(portableCharacter?.document.assets.find(a => a.type === 'icon')?.asset_id) ?? activeCharacter?.portrait_url;
+  useEffect(() => {
+    let active = true;
+    setPortableCharacter(null);
+    if (characterId?.startsWith('lib_')) fetchLibraryItem(characterId, libraryBinding?.character?.revision).then(item => {
+      if (active) setPortableCharacter(item);
+    }).catch(e => { if (active) setError(String(e)); });
+    return () => { active = false; };
+  }, [characterId, libraryBinding?.character?.revision, sessionId]);
   const currentNarrationStyle = extractNarrationStyle(systemPrompt);
 
   const reloadModels = () => {
@@ -241,6 +255,8 @@ export default function ActiveChat() {
     setPersonaId(null);
     setWorldId(null);
     setIntro("");
+    setLibraryBinding(null);
+    setPortableCharacter(null);
     setSettingsStatus(null);
     try {
       const s = await fetchSettings(sid);
@@ -251,6 +267,7 @@ export default function ActiveChat() {
       setPersonaId(s.persona_id ?? null);
       setWorldId(s.world_id ?? null);
       setIntro(s.intro ?? "");
+      setLibraryBinding(s.library_binding ?? null);
       settingsLoadedRef.current = true;
       setSettingsReady(true);
     } catch {
@@ -339,7 +356,7 @@ export default function ActiveChat() {
     setSettingsSaving(true);
     setSettingsStatus(null);
     try {
-      const s: SessionSettings = { session_id: sessionId, system_prompt: systemPrompt, temperature, character_id: characterId, persona_id: personaId, world_id: worldId, intro };
+      const s: SessionSettings = { session_id: sessionId, system_prompt: systemPrompt, temperature, character_id: characterId, persona_id: personaId, world_id: worldId, intro, library_binding: libraryBinding };
       await saveSettings(s);
       setSettingsStatus("保存しました ✓");
       setTimeout(() => setSettingsStatus(null), 2000);
@@ -427,7 +444,7 @@ export default function ActiveChat() {
     autoSaveTimer.current = window.setTimeout(async () => {
       if (gen !== sessionGenRef.current) return;
       try {
-        await saveSettings({ session_id: sessionId, system_prompt: systemPrompt, temperature, character_id: characterId, persona_id: personaId, world_id: worldId, intro });
+        await saveSettings({ session_id: sessionId, system_prompt: systemPrompt, temperature, character_id: characterId, persona_id: personaId, world_id: worldId, intro, library_binding: libraryBinding });
         if (gen !== sessionGenRef.current) return;
         setSettingsStatus("自動保存 ✓");
         setTimeout(() => setSettingsStatus((prev) => (prev === "自動保存 ✓" ? null : prev)), 1800);
@@ -441,7 +458,7 @@ export default function ActiveChat() {
         autoSaveTimer.current = null;
       }
     };
-  }, [systemPrompt, temperature, characterId, personaId, worldId, intro, sessionId]);
+  }, [systemPrompt, temperature, characterId, personaId, worldId, intro, sessionId, libraryBinding]);
 
   // Ctrl+Shift+D: Researcherのみデバッグドロワーを開閉（設定Sheetはギアボタンで開く）
   useEffect(() => {
@@ -465,14 +482,14 @@ export default function ActiveChat() {
     if (!studioOpen) return;
     const t = window.setTimeout(async () => {
       try {
-        const c = await compilePrompt({ character_id: characterId, persona_id: personaId, world_id: worldId, extra_system_prompt: systemPrompt });
+        const c = await compilePrompt({ character_id: characterId, persona_id: personaId, world_id: worldId, extra_system_prompt: systemPrompt, library_binding: libraryBinding });
         setCompiled(c);
       } catch {
         // ignore
       }
     }, 400);
     return () => window.clearTimeout(t);
-  }, [characterId, personaId, worldId, systemPrompt, studioOpen]);
+  }, [characterId, personaId, worldId, systemPrompt, studioOpen, libraryBinding]);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
@@ -524,7 +541,7 @@ export default function ActiveChat() {
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     try {
       await saveSettings({ session_id: sessionId, system_prompt: systemPrompt, temperature,
-        character_id: characterId, persona_id: personaId, world_id: worldId, intro });
+          character_id: characterId, persona_id: personaId, world_id: worldId, intro, library_binding: libraryBinding });
     } catch (e) {
       if (current()) {
         setError(`設定保存に失敗したため送信しませんでした: ${String(e)}`);
@@ -589,12 +606,13 @@ export default function ActiveChat() {
       {/* 中央: 会話 */}
       <div className="k-chat-main">
         <div className="k-chat-header">
-          <Avatar name={headerName} seed={sessionId} size="sm" />
-          <div>
-            <div className="k-chat-header__name">{headerName}</div>
+          <Avatar name={headerName} seed={sessionId} size="sm" src={portrait} />
+          <div className="k-chat-header__identity">
+            <div className="k-chat-header__name" title={headerName}>{headerName}</div>
             {activeWorld && <div className="k-chat-header__sub">{activeWorld.display_name}</div>}
           </div>
           <div className="k-chat-header__actions">
+            <IconButton label="キャラ・プリセット" active={portableOpen} onClick={() => setPortableOpen(v => !v)}>✦</IconButton>
             {!streaming && messages.at(-1)?.role === "assistant" && messages.at(-1)?.id && messages.at(-2)?.role === "user" && (
               <Button variant="ghost" size="sm" onClick={() => void send(messages.at(-1)!.id)} disabled={!settingsReady}>再生成</Button>
             )}
@@ -632,7 +650,7 @@ export default function ActiveChat() {
               return (
                 <div key={m.id ?? i} style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: role === "user" ? "flex-end" : "flex-start" }}>
                   <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexDirection: role === "user" ? "row-reverse" : "row", maxWidth: "92%" }}>
-                    {role === "character" && <Avatar name={headerName} seed={sessionId} size="sm" />}
+                    {role === "character" && <Avatar name={headerName} seed={sessionId} size="sm" src={portrait} />}
                     <div className={`k-bubble k-bubble--${role}`}>
                       {isEditing ? (
                         <div style={{ display: "grid", gap: 8, minWidth: 240 }}>
@@ -716,6 +734,13 @@ export default function ActiveChat() {
         </Sheet>
       )}
 
+      <Sheet open={portableOpen} onClose={() => setPortableOpen(false)} side="right" topOffset={60}>
+        <div style={{ padding: 18, overflowY: 'auto' }}><div style={{ display: 'flex', justifyContent: 'space-between' }}><h2 style={{ fontSize: 18 }}>キャラ・プリセット</h2><Button variant="ghost" size="sm" onClick={() => setPortableOpen(false)}>閉じる</Button></div>
+          <fieldset disabled={streaming || !settingsReady} style={{ border: 0, padding: 0 }}>
+            <PortableSessionControls value={libraryBinding} characterId={characterId} character={portableCharacter} allowNsfw={showNsfw} onChange={setLibraryBinding} onTemperature={setTemperature} />
+          </fieldset><p role="status">{settingsStatus}</p>
+        </div>
+      </Sheet>
       {/* Studio: モデル選択/プリセット/Inspector（researcherのみ、Consumer UIから視覚的に分離） */}
       <Sheet open={researcher && studioOpen} onClose={() => setStudioOpen(false)} side="right" width="min(420px, 92vw)" topOffset={60}>
         <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
@@ -771,7 +796,14 @@ export default function ActiveChat() {
           <div style={{ display: "grid", gap: 8, padding: 12, background: "var(--bg-surface-soft)", border: "1px solid var(--border-subtle)", borderRadius: 10 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)" }}>🎭 キャラクター / 世界</div>
             <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)" }}>キャラクター</label>
-            <select value={characterId ?? ""} onChange={(e) => setCharacterId(e.target.value || null)} style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-primary)", fontSize: 12 }}>
+            <select value={characterId ?? ""} onChange={async e => {
+              const id = e.target.value || null; const epoch = sessionGenRef.current;
+              try { const item = id?.startsWith('lib_') ? await fetchLibraryItem(id) : null;
+                if (epoch !== sessionGenRef.current) return;
+                setCharacterId(id); setLibraryBinding({ character: item ? { id: item.id, revision: item.revision } : null, profile: null, lorebooks: [], expression_asset_id: null });
+                const temp = item?.document.profile.settings.temperature; if (typeof temp === 'number') setTemperature(temp);
+              } catch (err) { if (epoch === sessionGenRef.current) setError(String(err)); }
+            }} style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-primary)", fontSize: 12 }}>
               <option value="">（未選択）</option>
               {characters.map((c: any) => (
                 <option key={c.id} value={c.id}>{c.display_name} ({c.id}){c.nsfw ? " 🔞" : ""}</option>
@@ -837,6 +869,9 @@ export default function ActiveChat() {
                 <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 10, lineHeight: 1.6, background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 8, padding: 10, maxHeight: 220, overflowY: "auto", color: "var(--text-primary)", margin: 0 }}>
                   {debugData.generation?.raw_prompt || debugData.compiled?.system_prompt || "(なし)"}
                 </pre>
+              </DebugSection>
+              <DebugSection title="互換設定・Loreの採用結果">
+                <DebugJson value={{ messages: debugData.compiled?.ordered_messages, lore: debugData.compiled?.sections?.lore, compatibility: debugData.compiled?.sections?.compatibility, binding: debugData.settings.library_binding }} />
               </DebugSection>
               <DebugSection title="🔢 推定トークン内訳">
                 <DebugJson value={debugData.generation?.token_budget ?? { estimated: true, compiler_tokens: debugData.compiled?.token_estimate }} />

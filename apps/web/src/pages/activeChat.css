@@ -42,9 +42,14 @@
   border-bottom: 1px solid var(--border-subtle);
   background: var(--bg-surface);
 }
-.k-chat-header__name { font-size: 14px; font-weight: 700; color: var(--text-primary); }
+.k-chat-header__identity { flex: 1; min-width: 0; }
+.k-chat-header__name { font-size: 14px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .k-chat-header__sub { font-size: 11px; color: var(--text-muted); }
 .k-chat-header__actions { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+@media (max-width: 620px) {
+  .k-chat-header { height: auto; min-height: 60px; flex-wrap: wrap; padding-top: 10px; padding-bottom: 10px; }
+  .k-chat-header__actions { flex-basis: 100%; justify-content: flex-end; }
+}
 
 .k-chat-messages { flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-5) var(--space-4); }
 .k-chat-messages__inner {
