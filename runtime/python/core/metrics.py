@@ -84,7 +84,7 @@ def compute_metrics(turns: list[dict]) -> dict:
     avg = round(total / max(1, len(assistants)), 1)
     mx = max(char_counts) if char_counts else 0
 
-    failures = sum(1 for a in assistants if "[error:" in a)
+    failures = sum(1 for t in turns if t.get("status", "completed") != "completed" or "[error:" in str(t.get("assistant", "")))
     empties = sum(1 for a in assistants if not a.strip())
     n = len(assistants)
     failure_rate = round(failures / n, 3) if n else 0.0

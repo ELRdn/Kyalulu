@@ -26,3 +26,5 @@ recommended_generation:
   temperature: 0.8
   top_p: 0.95
 notes: M3サンプル。元preset_mochaのYAML化。
+
+nsfw: true

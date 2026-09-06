@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 from typing import Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 RelationshipLevel = Literal["stranger", "acquaintance", "friend", "intimate", "partner"]
 Difficulty = Literal["easy", "medium", "hard"]
@@ -23,6 +23,7 @@ class CharacterCard(BaseModel):
     recommended_generation: dict = Field(default_factory=dict)  # {temperature, top_p}
     notes: str = ""
     nsfw: bool = False
+    official: bool = False
 
 # Persona (ユーザー側)
 class PersonaCard(BaseModel):
@@ -41,7 +42,29 @@ class WorldCard(BaseModel):
     description: str = ""
     rules: str = ""  # 世界ルール
 
-# State (最小)
+class RelationshipState(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    stage: RelationshipLevel
+    tone: str
+    unresolved_conflict: bool
+
+
+class StateUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    location: str
+    time: str
+    mood: str
+    active_scene: str
+    relationship_state: RelationshipState
+
+
+class GenerationOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    reply: str = Field(min_length=1)
+    state_update: StateUpdate
+
+
+# Server-owned identity/version fields are never supplied by the model.
 class RuntimeState(BaseModel):
     session_id: str = "default"
     turn: int = 0
@@ -52,6 +75,12 @@ class RuntimeState(BaseModel):
     world_id: str | None = None
     prompt_version: str = "prompt:character-runtime@0.1.0"
     state_version: str = "0.1.0"
+    location: str = ""
+    time: str = ""
+    mood: str = ""
+    active_scene: str = ""
+    relationship_state: RelationshipState = Field(default_factory=lambda: RelationshipState(
+        stage="stranger", tone="neutral", unresolved_conflict=False))
 
 # Prompt Compiler 出力
 class CompiledPrompt(BaseModel):
@@ -123,3 +152,39 @@ class ExperimentMeta(BaseModel):
     nsfw: bool = False
     nsfw_level: str | None = None
     metrics: dict | None = None
+    model_config_snapshot: dict = Field(default_factory=dict)
+    scenario_snapshot: dict = Field(default_factory=dict)
+    extra_system_prompt: str | None = None
+    official: bool = False
+
+
+class GenerationSettings(BaseModel):
+    requested: dict
+    applied: dict
+    unsupported: list[str]
+
+
+class GenerationValidation(BaseModel):
+    ok: bool
+    retries: int = Field(ge=0, le=2)
+    errors: list[str]
+
+
+class GenerationRecord(BaseModel):
+    """Normal/invalid/failed result; cancellation is a separate diagnostic record."""
+    generation_id: str
+    status: Literal['completed', 'invalid', 'failed']
+    reply: str
+    full: str
+    state_before: RuntimeState
+    state: RuntimeState
+    validation: GenerationValidation
+    generation_config: GenerationSettings
+    telemetry: dict
+    elapsed_ms: float
+    token_budget: dict
+    attempts: list[dict]
+    compiled: CompiledPrompt
+    raw_prompt: str
+    error: str | None
+    mode: Literal['immersion', 'research']

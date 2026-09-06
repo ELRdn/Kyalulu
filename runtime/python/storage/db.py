@@ -1,9 +1,10 @@
 """SQLite 初期化・マイグレーション (軽量版)"""
 
 import aiosqlite
+import os
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parents[2] / "data.db"
+DB_PATH = Path(os.environ.get("KYALULU_DATA_DIR", str(Path(__file__).resolve().parents[2]))) / "data.db"
 
 # 初期DDL
 DDL = """
@@ -64,6 +65,24 @@ CREATE TABLE IF NOT EXISTS ratings (
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(experiment_id, turn)
 );
+
+CREATE TABLE IF NOT EXISTS runtime_states (
+    session_id TEXT PRIMARY KEY,
+    state_json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS generations (
+    generation_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    fingerprint TEXT NOT NULL,
+    status TEXT NOT NULL,
+    result_json TEXT,
+    user_id INTEGER,
+    assistant_id INTEGER,
+    valid INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS one_active_generation
+ON generations(session_id) WHERE status = 'pending';
 """
 
 
@@ -88,8 +107,9 @@ async def init_db() -> None:
         for sql in MIGRATIONS:
             try:
                 await db.execute(sql)
-            except Exception:
-                pass
+            except aiosqlite.OperationalError as exc:
+                if "duplicate column name" not in str(exc).lower():
+                    raise
         await db.commit()
 
 

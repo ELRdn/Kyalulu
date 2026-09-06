@@ -15,6 +15,8 @@ from python.core.registry import load_yaml_registry, sync_to_db
 async def lifespan(app: FastAPI):
     # 起動時にDB初期化 + YAML→DB同期
     await init_db()
+    from python.storage.generations import recover_interrupted
+    await recover_interrupted()
     try:
         models = load_yaml_registry()
         await sync_to_db(models)
@@ -49,7 +51,7 @@ app.add_middleware(
 
 @app.get("/api/health")
 async def health_check():
-    return {"status": "ok", "version": "0.1.0", "runtime": "0.1.0-m4"}
+    return {"status": "ok", "version": "0.1.0", "runtime": "0.1.0-m7"}
 
 
 # ルーター登録
