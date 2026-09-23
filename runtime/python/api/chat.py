@@ -140,6 +140,29 @@ async def _load_settings(session_id: str) -> SessionSettings:
     return SessionSettings(session_id=sid)
 
 
+def _session_identity(s: SessionSettings) -> dict:
+    """一覧表示用: セッションに紐づくキャラ名・画像・ワールドを解決する（失敗時は空）"""
+    info: dict = {"character_id": s.character_id, "world_id": s.world_id,
+                  "character_name": None, "portrait_url": None, "nsfw": False}
+    try:
+        if s.library_binding and s.library_binding.character:
+            from python.storage.library import get_item, character_info
+            ref = s.library_binding.character
+            char = character_info(get_item(ref.id, ref.revision))
+            info["character_id"] = ref.id
+        elif s.character_id:
+            from python.core.prompt_compiler import _load_yaml, CHAR_DIR
+            char = _load_yaml(CHAR_DIR, s.character_id)
+        else:
+            char = None
+        if char:
+            info.update(character_name=char.get("display_name"), portrait_url=char.get("portrait_url"),
+                        nsfw=bool(char.get("nsfw")))
+    except Exception:
+        pass
+    return info
+
+
 def _inject_system(messages: list[dict], system_prompt: str) -> list[dict]:
     """先頭に system メッセージを注入（既にsystemがあれば先頭を置換）"""
     if not system_prompt or not system_prompt.strip():
@@ -444,6 +467,8 @@ async def list_sessions():
             """)
             rows = await cur.fetchall()
             sessions = [dict(r) for r in rows]
+            for s in sessions:
+                s.update(_session_identity(await _load_settings(s["session_id"])))
             # デフォルトセッションがまだ無い場合でも空で返す
             return {"sessions": sessions}
     except generations.Conflict as e:

@@ -80,3 +80,16 @@ async def test_disconnect_after_meta_releases_reservation(isolated):
     await response.body_iterator.aclose()
     assert (await generations.latest('meta-only'))['status'] == 'cancelled'
     assert await generations.reserve('another', 'meta-only', {}) is None
+
+
+async def test_session_list_resolves_character_identity(isolated):
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        assert (await client.put("/api/chat/settings", json={"session_id": "named", "system_prompt": "", "temperature": 0.8,
+                                                              "character_id": "butler", "world_id": "beast_world"})).status_code == 200
+        for sid in ("named", "plain"):
+            body = {"model_id": "mock-echo", "session_id": sid, "messages": [{"role": "user", "content": "hi"}]}
+            assert (await client.post("/api/chat", json=body)).status_code == 200
+        sessions = {s["session_id"]: s for s in (await client.get("/api/chat/sessions")).json()["sessions"]}
+        assert sessions["named"]["character_name"] == "シオン執事"
+        assert sessions["named"]["world_id"] == "beast_world"
+        assert sessions["plain"]["character_name"] is None
