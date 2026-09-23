@@ -24,3 +24,6 @@
 .k-create-assets figcaption { overflow-wrap: anywhere; }
 .k-lore-entry { padding: 12px; border: 1px solid var(--border-subtle); border-radius: 10px; }
 @media (max-width: 620px) { .k-create-grid, .k-create-library { grid-template-columns: minmax(0, 1fr); } .k-create-drop { padding: 18px 8px; } }
+.k-create-drop { border: 1.5px dashed var(--accent-secondary); border-radius: var(--radius-panel); background: radial-gradient(80% 90% at 50% 0%, rgba(191, 167, 255, 0.18), transparent 70%), var(--bg-surface); padding: 36px 16px; transition: border-color 0.15s var(--ease-kyalulu), background 0.15s var(--ease-kyalulu); }
+.k-create-drop:hover { border-color: var(--accent-primary); }
+.k-create input[type=file]::file-selector-button { font: inherit; font-weight: 700; font-size: 12.5px; padding: 8px 14px; margin-right: 10px; border-radius: 10px; border: none; background: var(--accent-primary); color: var(--text-on-accent); cursor: pointer; }

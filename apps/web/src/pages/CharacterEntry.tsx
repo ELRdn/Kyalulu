@@ -1,61 +1,52 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
-import { fetchCharacters, fetchWorlds, type CharacterInfo, type WorldInfo } from "../lib/api";
-import Badge from "../components/ui/Badge";
+import { fetchCharacters, fetchSessions, fetchWorlds, type CharacterInfo, type SessionInfo, type WorldInfo } from "../lib/api";
 import Button from "../components/ui/Button";
 import EmptyState from "../components/ui/EmptyState";
-import { moodLabelFor } from "../lib/moodTaxonomy";
+import Icon from "../components/ui/Icon";
+import { gradientFor } from "../components/ui/Avatar";
+import SessionRow from "../components/ui/SessionRow";
+import ScenePreview from "../components/ScenePreview";
+import { moodsOf } from "../lib/moodTaxonomy";
 import { startNewSession } from "../lib/session";
+import { cleanPreview } from "../lib/text";
 import "./pages.css";
 import "./characterEntry.css";
 
-const GRADIENTS = ["var(--gradient-kyalulu-glow)", "var(--gradient-mystic-dream)", "var(--gradient-parallel-world)", "var(--gradient-tyarai-mode)", "var(--gradient-mint-breeze)"];
-function gradientFor(seed: string) {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-  return GRADIENTS[h % GRADIENTS.length];
-}
+type Character = CharacterInfo & { nsfw?: boolean };
 
 export default function CharacterEntry() {
   const { characterId } = useParams<{ characterId: string }>();
   const navigate = useNavigate();
-  const [characters, setCharacters] = useState<CharacterInfo[]>([]);
+  const [characters, setCharacters] = useState<Character[]>([]);
   const [worlds, setWorlds] = useState<WorldInfo[]>([]);
+  const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [greetingIndex, setGreetingIndex] = useState(0);
 
   useEffect(() => {
-    Promise.all([fetchCharacters(true).catch(() => []), fetchWorlds().catch(() => [])])
-      .then(([c, w]) => {
+    Promise.all([fetchCharacters(true).catch(() => []), fetchWorlds().catch(() => []), fetchSessions().catch(() => [])])
+      .then(([c, w, s]) => {
         setCharacters(c);
         setWorlds(w);
+        setSessions(s);
       })
       .finally(() => setLoading(false));
   }, []);
 
-  const character = characters.find((c) => c.id === characterId) as any;
+  useEffect(() => setGreetingIndex(0), [characterId]);
 
-  const handleStart = async () => {
-    if (!character) return;
-    setStarting(true);
-    setError(null);
-    try {
-      const greetings = [character.intro ?? '', ...(character.alternate_greetings ?? [])];
-      const sessionId = await startNewSession({ characterId: character.id, intro: greetings[greetingIndex] ?? '', temperature: character.recommended_generation?.temperature });
-      navigate(`/chats/${encodeURIComponent(sessionId)}`);
-    } catch (e) {
-      setError(`会話を作成できませんでした: ${String(e)}`);
-    } finally {
-      setStarting(false);
-    }
-  };
+  const character = characters.find((c) => c.id === characterId);
 
   if (loading) {
     return (
-      <div className="k-page">
-        <div style={{ color: "var(--text-muted)", fontSize: 13 }}>読み込み中...</div>
+      <div className="k-page" style={{ maxWidth: 1080 }}>
+        <div className="k-char-entry">
+          <div className="k-skeleton-card" style={{ aspectRatio: "3 / 4" }} />
+          <div />
+        </div>
       </div>
     );
   }
@@ -64,62 +55,132 @@ export default function CharacterEntry() {
     return (
       <div className="k-page">
         <EmptyState
-          motif="✧"
+          mascot="shy"
           title="キャラクターが見つかりません"
           description="削除されたか、URLが間違っている可能性があります。"
-          action={<Button variant="secondary" onClick={() => navigate("/discover")}>Discoverへ戻る</Button>}
+          action={
+            <Button variant="secondary" onClick={() => navigate("/discover")}>
+              ディスカバーへ戻る
+            </Button>
+          }
         />
       </div>
     );
   }
 
-  const tags: string[] = character.tags ?? [];
+  const greetings = [character.intro ?? "", ...(character.alternate_greetings ?? [])].filter((g) => g.trim());
+  const greeting = greetings[greetingIndex] ?? "";
+  const moods = moodsOf(character.tags);
+  const pastSessions = sessions.filter((s) => s.count > 0 && s.character_id === character.id).slice(0, 3);
+
+  const handleStart = async () => {
+    setStarting(true);
+    setError(null);
+    try {
+      const temperature = character.recommended_generation?.temperature;
+      const sessionId = await startNewSession({ characterId: character.id, intro: greeting, temperature: typeof temperature === "number" ? temperature : undefined });
+      navigate(`/chats/${encodeURIComponent(sessionId)}`);
+    } catch (e) {
+      setError(`会話を作成できませんでした: ${String(e)}`);
+      setStarting(false);
+    }
+  };
 
   return (
-    <div className="k-page" style={{ maxWidth: 960 }}>
+    <div className="k-page k-page--entry">
+      <Link to="/discover" className="k-back-link">
+        <Icon name="back" size={15} /> ディスカバー
+      </Link>
+
       <div className="k-char-entry">
-        <div className="k-char-entry__art" style={{ background: gradientFor(character.id) }}>
-          {character.portrait_url ? <img src={character.portrait_url} alt={character.display_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : character.display_name.trim().charAt(0)}
+        <div className="k-char-entry__art" style={character.portrait_url ? undefined : { background: gradientFor(character.id) }}>
+          {character.portrait_url ? (
+            <img src={character.portrait_url} alt={character.display_name} />
+          ) : (
+            <span className="k-char-entry__sigil" aria-hidden="true">
+              {character.display_name.trim().charAt(0)}
+            </span>
+          )}
+          <span className="k-char-card__sparkles" aria-hidden="true" />
         </div>
+
         <div className="k-char-entry__body">
+          <div className="k-char-entry__kicker">{character.official ? "✦ Kyalulu Official" : "✦ マイライブラリ"}</div>
           <h1 className="k-char-entry__name">{character.display_name}</h1>
-          <div className="k-char-entry__meta">by {character.official ? "Kyalulu Official · SFW" : "Local"}</div>
           <p className="k-char-entry__hook">{character.description}</p>
-          {tags.length > 0 && (
+          {moods.length > 0 && (
             <div className="k-char-entry__tags">
-              {tags.map((t) => {
-                const m = moodLabelFor(t);
-                return (
-                  <Badge key={t} tone="accent">
-                    {m.icon && <span aria-hidden="true">{m.icon}</span>} {m.label}
-                  </Badge>
-                );
-              })}
+              {moods.map((m) => (
+                <Link key={m.tag} to={`/discover?mood=${encodeURIComponent(m.tag)}`} className="k-char-entry__tag">
+                  <span aria-hidden="true">{m.icon ?? "✦"}</span> {m.label}
+                </Link>
+              ))}
             </div>
           )}
-          {error && <p role="alert">{error}</p>}
-          {character.library_revision && <Link to={`/create?edit=${character.id}`}>キャラの設定を編集</Link>}
-          {(character.alternate_greetings?.length > 0) && <label style={{ display: 'grid', gap: 8, marginTop: 12 }}>最初の挨拶を選ぶ<select aria-label="最初の挨拶を選ぶ" value={greetingIndex} onChange={e => setGreetingIndex(Number(e.target.value))}>{[character.intro, ...character.alternate_greetings].map((g: string, i: number) => <option key={i} value={i}>{i + 1}. {g.slice(0, 70)}</option>)}</select><p style={{ whiteSpace: 'pre-wrap' }}>{[character.intro, ...character.alternate_greetings][greetingIndex]}</p></label>}
-          <Button variant="primary" size="lg" onClick={handleStart} disabled={starting} style={{ marginTop: 8, width: "fit-content" }}>
-            {starting ? "準備中..." : "Start Chat ✦"}
-          </Button>
+
+          {greetings.length > 1 && (
+            <div className="k-greeting-picker" role="radiogroup" aria-label="最初の挨拶を選ぶ">
+              <div className="k-greeting-picker__label">はじまりのシーンを選ぶ</div>
+              <div className="k-greeting-picker__list">
+                {greetings.map((g, i) => (
+                  <button key={i} type="button" role="radio" aria-checked={i === greetingIndex} className={`k-greeting ${i === greetingIndex ? "is-active" : ""}`} onClick={() => setGreetingIndex(i)}>
+                    <span className="k-greeting__no">{i + 1}</span>
+                    <span className="k-greeting__text">{cleanPreview(g, 64)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <p role="alert" className="k-inline-error">
+              {error}
+            </p>
+          )}
+          <div className="k-char-entry__actions">
+            <Button variant="primary" size="lg" className="k-btn--glow" onClick={handleStart} disabled={starting}>
+              {starting ? "準備中…" : "会話をはじめる"} <Icon name="sparkle" size={16} />
+            </Button>
+            {character.library_revision && (
+              <Link to={`/create?edit=${character.id}`} className="k-text-link">
+                <Icon name="edit" size={14} /> 設定を編集
+              </Link>
+            )}
+          </div>
         </div>
       </div>
 
-      {character.intro && (
+      {greeting && (
         <section className="k-section">
-          <h2 className="k-section__title">✦ Intro</h2>
-          <div className="k-card-plain">{character.intro}</div>
+          <h2 className="k-section__title">
+            <span className="k-section__mark">✦</span> はじまりのシーン
+          </h2>
+          <ScenePreview name={character.display_name} seed={character.id} portrait={character.portrait_url} content={greeting} />
+        </section>
+      )}
+
+      {pastSessions.length > 0 && (
+        <section className="k-section">
+          <h2 className="k-section__title">
+            <span className="k-section__mark">✦</span> {character.display_name}との会話
+          </h2>
+          <div className="k-chat-list">
+            {pastSessions.map((s) => (
+              <SessionRow key={s.session_id} session={s} worldName={worlds.find((w) => w.id === s.world_id)?.display_name} />
+            ))}
+          </div>
         </section>
       )}
 
       {worlds.length > 0 && (
         <section className="k-section">
-          <h2 className="k-section__title">✦ ワールド候補</h2>
+          <h2 className="k-section__title">
+            <span className="k-section__mark">✦</span> 出会えるワールド
+          </h2>
           <div className="k-chip-row">
             {worlds.map((w) => (
-              <Link key={w.id} to={`/discover?world=${encodeURIComponent(w.id)}`} className="k-chip" style={{ textDecoration: "none" }}>
-                {w.display_name}
+              <Link key={w.id} to={`/discover?world=${encodeURIComponent(w.id)}`} className="k-chip">
+                <Icon name="globe" size={14} /> {w.display_name}
               </Link>
             ))}
           </div>

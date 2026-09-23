@@ -25,11 +25,12 @@ export default function NavItem({
       end={end}
       className={({ isActive }) => `k-nav-item ${isActive ? "k-nav-item--active" : ""} ${secondary ? "k-nav-item--secondary" : ""}`}
       title={compact ? label : undefined}
+      aria-label={compact ? label : undefined}
     >
-      <span aria-hidden="true" style={{ fontSize: 17, width: 20, textAlign: "center", flexShrink: 0 }}>
+      <span className="k-nav-item__icon" aria-hidden="true">
         {icon}
       </span>
-      {!compact && <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>}
+      {!compact && <span className="k-nav-item__label">{label}</span>}
       {!compact && badge}
     </NavLink>
   );

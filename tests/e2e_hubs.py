@@ -1,6 +1,7 @@
 """Live curated Hub -> preview -> durable draft -> chat; isolated API data required."""
 import argparse
 import json
+import re
 import uuid
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
@@ -23,7 +24,7 @@ def main():
                 page.on('request', lambda r: requests.append(r.url))
                 page.goto(args.base + '/#/discover'); page.wait_for_load_state('networkidle')
                 assert not any('/api/hubs/' in u for u in requests), 'Local Discover made a Hub request'
-                page.get_by_role('button', name='SillyTavern Content', exact=True).click()
+                page.get_by_role('tab', name='SillyTavern Contentを見る', exact=True).click()
                 expect(page.get_by_role('heading', name='Coding Sensei', exact=True)).to_be_visible(timeout=60000)
                 page.get_by_label('Hubの検索語').fill('no-result-unique')
                 page.get_by_role('button', name='検索', exact=True).click()
@@ -62,7 +63,8 @@ def main():
                     page.get_by_role('link', name='をダウンロード', exact=False).click()
                 assert Path(dl.value.path()).stat().st_size > 100
                 tile.get_by_role('link', name='キャラを開く').click()
-                page.get_by_role('button', name='Start Chat ✦', exact=True).click()
+                page.get_by_role('button', name='会話をはじめる', exact=True).click()
+                expect(page).to_have_url(re.compile(r'#/chats/'))
                 expect(page.locator('.k-bubble').first).to_contain_text('Hello world')
                 composer = page.locator('.k-composer textarea'); composer.fill('Pythonについて短く教えて')
                 composer.press('Enter')

@@ -99,7 +99,7 @@ export default function Create() {
   });
   const hasInvalid = preview ? drafts.some((d, i) => d.selected && (invalid[i] || ((d.document.source.remote as { content_rating?: string } | undefined)?.content_rating === 'unknown' && !d.rating) || ((preview.duplicates[String(i)]?.length ?? 0) > 0 && !d.target && !d.copy))) : !!invalid.editor;
   return <div className="k-page k-create">
-    <header><h1 className="k-page-title">Create</h1><p className="k-page-sub">お気に入りのキャラと、その世界を連れてこよう。</p></header>
+    <header><h1 className="k-page-title">クリエイト</h1><p className="k-page-sub">お気に入りのキャラと、その世界を連れてこよう。</p></header>
     {error && <div className="k-create-alert" role="alert">{error}</div>}
     {message && <p role="status">{message}</p>}
     {sessions.map(s => <Link key={s.session_id} to={`/chats/${s.session_id}`}>移行した会話を開く：{s.name}</Link>)}

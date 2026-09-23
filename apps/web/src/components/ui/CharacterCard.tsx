@@ -1,20 +1,7 @@
 import { Link } from "react-router-dom";
-import Badge from "./Badge";
-import { moodLabelFor } from "../../lib/moodTaxonomy";
+import { moodsOf } from "../../lib/moodTaxonomy";
+import { gradientFor } from "./Avatar";
 import "./ui.css";
-
-const GRADIENTS = [
-  "var(--gradient-kyalulu-glow)",
-  "var(--gradient-mystic-dream)",
-  "var(--gradient-parallel-world)",
-  "var(--gradient-tyarai-mode)",
-  "var(--gradient-mint-breeze)",
-];
-function gradientFor(seed: string) {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-  return GRADIENTS[h % GRADIENTS.length];
-}
 
 export default function CharacterCard({
   id,
@@ -31,25 +18,32 @@ export default function CharacterCard({
   tags?: string[];
   portraitUrl?: string | null;
 }) {
+  const moods = moodsOf(tags);
   return (
-    <Link to={`/characters/${encodeURIComponent(id)}`} className="k-media-card">
-      <div className="k-media-card__art" style={{ background: gradientFor(id) }}>
-        {portraitUrl ? <img src={portraitUrl} alt={displayName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : displayName.trim().charAt(0)}
+    <Link to={`/characters/${encodeURIComponent(id)}`} className="k-media-card k-char-card">
+      <div className="k-media-card__art" style={portraitUrl ? undefined : { background: gradientFor(id) }}>
+        {portraitUrl ? (
+          <img src={portraitUrl} alt="" loading="lazy" className="k-media-card__img" />
+        ) : (
+          <span className="k-char-card__sigil" aria-hidden="true">
+            <span>{displayName.trim().charAt(0)}</span>
+          </span>
+        )}
+        <span className="k-char-card__sparkles" aria-hidden="true" />
+        {moods[0] && <span className="k-char-card__badge">{moods[0].label}</span>}
+        <span className="k-char-card__cta" aria-hidden="true">話してみる ✦</span>
       </div>
       <div className="k-media-card__body">
         <div className="k-media-card__title">{displayName}</div>
         <div className="k-media-card__hook">{hook}</div>
         <div className="k-media-card__meta">by {creator}</div>
-        {tags.length > 0 && (
+        {moods.length > 1 && (
           <div className="k-media-card__tags">
-            {tags.slice(0, 3).map((t) => {
-              const m = moodLabelFor(t);
-              return (
-                <Badge key={t} tone="accent">
-                  {m.label}
-                </Badge>
-              );
-            })}
+            {moods.slice(1, 3).map((m) => (
+              <span key={m.tag} className="k-mini-tag">
+                {m.label}
+              </span>
+            ))}
           </div>
         )}
       </div>

@@ -66,8 +66,9 @@ def main():
                 assert back[0].name == name and back[0].data['extensions']['unknown']['keep'] == 42
                 assert any(a.type == 'emotion' and a.asset_id in images for a in back[0].assets)
                 tile.get_by_role('link', name='キャラを開く').click()
-                page.get_by_label('最初の挨拶を選ぶ').select_option('1')
-                page.get_by_role('button', name='Start Chat ✦', exact=True).click()
+                page.get_by_role('radiogroup', name='最初の挨拶を選ぶ').get_by_role('radio').nth(1).click()
+                page.get_by_role('button', name='会話をはじめる', exact=True).click()
+                expect(page).to_have_url(re.compile(r'#/chats/'))
                 expect(page.locator('.k-bubble').first).to_contain_text('図書館へようこそ')
                 sid = page.url.rsplit('/', 1)[-1]
                 # Caption is parsed from the rendered Composer, not guessed from internal props.
@@ -75,7 +76,7 @@ def main():
                 expect(composer).to_be_visible(); composer.fill('鍵について教えて')
                 composer.press('Enter')
                 expect(page.locator('.k-bubble').last).to_contain_text('鍵について教えて')
-                page.wait_for_function("!document.querySelector('.k-composer textarea')?.disabled")
+                expect(page.get_by_role('button', name='停止', exact=True)).to_have_count(0, timeout=30000)
                 page.wait_for_timeout(400)
                 debug = page.request.get(args.base + '/api/chat/debug', params={'session_id': sid}).json()
                 assert debug['generation']['validation']['ok']

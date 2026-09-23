@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   fetchModels,
   fetchHistory,
@@ -29,11 +29,13 @@ import {
   type WorldInfo,
   type CompiledPrompt,
   type GenerationResult,
+  sessionTitle,
 } from "../lib/api";
 import ModelSelector from "../components/ModelSelector";
 import PortableSessionControls from '../components/PortableSessionControls';
 import { fetchLibraryItem, assetUrl, type LibraryItem, type LibraryBinding } from '../lib/library';
-import MarkdownView from "../components/MarkdownView";
+import MessageContent from "../components/MessageContent";
+import Icon from "../components/ui/Icon";
 import Avatar from "../components/ui/Avatar";
 import IconButton from "../components/ui/IconButton";
 import Button from "../components/ui/Button";
@@ -45,7 +47,9 @@ import { Textarea } from "../components/ui/Input";
 import { useResearcherMode } from "../lib/mode";
 import { useContextPanelPref } from "../lib/contextPanel";
 import { usePinnedSessions, togglePin } from "../lib/pins";
-import { startNewSession, newSessionId } from "../lib/session";
+import { newSessionId } from "../lib/session";
+import { cleanPreview } from "../lib/text";
+import { useMediaQuery } from "../lib/useMediaQuery";
 import { NARRATION_STYLES, extractNarrationStyle, applyNarrationStyle } from "../lib/narrationStyle";
 import "./activeChat.css";
 
@@ -147,8 +151,14 @@ export default function ActiveChat() {
 
   const activeCharacter = characters.find((c: any) => c.id === characterId) as any;
   const activeWorld = worlds.find((w) => w.id === worldId);
-  const headerName = portableCharacter?.document.name ?? activeCharacter?.display_name ?? (sessionId === "default" ? "きゃるる" : sessionId);
-  const portrait = assetUrl(libraryBinding?.expression_asset_id) ?? assetUrl(portableCharacter?.document.assets.find(a => a.type === 'icon')?.asset_id) ?? activeCharacter?.portrait_url;
+  const sessionInfo = sessions.find((s) => s.session_id === sessionId);
+  const headerName = portableCharacter?.document.name ?? activeCharacter?.display_name ?? sessionInfo?.character_name ?? sessionTitle({ session_id: sessionId, character_name: null });
+  const portrait = assetUrl(libraryBinding?.expression_asset_id) ?? assetUrl(portableCharacter?.document.assets.find(a => a.type === 'icon')?.asset_id) ?? activeCharacter?.portrait_url ?? sessionInfo?.portrait_url;
+  const hasCharacter = !!(characterId || portableCharacter);
+  const [railQuery, setRailQuery] = useState("");
+  const wide = useMediaQuery("(min-width: 1280px)");
+  const panelDocked = ctxPanel.mode === "always" && wide;
+  const selectableCharacters = useMemo(() => characters.filter((c: any) => showNsfw || !c.nsfw || c.id === characterId), [characters, showNsfw, characterId]);
   useEffect(() => {
     let active = true;
     setPortableCharacter(null);
@@ -311,7 +321,7 @@ export default function ActiveChat() {
   };
   const handleDelete = async (idx: number) => {
     const msg = messages[idx];
-    if (!confirm(`このメッセージを削除しますか？\n\n「${msg.content.slice(0, 40)}...」`)) return;
+    if (!confirm(`このメッセージを削除しますか？\n\n「${cleanPreview(msg.content, 40)}」`)) return;
     if (msg.id) {
       try {
         await deleteHistoryMessage(msg.id);
@@ -343,7 +353,7 @@ export default function ActiveChat() {
 
   const loadCatalog = async () => {
     try {
-      const [cs, ps, ws] = await Promise.all([fetchCharacters(showNsfw), fetchPersonas(), fetchWorlds()]);
+      const [cs, ps, ws] = await Promise.all([fetchCharacters(true), fetchPersonas(), fetchWorlds()]);
       setCharacters(cs);
       setPersonas(ps);
       setWorlds(ws);
@@ -511,12 +521,12 @@ export default function ActiveChat() {
 
   const handleNewSession = async () => {
     const id = newSessionId();
-    setSessions((prev) => [{ session_id: id, count: 0, last_at: new Date().toISOString(), last_preview: "(新規会話)" }, ...prev]);
+    setSessions((prev) => [{ session_id: id, count: 0, last_at: new Date().toISOString(), last_preview: null }, ...prev]);
     navigate(`/chats/${encodeURIComponent(id)}`);
   };
 
   const handleClearSession = async () => {
-    if (!confirm(`会話 "${sessionId}" を削除しますか？`)) return;
+    if (!confirm(`${headerName}との会話を削除しますか？この操作は取り消せません。`)) return;
     await clearHistory(sessionId);
     setMessages([]);
     loadSessions();
@@ -576,62 +586,106 @@ export default function ActiveChat() {
   };
 
   const knownSessions = sessions.filter((s) => s.count > 0 || s.session_id === "default" || s.session_id === sessionId);
+  const railNeedle = railQuery.trim().toLowerCase();
+  const railSessions = railNeedle ? knownSessions.filter((s) => `${sessionTitle(s)} ${cleanPreview(s.last_preview, 300)}`.toLowerCase().includes(railNeedle)) : knownSessions;
+  const railPinned = railSessions.filter((s) => pinned.includes(s.session_id));
+  const railRecent = railSessions.filter((s) => !pinned.includes(s.session_id));
+  const worldNameOf = (id?: string | null) => worlds.find((w) => w.id === id)?.display_name;
+  const canRegenerate = !streaming && messages.at(-1)?.role === "assistant" && !!messages.at(-1)?.id && messages.at(-2)?.role === "user";
+  const starters = hasCharacter
+    ? ["こんにちは！はじめまして", "今日はどんな一日だった？", "きみのこと、もっと教えて", "*そっと隣に座る*"]
+    : ["こんにちは！", "おすすめの話題はある？", "物語をいっしょに作ろう"];
+
+  const contextPanel = (
+    <ChatContextPanel
+      name={headerName}
+      seed={characterId ?? sessionId}
+      portrait={portrait}
+      activeCharacter={activeCharacter}
+      characterId={characterId}
+      activeWorld={activeWorld}
+      intro={intro}
+      currentNarrationStyle={currentNarrationStyle}
+      onSelectNarrationStyle={handleSelectNarrationStyle}
+      ctxPanel={ctxPanel}
+      docked={panelDocked}
+      onClose={() => ctxPanel.setOpen(false)}
+      onNewSession={handleNewSession}
+      onClearSession={handleClearSession}
+      onInjectIntro={handleInjectIntro}
+    />
+  );
+
+  const railGroup = (title: string, list: SessionInfo[]) =>
+    list.length > 0 && (
+      <div className="k-chat-rail__group">
+        <div className="k-chat-rail__label">{title}</div>
+        {list.map((s) => (
+          <SessionRow
+            key={s.session_id}
+            session={s.session_id === sessionId ? { ...s, character_name: s.character_name ?? (hasCharacter ? headerName : null), portrait_url: s.portrait_url ?? portrait } : s}
+            worldName={worldNameOf(s.world_id)}
+            active={s.session_id === sessionId}
+            pinned={pinned.includes(s.session_id)}
+            onTogglePin={() => togglePin(s.session_id)}
+          />
+        ))}
+      </div>
+    );
 
   return (
     <div className="k-chat-layout">
       {/* 左: セッションレール */}
-      <aside className="k-chat-rail">
+      <aside className="k-chat-rail" aria-label="会話リスト">
         <div className="k-chat-rail__head">
-          <Button variant="primary" size="sm" onClick={handleNewSession}>
-            ＋ 新しいチャット
+          <Button variant="primary" onClick={handleNewSession} className="k-chat-rail__new">
+            <Icon name="plus" size={16} /> 新しいチャット
           </Button>
+          <div className="k-chat-rail__search">
+            <Icon name="search" size={15} />
+            <input value={railQuery} onChange={(e) => setRailQuery(e.target.value)} placeholder="チャットを検索…" aria-label="チャットを検索" />
+          </div>
         </div>
         <div className="k-chat-rail__list">
-          {knownSessions.length === 0 && <EmptyState motif="✧" title="チャットがありません" />}
-          {knownSessions.map((s) => (
-            <SessionRow
-              key={s.session_id}
-              sessionId={s.session_id}
-              name={s.session_id === "default" ? "きゃるる" : s.session_id}
-              preview={s.last_preview}
-              time={s.last_at}
-              active={s.session_id === sessionId}
-              pinned={pinned.includes(s.session_id)}
-              onTogglePin={() => togglePin(s.session_id)}
-            />
-          ))}
+          {railSessions.length === 0 && <EmptyState motif="✧" title={railNeedle ? "見つかりませんでした" : "チャットがありません"} />}
+          {railGroup("ピン留め", railPinned)}
+          {railGroup("最近のチャット", railRecent)}
         </div>
       </aside>
 
       {/* 中央: 会話 */}
       <div className="k-chat-main">
         <div className="k-chat-header">
-          <Avatar name={headerName} seed={sessionId} size="sm" src={portrait} />
-          <div className="k-chat-header__identity">
-            <div className="k-chat-header__name" title={headerName}>{headerName}</div>
-            {activeWorld && <div className="k-chat-header__sub">{activeWorld.display_name}</div>}
-          </div>
+          <Link to="/chats" className="k-chat-header__back" aria-label="チャット一覧へ戻る">
+            <Icon name="back" size={18} />
+          </Link>
+          <button type="button" className="k-chat-header__who" onClick={() => ctxPanel.setOpen(!ctxPanel.open)} aria-label={`${headerName}の情報を表示`}>
+            <span className="k-chat-header__avatar">
+              <Avatar name={headerName} seed={characterId ?? sessionId} size="md" src={portrait} mascot={!hasCharacter} />
+              <span className="k-chat-header__status" aria-hidden="true" />
+            </span>
+            <span className="k-chat-header__identity">
+              <span className="k-chat-header__name" title={headerName}>{headerName}</span>
+              <span className="k-chat-header__sub">{activeWorld ? `✦ ${activeWorld.display_name}` : streaming ? "入力中…" : "オンライン"}</span>
+            </span>
+          </button>
           <div className="k-chat-header__actions">
-            <IconButton label="キャラ・プリセット" active={portableOpen} onClick={() => setPortableOpen(v => !v)}>✦</IconButton>
-            {!streaming && messages.at(-1)?.role === "assistant" && messages.at(-1)?.id && messages.at(-2)?.role === "user" && (
-              <Button variant="ghost" size="sm" onClick={() => void send(messages.at(-1)!.id)} disabled={!settingsReady}>再生成</Button>
-            )}
+            <IconButton label="キャラ・プリセット" active={portableOpen} onClick={() => setPortableOpen((v) => !v)}>
+              <Icon name="book" size={17} />
+            </IconButton>
             {researcher && (
-              <IconButton label="設定" active={studioOpen} onClick={() => setStudioOpen((v) => !v)}>
-                ⚙
+              <IconButton label="詳細設定（Studio）" active={studioOpen} onClick={() => setStudioOpen((v) => !v)}>
+                <Icon name="settings" size={17} />
               </IconButton>
             )}
             {researcher && (
               <IconButton label="デバッグ (Ctrl+Shift+D)" active={debugOpen} onClick={() => setDebugOpen((v) => !v)}>
-                🐞
+                <Icon name="bug" size={17} />
               </IconButton>
             )}
-            <IconButton label="Researcherモード切替" active={researcher} onClick={() => setResearcher(!researcher)} size="sm">
-              🔬
-            </IconButton>
-            {ctxPanel.mode === "collapsible" && (
-              <IconButton label={ctxPanel.open ? "パネルを閉じる" : "パネルを開く"} active={ctxPanel.open} onClick={() => ctxPanel.setOpen(!ctxPanel.open)}>
-                ▤
+            {!panelDocked && (
+              <IconButton label={ctxPanel.open ? "情報パネルを閉じる" : "情報パネルを開く"} active={ctxPanel.open} onClick={() => ctxPanel.setOpen(!ctxPanel.open)}>
+                <Icon name="panel" size={17} />
               </IconButton>
             )}
           </div>
@@ -639,106 +693,144 @@ export default function ActiveChat() {
 
         <div ref={listRef} className="k-chat-messages">
           <div className="k-chat-messages__inner">
-            {messages.length === 0 && (
-              <EmptyState motif="✦" title="まだメッセージがありません" description="話しかけてみよう。会話は自動保存され、リフレッシュしても消えません。" />
+            {messages.length === 0 && settingsReady && (
+              <div className="k-chat-welcome">
+                <div className="k-chat-welcome__art">
+                  <Avatar name={headerName} seed={characterId ?? sessionId} size="xl" src={portrait} mascot={!hasCharacter} />
+                </div>
+                <h2 className="k-chat-welcome__title">{hasCharacter ? `${headerName}と話してみよう` : "なにを話そうか？"}</h2>
+                <p className="k-chat-welcome__desc">
+                  {hasCharacter ? "最初のひとことを送ってみて。会話は自動で保存されるよ。" : "キャラクターを選ぶと、その子らしい会話ができるよ。"}
+                </p>
+                <div className="k-chat-welcome__starters">
+                  {starters.map((t) => (
+                    <button key={t} type="button" className="k-starter" onClick={() => setInput(t)}>
+                      {t}
+                    </button>
+                  ))}
+                </div>
+                {!hasCharacter && (
+                  <Button variant="secondary" onClick={() => navigate("/discover")}>
+                    <Icon name="compass" size={15} /> キャラクターを探す
+                  </Button>
+                )}
+              </div>
             )}
             {messages.map((m, i) => {
               const isAssistant = m.role === "assistant";
               const isStreaming = isAssistant && streaming && i === messages.length - 1;
               const isEditing = editingIdx === i;
               const role = m.role === "user" ? "user" : "character";
+              const showMeta = role === "character" && messages[i - 1]?.role !== "assistant";
+              if (isStreaming && !m.content) return null;
               return (
-                <div key={m.id ?? i} style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: role === "user" ? "flex-end" : "flex-start" }}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexDirection: role === "user" ? "row-reverse" : "row", maxWidth: "92%" }}>
-                    {role === "character" && <Avatar name={headerName} seed={sessionId} size="sm" src={portrait} />}
-                    <div className={`k-bubble k-bubble--${role}`}>
-                      {isEditing ? (
-                        <div style={{ display: "grid", gap: 8, minWidth: 240 }}>
-                          <Textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={Math.max(3, editText.split("\n").length)} autoFocus />
-                          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                            <Button variant="ghost" size="sm" onClick={cancelEdit}>キャンセル</Button>
-                            <Button variant="primary" size="sm" onClick={() => saveEdit(i)}>保存</Button>
-                          </div>
+                <div key={m.id ?? i} className={`k-msg k-msg--${role} ${isEditing ? "is-editing" : ""}`}>
+                  {role === "character" ? (
+                    <span className="k-msg__avatar">{showMeta && <Avatar name={headerName} seed={characterId ?? sessionId} size="md" src={portrait} mascot={!hasCharacter} />}</span>
+                  ) : null}
+                  <div className="k-msg__col">
+                    {showMeta && (
+                      <div className="k-msg__meta">
+                        <span className="k-msg__name">{headerName}</span>
+                      </div>
+                    )}
+                    {isEditing ? (
+                      <div className="k-msg__editor">
+                        <Textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={Math.max(3, editText.split("\n").length)} autoFocus />
+                        <div className="k-msg__editor-actions">
+                          <Button variant="ghost" size="sm" onClick={cancelEdit}>キャンセル</Button>
+                          <Button variant="primary" size="sm" onClick={() => saveEdit(i)}>保存</Button>
                         </div>
-                      ) : m.role === "user" ? (
-                        <div style={{ whiteSpace: "pre-wrap" }}>{m.content}</div>
-                      ) : m.content ? (
-                        <MarkdownView content={m.content} isStreaming={isStreaming} />
-                      ) : isStreaming ? (
-                        "▍"
-                      ) : null}
-                    </div>
+                      </div>
+                    ) : role === "user" ? (
+                      <div className="k-bubble k-bubble--user">{m.content}</div>
+                    ) : (
+                      <MessageContent content={m.content} isStreaming={isStreaming} />
+                    )}
+                    {!isEditing && !isStreaming && (
+                      <div className="k-msg__actions">
+                        {isAssistant && i === messages.length - 1 && canRegenerate && (
+                          <button type="button" className="k-msg__action" onClick={() => void send(messages.at(-1)!.id)} disabled={!settingsReady}>
+                            <Icon name="refresh" size={14} /> 別の返事
+                          </button>
+                        )}
+                        <button type="button" className="k-msg__action" onClick={() => startEdit(i)} aria-label="編集">
+                          <Icon name="edit" size={14} /> 編集
+                        </button>
+                        <button type="button" className="k-msg__action k-msg__action--danger" onClick={() => handleDelete(i)} aria-label="削除">
+                          <Icon name="trash" size={14} /> 削除
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  {!isEditing && !isStreaming && (
-                    <div className="k-chat-msg-actions">
-                      <IconButton label="編集" size="sm" onClick={() => startEdit(i)}>✏️</IconButton>
-                      <IconButton label="削除" size="sm" onClick={() => handleDelete(i)}>🗑️</IconButton>
-                    </div>
-                  )}
                 </div>
               );
             })}
             {isStreamingTyping(streaming, messages) && (
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <Avatar name={headerName} seed={sessionId} size="sm" />
-                <span style={{ color: "var(--accent-secondary)", fontSize: 20, letterSpacing: 2 }}>•••</span>
+              <div className="k-msg k-msg--character" aria-live="polite">
+                <span className="k-msg__avatar">
+                  <Avatar name={headerName} seed={characterId ?? sessionId} size="md" src={portrait} mascot={!hasCharacter} />
+                </span>
+                <div className="k-msg__col">
+                  <div className="k-msg__meta">
+                    <span className="k-msg__name">{headerName}</span>
+                    <span className="k-msg__time">が入力中…</span>
+                  </div>
+                  <div className="k-typing" aria-label="入力中">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                </div>
               </div>
             )}
           </div>
         </div>
 
         {error && (
-          <div style={{ padding: "8px 16px", background: "var(--error-bg)", color: "var(--error-text)", fontSize: 12, borderTop: "1px solid var(--error-border)", whiteSpace: "pre-wrap" }}>
-            エラー: {error}
+          <div className="k-chat-error" role="alert">
+            <span>{error}</span>
+            <button type="button" onClick={() => setError(null)} aria-label="エラーを閉じる">
+              <Icon name="close" size={14} />
+            </button>
           </div>
         )}
 
-        <div style={{ maxWidth: 920, width: "100%", margin: "0 auto" }}>
-          {streaming && (
-            <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
-              <Button variant="danger" size="sm" onClick={handleStop}>■ 停止</Button>
-            </div>
-          )}
-          <Composer value={input} onChange={setInput} onSend={() => void send()} disabled={streaming || !modelId || !settingsReady} disabledText={streaming ? "生成中..." : "会話を準備中..."} />
+        <div className="k-chat-composer-wrap">
+          <Composer
+            value={input}
+            onChange={setInput}
+            onSend={() => void send()}
+            onStop={handleStop}
+            streaming={streaming}
+            disabled={!modelId || !settingsReady}
+            disabledText={!modelId ? "モデルが見つかりません。スタジオで接続を確認してね" : "会話を準備中…"}
+            placeholder={hasCharacter ? `${headerName}への言葉を入力してね…` : "きみの言葉を入力してね…"}
+          />
         </div>
       </div>
 
       {/* 右: ContextPanel */}
-      {ctxPanel.mode === "always" ? (
-        <div className={`k-chat-context-wrap`}>
-          <ChatContextPanel
-            activeCharacter={activeCharacter}
-            activeWorld={activeWorld}
-            intro={intro}
-            currentNarrationStyle={currentNarrationStyle}
-            onSelectNarrationStyle={handleSelectNarrationStyle}
-            ctxPanel={ctxPanel}
-            onNewSession={handleNewSession}
-            onClearSession={handleClearSession}
-            onInjectIntro={handleInjectIntro}
-          />
-        </div>
+      {panelDocked ? (
+        <div className="k-chat-context-wrap">{contextPanel}</div>
       ) : (
-        <Sheet open={ctxPanel.open} onClose={() => ctxPanel.setOpen(false)} side="right" width="min(320px, 100vw)" topOffset={60}>
-          <ChatContextPanel
-            activeCharacter={activeCharacter}
-            activeWorld={activeWorld}
-            intro={intro}
-            currentNarrationStyle={currentNarrationStyle}
-            onSelectNarrationStyle={handleSelectNarrationStyle}
-            ctxPanel={ctxPanel}
-            onNewSession={handleNewSession}
-            onClearSession={handleClearSession}
-            onInjectIntro={handleInjectIntro}
-          />
+        <Sheet open={ctxPanel.open} onClose={() => ctxPanel.setOpen(false)} side="right" width="min(340px, 100vw)" topOffset={64}>
+          {contextPanel}
         </Sheet>
       )}
 
-      <Sheet open={portableOpen} onClose={() => setPortableOpen(false)} side="right" topOffset={60}>
-        <div style={{ padding: 18, overflowY: 'auto' }}><div style={{ display: 'flex', justifyContent: 'space-between' }}><h2 style={{ fontSize: 18 }}>キャラ・プリセット</h2><Button variant="ghost" size="sm" onClick={() => setPortableOpen(false)}>閉じる</Button></div>
+      <Sheet open={portableOpen} onClose={() => setPortableOpen(false)} side="right" topOffset={64}>
+        <div className="k-sheet-head">
+          <div className="k-sheet-head__title">キャラ・プリセット</div>
+          <IconButton label="閉じる" size="sm" onClick={() => setPortableOpen(false)}>
+            <Icon name="close" size={15} />
+          </IconButton>
+        </div>
+        <div style={{ padding: 18, overflowY: "auto" }}>
           <fieldset disabled={streaming || !settingsReady} style={{ border: 0, padding: 0 }}>
             <PortableSessionControls value={libraryBinding} characterId={characterId} character={portableCharacter} allowNsfw={showNsfw} onChange={setLibraryBinding} onTemperature={setTemperature} />
-          </fieldset><p role="status">{settingsStatus}</p>
+          </fieldset>
+          <p role="status" className="k-sheet-status">{settingsStatus}</p>
         </div>
       </Sheet>
       {/* Studio: モデル選択/プリセット/Inspector（researcherのみ、Consumer UIから視覚的に分離） */}
@@ -805,7 +897,7 @@ export default function ActiveChat() {
               } catch (err) { if (epoch === sessionGenRef.current) setError(String(err)); }
             }} style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-primary)", fontSize: 12 }}>
               <option value="">（未選択）</option>
-              {characters.map((c: any) => (
+              {selectableCharacters.map((c: any) => (
                 <option key={c.id} value={c.id}>{c.display_name} ({c.id}){c.nsfw ? " 🔞" : ""}</option>
               ))}
             </select>
@@ -908,90 +1000,112 @@ function isStreamingTyping(streaming: boolean, messages: (ChatMessage & { id?: n
 }
 
 function ChatContextPanel({
+  name,
+  seed,
+  portrait,
   activeCharacter,
+  characterId,
   activeWorld,
   intro,
   currentNarrationStyle,
   onSelectNarrationStyle,
   ctxPanel,
+  docked,
+  onClose,
   onNewSession,
   onClearSession,
   onInjectIntro,
 }: {
+  name: string;
+  seed: string;
+  portrait?: string | null;
   activeCharacter: any;
+  characterId: string | null;
   activeWorld: WorldInfo | undefined;
   intro: string;
   currentNarrationStyle: string | null;
   onSelectNarrationStyle: (id: string | null) => void;
   ctxPanel: ReturnType<typeof useContextPanelPref>;
+  docked: boolean;
+  onClose: () => void;
   onNewSession: () => void;
   onClearSession: () => void;
   onInjectIntro: () => void;
 }) {
   return (
-    <div className="k-context-panel" style={{ height: "100%" }}>
-      <div className="k-context-section">
-        <div className="k-context-section__title">✦ Character</div>
-        {activeCharacter ? (
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <Avatar name={activeCharacter.display_name} seed={activeCharacter.id} size="md" />
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>{activeCharacter.display_name}</div>
-              <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{activeCharacter.description}</div>
-            </div>
-          </div>
-        ) : (
-          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>キャラクター未選択</div>
+    <div className="k-context-panel">
+      <div className="k-context-hero">
+        {!docked && (
+          <IconButton label="パネルを閉じる" size="sm" className="k-context-hero__close" onClick={onClose}>
+            <Icon name="close" size={15} />
+          </IconButton>
+        )}
+        <Avatar name={name} seed={seed} size="xl" src={portrait} mascot={!characterId} />
+        <div className="k-context-hero__name">{name}</div>
+        {activeCharacter?.description ? <p className="k-context-hero__desc">{activeCharacter.description}</p> : !characterId && <p className="k-context-hero__desc">キャラクター未設定のフリートークです。</p>}
+        {characterId && (
+          <Link to={`/characters/${encodeURIComponent(characterId)}`} className="k-context-hero__link">
+            プロフィールを見る <Icon name="chevron" size={13} />
+          </Link>
         )}
       </div>
 
       {activeWorld && (
         <div className="k-context-section">
-          <div className="k-context-section__title">✦ Scenario / World</div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>{activeWorld.display_name}</div>
-          <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.6 }}>{activeWorld.description}</div>
+          <div className="k-context-section__title">✦ シナリオ / ワールド</div>
+          <div className="k-context-world">
+            <div className="k-context-world__name">{activeWorld.display_name}</div>
+            <div className="k-context-world__desc">{activeWorld.description}</div>
+          </div>
         </div>
       )}
 
       {intro && (
         <div className="k-context-section">
-          <div className="k-context-section__title">✦ Intro</div>
-          <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.7, maxHeight: 120, overflowY: "auto" }}>{intro}</div>
+          <div className="k-context-section__title">✦ はじまりのシーン</div>
+          <div className="k-context-intro">{cleanPreview(intro, 400)}</div>
+          <Button variant="ghost" size="sm" onClick={onInjectIntro} style={{ justifySelf: "start" }}>
+            <Icon name="play" size={12} /> 会話の最初に流す
+          </Button>
         </div>
       )}
 
       <div className="k-context-section">
-        <div className="k-context-section__title">✦ Narration style</div>
+        <div className="k-context-section__title">✦ ナレーションスタイル</div>
         <div className="k-narration-style-grid">
           <button className={`k-narration-style-chip ${!currentNarrationStyle ? "k-narration-style-chip--active" : ""}`} onClick={() => onSelectNarrationStyle(null)}>
-            なし
+            おまかせ
           </button>
-          {NARRATION_STYLES.map((s) => (
-            <button key={s.id} className={`k-narration-style-chip ${currentNarrationStyle === s.id ? "k-narration-style-chip--active" : ""}`} onClick={() => onSelectNarrationStyle(s.id)}>
-              {s.label}
+          {NARRATION_STYLES.map((st) => (
+            <button key={st.id} className={`k-narration-style-chip ${currentNarrationStyle === st.id ? "k-narration-style-chip--active" : ""}`} onClick={() => onSelectNarrationStyle(st.id)}>
+              {st.label}
             </button>
           ))}
         </div>
       </div>
 
       <div className="k-context-section">
-        <div className="k-context-section__title">✦ Panel behavior</div>
-        <div style={{ display: "flex", gap: 6 }}>
+        <div className="k-context-section__title">✦ パネルの表示</div>
+        <div className="k-narration-style-grid">
           <button className={`k-narration-style-chip ${ctxPanel.mode === "collapsible" ? "k-narration-style-chip--active" : ""}`} onClick={() => ctxPanel.setMode("collapsible")}>
-            折りたたみ可能
+            必要なときだけ
           </button>
           <button className={`k-narration-style-chip ${ctxPanel.mode === "always" ? "k-narration-style-chip--active" : ""}`} onClick={() => ctxPanel.setMode("always")}>
             常に表示
           </button>
         </div>
+        {ctxPanel.mode === "always" && !docked && <div className="k-context-note">画面幅が1280px以上のときに右側へ固定されます。</div>}
       </div>
 
       <div className="k-context-section" style={{ borderBottom: "none" }}>
-        <div className="k-context-section__title">✦ Conversation controls</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <Button variant="secondary" size="sm" onClick={onNewSession}>＋ 新しいチャット</Button>
-          {intro && <Button variant="secondary" size="sm" onClick={onInjectIntro}>▶ イントロを流す</Button>}
-          <Button variant="danger" size="sm" onClick={onClearSession}>この会話を削除</Button>
+        <div className="k-context-section__title">✦ 会話</div>
+        <div style={{ display: "grid", gap: 6 }}>
+          <Button variant="secondary" size="sm" onClick={onNewSession}>
+            <Icon name="plus" size={14} /> 新しいチャット
+          </Button>
+          <Button variant="danger" size="sm" onClick={onClearSession}>
+            <Icon name="trash" size={14} /> この会話を削除
+          </Button>
         </div>
       </div>
     </div>
