@@ -1,0 +1,33 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web-dev",
+      "url": "http://localhost:5173"
+    },
+    {
+      "name": "kyalulu-api",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "--directory", "runtime", "uvicorn", "python.api.main:app", "--port", "8010"],
+      "port": 8010
+    },
+    {
+      "name": "kyalulu-web",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "set KYALULU_API_URL=http://127.0.0.1:8010&& pnpm --filter web exec vite --port 5174 --strictPort"],
+      "port": 5174
+    },
+    {
+      "name": "kyalulu-api-e2e",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "set KYALULU_DATA_DIR=%CD%/.artifacts/ui-data&& set KYALULU_EXPERIMENTS_DIR=%CD%/.artifacts/ui-experiments&& set KYALULU_TRUSTED_ORIGINS=http://127.0.0.1:5191&& .venv\\Scripts\\python.exe -m uvicorn python.api.main:app --app-dir runtime --host 127.0.0.1 --port 8017"],
+      "port": 8017
+    },
+    {
+      "name": "kyalulu-web-e2e",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "set KYALULU_API_URL=http://127.0.0.1:8017&& pnpm --filter web exec vite --host 127.0.0.1 --port 5191 --strictPort"],
+      "port": 5191
+    }
+  ]
+}
