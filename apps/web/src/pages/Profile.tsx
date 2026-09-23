@@ -5,6 +5,7 @@ import { Input } from "../components/ui/Input";
 import Button from "../components/ui/Button";
 import Avatar from "../components/ui/Avatar";
 import Card from "../components/ui/Card";
+import Icon, { type IconName } from "../components/ui/Icon";
 import SessionRow from "../components/ui/SessionRow";
 import { useDisplayName, setDisplayName } from "../lib/profile";
 import { useTheme } from "../lib/theme";
@@ -15,7 +16,7 @@ import "./pages.css";
 export default function Profile() {
   const displayName = useDisplayName();
   const [nameDraft, setNameDraft] = useState(displayName);
-  const { theme, toggle } = useTheme();
+  const { theme, setTheme } = useTheme();
   const [researcher, setResearcher] = useResearcherMode();
   const pinned = usePinnedSessions();
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
@@ -31,38 +32,51 @@ export default function Profile() {
   }, []);
 
   const pinnedSessions = sessions.filter((s) => pinned.includes(s.session_id));
+  const talked = sessions.filter((s) => s.count > 0);
+  const messageCount = talked.reduce((n, s) => n + s.count, 0);
+  const characterCount = new Set(talked.map((s) => s.character_id).filter(Boolean)).size;
 
   return (
-    <div className="k-page" style={{ maxWidth: 720 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+    <div className="k-page" style={{ maxWidth: 780 }}>
+      <section className="k-profile-card">
         <Avatar name={displayName} size="xl" />
-        <div style={{ display: "grid", gap: 6, flex: 1 }}>
+        <div className="k-profile-card__main">
+          <label className="k-profile-card__label" htmlFor="k-profile-name">
+            表示名
+          </label>
           <Input
+            id="k-profile-name"
             value={nameDraft}
             onChange={(e) => setNameDraft(e.target.value)}
             onBlur={() => setDisplayName(nameDraft)}
             onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
             placeholder="表示名"
-            aria-label="表示名"
-            style={{ maxWidth: 280, fontSize: 18, fontWeight: 700 }}
+            className="k-profile-card__name"
           />
-          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>ローカルに保存されるプロフィールです（アカウント同期はまだありません）</div>
+          <div className="k-profile-card__note">このデバイスにだけ保存されます（アカウント同期は未対応）</div>
         </div>
-      </div>
+        <div className="k-profile-stats">
+          <Stat value={talked.length} label="会話" />
+          <Stat value={characterCount} label="出会ったキャラ" />
+          <Stat value={messageCount} label="メッセージ" />
+        </div>
+      </section>
 
       <section className="k-section">
-        <h2 className="k-section__title">✦ 設定</h2>
+        <h2 className="k-section__title">
+          <span className="k-section__mark">✦</span> 表示
+        </h2>
         <Card>
-          <div style={{ display: "grid", gap: 14 }}>
-            <Row label="テーマ" desc="ライト / ダークを切り替え">
-              <Button variant="secondary" size="sm" onClick={toggle}>
-                {theme === "dark" ? "☾ ダーク" : "☀ ライト"}
-              </Button>
-            </Row>
-            <Row label="Researcherモード" desc="Studioの詳細設定・デバッグ表示を有効化">
-              <Button variant={researcher ? "primary" : "secondary"} size="sm" onClick={() => setResearcher(!researcher)}>
-                {researcher ? "🔬 ON" : "OFF"}
-              </Button>
+          <div style={{ display: "grid", gap: 16 }}>
+            <Row label="テーマ" desc="昼のやわらかな光か、月夜の紫か。">
+              <div className="k-segmented" role="radiogroup" aria-label="テーマ">
+                <button role="radio" aria-checked={theme === "light"} className={theme === "light" ? "is-active" : ""} onClick={() => setTheme("light")}>
+                  <Icon name="sun" size={14} /> ライト
+                </button>
+                <button role="radio" aria-checked={theme === "dark"} className={theme === "dark" ? "is-active" : ""} onClick={() => setTheme("dark")}>
+                  <Icon name="moon" size={14} /> ダーク
+                </button>
+              </div>
             </Row>
           </div>
         </Card>
@@ -70,41 +84,69 @@ export default function Profile() {
 
       {pinnedSessions.length > 0 && (
         <section className="k-section">
-          <h2 className="k-section__title">✦ ピン留めしたチャット</h2>
-          <div style={{ display: "grid", gap: 4 }}>
+          <h2 className="k-section__title">
+            <span className="k-section__mark">✦</span> ピン留めしたチャット
+          </h2>
+          <div className="k-chat-list">
             {pinnedSessions.map((s) => (
-              <SessionRow
-                key={s.session_id}
-                sessionId={s.session_id}
-                name={s.session_id === "default" ? "きゃるる" : s.session_id}
-                preview={s.last_preview}
-                time={s.last_at}
-                pinned
-                onTogglePin={() => togglePin(s.session_id)}
-              />
+              <SessionRow key={s.session_id} session={s} pinned onTogglePin={() => togglePin(s.session_id)} />
             ))}
           </div>
         </section>
       )}
 
       <section className="k-section">
-        <h2 className="k-section__title">✦ 上級者向け</h2>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <Link to="/studio"><Button variant="secondary" size="sm">⚙ Studio</Button></Link>
-          <Link to="/research"><Button variant="secondary" size="sm">📊 Research</Button></Link>
-          <Link to="/status"><Button variant="secondary" size="sm">◉ Status</Button></Link>
-        </div>
+        <h2 className="k-section__title">
+          <span className="k-section__mark">✦</span> 上級者向け
+        </h2>
+        <Card>
+          <div style={{ display: "grid", gap: 16 }}>
+            <Row label="Researcherモード" desc="チャット画面にモデル選択・プロンプト確認・デバッグを表示します。">
+              <Button variant={researcher ? "primary" : "secondary"} size="sm" onClick={() => setResearcher(!researcher)} aria-pressed={researcher}>
+                {researcher ? "ON" : "OFF"}
+              </Button>
+            </Row>
+            <div className="k-advanced-links">
+              <AdvancedLink to="/studio" icon="sparkle" label="スタジオ" desc="モデル・プリセット" />
+              <AdvancedLink to="/research" icon="flask" label="Research" desc="A/B/C比較・評価" />
+              <AdvancedLink to="/status" icon="globe" label="Status" desc="接続状況" />
+            </div>
+          </div>
+        </Card>
       </section>
     </div>
   );
 }
 
+function Stat({ value, label }: { value: number; label: string }) {
+  return (
+    <div className="k-profile-stat">
+      <span className="k-profile-stat__value">{value}</span>
+      <span className="k-profile-stat__label">{label}</span>
+    </div>
+  );
+}
+
+function AdvancedLink({ to, icon, label, desc }: { to: string; icon: IconName; label: string; desc: string }) {
+  return (
+    <Link to={to} className="k-advanced-link">
+      <span className="k-advanced-link__icon">
+        <Icon name={icon} size={16} />
+      </span>
+      <span>
+        <span className="k-advanced-link__label">{label}</span>
+        <span className="k-advanced-link__desc">{desc}</span>
+      </span>
+    </Link>
+  );
+}
+
 function Row({ label, desc, children }: { label: string; desc: string; children: ReactNode }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+    <div className="k-setting-row">
       <div>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>{label}</div>
-        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{desc}</div>
+        <div className="k-setting-row__label">{label}</div>
+        <div className="k-setting-row__desc">{desc}</div>
       </div>
       {children}
     </div>

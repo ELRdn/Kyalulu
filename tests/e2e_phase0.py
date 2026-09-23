@@ -3,6 +3,7 @@
 Run: python tests/e2e_phase0.py --base http://127.0.0.1:5174 --chromium PATH
 The API MUST use KYALULU_DATA_DIR and KYALULU_EXPERIMENTS_DIR test directories.
 """
+import re
 import argparse
 import json
 import uuid
@@ -82,10 +83,10 @@ def main():
                 composer.fill('こんにちは、テスト会話です')
                 page.get_by_role('button', name='送信', exact=True).click()
                 expect(page.locator('.k-bubble--character')).to_contain_text('Mock:')
-                expect(page.get_by_role('button', name='再生成', exact=True)).to_be_visible()
-                page.get_by_role('button', name='再生成', exact=True).click()
+                expect(page.get_by_role('button', name='別の返事', exact=True)).to_be_visible()
+                page.get_by_role('button', name='別の返事', exact=True).click()
                 expect(page.locator('.k-bubble--character')).to_have_count(1)
-                expect(page.get_by_role('button', name='再生成', exact=True)).to_be_visible()
+                expect(page.get_by_role('button', name='別の返事', exact=True)).to_be_visible()
                 page.reload()
                 expect(page.locator('.k-bubble--character')).to_contain_text('Mock:')
                 page.keyboard.press('Control+Shift+D')
@@ -98,7 +99,7 @@ def main():
                 assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1')
                 if width == 1440 and theme == 'light':
                     page.get_by_role('button', name='編集', exact=True).last.click()
-                    page.locator('.k-bubble textarea').fill('編集後の返答')
+                    page.locator('.k-msg__editor textarea').fill('編集後の返答')
                     page.get_by_role('button', name='保存', exact=True).click()
                     expect(page.locator('.k-bubble--character')).to_contain_text('編集後の返答')
                     record = page.request.get(args.base + '/api/chat/debug?session_id=' + sid).json()
@@ -117,11 +118,12 @@ def main():
                     page.route('**/api/chat/stream', lambda route: held.append(route))
                     composer.fill('古い会話の生成')
                     page.get_by_role('button', name='送信', exact=True).click()
-                    expect(page.get_by_role('button', name='■ 停止', exact=True)).to_be_visible()
+                    expect(page.get_by_role('button', name='停止', exact=True)).to_be_visible()
                     page.wait_for_timeout(150)
                     assert len(held) == 1
                     page.evaluate("location.hash = '#/chats/e2e-switch-target'")
-                    expect(page.locator('.k-chat-header__name')).to_have_text('e2e-switch-target')
+                    expect(page).to_have_url(re.compile(r'#/chats/e2e-switch-target$'))
+                    expect(page.locator('.k-chat-header__name')).to_have_text('フリートーク')
                     expect(composer).to_be_enabled()
                     held[0].fulfill(content_type='text/event-stream', body='event: token\ndata: {"token":"古い返答"}\n\nevent: done\ndata: {"full":"古い返答"}\n\n')
                     page.wait_for_timeout(100)
@@ -129,19 +131,19 @@ def main():
                     held.clear()
                     composer.fill('中断テスト')
                     page.get_by_role('button', name='送信', exact=True).click()
-                    expect(page.get_by_role('button', name='■ 停止', exact=True)).to_be_visible()
+                    expect(page.get_by_role('button', name='停止', exact=True)).to_be_visible()
                     page.wait_for_timeout(100)
-                    page.get_by_role('button', name='■ 停止', exact=True).click()
+                    page.get_by_role('button', name='停止', exact=True).click()
                     expect(composer).to_be_enabled()
                     if held:
                         held[0].abort()
                     page.unroute('**/api/chat/stream')
                     expect(page.locator('.k-bubble--character')).to_have_count(0)
                     page.goto(args.base + '/#/characters/mocha_sfw')
-                    page.get_by_role('button', name='Start Chat ✦', exact=True).click()
+                    page.get_by_role('button', name='会話をはじめる', exact=True).click()
                     expect(page.locator('.k-chat-header__name')).to_have_text('モカちゃん（日常）')
                     expect(composer).to_be_enabled()
-                    page.get_by_role('button', name='パネルを開く', exact=True).click()
+                    page.get_by_role('button', name='情報パネルを開く', exact=True).click()
                     page.get_by_role('button', name='ミニマル', exact=True).click()
                     with page.expect_response(lambda r: r.url.endswith('/api/chat/settings') and r.request.method == 'PUT'):
                         page.wait_for_timeout(1000)

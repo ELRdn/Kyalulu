@@ -1,58 +1,49 @@
 import { Link } from "react-router-dom";
 import Avatar from "./Avatar";
-import IconButton from "./IconButton";
+import Icon from "./Icon";
+import { sessionTitle, type SessionInfo } from "../../lib/api";
+import { cleanPreview, formatRelative } from "../../lib/text";
 import "./ui.css";
 
-function formatTime(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "";
-  const now = new Date();
-  const sameDay = d.toDateString() === now.toDateString();
-  return sameDay ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : d.toLocaleDateString([], { month: "short", day: "numeric" });
-}
-
 export default function SessionRow({
-  sessionId,
-  name,
-  preview,
-  time,
+  session,
+  worldName,
   active = false,
   pinned = false,
   onTogglePin,
 }: {
-  sessionId: string;
-  name: string;
-  preview: string | null;
-  time: string | null;
+  session: SessionInfo;
+  worldName?: string;
   active?: boolean;
   pinned?: boolean;
   onTogglePin?: () => void;
 }) {
+  const name = sessionTitle(session);
+  const preview = cleanPreview(session.last_preview);
   return (
-    <div className={`k-session-row ${active ? "k-session-row--active" : ""}`} style={{ paddingRight: onTogglePin ? 10 : undefined }}>
-      <Link to={`/chats/${encodeURIComponent(sessionId)}`} style={{ display: "flex", gap: "var(--space-3)", flex: 1, minWidth: 0, textDecoration: "none", color: "inherit" }}>
-        <Avatar name={name} seed={sessionId} size="md" />
+    <div className={`k-session-row ${active ? "k-session-row--active" : ""}`}>
+      <Link to={`/chats/${encodeURIComponent(session.session_id)}`} className="k-session-row__link" aria-current={active ? "page" : undefined}>
+        <Avatar name={name} seed={session.character_id ?? session.session_id} size="md" src={session.portrait_url} mascot={!session.character_name} />
         <div className="k-session-row__body">
           <div className="k-session-row__top">
             <span className="k-session-row__name">{name}</span>
-            <span className="k-session-row__time">{formatTime(time)}</span>
+            <span className="k-session-row__time">{formatRelative(session.last_at)}</span>
           </div>
           <div className="k-session-row__preview">{preview || "まだメッセージがありません"}</div>
+          {worldName && <div className="k-session-row__world">✦ {worldName}</div>}
         </div>
       </Link>
       {onTogglePin && (
-        <IconButton
-          label={pinned ? "ピン留めを解除" : "ピン留め"}
-          active={pinned}
-          size="sm"
-          onClick={(e) => {
-            e.preventDefault();
-            onTogglePin();
-          }}
+        <button
+          type="button"
+          className={`k-session-row__pin ${pinned ? "is-pinned" : ""}`}
+          aria-label={pinned ? `${name}のピン留めを解除` : `${name}をピン留め`}
+          aria-pressed={pinned}
+          title={pinned ? "ピン留めを解除" : "ピン留め"}
+          onClick={onTogglePin}
         >
-          📌
-        </IconButton>
+          <Icon name="pin" size={15} />
+        </button>
       )}
     </div>
   );

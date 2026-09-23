@@ -5,7 +5,7 @@ export default function MarkdownView({ content, isStreaming }: { content: string
   const display = isStreaming && content ? content + " ▍" : content;
 
   return (
-    <div className="md-view" style={{ fontSize: 14, lineHeight: 1.8, wordBreak: "break-word", overflowWrap: "anywhere" }}>
+    <div className="md-view" style={{ lineHeight: 1.85, wordBreak: "break-word", overflowWrap: "anywhere" }}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -39,7 +39,7 @@ export default function MarkdownView({ content, isStreaming }: { content: string
                 />
               );
             }
-            return <p style={{ margin: "6px 0", fontWeight: 500 }} {...props} />;
+            return <p style={{ margin: "0 0 0.55em", fontWeight: 500 }} {...props} />;
           },
           ul: (props) => <ul style={{ margin: "6px 0 6px 20px", listStyle: "disc" }} {...props} />,
           ol: (props) => <ol style={{ margin: "6px 0 6px 20px", listStyle: "decimal" }} {...props} />,
@@ -59,19 +59,8 @@ export default function MarkdownView({ content, isStreaming }: { content: string
           a: (props) => <a style={{ color: "var(--accent-primary)", textDecoration: "underline" }} target="_blank" rel="noopener noreferrer" {...props} />,
           hr: (props) => <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "12px 0" }} {...props} />,
           // narration表記（*仕草描写*）の視覚的強調。構造化ロールが無いため、あくまでインラインの見た目強化に留める。
-          em: (props) => (
-            <em
-              style={{
-                fontStyle: "normal",
-                fontWeight: 500,
-                color: "var(--accent-secondary)",
-                background: "var(--bg-surface-soft)",
-                borderRadius: 4,
-                padding: "0 3px",
-              }}
-              {...props}
-            />
-          ),
+          // 行内の *仕草* はセリフと区別できる程度に控えめに（地の文の段落は MessageContent 側でブロック化する）
+          em: (props) => <em className="md-action" {...props} />,
           strong: (props) => <strong style={{ fontWeight: 700, color: "var(--text)" }} {...props} />,
         }}
       >

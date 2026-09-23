@@ -45,7 +45,18 @@ export type SessionInfo = {
   count: number;
   last_at: string | null;
   last_preview: string | null;
+  character_id?: string | null;
+  character_name?: string | null;
+  portrait_url?: string | null;
+  world_id?: string | null;
+  nsfw?: boolean;
 };
+
+/** 一覧表示用の会話名。キャラ未設定の会話は「新しい会話」として扱い、生IDは出さない。 */
+export function sessionTitle(s: Pick<SessionInfo, "session_id" | "character_name">): string {
+  if (s.character_name) return s.character_name;
+  return s.session_id === "default" ? "きゃるる" : "フリートーク";
+}
 
 const API_BASE_STREAM = ""; // Same-origin SSE through the tested Vite proxy.
 
@@ -77,7 +88,6 @@ export async function deleteHistoryMessage(id: number): Promise<void> {
 export async function fetchSessions(): Promise<SessionInfo[]> {
   const r = await fetch(`/api/chat/sessions?t=${Date.now()}`, { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
   const j = await r.json();
-  console.log("[fetchSessions] got", j.sessions?.length, j.sessions?.map((s: SessionInfo) => `${s.session_id}(${s.count})`));
   return j.sessions ?? [];
 }
 
