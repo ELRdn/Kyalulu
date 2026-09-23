@@ -13,3 +13,5 @@ nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
+  installerIcon: resources/icon.ico
+  uninstallerIcon: resources/icon.ico
