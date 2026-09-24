@@ -1,0 +1,11 @@
+id: qwen3.5-9b-le
+display_name: "Qwen3.5 9B (LE経由)"
+provider:
+  type: le
+  # LE の安定ID: <backend>/<backend model id>。GET /v1/models で確認する
+  model: ollama/qwen3.5:9b
+context_length: 8192
+recommended_generation:
+  temperature: 0.8
+  top_p: 0.9
+notes: "LE daemon (le-daemon, 既定 127.0.0.1:8130) 経由で実行。トークンは LE_API_TOKEN か LE が生成した api-token ファイルから読む。"
