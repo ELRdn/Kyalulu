@@ -5,8 +5,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getApiBase: (): Promise<string> => ipcRenderer.invoke("get-api-base"),
   checkPythonHealth: (): Promise<{ ok: boolean; status?: number; error?: string }> =>
     ipcRenderer.invoke("check-python-health"),
+  getLEStatus: (): Promise<LEStatus> => ipcRenderer.invoke("get-le-status"),
   platform: process.platform
 });
+
+type LEStatus = {
+  state: "disabled" | "starting" | "owned" | "external" | "unavailable" | "exited";
+  url: string;
+  healthy: boolean;
+  error?: string;
+};
 
 declare global {
   interface Window {
@@ -14,6 +22,7 @@ declare global {
       getAppPath: () => Promise<string>;
       getApiBase: () => Promise<string>;
       checkPythonHealth: () => Promise<{ ok: boolean; status?: number; error?: string }>;
+      getLEStatus: () => Promise<LEStatus>;
       platform: string;
     };
   }

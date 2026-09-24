@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell } from "electron";
 import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
+import { leStatus, startLE, stopLE } from "./le";
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -47,7 +48,7 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   electronApp.setAppUserModelId("com.kyalulu.app");
 
   app.on("browser-window-created", (_, window) => {
@@ -67,10 +68,26 @@ app.whenReady().then(() => {
     }
   });
 
+  ipcMain.handle("get-le-status", () => leStatus());
+
+  // Startup order: LE first, then the renderer shows the actual local capability state.
+  const le = await startLE();
+  console.log(`[le] ${le}`);
+
   createWindow();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
+
+let leStopped = false;
+app.on("before-quit", (event) => {
+  if (leStopped) return;
+  event.preventDefault();
+  stopLE().finally(() => {
+    leStopped = true;
+    app.quit();
   });
 });
 

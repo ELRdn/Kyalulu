@@ -6,6 +6,7 @@ from python.providers.lmstudio import LMStudioProvider
 from python.providers.openai_compat import OpenAICompatibleProvider
 from python.providers.responses import ResponsesProvider
 from python.providers.factory import get_provider, get_provider_for_model
+from python.providers.le import LEProvider
 
 
 def sse(*objects):
@@ -75,7 +76,7 @@ async def test_malformed_and_truncated(cls, content):
         _ = [e async for e in p.stream_events(model='test')]
 
 
-@pytest.mark.parametrize('name', ['ollama','lm_studio','openai_compatible','responses','mock'])
+@pytest.mark.parametrize('name', ['le', 'ollama','lm_studio','openai_compatible','responses','mock'])
 def test_factory(name):
     assert get_provider_for_model({'provider': {'type': name, 'model': 'explicit'}}) is not None
 
@@ -83,3 +84,29 @@ def test_factory(name):
 def test_no_mock_fallback():
     with pytest.raises(ValueError): get_provider('typo')
     with pytest.raises(ValueError): get_provider_for_model({'provider': {'type': 'ollama'}})
+
+
+@pytest.mark.asyncio
+async def test_le_provider_routes_and_auth():
+    seen = []
+    def handle(req):
+        seen.append((req.url.path, req.headers.get('authorization')))
+        if req.url.path == '/le/v1/health':
+            return httpx.Response(200, json={'status': 'ok'})
+        body = json.loads(req.content)
+        assert body['model'] == 'ollama/qwen3:8b'
+        return httpx.Response(200, text=sse({'choices': [{'delta': {'content': 'hi'}, 'finish_reason': 'stop'}]},
+            {'choices': [], 'usage': {'prompt_tokens': 1, 'completion_tokens': 1}}, '[DONE]'))
+    p = LEProvider(base_url='http://le:8130/v1', api_key='tok', transport=httpx.MockTransport(handle))
+    assert (await p.health_check())['status'] == 'ok'
+    text = await p.generate(model='ollama/qwen3:8b', messages=[{'role': 'user', 'content': 'x'}])
+    assert text == 'hi'
+    assert seen == [('/le/v1/health', 'Bearer tok'), ('/v1/chat/completions', 'Bearer tok')]
+
+
+@pytest.mark.asyncio
+async def test_le_provider_reports_unauthorized_and_missing_token(monkeypatch):
+    p = LEProvider(base_url='http://le:8130', api_key='bad', transport=httpx.MockTransport(lambda r: httpx.Response(401, json={})))
+    assert (await p.health_check())['status'] == 'unauthorized'
+    monkeypatch.setattr('python.providers.le.resolve_le_token', lambda: '')
+    assert (await LEProvider(base_url='http://le:8130').health_check())['status'] == 'offline'
