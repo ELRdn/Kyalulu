@@ -159,6 +159,7 @@
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -200,7 +201,7 @@
 @media (max-width: 767px) {
   .k-shell__sidebar { display: none; }
   .k-shell__bottomnav { display: block; }
-  .k-shell--chat .k-shell__bottomnav { display: none; }
+  .k-shell--chat .k-shell__bottomnav, .k-shell--immersive .k-shell__bottomnav { display: none; }
   .k-shell__search { display: none; }
   .k-shell__search-mobile { display: inline-flex; }
   .k-shell__header { padding: 0 var(--space-3); height: 56px; grid-template-columns: 1fr auto; }

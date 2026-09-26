@@ -76,3 +76,20 @@ export function formatRelative(value: string | null | undefined): string {
   if (diff < 7 * 86400) return `${Math.floor(diff / 86400)}日前`;
   return d.toLocaleDateString("ja-JP", { month: "short", day: "numeric" });
 }
+
+/** プロフィール表示用: プロンプト向けの {{user}} / USER / {{char}} を読み手向けの言葉に置き換える。 */
+export function displayProfileText(text: string | null | undefined, charName: string): string {
+  if (!text) return "";
+  return text
+    .replace(/\{\{\s*user\s*\}\}|<user>|\bUSER\b/gi, "あなた")
+    .replace(/\{\{\s*char\s*\}\}|<char>/gi, charName)
+    .replace(/^\s*[-・*]\s+/gm, "・")
+    .trim();
+}
+
+/** 1万以上を「1.2万」のように短く表す */
+export function formatCount(n: number): string {
+  if (n >= 100_000_000) return `${(n / 100_000_000).toFixed(1).replace(/\.0$/, "")}億`;
+  if (n >= 10_000) return `${(n / 10_000).toFixed(1).replace(/\.0$/, "")}万`;
+  return n.toLocaleString("ja-JP");
+}

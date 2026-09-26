@@ -3,8 +3,10 @@ import ProviderStatus from "../components/ProviderStatus";
 import Card from "../components/ui/Card";
 import { fetchHealth } from "../lib/api";
 import "./pages.css";
+import { useDocumentTitle } from "../lib/title";
 
 export default function Status() {
+  useDocumentTitle("Status");
   const [health, setHealth] = useState("確認中...");
 
   useEffect(() => {
