@@ -203,6 +203,9 @@
   .k-shell__bottomnav { display: block; }
   .k-shell--chat .k-shell__bottomnav, .k-shell--immersive .k-shell__bottomnav { display: none; }
   .k-shell__search { display: none; }
+  /* Touch widths: hide the classic scrollbar so the 16px gutters stay symmetric */
+  .k-shell__main { scrollbar-width: none; }
+  .k-shell__main::-webkit-scrollbar { display: none; }
   .k-shell__search-mobile { display: inline-flex; }
   .k-shell__header { padding: 0 var(--space-3); height: 56px; grid-template-columns: 1fr auto; }
   .k-shell__profile-name { display: none; }

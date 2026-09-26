@@ -32,6 +32,26 @@ export async function fetchProvidersHealth(): Promise<ProviderHealth[]> {
   return j.health ?? [];
 }
 
+export type SlashCommand = { name: string; usage: string; description: string };
+export type CommandResult = { ok: boolean; command: string; output: string; refresh_models: boolean };
+
+export async function fetchCommands(): Promise<SlashCommand[]> {
+  const r = await fetch("/api/commands");
+  const j = await r.json();
+  return j.commands ?? [];
+}
+
+export async function runCommand(input: string): Promise<CommandResult> {
+  const r = await fetch("/api/commands", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ input }),
+  });
+  const j = await r.json().catch(() => null);
+  if (!j || typeof j.output !== "string") throw new Error(`command failed: ${r.status}`);
+  return j;
+}
+
 export async function fetchHealth(): Promise<{ status: string; version: string }> {
   const r = await fetch("/api/health");
   return r.json();
@@ -320,6 +340,18 @@ export async function fetchChatNonStream(model_id: string, messages: ChatMessage
   const j = await r.json();
   if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
   return j.reply ?? "";
+}
+
+/** 次にユーザーが送る返事の候補（履歴には保存されない） */
+export async function fetchSuggestions(model_id: string, session_id: string, messages: ChatMessage[], allow_nsfw = false): Promise<string[]> {
+  const r = await fetch("/api/chat/suggest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model_id, session_id, messages, allow_nsfw }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  return Array.isArray(j.suggestions) ? j.suggestions : [];
 }
 
 /** SSEストリーミングでチャット — temperature/system_prompt未指定ならサーバ側のsession_settingsを使う */
