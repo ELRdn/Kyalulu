@@ -1,9 +1,24 @@
 # Kyalulu ロードマップ
 
-更新: 2026-09-06（Hub検索・URL取り込みを先行実装）。現行10ルートとデザインを維持し、DiscoverからCreate・会話への導線を追加した。
-Phase 0 M1〜M7のMock受け入れは維持。今回の互換実装と、Phase 0全体の実モデル受け入れ完了は区別する。
+更新: 2026-09-26（LE 統合・コンシューマーUI刷新・ライセンス決定）。
+Phase 0 M1〜M7のMock受け入れは維持。LE・互換実装の完了と、Phase 0全体の実モデル受け入れ完了は区別する。
 
-## 今回の到達点
+## 今回の到達点（2026-09-26）
+
+- **LE（Kyalulu Local Engine）** を別リポジトリ [ELRdn/LE](https://github.com/ELRdn/LE) に作成。Locally Uncensored からのフォークで、UI を持たないヘッドレスな daemon として動く。設計は [LE_ARCHITECTURE.md](../LE_ARCHITECTURE.md)。
+  - LE-0：`/le/v1/version`・`health`・`shutdown`、ループバック限定、Bearer トークン必須、構造化エラー、要求ID。
+  - LE-1：OpenAI互換 `/v1/models`・`chat/completions`・`embeddings`（Ollama／LM Studio／llama.cpp／OpenAI互換へ振り分け）。
+  - LE-1：GGUF のダウンロード（SHA-256・形式検証・原子的配置）、llama-server によるロード／アンロード、ハードウェア情報。
+  - LE-1：ジョブ（冪等キー、キャンセル、永続化、再起動時は `interrupted`）、SSE イベント（再送対応）。
+  - 子プロセスは Windows Job Object と pid 記録で後始末する。
+- **Kyalulu 統合**：`le` Provider、LE 配信モデルの自動列挙（`le:<id>`）、`/api/le/*` 中継、`/api/commands`。チャット欄の `/le` スラッシュコマンドでロード・アンロード・ダウンロード・ジョブ操作ができる。
+- **Desktop**：Electron が LE を検出し、必要なら起動・終了時に停止する。
+- **コンシューマーUI**：Soft Mystic Portal へ刷新、キャラプロフィール、返事の候補、作り直した返事の履歴。
+- **実機確認**：Kyalulu → LE → Ollama（qwen3.5:9b）で会話成功。LE 単体で GGUF のロード→会話（通常・ストリーム）→アンロード、LE 強制終了時の子プロセス停止、ダウンロード中断後の再起動、RX 7600／RX 9070 XT の検出を確認。
+- **試験**：Python 124試験、LE（Rust）32試験、Web 型チェックに合格。
+- **ライセンス**：Kyalulu を `AGPL-3.0-only` に決定（LE・上流と同一）。名称・マスコット・アイコン画像はコードのライセンス対象外。
+
+## 前回の到達点（2026-09-06 Hub）
 
 - TavernCardの内蔵SFW検索、SillyTavern Contentの確認済み一覧、RisuRealm／GitHub／Hugging Faceの公開URL取り込みを追加した。
 - DiscoverとCreateに7サイトの外部Hubボタンを追加。新しいタブで開き、取り込み途中の入力を維持する。PC／スマホ・ライト／ダークで操作確認済み。
@@ -51,10 +66,13 @@ Phase 3の互換／Creator機能を先行実装し、残作業を次の順に進
 
 | 順序 | 作業単位 | 成果物・完了条件 |
 |---|---|---|
-| 1 | Hub検索・URL取り込み（今回） | 互換基盤へHubを接続し、公開SFW検索→内容確認→保存→会話を実装・検証。Risu独自Moduleの実行、自前配布Hub、投稿・認証連携は対象外 |
-| 2 | Phase 0の残作業：実モデル性能と受け入れ | Gemma 4 / RX7600 Vulkan限定。現行25% offload・context 8192を基準に、返答開始/完了時間、構造化成功率を比較。短期試験で設定を決めてから20ターン×3回と3ローカルモデル比較へ進む |
-| 3 | M8 Desktop：日常利用の起動基盤 | WebのRouter/ThemeProvider、API base/IPCを統合。Web/APIの起動・停止、接続診断、モデル未ロードの案内。Windows起動・再起動と既存履歴／ライブラリ復元を確認 |
+| 済 | Hub検索・URL取り込み | 公開SFW検索→内容確認→保存→会話を実装・検証済み |
+| 済 | LE-0 / LE-1 と Kyalulu 統合 | 上記「今回の到達点」。LE 経由の会話と `/le` コマンドによるモデル操作まで |
+| 1 | LE-1 の残り：直接接続との比較と自動設定 | バックエンド直結と LE 経由で返答開始時間・全体時間・tok/s・State JSON 成功率・再試行・キャンセル・20ターン安定性・再ロード回数・RAM/VRAM を比較。空きVRAMとレイヤー数から `-ngl` を決める配置計画、GPU選択、中断ダウンロードの再開（HTTP Range） |
+| 2 | Phase 0の残作業：実モデル性能と受け入れ | Gemma 4 / RX7600 Vulkan を基準に、返答開始/完了時間と構造化成功率を比較。LE 経由の実行も同じ条件で測る。20ターン×3回と3ローカルモデル比較へ進む |
+| 3 | M8 Desktop：日常利用の起動基盤 | LE 監督は実装済み。Python API の起動・停止、接続診断、モデル未ロード時の案内（`/le load` への誘導）、Windows 再起動後の履歴／ライブラリ復元を確認 |
 | 4 | Phase 1：Memory Lab | 好み・事実、出来事、関係性の記憶を分離。由来と取り出した記憶をInspectorで確認し、Memory有無を同条件比較 |
+| 5 | LE-2 以降 | ComfyUI による画像・動画（VRAM の受け渡しと会話モデルの復帰を含む）、音声、ツール／エージェント。範囲は [LE_ARCHITECTURE.md 18章](../LE_ARCHITECTURE.md) |
 
 Phase 0の正式受け入れには、[仕様94章](../PROJECT_SPEC.md#94-initial-acceptance-test) の**3ローカルモデル比較**が残る。
 現在指定済みのGemma 4以外の2モデルと実行条件は未確定。モデル登録だけでは比較完了にならない。
@@ -87,6 +105,7 @@ Python sidecar同梱は配布構成の別判断とし、APIを別起動する最
 
 既存の成人向け素材を保持し、公式SFW用に `mocha_sfw` と安全な文体ファイルを整備。
 通常のチャットでは技術情報を隠し、実プロンプト・保存状態・計測・失敗履歴はResearcher Debugへ集約。
-今回のHub変更は機能単位でローカルコミットし、push・配布は含めない。先行互換フェーズの4a1a8efまでは前回push済み。
-Desktop本実装、製品からのMuse API代替検証は未実施。コーディング補助へのMuse呼び出しは製品の推論検証には数えない。
+LE は別リポジトリ・別プロセスとし、Kyalulu へソースを取り込まない（HTTP/SSE と設定可能な URL のみで接続）。
+LE のトークンは API サーバーだけが持ち、Web へは中継とコマンド結果だけを返す。
+Desktop 配布版（Python API と LE の同梱）、製品からのMuse API代替検証は未実施。コーディング補助へのMuse呼び出しは製品の推論検証には数えない。
 既存5系統の外部アプリでの出力確認、実ユーザープリセットの差分収集は継続する。

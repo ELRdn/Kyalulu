@@ -1,6 +1,6 @@
 # Kyalulu — Local-first Character AI Runtime / Benchmark
 
-> **Status (2026-09-06):** Hub検索・URL取り込みを追加。Discoverから公開SFWカードを探し、Createで確認・編集して会話へ進める。TavernCard／SillyTavern Content／RisuRealm／GitHub／Hugging Faceに接続。HubカードをGemma 4・RX7600 Vulkanで短期確認済み。 [ロードマップ](docs/ROADMAP.md) / [互換対応表](docs/COMPATIBILITY.md) / [Hub検証結果](docs/HUB_ACCEPTANCE.md)
+> **Status (2026-09-26):** ローカル実行エンジン LE と接続。LE が配信するモデルを `le:<id>` でそのまま会話に使え、チャット欄の `/le` コマンドでモデルのロード・アンロード・ダウンロードを操作できる。コンシューマーUIを刷新（Soft Mystic Portal）し、返事の候補と作り直し履歴を追加。 [ロードマップ](docs/ROADMAP.md) / [互換対応表](docs/COMPATIBILITY.md) / [LE設計](LE_ARCHITECTURE.md)
 
 ## 概要
 
@@ -10,11 +10,15 @@ Model / Character / Prompt / Persona / World / State / Memory / Sampling / 評�
 - **Research Mode:** A/B/C比較、静的ベンチ、Inspector、Human Rating
 - **Immersion Mode:** 同一ランタイムを使った没入型チャット（実験的）
 
+Kyalulu はキャラクター・記憶・会話状態の正本を持ち、モデルの実行は別プロセスの **LE（Kyalulu Local Engine）** に任せる。
+LE は [Locally Uncensored](https://github.com/PurpleDoubleD/locally-uncensored) から派生したヘッドレスランタイム（[ELRdn/LE](https://github.com/ELRdn/LE)）で、HTTP/SSE でのみ接続する。
+
 ## リポジトリ構成
 
 ```
 .
 ├─ apps/web/          # TypeScript + React + Vite フロントエンド
+├─ apps/desktop/      # Electron シェル（LE の起動・停止を監督）
 ├─ runtime/python/    # Python FastAPI + Character Runtime
 ├─ packages/
 │  ├─ schemas/        # 共通スキーマ (Zod / Pydantic 共通契約)
@@ -81,13 +85,36 @@ RisuRealmはブラウザーで取得し、CC・Lorebook・ST形式プリセッ�
 ### モデル追加
 
 `models/*.yaml` を追加 → 再起動で自動でDBへ同期 (YAMLが正, SQLiteはキャッシュ)
+LE を使う場合は YAML 不要。LE が配信中のモデルは `/api/models` に `le:<LEのモデルID>` として自動で並ぶ（例：`le:ollama/qwen3.5:9b`）。
+
+### LE（ローカル実行エンジン）と接続する
+
+1. [ELRdn/LE](https://github.com/ELRdn/LE) の `le-daemon` を起動する（既定 `127.0.0.1:8130`）。Ollama・LM Studio を自動で経由し、`LE_LLAMA_SERVER_BIN` を指定すると GGUF を自前でロードできる。
+2. Kyalulu API は `LE_API_TOKEN`、なければ LE が生成した `%LOCALAPPDATA%/kyalulu-le/api-token` を読む。設定例は `.env.example` と `models/example-le.yaml`。
+3. Desktop 版は LE が起動済みならそれを使い、`KYALULU_LE_BINARY` があれば自分で起動して終了時に止める。
+
+LE のトークンはブラウザーに渡さない。Web は `/api/le/*`（状態・モデル・ジョブ・イベントの中継）と `/api/commands` だけを呼ぶ。
+
+チャット欄で `/` を打つとコマンド候補が出る（↑↓で選択、Tab/Enterで補完、Escで閉じる）。結果は入力欄の上に表示し、会話履歴には残さない。
+
+| コマンド | 内容 |
+|---|---|
+| `/help` | コマンド一覧 |
+| `/le status` | LE の版・ロード中モデル・RAM/VRAM・実行中ジョブ |
+| `/le models` | インストール済み GGUF と、バックエンドが配信中のモデル |
+| `/le load <id> [ctx=8192] [ngl=99]` | GGUF をロード（最大120秒待ち、完了でモデル一覧を更新） |
+| `/le unload [id]` | アンロード |
+| `/le download <url> [filename] [sha256=...]` | GGUF をダウンロード（SHA-256・GGUF形式を検証してから配置） |
+| `/le delete <id>` | インストール済みモデルを削除 |
+| `/le jobs` / `/le cancel <job_id>` | ジョブの一覧・キャンセル（IDは先頭数文字で可） |
 
 ## 技術スタック
 
 - Frontend: TypeScript + React + Vite
 - Backend: Python + FastAPI + Pydantic
 - Storage: SQLite
-- Providers: Ollama / LM Studio / OpenAI互換 / Responses / Mock
+- Providers: LE / Ollama / LM Studio / OpenAI互換 / Responses / Mock
+- Local engine: [LE](https://github.com/ELRdn/LE)（Rust / axum、別リポジトリ・別プロセス）
 
 ## ロードマップ
 
@@ -101,7 +128,9 @@ RisuRealmはブラウザーで取得し、CC・Lorebook・ST形式プリセッ�
 | 実モデル | Gemma 4 26B A4B / RX7600 Vulkan | 既存キャラと取込SFWキャラを短期確認。取込キャラ表示開始約107秒、長時間評価待ち |
 | 互換・Create（Phase 3先行） | CC / SillyTavern / BYAF / Risu / Character.AI、ライブラリ、Lore、入出力 | 実装・Mock・画面試験合格。外部アプリ検証は未実施 |
 | Hub連携（Phase 3先行） | 内蔵SFW検索、限定公開URL、出典と版の保存 | 実装・公開ソース取得・4画面条件・Gemma Vulkan短期確認に合格 |
-| M8 / 後続 | Desktop / Memory Lab / 3モデル比較 | 未完了。互換の次は実モデル性能・受け入れを優先 |
+| コンシューマーUI | Soft Mystic Portal 刷新、キャラプロフィール、返事の候補・作り直し履歴 | 実装済み |
+| LE-0 / LE-1 | 別プロセスの実行エンジン、モデル配信・ダウンロード・ロード、ジョブとイベント、Kyalulu 統合と `/le` コマンド | 実装・実機確認済み。直接接続との性能比較は未実施 |
+| M8 / 後続 | Desktop / Memory Lab / 3モデル比較 | Desktop は LE 監督まで。Memory Lab・3モデル比較は未着手 |
 
 ### Gemma 4をRX7600で使用
 
@@ -136,4 +165,9 @@ pnpm --filter web build
 
 ## ライセンス
 
-未定 (TBD)
+[GNU Affero General Public License v3.0 only](LICENSE)（`AGPL-3.0-only`）。
+
+- ネットワーク越しに改変版を提供する場合も、利用者へソースコードを公開する義務がある。
+- LE は Locally Uncensored（AGPL-3.0-only）の派生物で、同じく AGPL-3.0-only。帰属と取り込み範囲は LE リポジトリの `UPSTREAM.md` に記録している。
+- モデルの重み・LoRA・外部Hubから取り込んだキャラクターカードは、それぞれの配布元のライセンスに従う。Kyalulu のライセンスはそれらに及ばない。
+- 「Kyalulu」の名称、マスコット、ロゴ・アイコン（`apps/web/public/`、`apps/desktop/resources/`、`reference/` の画像）はコードのライセンス対象外で、再配布・改変版での使用には許諾が必要。
