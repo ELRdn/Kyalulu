@@ -4,6 +4,7 @@ provider:
   type: le
   # LE の安定ID: <backend>/<backend model id>。GET /v1/models で確認する
   model: ollama/qwen3.5:9b
+  structured_output: true
 context_length: 8192
 recommended_generation:
   temperature: 0.8

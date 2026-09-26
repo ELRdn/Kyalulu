@@ -27,14 +27,20 @@ async def list_characters(include_nsfw: bool = False):
 @router.get("/personas")
 async def list_personas():
     try:
-        return {"personas": list_available(PERSONA_DIR)}
+        from python.storage import creator
+        from python.storage.db import init_db
+        await init_db()
+        return {"personas": list_available(PERSONA_DIR) + creator.list_latest("persona")}
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 @router.get("/worlds")
 async def list_worlds():
     try:
-        return {"worlds": list_available(WORLD_DIR)}
+        from python.storage import creator
+        from python.storage.db import init_db
+        await init_db()
+        return {"worlds": list_available(WORLD_DIR) + creator.list_latest("world")}
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 

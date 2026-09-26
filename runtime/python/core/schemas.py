@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 from typing import Literal
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
+from .memory import MAX_PROPOSALS, MemoryProposal
 
 RelationshipLevel = Literal["stranger", "acquaintance", "friend", "intimate", "partner"]
 Difficulty = Literal["easy", "medium", "hard"]
@@ -64,6 +65,11 @@ class GenerationOutput(BaseModel):
     state_update: StateUpdate
 
 
+class GenerationOutputWithMemory(GenerationOutput):
+    """Output contract when Memory Lab is enabled: the model may propose memories."""
+    memory_proposals: list[MemoryProposal] = Field(default_factory=list, max_length=MAX_PROPOSALS)
+
+
 # Server-owned identity/version fields are never supplied by the model.
 class RuntimeState(BaseModel):
     session_id: str = "default"
@@ -112,6 +118,11 @@ class ScenarioTurn(BaseModel):
     turn: int = Field(ge=1, description="1-indexed")
     type: ScenarioEventType = "normal"
     user: str = Field(description="ユーザー発話")
+    # Memory Lab probes: start a new conversation before this turn (history and state reset,
+    # memories kept), and keywords a correct recall contains / a hallucinated one would contain.
+    new_session: bool = False
+    expect_recall: list[str] = Field(default_factory=list)
+    forbid_recall: list[str] = Field(default_factory=list)
 
 class ScenarioCard(BaseModel):
     id: str
@@ -124,6 +135,21 @@ class ScenarioCard(BaseModel):
     turns: list[ScenarioTurn] = Field(min_length=1)
     nsfw: bool = False
     nsfw_level: Literal["innuendo", "explicit"] | None = None
+
+    @model_validator(mode="after")
+    def unique_turns(self):
+        numbers = [turn.turn for turn in self.turns]
+        if len(numbers) != len(set(numbers)):
+            raise ValueError("scenario turn numbers must be unique")
+        return self
+
+
+class MemoryOptions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    top_k: int = Field(default=5, ge=1, le=20)
+    budget_tokens: int = Field(default=300, ge=20, le=4000)
+    min_score: float = Field(default=0.12, ge=0, le=1)
+    fill_recent: bool = True
 
 # Experiment (M4/M6)
 class ExperimentMeta(BaseModel):
@@ -157,6 +183,9 @@ class ExperimentMeta(BaseModel):
     scenario_snapshot: dict = Field(default_factory=dict)
     extra_system_prompt: str | None = None
     official: bool = False
+    memory_enabled: bool = False
+    memory_options: dict = Field(default_factory=dict)
+    history_turn_limit: int | None = None
 
 
 class GenerationSettings(BaseModel):
@@ -189,3 +218,4 @@ class GenerationRecord(BaseModel):
     raw_prompt: str
     error: str | None
     mode: Literal['immersion', 'research']
+    memory: dict | None = None

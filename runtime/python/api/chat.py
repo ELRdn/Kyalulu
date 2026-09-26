@@ -15,7 +15,7 @@ from python.storage.db import init_db
 import aiosqlite
 from python.storage.db import DB_PATH
 
-from python.storage import generations
+from python.storage import generations, memories
 from python.core.generation import generate_events
 from python.core.prompt_compiler import compile_prompt
 from python.core.portable_schema import LibraryBinding
@@ -78,6 +78,10 @@ async def _save_settings(
     char_id = character_id if _has_char else cur_settings.character_id
     per_id = persona_id if _has_persona else cur_settings.persona_id
     w_id = world_id if _has_world else cur_settings.world_id
+    from python.core.prompt_compiler import _load_yaml, PERSONA_DIR, WORLD_DIR
+    for directory, ref in ((PERSONA_DIR, per_id), (WORLD_DIR, w_id)):
+        if ref and ref.startswith("created_"):
+            _load_yaml(directory, ref)  # validate the pinned revision before writing settings
     intro_val = intro if _has_intro else cur_settings.intro
     from python.storage.library import get_item
     binding = library_binding.model_dump() if library_binding else {} if _has_binding else cur_settings.library_binding.model_dump() if cur_settings.library_binding else {}
@@ -317,12 +321,21 @@ async def run_chat(req, prepared):
         state = await generations.load_state(req.session_id, settings.model_dump())
         if req.regenerate_message_id:
             state = await generations.state_before(req.session_id, req.regenerate_message_id, settings.model_dump())
+        memory_ctx = scope = None
+        if await memories.session_enabled(req.session_id):
+            scope = memories.chat_scope(settings.character_id, settings.persona_id, req.session_id)
+            recent = [m.content for m in req.messages if m.role in ("user", "assistant")][-2:]
+            memory_ctx = await memories.prepare(scope, "\n".join(recent))
         runtime_source = generate_events(provider, model=cfg["provider"]["model"],
                 messages=[m.model_dump() for m in req.messages], compiled=compiled, state=state,
-                requested=requested, generation_id=req.generation_id, journal=journal)
+                requested=requested, generation_id=req.generation_id, journal=journal, memory=memory_ctx)
         async for event in runtime_source:
             if event["type"] == "result":
                 event["result"]["replace_message_id"] = req.regenerate_message_id
+                if memory_ctx is not None:
+                    conversation = "\n".join(m.content for m in req.messages) + "\n" + event["result"].get("reply", "")
+                    await memories.commit(scope, event["result"], session_id=req.session_id,
+                                          turn=state.turn + 1, evidence_text=conversation)
                 await generations.finish(req.generation_id, event["result"], req.messages[-1].model_dump(), req.model_id)
                 finished = True
             yield event
@@ -578,7 +591,10 @@ async def chat_debug(session_id: str = "default"):
         return {"session_id": session_id, "settings": s.model_dump(),
             "compiled": last.get("compiled", compiled.model_dump()) if last else compiled.model_dump(),
             "history_count": history_count, "approx_turn": state.turn,
-            "relationship": state.relationship, "state": state.model_dump(), "generation": last}
+            "relationship": state.relationship, "state": state.model_dump(), "generation": last,
+            "memory": (last or {}).get("memory"),
+            "memory_session": {"enabled": await memories.session_enabled(session_id),
+                               "scope": memories.chat_scope(s.character_id, s.persona_id, session_id)}}
     except generations.Conflict as e:
         return JSONResponse(status_code=409, content={"error": str(e)})
     except Exception as e:

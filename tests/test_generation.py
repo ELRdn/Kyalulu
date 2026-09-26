@@ -92,3 +92,15 @@ async def test_cancel_propagates():
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
+
+
+def test_error_label_carries_provider_code_and_model():
+    import httpx
+    from python.core.generation import _error_label
+    req = httpx.Request("POST", "http://le/v1/chat/completions")
+    res = httpx.Response(409, json={"error": {"code": "model_not_loaded", "message": "x"}}, request=req)
+    exc = httpx.HTTPStatusError("409", request=req, response=res)
+    assert _error_label(exc, "le/tiny") == "HTTPStatusError: model_not_loaded [le/tiny]"
+    plain = httpx.HTTPStatusError("500", request=req, response=httpx.Response(500, text="boom", request=req))
+    assert _error_label(plain, "le/tiny") == "HTTPStatusError"
+    assert _error_label(ValueError("x"), "m") == "ValueError"

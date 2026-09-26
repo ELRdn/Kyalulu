@@ -16,6 +16,7 @@ class RunRequest(BaseModel):
     seed: int | None = None
     extra_system_prompt: str | None = None
     allow_nsfw: bool = False
+    memory: bool = False
 
 @router.post("/experiments/run")
 async def run_experiments(req: RunRequest):
@@ -36,6 +37,7 @@ async def run_experiments(req: RunRequest):
             seed=req.seed,
             temperature=req.temperature,
             extra_system_prompt=req.extra_system_prompt,
+            memory=req.memory,
         )
         out_dir = save_experiment(meta, turns, raw_prompt)
         results.append({"experiment_id": meta.experiment_id, "path": str(out_dir), "meta": meta.model_dump()})
@@ -67,7 +69,8 @@ async def list_scenarios(include_nsfw: bool = False):
             out.append({"official": not data["nsfw"] and OFFICIAL_SCENARIOS.get(data.get("id")) == data.get("character"), "id": data.get("id"), "version": data.get("version"), "character": data.get("character"), "difficulty": data.get("difficulty"), "turns": len(data.get("turns", [])), "nsfw": bool(data.get("nsfw")), "nsfw_level": data.get("nsfw_level"), "path": str(f)})
         except Exception as e:
             out.append({"path": str(f), "error": str(e)})
-    return {"scenarios": out}
+    from python.core.benchmark import scenario_catalog
+    return {"scenarios": out + scenario_catalog()}
 
 # 追加: 詳細 + ratings
 import json
@@ -290,7 +293,8 @@ async def replay_experiment(experiment_id: str, body: ReplayRequest):
         result, _, _ = await run_single(scenario, meta["model_id"], run,
             seed=meta.get("seed"), temperature=meta.get("generation_config", {}).get("requested", {}).get("temperature"),
             extra_system_prompt=meta.get("extra_system_prompt"), replay_config=meta["model_config_snapshot"],
-            compiled_snapshot=compiled)
+            compiled_snapshot=compiled, memory=bool(meta.get("memory_enabled")),
+            memory_options=meta.get("memory_options"), history_turn_limit=meta.get("history_turn_limit"))
         results.append({"experiment_id": result.experiment_id, "meta": result.model_dump()})
     return {"results": results}
 

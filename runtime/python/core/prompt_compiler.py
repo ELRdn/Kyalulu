@@ -10,7 +10,7 @@ import yaml
 from typing import Any
 from .schemas import CompiledPrompt
 
-PROMPT_VERSION = "prompt:character-runtime@0.1.3"
+PROMPT_VERSION = "prompt:character-runtime@0.1.4"
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 CHAR_DIR = ROOT / "characters"
@@ -22,6 +22,12 @@ SKILL_SFW_PATH = ROOT / "prompts" / "Zeta-style-skill_SFW.md"
 SKILL_NSFW_PATH = ROOT / "prompts" / "Zeta-style-skill_NSFW.md"
 
 def _load_yaml(dir_path: pathlib.Path, id_: str) -> dict[str, Any] | None:
+    if id_ and id_.startswith("created_") and dir_path in (PERSONA_DIR, WORLD_DIR):
+        from python.storage import creator
+        item = creator.get(id_, "persona" if dir_path == PERSONA_DIR else "world")
+        if not item:
+            raise ValueError("Persona/World の保存版が見つかりません")
+        return item
     if dir_path == CHAR_DIR and id_ and id_.startswith('lib_'):
         from python.storage.library import get_item, character_info
         item = get_item(id_)
@@ -29,6 +35,8 @@ def _load_yaml(dir_path: pathlib.Path, id_: str) -> dict[str, Any] | None:
     if not id_ or not dir_path.exists():
         return None
     p = dir_path / f"{id_}.yaml"
+    if p.resolve().parent != dir_path.resolve():
+        raise ValueError("invalid catalog id")
     if not p.exists():
         # idがファイル名と異なる場合も探索
         for f in dir_path.glob("*.yaml"):
@@ -64,7 +72,7 @@ def _resolve_placeholder(key: str, char: dict | None, persona: dict | None, worl
             return f"CHARA{num}"
     # エイリアス
     if lk in ("char", "chara", "char.display_name", "chara.display_name"):
-        return (char or {}).get("display_name", "") or (char or {}).get("id", "") or ""
+        return (char or {}).get("display_name", "") or (char or {}).get("id", "") or "会話相手"
     if lk in ("user",):
         # personaの表示名、なければ USER
         return (persona or {}).get("display_name", "") or "USER"

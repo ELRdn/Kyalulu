@@ -1,6 +1,5 @@
 """Local Hub gateway; browser-only providers are never proxied."""
 import asyncio
-import os
 from urllib.parse import urlsplit
 from fastapi import APIRouter, Request, Query
 from fastapi.routing import APIRoute
@@ -10,14 +9,14 @@ from python.core.hub_schema import HubError, UrlImport, HubResults, HubItem, Rem
 from python.core.portable_formats import parse_import
 from python.storage import library
 from python.storage.db import init_db
+from python.api.origins import trusted_origins
 
 service = Hubs()
 semaphore = asyncio.Semaphore(2)
 
 
 def trusted_origin(request: Request):
-    origins = {f'http://{h}:{p}' for h in ('127.0.0.1', 'localhost') for p in (5173, 5174)}
-    origins.update(filter(None, os.environ.get('KYALULU_TRUSTED_ORIGINS', '').split(',')))
+    origins = trusted_origins()
     origin = request.headers.get('origin')
     if origin is not None and origin not in origins:
         raise HubError('untrusted_origin', 'この画面からのHubアクセスは許可されていません。', 403)
