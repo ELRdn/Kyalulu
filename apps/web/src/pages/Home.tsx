@@ -10,6 +10,8 @@ import Icon from "../components/ui/Icon";
 import { collectMoods } from "../lib/moodTaxonomy";
 import { cleanPreview, formatRelative } from "../lib/text";
 import { useDisplayName } from "../lib/profile";
+import { useAdultContent } from "../lib/adult";
+import { useDocumentTitle } from "../lib/title";
 import "./pages.css";
 
 function greeting() {
@@ -27,21 +29,27 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const displayName = useDisplayName();
+  const [adult] = useAdultContent();
+  useDocumentTitle(null);
 
   useEffect(() => {
-    Promise.all([fetchSessions().catch(() => []), fetchWorlds().catch(() => []), fetchCharacters().catch(() => [])])
+    Promise.all([fetchSessions().catch(() => []), fetchWorlds().catch(() => []), fetchCharacters(adult).catch(() => [])])
       .then(([s, w, c]) => {
         setSessions(s);
         setWorlds(w);
         setCharacters(c);
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [adult]);
 
   const recentSessions = sessions.filter((s) => s.count > 0).slice(0, 4);
   const moods = collectMoods(characters.map((c) => c.tags ?? []));
   const worldName = (id?: string | null) => worlds.find((w) => w.id === id)?.display_name;
   const latest = recentSessions[0];
+  // 公式キャラを先頭に、ホームでは2行ぶんだけ見せる（全件はディスカバーへ）
+  const talks = new Map<string, number>();
+  for (const s of sessions) if (s.character_id) talks.set(s.character_id, (talks.get(s.character_id) ?? 0) + s.count);
+  const featured = [...characters].sort((a, b) => Number(!!b.official) - Number(!!a.official)).slice(0, 10);
 
   return (
     <div className="k-page k-page--home">
@@ -69,7 +77,7 @@ export default function Home() {
             </Button>
             {latest && (
               <Button variant="secondary" size="lg" className="k-hero__resume" onClick={() => navigate(`/chats/${encodeURIComponent(latest.session_id)}`)}>
-                {sessionTitle(latest)}とのつづき <Icon name="arrow" size={16} />
+                {latest.character_name ? `${latest.character_name}とのつづき` : "会話のつづき"} <Icon name="arrow" size={16} />
               </Button>
             )}
           </div>
@@ -161,7 +169,7 @@ export default function Home() {
       <section className="k-section">
         <div className="k-section__head">
           <h2 className="k-section__title">
-            <span className="k-section__mark">✦</span> 人気キャラクター
+            <span className="k-section__mark">✦</span> おすすめのキャラクター
           </h2>
           <Link to="/discover" className="k-section__more">
             すべて見る <Icon name="chevron" size={13} />
@@ -186,8 +194,8 @@ export default function Home() {
           />
         ) : (
           <div className="k-grid k-grid--characters">
-            {characters.map((c) => (
-              <CharacterCard key={c.id} id={c.id} displayName={c.display_name} hook={c.description} creator={c.official ? "Kyalulu Official" : "マイライブラリ"} tags={c.tags ?? []} portraitUrl={c.portrait_url} />
+            {featured.map((c) => (
+              <CharacterCard key={c.id} id={c.id} displayName={c.display_name} hook={c.description} creator={c.official ? "Kyalulu Official" : "マイライブラリ"} tags={c.tags ?? []} portraitUrl={c.portrait_url} talks={talks.get(c.id)} />
             ))}
           </div>
         )}

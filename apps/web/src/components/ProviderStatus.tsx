@@ -59,7 +59,7 @@ export default function ProviderStatus() {
             </div>
           ))}
           <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 4 }}>
-            `{"{"}` .env で `OLLAMA_URL` / `LM_STUDIO_URL` / `OPENAI_COMPATIBLE_URL` を設定
+            接続先は .env の <code>OLLAMA_URL</code> / <code>LM_STUDIO_URL</code> / <code>OPENAI_COMPATIBLE_URL</code> で設定します
           </div>
         </div>
       )}

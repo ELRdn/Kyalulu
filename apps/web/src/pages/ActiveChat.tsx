@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
-  fetchModels,
   fetchHistory,
   fetchSessions,
   clearHistory,
@@ -19,7 +18,6 @@ import {
   deleteHistoryMessage,
   injectIntro,
   fetchChatDebug,
-  type ModelInfo,
   type ChatMessage,
   type SessionInfo,
   type SessionSettings,
@@ -47,7 +45,12 @@ import { Textarea } from "../components/ui/Input";
 import { useResearcherMode } from "../lib/mode";
 import { useContextPanelPref } from "../lib/contextPanel";
 import { usePinnedSessions, togglePin } from "../lib/pins";
-import { newSessionId } from "../lib/session";
+import { newSessionId, startNewSession } from "../lib/session";
+import { useChatModel } from "../lib/models";
+import { useAdultContent } from "../lib/adult";
+import { friendlyError } from "../lib/errors";
+import { useDocumentTitle } from "../lib/title";
+import { useConfirm } from "../components/ui/Dialog";
 import { cleanPreview } from "../lib/text";
 import { useMediaQuery } from "../lib/useMediaQuery";
 import { NARRATION_STYLES, extractNarrationStyle, applyNarrationStyle } from "../lib/narrationStyle";
@@ -105,8 +108,9 @@ export default function ActiveChat() {
   const ctxPanel = useContextPanelPref();
   const pinned = usePinnedSessions();
 
-  const [models, setModels] = useState<ModelInfo[]>([]);
-  const [modelId, setModelId] = useState(() => localStorage.getItem("my-zeta-model") || "");
+  const { models, modelId, setModelId, reload: reloadModels, loadFailed: modelsFailed } = useChatModel();
+  const [adult] = useAdultContent();
+  const [confirmDialog, confirm] = useConfirm();
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [messages, setMessages] = useState<(ChatMessage & { id?: number })[]>([]);
   const [input, setInput] = useState("");
@@ -133,7 +137,7 @@ export default function ActiveChat() {
   const [presets, setPresets] = useState<PromptPreset[]>([]);
   const [presetName, setPresetName] = useState("");
   const [selectedPresetId, setSelectedPresetId] = useState("");
-  const [showNsfw, setShowNsfw] = useState(false);
+  const [showNsfw, setShowNsfw] = useState(adult);
   const [debugOpen, setDebugOpen] = useState(false);
   const [debugData, setDebugData] = useState<DebugData | null>(null);
   const [debugLoading, setDebugLoading] = useState(false);
@@ -168,15 +172,7 @@ export default function ActiveChat() {
     return () => { active = false; };
   }, [characterId, libraryBinding?.character?.revision, sessionId]);
   const currentNarrationStyle = extractNarrationStyle(systemPrompt);
-
-  const reloadModels = () => {
-    fetchModels()
-      .then((ms) => {
-        setModels(ms);
-        if (ms.length > 0 && !modelId) setModelId(ms[0].id);
-      })
-      .catch(() => setError("モデル一覧の取得に失敗"));
-  };
+  useDocumentTitle(settingsReady ? headerName : null);
 
   const loadSessions = async () => {
     try {
@@ -238,7 +234,7 @@ export default function ActiveChat() {
 
   const handleDeletePreset = async (pid: string) => {
     const p = presets.find((x) => x.id === pid);
-    if (!p || !confirm(`プリセット「${p.name}」を削除しますか？`)) return;
+    if (!p || !(await confirm({ title: `プリセット「${p.name}」を削除しますか？`, confirmLabel: "削除する", danger: true }))) return;
     try {
       await deletePreset(pid);
       await loadPresets();
@@ -321,7 +317,7 @@ export default function ActiveChat() {
   };
   const handleDelete = async (idx: number) => {
     const msg = messages[idx];
-    if (!confirm(`このメッセージを削除しますか？\n\n「${cleanPreview(msg.content, 40)}」`)) return;
+    if (!(await confirm({ title: "このメッセージを削除しますか？", description: <div className="k-confirm__quote">{cleanPreview(msg.content, 80)}</div>, confirmLabel: "削除する", danger: true }))) return;
     if (msg.id) {
       try {
         await deleteHistoryMessage(msg.id);
@@ -410,8 +406,9 @@ export default function ActiveChat() {
     void loadHistory(sessionId);
   };
 
+  useEffect(() => setShowNsfw(adult), [adult]);
+
   useEffect(() => {
-    reloadModels();
     loadSessions();
     loadPresets();
     loadCatalog();
@@ -441,10 +438,6 @@ export default function ActiveChat() {
     loadSettings(sessionId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
-
-  useEffect(() => {
-    if (modelId) localStorage.setItem("my-zeta-model", modelId);
-  }, [modelId]);
 
   // 自動保存：設定変更から800ms後にDBへ永続化（セッション世代で古い保存を無効化）
   useEffect(() => {
@@ -526,10 +519,27 @@ export default function ActiveChat() {
   };
 
   const handleClearSession = async () => {
-    if (!confirm(`${headerName}との会話を削除しますか？この操作は取り消せません。`)) return;
-    await clearHistory(sessionId);
-    setMessages([]);
-    loadSessions();
+    if (!(await confirm({ title: `${headerName}との会話を削除しますか？`, description: "メッセージはすべて消え、元に戻せません。", confirmLabel: "削除する", danger: true }))) return;
+    try {
+      await clearHistory(sessionId);
+    } catch (e) {
+      setError(String(e));
+      return;
+    }
+    ctxPanel.setOpen(false);
+    navigate("/chats");
+  };
+
+  // 同じキャラクター（・ワールド）で、はじまりのシーンから新しく話す
+  const handleRestartWithCharacter = async () => {
+    if (!characterId) return handleNewSession();
+    try {
+      const id = await startNewSession({ characterId, worldId, intro, temperature });
+      ctxPanel.setOpen(false);
+      navigate(`/chats/${encodeURIComponent(id)}`);
+    } catch (e) {
+      setError(String(e));
+    }
   };
 
   const send = async (regenerateId?: number) => {
@@ -585,6 +595,7 @@ export default function ActiveChat() {
       });
   };
 
+  const friendly = error ? friendlyError(error) : null;
   const knownSessions = sessions.filter((s) => s.count > 0 || s.session_id === "default" || s.session_id === sessionId);
   const railNeedle = railQuery.trim().toLowerCase();
   const railSessions = railNeedle ? knownSessions.filter((s) => `${sessionTitle(s)} ${cleanPreview(s.last_preview, 300)}`.toLowerCase().includes(railNeedle)) : knownSessions;
@@ -610,7 +621,7 @@ export default function ActiveChat() {
       ctxPanel={ctxPanel}
       docked={panelDocked}
       onClose={() => ctxPanel.setOpen(false)}
-      onNewSession={handleNewSession}
+      onNewSession={handleRestartWithCharacter}
       onClearSession={handleClearSession}
       onInjectIntro={handleInjectIntro}
     />
@@ -635,6 +646,7 @@ export default function ActiveChat() {
 
   return (
     <div className="k-chat-layout">
+      {confirmDialog}
       {/* 左: セッションレール */}
       <aside className="k-chat-rail" aria-label="会話リスト">
         <div className="k-chat-rail__head">
@@ -724,7 +736,7 @@ export default function ActiveChat() {
               const showMeta = role === "character" && messages[i - 1]?.role !== "assistant";
               if (isStreaming && !m.content) return null;
               return (
-                <div key={m.id ?? i} className={`k-msg k-msg--${role} ${isEditing ? "is-editing" : ""}`}>
+                <div key={m.id ?? i} className={`k-msg k-msg--${role} ${isEditing ? "is-editing" : ""} ${i === messages.length - 1 ? "is-latest" : ""}`}>
                   {role === "character" ? (
                     <span className="k-msg__avatar">{showMeta && <Avatar name={headerName} seed={characterId ?? sessionId} size="md" src={portrait} mascot={!hasCharacter} />}</span>
                   ) : null}
@@ -787,9 +799,15 @@ export default function ActiveChat() {
           </div>
         </div>
 
-        {error && (
+        {friendly && (
           <div className="k-chat-error" role="alert">
-            <span>{error}</span>
+            <Icon name="info" size={15} />
+            <span className="k-chat-error__text">{friendly.message}</span>
+            {friendly.action && (
+              <Link to={friendly.action.to} className="k-chat-error__action">
+                {friendly.action.label}
+              </Link>
+            )}
             <button type="button" onClick={() => setError(null)} aria-label="エラーを閉じる">
               <Icon name="close" size={14} />
             </button>
@@ -804,7 +822,7 @@ export default function ActiveChat() {
             onStop={handleStop}
             streaming={streaming}
             disabled={!modelId || !settingsReady}
-            disabledText={!modelId ? "モデルが見つかりません。スタジオで接続を確認してね" : "会話を準備中…"}
+            disabledText={!modelId ? (modelsFailed ? "サーバーに接続できません。アプリの起動状態を確認してね" : "会話エンジンを準備中…") : "会話を準備中…"}
             placeholder={hasCharacter ? `${headerName}への言葉を入力してね…` : "きみの言葉を入力してね…"}
           />
         </div>

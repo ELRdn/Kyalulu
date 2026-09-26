@@ -182,7 +182,9 @@
 .k-section__more:hover { background: var(--bg-surface-soft); }
 
 /* --- Resume cards --- */
-.k-resume-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--space-4); }
+.k-resume-grid { display: grid; grid-auto-flow: column; grid-auto-columns: max(200px, calc((100% - 3 * var(--space-4)) / 4)); gap: var(--space-4); overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; padding: 4px 2px 8px; margin: -4px -2px -8px; }
+.k-resume-grid::-webkit-scrollbar { display: none; }
+.k-resume-grid > * { scroll-snap-align: start; }
 .k-resume-card {
   display: grid;
   gap: var(--space-3);
@@ -331,3 +333,56 @@
 .k-hub-more summary:hover { color: var(--accent-primary); }
 .k-hub-more[open] summary { margin-bottom: var(--space-3); }
 .k-studio-kicker { font-size: 11px; font-weight: 800; letter-spacing: 0.06em; color: var(--accent-primary); margin-bottom: 4px; }
+
+/* --- Studio: 会話エンジン --- */
+.k-engine-list { display: grid; gap: var(--space-2); }
+.k-engine { display: flex; align-items: center; gap: var(--space-3); width: 100%; padding: 12px 16px; border-radius: 14px; border: 1px solid var(--border-subtle); background: var(--bg-surface); color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; transition: border-color 0.15s var(--ease-kyalulu), background 0.15s var(--ease-kyalulu), box-shadow 0.15s var(--ease-kyalulu); }
+.k-engine:hover:not(:disabled) { border-color: var(--accent-secondary); background: var(--bg-hover); }
+.k-engine.is-active { border-color: var(--accent-primary); box-shadow: 0 0 0 3px var(--focus-ring); }
+.k-engine:disabled { cursor: not-allowed; opacity: 0.55; }
+.k-engine:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+.k-engine__dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; background: var(--border-strong); }
+.k-engine__dot.is-ok { background: #3CCB8F; box-shadow: 0 0 0 3px rgba(60, 203, 143, 0.18); }
+.k-engine__dot.is-off { background: var(--danger); }
+.k-engine__dot.is-checking { animation: k-pulse 1.2s ease-in-out infinite; }
+@keyframes k-pulse { 50% { opacity: 0.35; } }
+.k-engine__body { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.k-engine__name { font-size: 14px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.k-engine__meta { font-size: 11.5px; color: var(--text-muted); }
+.k-engine__state { font-size: 11.5px; font-weight: 700; color: var(--text-muted); flex-shrink: 0; display: inline-flex; }
+.k-engine.is-active .k-engine__state { color: var(--accent-primary); }
+.k-engine-empty { font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
+
+.k-setting-anchor { border-radius: 12px; margin: -8px; padding: 8px; transition: background 0.4s var(--ease-kyalulu), box-shadow 0.4s var(--ease-kyalulu); }
+.k-setting-anchor.is-highlight { background: var(--bg-hover); box-shadow: 0 0 0 2px var(--accent-secondary); }
+
+.k-skeleton-line { height: 14px; border-radius: 8px; background: linear-gradient(90deg, var(--bg-surface-soft) 25%, var(--bg-hover) 37%, var(--bg-surface-soft) 63%); background-size: 400% 100%; animation: k-shimmer 1.4s ease infinite; }
+.k-skeleton-line--lg { height: 36px; border-radius: 10px; }
+
+@media (max-width: 767px) {
+  /* 月と星がタイトルに重ならないよう右上の余白へ逃がす */
+  .k-hero__moon { top: 20px; right: 22px; width: 30px; height: 30px; box-shadow: -8px 4px 0 0 rgba(255, 255, 255, 0.95); }
+  [data-theme="dark"] .k-hero__moon { box-shadow: -8px 4px 0 0 #FFF5E6; }
+  .k-hero__star--1 { top: 58px; left: auto; right: 18px; font-size: 12px; }
+  .k-hero__star--2 { display: none; }
+  .k-hero__title { font-size: 28px; }
+
+  /* 横スクロールのカルーセル（モバイルは縦に積むと長くなりすぎる） */
+  .k-resume-grid, .k-mood-row {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    margin: 0 calc(var(--space-4) * -1);
+    padding: 2px var(--space-4) 6px;
+    scroll-padding: 0 var(--space-4);
+  }
+  .k-resume-grid::-webkit-scrollbar, .k-mood-row::-webkit-scrollbar { display: none; }
+  .k-resume-card { flex: 0 0 78%; scroll-snap-align: start; }
+  .k-mood { flex: 0 0 auto; scroll-snap-align: start; padding: 8px 16px 8px 10px; }
+}
+@media (max-width: 767px) {
+  .k-section__title { font-size: 17px; }
+  .k-page-title { font-size: 24px; }
+}

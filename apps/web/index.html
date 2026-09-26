@@ -3,7 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Kyalulu - Character AI Runtime</title>
+    <title>Kyalulu — キャラクターと物語をつむぐ場所</title>
+    <meta name="description" content="Kyaluluは、キャラクターと出会い、つながり、あなただけのAIパートナーと物語を紡ぐプラットフォームです。" />
+    <meta name="theme-color" content="#F6F6FA" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0E0D12" media="(prefers-color-scheme: dark)" />
+    <meta property="og:title" content="Kyalulu" />
+    <meta property="og:description" content="キャラクターと出会い、物語を紡ぐ場所。" />
+    <meta property="og:image" content="/apple-touch-icon.png" />
+    <script>
+      // Apply the saved theme before first paint so dark-mode users never see a light flash.
+      try {
+        var t = localStorage.getItem("my-zeta-theme");
+        if (t !== "light" && t !== "dark") t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    </script>
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" href="/favicon-32.png" sizes="32x32" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />

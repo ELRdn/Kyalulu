@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import HubBrowser from "../components/HubBrowser";
 import HubLinks from "../components/HubLinks";
-import { fetchCharacters, fetchWorlds, type CharacterInfo, type WorldInfo } from "../lib/api";
+import { fetchCharacters, fetchSessions, fetchWorlds, type CharacterInfo, type WorldInfo } from "../lib/api";
 import { Input } from "../components/ui/Input";
 import CharacterCard from "../components/ui/CharacterCard";
 import WorldCard from "../components/ui/WorldCard";
@@ -10,6 +10,8 @@ import EmptyState from "../components/ui/EmptyState";
 import Button from "../components/ui/Button";
 import Icon from "../components/ui/Icon";
 import { collectMoods, matchesMood, moodsOf } from "../lib/moodTaxonomy";
+import { useAdultContent } from "../lib/adult";
+import { useDocumentTitle } from "../lib/title";
 import "./pages.css";
 
 type Source = "taverncard" | "sillytavern";
@@ -18,21 +20,27 @@ export default function Discover() {
   const [params, setParams] = useSearchParams();
   const [characters, setCharacters] = useState<CharacterInfo[]>([]);
   const [worlds, setWorlds] = useState<WorldInfo[]>([]);
+  const [talks, setTalks] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState(params.get("q") ?? "");
   const [hubSource, setHubSource] = useState<Source | null>(null);
 
+  const [adult] = useAdultContent();
+  useDocumentTitle("ディスカバー");
   const activeMood = params.get("mood");
   const activeWorld = params.get("world");
 
   useEffect(() => {
-    Promise.all([fetchCharacters().catch(() => []), fetchWorlds().catch(() => [])])
-      .then(([c, w]) => {
+    Promise.all([fetchCharacters(adult).catch(() => []), fetchWorlds().catch(() => []), fetchSessions().catch(() => [])])
+      .then(([c, w, sessions]) => {
         setCharacters(c);
         setWorlds(w);
+        const counts = new Map<string, number>();
+        for (const s of sessions) if (s.character_id) counts.set(s.character_id, (counts.get(s.character_id) ?? 0) + s.count);
+        setTalks(counts);
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [adult]);
 
   // ヘッダー検索・コマンドパレットから ?q= で来たときに追従する
   useEffect(() => {
@@ -149,7 +157,7 @@ export default function Discover() {
         ) : (
           <div className="k-grid k-grid--characters">
             {filteredCharacters.map((c) => (
-              <CharacterCard key={c.id} id={c.id} displayName={c.display_name} hook={c.description} creator={c.official ? "Kyalulu Official" : "マイライブラリ"} tags={c.tags ?? []} portraitUrl={c.portrait_url} />
+              <CharacterCard key={c.id} id={c.id} displayName={c.display_name} hook={c.description} creator={c.official ? "Kyalulu Official" : "マイライブラリ"} tags={c.tags ?? []} portraitUrl={c.portrait_url} talks={talks.get(c.id)} />
             ))}
           </div>
         )}

@@ -9,6 +9,7 @@ import Icon from "../components/ui/Icon";
 import { usePinnedSessions, togglePin } from "../lib/pins";
 import { newSessionId } from "../lib/session";
 import { cleanPreview } from "../lib/text";
+import { useDocumentTitle } from "../lib/title";
 import "./pages.css";
 
 export default function ChatsLanding() {
@@ -18,6 +19,7 @@ export default function ChatsLanding() {
   const [query, setQuery] = useState("");
   const pinned = usePinnedSessions();
   const navigate = useNavigate();
+  useDocumentTitle("チャット");
 
   useEffect(() => {
     Promise.all([fetchSessions().catch(() => []), fetchWorlds().catch(() => [])])
