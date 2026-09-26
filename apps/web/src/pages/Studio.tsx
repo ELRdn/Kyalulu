@@ -80,7 +80,7 @@ export default function Studio() {
                       {m.quantization ? ` · ${m.quantization}` : ""}
                     </span>
                   </span>
-                  <span className="k-engine__state">{active ? <Icon name="check" size={16} /> : checking ? "確認中…" : available ? "" : "オフライン"}</span>
+                  <span className="k-engine__state">{active ? <Icon name="check" size={16} /> : checking ? "確認中…" : available ? "" : health?.some(h => h.id === m.provider_type && h.status === "ok") ? "モデル未準備" : "オフライン"}</span>
                 </button>
               );
             })}
@@ -99,6 +99,8 @@ export default function Studio() {
       </Card>
 
       <div className="k-advanced-links">
+        <StudioLink to="/create/settings" icon="pen" label="ペルソナ・世界観" desc="人物像と舞台の作成・保存" />
+        <StudioLink to="/research/benchmarks" icon="flask" label="比較実験" desc="記憶の比較・30/50/100ターン" />
         <StudioLink to="/chats" icon="chat" label="チャットで試す" desc="設定を会話で確認" />
         <StudioLink to="/research" icon="flask" label="Research" desc="A/B/C比較・リーダーボード" />
         <StudioLink to="/status" icon="globe" label="Status" desc="プロバイダの稼働状況" />

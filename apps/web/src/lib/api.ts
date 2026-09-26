@@ -18,6 +18,7 @@ export type ProviderHealth = {
   provider: string;
   base_url?: string;
   error?: string;
+  models?: string[];
 };
 
 export async function fetchModels(): Promise<ModelInfo[]> {
@@ -30,6 +31,93 @@ export async function fetchProvidersHealth(): Promise<ProviderHealth[]> {
   const r = await fetch("/api/providers/health");
   const j = await r.json();
   return j.health ?? [];
+}
+
+export type DiagnosticCheck = {
+  id: string;
+  ok: boolean | null;
+  message: string;
+  hint: string | null;
+  detail: Record<string, unknown> | null;
+};
+
+export async function fetchDiagnostics(): Promise<{ ready: boolean; checks: DiagnosticCheck[] }> {
+  const r = await fetch("/api/diagnostics", { cache: "no-store" });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+export type MemoryType = "semantic" | "episodic" | "relationship";
+
+export type MemoryItem = {
+  id: string;
+  scope: string;
+  type: MemoryType;
+  content: string;
+  origin: string;
+  supported: boolean | null;
+  source_session_id: string | null;
+  source_turn: number | null;
+  version: number;
+  status: string;
+  access_count: number;
+  last_accessed: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MemoryCandidate = { id: string; type: MemoryType; content: string; score: number; decision: string;
+  version?: number; origin?: string; source_session_id?: string | null; source_turn?: number | null;
+  created_at?: string | null; updated_at?: string | null };
+
+export type MemoryTrace = {
+  enabled: boolean;
+  scope: string;
+  query: string;
+  candidates: MemoryCandidate[];
+  injected: string[];
+  injected_tokens: number;
+  retrieval_ms: number;
+  stored_count: number;
+  evidenced?: string[];
+  proposals?: { type: MemoryType; content: string }[];
+  decisions?: { type: MemoryType; content: string; action: "store" | "skip"; reason?: string; supported?: boolean; memory_id?: string }[];
+};
+
+async function memoryJson<T>(r: Response): Promise<T> {
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+export async function fetchSessionMemory(sessionId: string): Promise<{ enabled: boolean; scope: string }> {
+  return memoryJson(await fetch(`/api/memory/session/${encodeURIComponent(sessionId)}`, { cache: "no-store" }));
+}
+
+export async function setSessionMemory(sessionId: string, enabled: boolean): Promise<{ enabled: boolean; scope: string }> {
+  return memoryJson(await fetch(`/api/memory/session/${encodeURIComponent(sessionId)}`, {
+    method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled })
+  }));
+}
+
+export async function listMemories(scope: string): Promise<MemoryItem[]> {
+  const j = await memoryJson<{ memories: MemoryItem[] }>(await fetch(`/api/memory?scope=${encodeURIComponent(scope)}`, { cache: "no-store" }));
+  return j.memories;
+}
+
+export async function createMemory(scope: string, type: MemoryType, content: string): Promise<MemoryItem> {
+  return memoryJson(await fetch("/api/memory", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scope, type, content })
+  }));
+}
+
+export async function updateMemory(id: string, patch: { content?: string; type?: MemoryType }): Promise<MemoryItem> {
+  return memoryJson(await fetch(`/api/memory/${encodeURIComponent(id)}`, {
+    method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(patch)
+  }));
+}
+
+export async function deleteMemory(id: string): Promise<MemoryItem> {
+  return memoryJson(await fetch(`/api/memory/${encodeURIComponent(id)}`, { method: "DELETE" }));
 }
 
 export type SlashCommand = { name: string; usage: string; description: string };
@@ -307,11 +395,11 @@ export async function fetchRatings(experiment_id: string): Promise<{ turn: numbe
   const j = await r.json();
   return j.ratings ?? [];
 }
-export async function runExperiments(scenario: string, model_id: string, runs = 1, temperature?: number, allow_nsfw = false): Promise<{ experiment_id: string }[]> {
+export async function runExperiments(scenario: string, model_id: string, runs = 1, temperature?: number, allow_nsfw = false, memory = false): Promise<{ experiment_id: string }[]> {
   const r = await fetch("/api/experiments/run", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ scenario, model_id, runs, temperature, allow_nsfw }),
+    body: JSON.stringify({ scenario, model_id, runs, temperature, allow_nsfw, memory }),
   });
   const j = await r.json();
   if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);

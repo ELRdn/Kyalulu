@@ -1,0 +1,10 @@
+id: qwen3.5-9b-ollama
+display_name: "Qwen3.5 9B (Ollama直結)"
+provider:
+  type: ollama
+  model: qwen3.5:9b
+context_length: 8192
+recommended_generation:
+  temperature: 0.8
+  top_p: 0.9
+notes: "qwen3.5-9b-le（LE経由）と同じモデルを Ollama に直接つなぐ。scripts/compare_le_direct.py の直結側。"

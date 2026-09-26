@@ -61,6 +61,8 @@ class LMStudioProvider(ModelProvider):
         payload = self._build_payload(messages, cfg["applied"])
         async with self._client() as client:
             async with client.stream("POST", f"{self.base_url}/chat/completions", json=payload) as r:
+                if r.status_code >= 400:
+                    await r.aread()  # keep the structured error body for the caller
                 r.raise_for_status()
                 done_marker = False
                 finish_seen = False

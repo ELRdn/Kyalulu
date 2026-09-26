@@ -54,6 +54,16 @@ async def resources(request: Request):
     return await _relay(request, "GET", "resources")
 
 
+@router.get("/engine/devices")
+async def engine_devices(request: Request):
+    return await _relay(request, "GET", "engine/devices")
+
+
+@router.post("/models/plan")
+async def plan(request: Request):
+    return await _relay(request, "POST", "models/plan")
+
+
 @router.get("/models")
 async def models(request: Request):
     return await _relay(request, "GET", "models")

@@ -157,7 +157,7 @@ export default function Create() {
   </div>;
 
   return <div className="k-page k-create">
-    <div className="k-page-head"><div><h1 className="k-page-title">クリエイト</h1><p className="k-page-sub">お気に入りのキャラと、その世界を連れてこよう。</p></div>
+    <div className="k-page-head"><div><h1 className="k-page-title">クリエイト</h1><p className="k-page-sub">お気に入りのキャラと、その世界を連れてこよう。</p><Link to="/create/settings">ペルソナ・世界観を作る</Link></div>
       <Button onClick={() => openEditor('new')}><Icon name="plus" size={16} /> 新しく作る</Button></div>
     {banners}
     <section className="k-section" aria-label="取り込む">

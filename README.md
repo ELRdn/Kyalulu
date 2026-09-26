@@ -2,6 +2,8 @@
 
 > **Status (2026-09-26):** ローカル実行エンジン LE と接続。LE が配信するモデルを `le:<id>` でそのまま会話に使え、チャット欄の `/le` コマンドでモデルのロード・アンロード・ダウンロードを操作できる。コンシューマーUIを刷新（Soft Mystic Portal）し、返事の候補と作り直し履歴を追加。 [ロードマップ](docs/ROADMAP.md) / [互換対応表](docs/COMPATIBILITY.md) / [LE設計](LE_ARCHITECTURE.md)
 
+Memory Lab、30/50/100ターンの比較実験、Persona/World Creator、物語操作、DesktopのPython API監督を追加。Mockの長ターン360ターンとQwen3.5 9Bの短期比較を確認した。3ローカルモデルの正式受け入れ・長期品質・配布版同梱は継続中。 [今回の実装・検証記録](docs/validation/2026-09-26-roadmap-implementation.md)
+
 ## 概要
 
 ローカル保存を中心としたOSSの Character AI ランタイムとベンチマーク基盤。
@@ -18,7 +20,7 @@ LE は [Locally Uncensored](https://github.com/PurpleDoubleD/locally-uncensored)
 ```
 .
 ├─ apps/web/          # TypeScript + React + Vite フロントエンド
-├─ apps/desktop/      # Electron シェル（LE の起動・停止を監督）
+├─ apps/desktop/      # Electron シェル（Python API / LE の起動・停止を監督）
 ├─ runtime/python/    # Python FastAPI + Character Runtime
 ├─ packages/
 │  ├─ schemas/        # 共通スキーマ (Zod / Pydantic 共通契約)
@@ -87,6 +89,41 @@ RisuRealmはブラウザーで取得し、CC・Lorebook・ST形式プリセッ�
 `models/*.yaml` を追加 → 再起動で自動でDBへ同期 (YAMLが正, SQLiteはキャッシュ)
 LE を使う場合は YAML 不要。LE が配信中のモデルは `/api/models` に `le:<LEのモデルID>` として自動で並ぶ（例：`le:ollama/qwen3.5:9b`）。
 
+### 人物像・世界観・記憶を使う
+
+CreateまたはStudioの「ペルソナ・世界観」で設定を作成する。JSON入出力と版履歴に対応し、既存チャットは選択した版を使い続ける。
+チャットの情報パネルで「会話の設定」から人物像と舞台を選び、「物語の進め方」で場面・目標・ペースを指定する。
+
+「覚えていること」の「会話を覚える」をオンにすると、好み・事実／出来事・約束／関係の記憶を保存・検索する。手動追加・訂正・削除も可能。
+同じキャラと人物像の保存版を選んだ会話で記憶を共有し、キャラ未指定の場合はその会話内で使う。設定は初期状態でオフ。
+根拠の薄い自動提案は確認待ちとして残し、訂正するまで会話に使わない。ResearcherモードのMemory Inspectorで由来・候補・注入・推定反映を確認できる。
+
+### 比較実験を実行する
+
+Studio →「比較実験」で最大3モデル、シナリオ、記憶条件、反復数・シードを指定する。
+30/50/100ターンのシナリオに対応し、検索件数・推定トークン枠・可視会話長も保存する。画面を閉じても実行を継続し、中止・途中結果・JSON書き出しに対応する。APIは1プロセスで運用する。
+
+```powershell
+.venv/Scripts/python.exe scripts/run_benchmark.py --models mock-echo --scenarios advanced_mocha_sfw_30 --memory compare
+.venv/Scripts/python.exe scripts/verify_local_model.py --model qwen3.5-9b-ollama --scenario mocha_memory_001 --turns 8 --memory --no-thinking --timeout 600
+```
+
+記憶オン/オフは同じシードを使い、偶数反復では実行順を反転する。Mockと記憶条件を変えた実験は公式比較とは別に扱う。キーワード一致は人手の品質評価の代わりにはならない。
+
+### Desktopを使う
+
+```powershell
+pnpm dev:desktop
+# ビルドした画面で確認
+pnpm build:desktop
+pnpm --filter desktop preview
+```
+
+既に動くKyalulu APIを利用し、未起動ならcheckoutの`.venv`または`uv`でPython APIを起動する。自分で起動したAPI/LEだけを終了時に停止する。
+起動するシェルから`KYALULU_API_BASE`（既定`http://127.0.0.1:8000`）、`KYALULU_REPO_ROOT`、`KYALULU_DATA_DIR`、必要なら`KYALULU_API_COMMAND`を渡せる。
+保存先を指定した場合、実験もその配下へ保存する（`KYALULU_EXPERIMENTS_DIR`で別指定可）。開発版の既定DBはcheckout内、配布用ビルドではElectronのuserData配下。
+Statusの「接続診断」でAPI・保存データ・LE・モデルの準備状況を確認する。Python/LEをインストーラーへ同梱する配布作業は未完了。
+
 ### LE（ローカル実行エンジン）と接続する
 
 1. [ELRdn/LE](https://github.com/ELRdn/LE) の `le-daemon` を起動する（既定 `127.0.0.1:8130`）。Ollama・LM Studio を自動で経由し、`LE_LLAMA_SERVER_BIN` を指定すると GGUF を自前でロードできる。
@@ -130,7 +167,10 @@ LE のトークンはブラウザーに渡さない。Web は `/api/le/*`（状�
 | Hub連携（Phase 3先行） | 内蔵SFW検索、限定公開URL、出典と版の保存 | 実装・公開ソース取得・4画面条件・Gemma Vulkan短期確認に合格 |
 | コンシューマーUI | Soft Mystic Portal 刷新、キャラプロフィール、返事の候補・作り直し履歴 | 実装済み |
 | LE-0 / LE-1 | 別プロセスの実行エンジン、モデル配信・ダウンロード・ロード、ジョブとイベント、Kyalulu 統合と `/le` コマンド | 実装・実機確認済み。直接接続との性能比較は未実施 |
-| M8 / 後続 | Desktop / Memory Lab / 3モデル比較 | Desktop は LE 監督まで。Memory Lab・3モデル比較は未着手 |
+| M8 | DesktopのAPI/LE監督・診断・復元 | 実ElectronでAPI起動/停止・記憶復元・SSE確認。OS再起動と配布版は未検証 |
+| Phase 1 | Memory Lab・Inspector・同条件比較 | 初期実装とQwen短期比較を確認。未保存・虚偽想起など品質課題が残る |
+| Phase 2 | 12個の30/50/100ターンシナリオ・比較UI/CLI | Mock360ターン確認。実モデル長期・3モデル正式比較は未完了 |
+| Phase 3 追加 | Persona/World Creator・物語操作 | 版固定・JSON往復・会話設定と復元を確認 |
 
 ### Gemma 4をRX7600で使用
 
@@ -155,6 +195,9 @@ pnpm --filter web test
 pnpm typecheck
 pnpm --filter @kyalulu/schemas build
 pnpm --filter web build
+node --test scripts/test_desktop_supervision.cjs
+pnpm build:desktop
+node scripts/verify_desktop.cjs
 # 互換・Hub画面と実モデルの専用検証手順は docs/HUB_ACCEPTANCE.md
 ```
 

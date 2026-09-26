@@ -20,7 +20,11 @@ async def providers_health():
     async def check(name):
         try:
             async with asyncio.timeout(4):
-                return {"id": name, **await get_provider(name).health_check()}
+                provider = get_provider(name)
+                result = {"id": name, **await provider.health_check()}
+                if name in ("ollama", "lm_studio", "le") and result.get("status") == "ok":
+                    result["models"] = [m["id"] for m in await provider.list_models()]
+                return result
         except Exception:
             return {"id": name, "provider": name, "status": "offline"}
     return {"health": await asyncio.gather(*(check(name) for name in TYPES))}

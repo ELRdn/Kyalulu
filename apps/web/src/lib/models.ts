@@ -24,7 +24,8 @@ function writeStored(id: string) {
 export function isModelAvailable(model: ModelInfo | undefined, health: ProviderHealth[] | null): boolean {
   if (!model) return false;
   if (!health) return true;
-  return health.some((h) => h.id === model.provider_type && h.status === "ok");
+  return health.some((h) => h.id === model.provider_type && h.status === "ok"
+    && (!h.models || h.models.includes(model.provider_model)));
 }
 
 /**
