@@ -15,6 +15,7 @@ import {
 import MarkdownView from "../components/MarkdownView";
 import "./research.css";
 import { useDocumentTitle } from "../lib/title";
+import { Link } from "react-router-dom";
 
 function Stars({ value, onChange }: { value: number; onChange: (n: number) => void }) {
   return (
@@ -239,6 +240,14 @@ function ExperimentColumn({
                 <span>empty {m.empty_rate}</span>
                 {m.repetition_score !== null && <span>rep {m.repetition_score}</span>}
                 {m.avg_elapsed_ms !== null && <span>{m.avg_elapsed_ms}ms avg</span>}
+                {m.memory && (
+                  <span title={Object.entries(m.memory.outcomes ?? {}).map(([k, v]) => `${k}: ${v}`).join(" / ")}>
+                    {(detail.meta as any).memory_enabled ? "🧠 on" : "memory off"} · recall {m.memory.recalled}/{m.memory.probes}
+                    {m.memory.stored ? ` · stored ${m.memory.stored}` : ""}
+                    {m.memory.unsupported_stored ? ` · 根拠? ${m.memory.unsupported_stored}` : ""}
+                    {m.memory.hallucinated ? ` · halluc ${m.memory.hallucinated}` : ""}
+                  </span>
+                )}
               </>
             )})()}
           </div>
@@ -326,6 +335,7 @@ export default function ResearchPage() {
   const [runScenario, setRunScenario] = useState("");
   const [runModel, setRunModel] = useState("");
   const [runs, setRuns] = useState(3);
+  const [runMemory, setRunMemory] = useState(false);
   const [running, setRunning] = useState(false);
   const [syncTurn, setSyncTurn] = useState<number | null>(null);
   const [syncScroll, setSyncScroll] = useState(false);
@@ -377,7 +387,7 @@ export default function ResearchPage() {
     setRunning(true);
     setRunError(null);
     try {
-      const res = await runExperiments(runScenario, runModel, runs, undefined, showNsfw);
+      const res = await runExperiments(runScenario, runModel, runs, undefined, showNsfw, runMemory);
       // 新しい実験を先頭に追加
       await load();
       if (res.length) setSelected(res.map((r: any) => r.experiment_id).slice(0, 3));
@@ -462,6 +472,7 @@ export default function ResearchPage() {
       {/* ツールバー */}
       <div style={{ padding: 12, borderBottom: "1px solid var(--border)", background: "var(--bg-card)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <div style={{ fontWeight: 700, fontSize: 13 }}>Research — A/B/C</div>
+        <Link to="/research/benchmarks" style={{ fontSize: 12 }}>長ターン・記憶の比較実験</Link>
         <span style={{ fontSize: 11, color: "var(--text-dim)", border: "1px solid var(--border)", padding: "2px 8px", borderRadius: 99 }}>{exps.length} experiments</span>
         <label style={{ fontSize: 11, display: "flex", gap: 4, alignItems: "center", color: showNsfw ? "var(--error-text)" : "var(--text-dim)" }}>
           <input type="checkbox" checked={showNsfw} onChange={(e) => setShowNsfw(e.target.checked)} /> NSFW
@@ -479,6 +490,9 @@ export default function ResearchPage() {
           </select>
           <label style={{ fontSize: 11, display: "flex", gap: 4, alignItems: "center" }}>
             runs <input type="number" min={1} max={3} value={runs} onChange={(e) => setRuns(Math.max(1, Math.min(3, parseInt(e.target.value) || 1)))} style={{ width: 48, padding: "4px 6px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-input)", fontSize: 12 }} />
+          </label>
+          <label style={{ fontSize: 11, display: "flex", gap: 4, alignItems: "center" }} title="実行ごとに独立した記憶領域を使い、提案された記憶を保存・検索・注入する">
+            <input type="checkbox" checked={runMemory} onChange={(e) => setRunMemory(e.target.checked)} /> Memory
           </label>
           <button onClick={handleRun} disabled={running} style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: running ? "var(--border)" : "var(--accent)", color: running ? "var(--text-dim)" : "var(--accent-text)", fontSize: 12, cursor: running ? "not-allowed" : "pointer" }}>
             {running ? "実行中..." : "▶ 実行"}
