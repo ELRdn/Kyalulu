@@ -23,7 +23,6 @@ export type ProviderHealth = {
 export async function fetchModels(): Promise<ModelInfo[]> {
   const r = await fetch(`/api/models?t=${Date.now()}`, { cache: "no-store" });
   const j = await r.json();
-  console.log("[fetchModels] got", j.models?.length, j.models?.map((m: ModelInfo) => m.id));
   return j.models ?? [];
 }
 
@@ -64,7 +63,6 @@ export async function fetchHistory(sessionId?: string): Promise<(ChatMessage & {
   const url = sessionId ? `/api/chat/history?session_id=${encodeURIComponent(sessionId)}&t=${Date.now()}` : `/api/chat/history?t=${Date.now()}`;
   const r = await fetch(url, { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
   const j = await r.json();
-  console.log("[fetchHistory]", sessionId, "got", j.history?.length, j.history?.slice(0, 2));
   if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
   return j.history ?? [];
 }

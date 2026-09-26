@@ -14,6 +14,7 @@ import {
 } from "../lib/api";
 import MarkdownView from "../components/MarkdownView";
 import "./research.css";
+import { useDocumentTitle } from "../lib/title";
 
 function Stars({ value, onChange }: { value: number; onChange: (n: number) => void }) {
   return (
@@ -317,6 +318,7 @@ function ExperimentColumn({
 }
 
 export default function ResearchPage() {
+  useDocumentTitle("Research");
   const [exps, setExps] = useState<ExperimentMeta[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [models, setModels] = useState<{ id: string }[]>([]);
