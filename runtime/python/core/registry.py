@@ -1,5 +1,6 @@
 """Model Registry - YAML(正) + SQLite(キャッシュ) の両方対応"""
 
+import asyncio
 from pathlib import Path
 import yaml
 import json
@@ -26,6 +27,35 @@ def load_yaml_registry() -> list[dict[str, Any]]:
         except Exception as e:
             print(f"[registry] Failed to load {p}: {e}")
     return result
+
+
+LE_PREFIX = "le:"
+
+
+def le_model_entry(le_id: str) -> dict[str, Any]:
+    """Registry entry for a model LE serves, addressed as ``le:<LE model id>``."""
+    return {"id": LE_PREFIX + le_id, "display_name": f"{le_id} (LE)", "provider": {"type": "le", "model": le_id}}
+
+
+def find_model(model_id: str | None) -> dict[str, Any] | None:
+    """models/*.yaml first; ``le:<id>`` falls through to LE, which validates the id itself."""
+    cfg = next((m for m in load_yaml_registry() if m.get("id") == model_id), None)
+    if cfg is None and model_id and model_id.startswith(LE_PREFIX) and len(model_id) > len(LE_PREFIX):
+        cfg = le_model_entry(model_id[len(LE_PREFIX):])
+    return cfg
+
+
+async def list_le_models() -> list[dict[str, Any]]:
+    """Models LE currently serves; empty when LE is not running or not authorised."""
+    from python.providers.le import LEProvider
+    le = LEProvider()
+    if not le.api_key:
+        return []
+    try:
+        async with asyncio.timeout(3):
+            return [le_model_entry(i) for i in await le.served_models()]
+    except Exception:
+        return []
 
 
 async def sync_to_db(models: list[dict[str, Any]]) -> None:

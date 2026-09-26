@@ -8,4 +8,4 @@ context_length: 8192
 recommended_generation:
   temperature: 0.8
   top_p: 0.9
-notes: "LE daemon (le-daemon, 既定 127.0.0.1:8130) 経由で実行。トークンは LE_API_TOKEN か LE が生成した api-token ファイルから読む。"
+notes: "LE daemon (le-daemon, 既定 127.0.0.1:8130) 経由で実行。YAML が無くても LE が配信中のモデルは /api/models に le:<LE model id> として自動で並ぶ。トークンは LE_API_TOKEN か LE が生成した api-token ファイルから読む。"

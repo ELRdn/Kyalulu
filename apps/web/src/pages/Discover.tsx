@@ -16,6 +16,23 @@ import "./pages.css";
 
 type Source = "taverncard" | "sillytavern";
 
+const LS_RECENT = "kyalulu-recent-searches";
+function readRecent(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(LS_RECENT) ?? "[]");
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").slice(0, 8) : [];
+  } catch {
+    return [];
+  }
+}
+function writeRecent(list: string[]) {
+  try {
+    localStorage.setItem(LS_RECENT, JSON.stringify(list));
+  } catch {
+    /* Storage unavailable: recent searches are only a convenience. */
+  }
+}
+
 export default function Discover() {
   const [params, setParams] = useSearchParams();
   const [characters, setCharacters] = useState<CharacterInfo[]>([]);
@@ -24,6 +41,7 @@ export default function Discover() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState(params.get("q") ?? "");
   const [hubSource, setHubSource] = useState<Source | null>(null);
+  const [recent, setRecent] = useState<string[]>(readRecent);
 
   const [adult] = useAdultContent();
   useDocumentTitle("ディスカバー");
@@ -68,6 +86,18 @@ export default function Discover() {
     setParams(next, { replace: true });
   };
 
+  const rememberQuery = () => {
+    const q = query.trim();
+    if (!q) return;
+    const next = [q, ...recent.filter((x) => x !== q)].slice(0, 8);
+    setRecent(next);
+    writeRecent(next);
+  };
+  const clearRecent = () => {
+    setRecent([]);
+    writeRecent([]);
+  };
+
   const clearFilters = () => {
     setQuery("");
     setParams({}, { replace: true });
@@ -87,8 +117,30 @@ export default function Discover() {
       <div className="k-discover-search">
         <div className="k-search-field">
           <Icon name="search" size={18} />
-          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="名前、性格、雰囲気で探す…" aria-label="キャラクターを検索" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onBlur={rememberQuery}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.nativeEvent.isComposing) rememberQuery();
+            }}
+            placeholder="名前、性格、雰囲気で探す…"
+            aria-label="キャラクターを検索"
+          />
         </div>
+        {!query && recent.length > 0 && (
+          <div className="k-recent-search">
+            <span className="k-recent-search__label">最近の検索</span>
+            {recent.map((r) => (
+              <button key={r} type="button" className="k-chip k-chip--sm" onClick={() => setQuery(r)}>
+                <Icon name="search" size={12} /> {r}
+              </button>
+            ))}
+            <button type="button" className="k-recent-search__clear" onClick={clearRecent}>
+              消去
+            </button>
+          </div>
+        )}
         {moods.length > 0 && (
           <div className="k-chip-row" role="group" aria-label="気分で絞り込む">
             <button className={`k-chip ${!activeMood ? "k-chip--active" : ""}`} onClick={() => setParam("mood", null)} aria-pressed={!activeMood}>

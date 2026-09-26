@@ -10,7 +10,7 @@ from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel, Field
 
 from python.providers.factory import get_provider_for_model
-from python.core.registry import load_yaml_registry, list_models_from_db
+from python.core.registry import find_model, list_le_models, load_yaml_registry, list_models_from_db
 from python.storage.db import init_db
 import aiosqlite
 from python.storage.db import DB_PATH
@@ -182,6 +182,8 @@ async def list_models():
         # フォールバック: YAML直接 (DB空の場合)
         if not models:
             models = load_yaml_registry()
+        known = {m.get("id") for m in models}
+        models = [*models, *(m for m in await list_le_models() if m["id"] not in known)]
         # 簡易整形
         out = []
         for m in models:
@@ -272,7 +274,7 @@ async def inject_intro(session_id: str = "default"):
 
 
 async def prepare_generation(req: ChatRequest):
-    cfg = next((m for m in load_yaml_registry() if m.get("id") == req.model_id), None)
+    cfg = find_model(req.model_id)
     if cfg is None:
         raise ValueError("model not found")
     if not req.messages or req.messages[-1].role != "user":
@@ -380,6 +382,76 @@ async def chat_stream(req: ChatRequest, request: Request):
                 await source.aclose()
                 await generations.cancel_pending(req.generation_id)
     return EventSourceResponse(stream(), headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+class SuggestRequest(BaseModel):
+    model_id: str
+    session_id: str = "default"
+    messages: List[ChatMessage]
+    allow_nsfw: bool = False
+
+
+SUGGEST_INSTRUCTION = (
+    "\n\n---\n\n# Reply suggestions\n"
+    "Do not continue as the character. Propose what the USER could send next, "
+    "written from the user's point of view in the conversation's language. "
+    "Give exactly 3 options with different directions (go along / show feelings / move the story). "
+    "Each option is at most 60 characters; actions may be wrapped in *asterisks*. "
+    'Output only a JSON array of 3 strings, e.g. ["...", "...", "..."].'
+)
+
+
+def parse_suggestions(raw: str) -> list[str]:
+    text = raw.strip()
+    start, end = text.find("["), text.rfind("]")
+    items: list = []
+    if start != -1 and end > start:
+        try:
+            items = json.loads(text[start:end + 1])
+        except ValueError:
+            items = []
+    if not isinstance(items, list) or not items:
+        items = [line.strip().lstrip("-・0123456789.)） ").strip('"「」') for line in text.splitlines()]
+    out: list[str] = []
+    for item in items:
+        s = str(item).strip()
+        if s and s not in out and len(s) <= 200:
+            out.append(s)
+    return out[:3]
+
+
+@router.post("/chat/suggest")
+async def suggest_replies(req: SuggestRequest):
+    """Suggest next user replies. Nothing is persisted to chat history."""
+    cfg = find_model(req.model_id)
+    if cfg is None:
+        return JSONResponse(status_code=400, content={"error": "model not found"})
+    settings = await _load_settings(req.session_id)
+    from python.core.prompt_compiler import _load_yaml, CHAR_DIR
+    if not (settings.character_id or '').startswith('lib_') and (_load_yaml(CHAR_DIR, settings.character_id) or {}).get("nsfw") and not req.allow_nsfw:
+        return JSONResponse(status_code=400, content={"error": "NSFW execution requires allow_nsfw"})
+    compiled = compile_prompt(character_id=settings.character_id, persona_id=settings.persona_id,
+        world_id=settings.world_id, extra_system_prompt=settings.system_prompt,
+        library_binding=settings.library_binding.model_dump() if settings.library_binding else None)
+    history = [m.model_dump() for m in req.messages if m.role in {"user", "assistant"}][-12:]
+    snapshot = compiled.sections.get('portable_snapshot')
+    if snapshot:
+        if snapshot.get('document', {}).get('nsfw') and not req.allow_nsfw:
+            return JSONResponse(status_code=400, content={"error": "NSFW execution requires allow_nsfw"})
+        from python.core.portable_prompt import compile_portable
+        compiled = compile_portable(snapshot, history)
+    from python.core.portable_prompt import assemble_messages
+    messages = assemble_messages(compiled, history, SUGGEST_INSTRUCTION)
+    messages.append({"role": "user", "content": "Now output the JSON array of 3 reply suggestions for the user."})
+    provider = get_provider_for_model(cfg)
+    requested = dict(cfg.get("recommended_generation") or {})
+    requested.update({"model": cfg["provider"]["model"], "temperature": 0.9})
+    config = provider.generation_config(requested)
+    try:
+        raw = await provider.generate("", messages=messages, **config["applied"])
+    except Exception as exc:
+        return JSONResponse(status_code=502, content={"error": f"{type(exc).__name__}: {exc}"})
+    return {"suggestions": parse_suggestions(raw)}
 
 
 @router.get("/chat/history")

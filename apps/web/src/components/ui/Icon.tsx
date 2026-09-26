@@ -39,6 +39,7 @@ const PATHS: Record<string, string> = {
   command: "M9 6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3z",
   arrow: "M5 12h14M13 6l6 6-6 6",
   library: "M5 4h4v16H5zM10 4h4v16h-4zM15.5 4.5l3.8 1 -3.6 14.4-3.8-1z",
+  wand: "M4 20 15 9M13 7l4 4M18 3v3M16.5 4.5h3M20 9v2M19 10h2M9 3v2M8 4h2",
 };
 
 export type IconName = keyof typeof PATHS;
