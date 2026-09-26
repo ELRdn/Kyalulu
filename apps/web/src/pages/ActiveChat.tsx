@@ -21,6 +21,7 @@ import {
   fetchSuggestions,
   fetchCommands,
   runCommand,
+  type MemoryTrace,
   type SlashCommand,
   type CommandResult,
   type ChatMessage,
@@ -54,6 +55,9 @@ import { newSessionId, startNewSession } from "../lib/session";
 import { useChatModel } from "../lib/models";
 import { useAdultContent } from "../lib/adult";
 import { friendlyError } from "../lib/errors";
+import MemoryPanel from "../components/MemoryPanel";
+import StoryControls from "../components/StoryControls";
+import MemoryInspector from "../components/MemoryInspector";
 import { useDocumentTitle } from "../lib/title";
 import Dialog, { useConfirm } from "../components/ui/Dialog";
 import { getReplyVersions, recordReplyVersion, selectReplyVersion } from "../lib/replyVersions";
@@ -71,6 +75,7 @@ type DebugData = {
   relationship: string;
   state: Record<string, unknown>;
   generation: GenerationResult | null;
+  memory?: MemoryTrace | null;
 };
 
 function DebugSection({ title, children }: { title: string; children: React.ReactNode }) {
@@ -549,7 +554,7 @@ export default function ActiveChat() {
   const handleRestartWithCharacter = async () => {
     if (!characterId) return handleNewSession();
     try {
-      const id = await startNewSession({ characterId, worldId, intro, temperature });
+      const id = await startNewSession({ characterId, personaId, worldId, intro, temperature });
       ctxPanel.setOpen(false);
       navigate(`/chats/${encodeURIComponent(id)}`);
     } catch (e) {
@@ -717,6 +722,9 @@ export default function ActiveChat() {
       onNewSession={handleRestartWithCharacter}
       onClearSession={handleClearSession}
       onInjectIntro={handleInjectIntro}
+      sessionId={sessionId}
+      memoryRefresh={messages.length * 2 + (streaming ? 1 : 0)}
+      settings={{ personaId, personas, worldId, worlds, systemPrompt, setPersonaId, setWorldId, setSystemPrompt, settingsReady, streaming }}
     />
   );
 
@@ -937,6 +945,17 @@ export default function ActiveChat() {
                 {friendly.action.label}
               </Link>
             )}
+            {friendly.command && (
+              <button
+                type="button"
+                className="k-chat-error__action"
+                disabled={commandRunning}
+                onClick={() => { const input = friendly.command!.input; setError(null); void runSlash(input); }}
+                title={friendly.command.input}
+              >
+                {friendly.command.label}
+              </button>
+            )}
             <button type="button" onClick={() => setError(null)} aria-label="エラーを閉じる">
               <Icon name="close" size={14} />
             </button>
@@ -1146,6 +1165,9 @@ export default function ActiveChat() {
               <DebugSection title="Hubの出典・取得記録">
                 <DebugJson value={(debugData.compiled?.sections?.portable_snapshot as { document?: { source?: { remote?: unknown } } } | undefined)?.document?.source?.remote} />
               </DebugSection>
+              <DebugSection title="🧠 Memory Inspector">
+                <MemoryInspector trace={debugData.memory} />
+              </DebugSection>
               <DebugSection title="🔢 推定トークン内訳">
                 <DebugJson value={debugData.generation?.token_budget ?? { estimated: true, compiler_tokens: debugData.compiled?.token_estimate }} />
               </DebugSection>
@@ -1193,6 +1215,9 @@ function ChatContextPanel({
   onNewSession,
   onClearSession,
   onInjectIntro,
+  sessionId,
+  memoryRefresh,
+  settings,
 }: {
   name: string;
   seed: string;
@@ -1209,7 +1234,15 @@ function ChatContextPanel({
   onNewSession: () => void;
   onClearSession: () => void;
   onInjectIntro: () => void;
+  sessionId: string;
+  memoryRefresh: number;
+  settings: {
+    personaId: string | null; personas: PersonaInfo[]; worldId: string | null; worlds: WorldInfo[];
+    systemPrompt: string; setPersonaId: (value: string | null) => void; setWorldId: (value: string | null) => void;
+    setSystemPrompt: (value: string) => void; settingsReady: boolean; streaming: boolean;
+  };
 }) {
+  const { personaId, personas, worldId, worlds, systemPrompt, setPersonaId, setWorldId, setSystemPrompt, settingsReady, streaming } = settings;
   return (
     <div className="k-context-panel">
       <div className="k-context-hero">
@@ -1247,6 +1280,17 @@ function ChatContextPanel({
           </Button>
         </div>
       )}
+
+      <details className="k-context-section"><summary className="k-context-section__title">会話の設定</summary>
+        <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+          <label>あなたの人物像<select className="k-input" value={personaId ?? ""} disabled={!settingsReady || streaming} onChange={e => setPersonaId(e.target.value || null)}><option value="">指定なし</option>{personaId && !personas.some(p => p.id === personaId) && <option value={personaId}>以前選んだ人物像（保存版）</option>}{personas.map(p => <option key={p.id} value={p.id}>{p.display_name}</option>)}</select></label>
+          <label>舞台<select className="k-input" value={worldId ?? ""} disabled={!settingsReady || streaming} onChange={e => setWorldId(e.target.value || null)}><option value="">指定なし</option>{worldId && !worlds.some(w => w.id === worldId) && <option value={worldId}>以前選んだ舞台（保存版）</option>}{worlds.map(w => <option key={w.id} value={w.id}>{w.display_name}</option>)}</select></label>
+          <Link to="/create/settings">人物像・世界観を作る</Link>
+        </div>
+      </details>
+      <StoryControls key={sessionId} value={systemPrompt} onChange={setSystemPrompt} disabled={!settingsReady || streaming} />
+      <MemoryPanel key={`${sessionId}:${characterId}:${personaId}`} sessionId={sessionId} refreshKey={memoryRefresh}
+        scopeOverride={characterId ? `char:${characterId}|persona:${personaId || 'default'}` : `session:${sessionId}`} />
 
       <div className="k-context-section">
         <div className="k-context-section__title">✦ ナレーションスタイル</div>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import ProviderStatus from "../components/ProviderStatus";
+import Diagnostics from "../components/Diagnostics";
 import Card from "../components/ui/Card";
 import { fetchHealth } from "../lib/api";
 import "./pages.css";
@@ -26,6 +27,8 @@ export default function Status() {
         <div style={{ fontSize: 12, color: "var(--text-muted)" }}>API</div>
         <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginTop: 2 }}>{health}</div>
       </Card>
+
+      <Diagnostics />
 
       <ProviderStatus />
 

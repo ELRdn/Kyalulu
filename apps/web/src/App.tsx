@@ -14,6 +14,8 @@ const Create = lazy(() => import("./pages/Create"));
 const Studio = lazy(() => import("./pages/Studio"));
 const ResearchPage = lazy(() => import("./pages/Research"));
 const Status = lazy(() => import("./pages/Status"));
+const CreatorSettings = lazy(() => import("./pages/CreatorSettings"));
+const BenchmarkLab = lazy(() => import("./pages/BenchmarkLab"));
 
 const deferred = (node: ReactNode) => <Suspense fallback={<div className="k-page" aria-busy="true" />}>{node}</Suspense>;
 
@@ -27,6 +29,8 @@ export default function App() {
         <Route path="/chats/:sessionId" element={<ActiveChat />} />
         <Route path="/characters/:characterId" element={<CharacterEntry />} />
         <Route path="/create" element={deferred(<Create />)} />
+        <Route path="/create/settings" element={deferred(<CreatorSettings />)} />
+        <Route path="/research/benchmarks" element={deferred(<BenchmarkLab />)} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/studio" element={deferred(<Studio />)} />
         <Route path="/research" element={deferred(<ResearchPage />)} />
