@@ -1,12 +1,17 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
-import { fetchSessions, type SessionInfo } from "../lib/api";
+import { Link, useLocation } from "react-router-dom";
+import { fetchCharacters, fetchSessions, type CharacterInfo, type SessionInfo } from "../lib/api";
+import CharacterCard from "../components/ui/CharacterCard";
+import { useSavedCharacters } from "../lib/saved";
 import { Input } from "../components/ui/Input";
-import Button from "../components/ui/Button";
 import Avatar from "../components/ui/Avatar";
 import Card from "../components/ui/Card";
 import Icon, { type IconName } from "../components/ui/Icon";
 import SessionRow from "../components/ui/SessionRow";
+import Switch from "../components/ui/Switch";
+import { useConfirm } from "../components/ui/Dialog";
+import { useAdultContent } from "../lib/adult";
+import { useDocumentTitle } from "../lib/title";
 import { useDisplayName, setDisplayName } from "../lib/profile";
 import { useTheme } from "../lib/theme";
 import { useResearcherMode } from "../lib/mode";
@@ -20,6 +25,34 @@ export default function Profile() {
   const [researcher, setResearcher] = useResearcherMode();
   const pinned = usePinnedSessions();
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
+  const [adult, setAdult] = useAdultContent();
+  const savedIds = useSavedCharacters();
+  const [characters, setCharacters] = useState<CharacterInfo[]>([]);
+  const [confirmDialog, confirm] = useConfirm();
+  const location = useLocation();
+  useDocumentTitle("プロフィール");
+
+  useEffect(() => {
+    if (location.hash !== "#adult") return;
+    const el = document.getElementById("adult");
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    el?.classList.add("is-highlight");
+    const t = window.setTimeout(() => el?.classList.remove("is-highlight"), 1800);
+    return () => window.clearTimeout(t);
+  }, [location.hash]);
+
+  const toggleAdult = async (next: boolean) => {
+    if (next) {
+      const ok = await confirm({
+        title: "あなたは18歳以上ですか？",
+        description: "成人向けのキャラクターや会話が表示されるようになります。いつでもここからOFFにできます。",
+        confirmLabel: "18歳以上です",
+        cancelLabel: "いいえ",
+      });
+      if (!ok) return;
+    }
+    setAdult(next);
+  };
 
   useEffect(() => {
     setNameDraft(displayName);
@@ -31,6 +64,13 @@ export default function Profile() {
       .catch(() => setSessions([]));
   }, []);
 
+  useEffect(() => {
+    fetchCharacters(adult)
+      .then(setCharacters)
+      .catch(() => setCharacters([]));
+  }, [adult]);
+
+  const savedCharacters = savedIds.map((id) => characters.find((c) => c.id === id)).filter((c): c is CharacterInfo => !!c);
   const pinnedSessions = sessions.filter((s) => pinned.includes(s.session_id));
   const talked = sessions.filter((s) => s.count > 0);
   const messageCount = talked.reduce((n, s) => n + s.count, 0);
@@ -38,6 +78,7 @@ export default function Profile() {
 
   return (
     <div className="k-page" style={{ maxWidth: 780 }}>
+      {confirmDialog}
       <section className="k-profile-card">
         <Avatar name={displayName} size="xl" />
         <div className="k-profile-card__main">
@@ -78,9 +119,27 @@ export default function Profile() {
                 </button>
               </div>
             </Row>
+            <div id="adult" className="k-setting-anchor">
+              <Row label="成人向けコンテンツ" desc="18歳以上の方のみ。成人向けのキャラクターと会話を表示します。">
+                <Switch checked={adult} onChange={(v) => void toggleAdult(v)} label="成人向けコンテンツを表示" />
+              </Row>
+            </div>
           </div>
         </Card>
       </section>
+
+      {savedCharacters.length > 0 && (
+        <section className="k-section">
+          <h2 className="k-section__title">
+            <span className="k-section__mark">✦</span> 保存したキャラクター
+          </h2>
+          <div className="k-grid k-grid--characters">
+            {savedCharacters.map((c) => (
+              <CharacterCard key={c.id} id={c.id} displayName={c.display_name} hook={c.description} creator={c.official ? "Kyalulu Official" : "マイライブラリ"} tags={c.tags ?? []} portraitUrl={c.portrait_url} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {pinnedSessions.length > 0 && (
         <section className="k-section">
@@ -102,12 +161,10 @@ export default function Profile() {
         <Card>
           <div style={{ display: "grid", gap: 16 }}>
             <Row label="Researcherモード" desc="チャット画面にモデル選択・プロンプト確認・デバッグを表示します。">
-              <Button variant={researcher ? "primary" : "secondary"} size="sm" onClick={() => setResearcher(!researcher)} aria-pressed={researcher}>
-                {researcher ? "ON" : "OFF"}
-              </Button>
+              <Switch checked={researcher} onChange={setResearcher} label="Researcherモード" />
             </Row>
             <div className="k-advanced-links">
-              <AdvancedLink to="/studio" icon="sparkle" label="スタジオ" desc="モデル・プリセット" />
+              <AdvancedLink to="/studio" icon="sparkle" label="スタジオ" desc="会話エンジン・詳細設定" />
               <AdvancedLink to="/research" icon="flask" label="Research" desc="A/B/C比較・評価" />
               <AdvancedLink to="/status" icon="globe" label="Status" desc="接続状況" />
             </div>

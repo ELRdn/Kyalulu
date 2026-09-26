@@ -1,6 +1,8 @@
 import { Link } from "react-router-dom";
 import { moodsOf } from "../../lib/moodTaxonomy";
 import { gradientFor } from "./Avatar";
+import Icon from "./Icon";
+import { formatCount } from "../../lib/text";
 import "./ui.css";
 
 export default function CharacterCard({
@@ -10,6 +12,7 @@ export default function CharacterCard({
   creator = "Local",
   tags = [],
   portraitUrl,
+  talks = 0,
 }: {
   id: string;
   displayName: string;
@@ -17,6 +20,8 @@ export default function CharacterCard({
   creator?: string;
   tags?: string[];
   portraitUrl?: string | null;
+  /** このキャラとの累計メッセージ数（0なら表示しない） */
+  talks?: number;
 }) {
   const moods = moodsOf(tags);
   return (
@@ -31,21 +36,18 @@ export default function CharacterCard({
         )}
         <span className="k-char-card__sparkles" aria-hidden="true" />
         {moods[0] && <span className="k-char-card__badge">{moods[0].label}</span>}
+        {talks > 0 && (
+          <span className="k-char-card__count" aria-label={`${talks}メッセージ`}>
+            <Icon name="chat" size={11} /> {formatCount(talks)}
+          </span>
+        )}
         <span className="k-char-card__cta" aria-hidden="true">話してみる ✦</span>
       </div>
       <div className="k-media-card__body">
         <div className="k-media-card__title">{displayName}</div>
         <div className="k-media-card__hook">{hook}</div>
+        {moods.length > 1 && <div className="k-media-card__hashtags">{moods.slice(1, 4).map((m) => `#${m.label}`).join(" ")}</div>}
         <div className="k-media-card__meta">by {creator}</div>
-        {moods.length > 1 && (
-          <div className="k-media-card__tags">
-            {moods.slice(1, 3).map((m) => (
-              <span key={m.tag} className="k-mini-tag">
-                {m.label}
-              </span>
-            ))}
-          </div>
-        )}
       </div>
     </Link>
   );

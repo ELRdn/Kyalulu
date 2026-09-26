@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Outlet, Link, NavLink, useLocation } from "react-router-dom";
 import NavItem from "../components/ui/NavItem";
 import Avatar from "../components/ui/Avatar";
@@ -37,6 +37,7 @@ export default function AppShell() {
   const { theme, toggle } = useTheme();
   const displayName = useDisplayName();
   const location = useLocation();
+  const mainRef = useRef<HTMLElement>(null);
   const dailyWord = DAILY_WORDS[Math.floor(Date.now() / 86_400_000) % DAILY_WORDS.length];
 
   useEffect(() => {
@@ -54,13 +55,19 @@ export default function AppShell() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // 画面遷移のたびに本文のスクロール位置を先頭へ戻す（前ページの位置を引き継がない）
+  useEffect(() => {
+    mainRef.current?.scrollTo(0, 0);
+    setPaletteOpen(false);
+  }, [location.pathname]);
+
   const closePalette = useCallback(() => setPaletteOpen(false), []);
   const inChat = location.pathname.startsWith("/chats/");
   // 会話中は会話リストが左に来るので、メインナビはアイコンだけにして本文の幅を確保する
   const rail = compact || inChat;
 
   return (
-    <div className={`k-shell ${inChat ? "k-shell--chat" : ""}`}>
+    <div className={`k-shell ${inChat ? "k-shell--chat" : ""} ${location.pathname.startsWith("/characters/") ? "k-shell--immersive" : ""}`}>
       <header className="k-shell__header">
         <Link to="/" className="k-shell__logo" aria-label="Kyalulu ホーム">
           <img className="k-shell__logo-mark" src="/apple-touch-icon.png" alt="" aria-hidden="true" />
@@ -116,7 +123,7 @@ export default function AppShell() {
           </div>)}
         </nav>
 
-        <main className="k-shell__main" id="main">
+        <main className="k-shell__main" id="main" ref={mainRef}>
           <Outlet />
         </main>
       </div>
