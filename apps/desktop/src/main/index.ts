@@ -2,8 +2,11 @@ import { app, BrowserWindow, ipcMain, shell } from "electron";
 import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import { leStatus, startLE, stopLE } from "./le";
+import { API_BASE, apiStatus, startAPI, stopAPI } from "./api";
+import { installProtocol } from "./protocol";
 
 let mainWindow: BrowserWindow | null = null;
+let quitting = false;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -15,7 +18,7 @@ function createWindow(): void {
     autoHideMenuBar: true,
     icon: join(__dirname, "../../resources/icon.ico"),
     webPreferences: {
-      preload: join(__dirname, "../preload/index.js"),
+      preload: join(__dirname, "../preload/index.cjs"),
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false
@@ -27,7 +30,7 @@ function createWindow(): void {
   });
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url);
+    if (/^https?:\/\//i.test(details.url)) void shell.openExternal(details.url);
     return { action: "deny" };
   });
 
@@ -35,20 +38,18 @@ function createWindow(): void {
   // dev: http://localhost:5173 (web) をそのまま表示、prod: out/renderer/index.html
   if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
     mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"]);
-  } else if (is.dev) {
-    // フォールバック: web の dev server を直接表示（案A）
-    mainWindow.loadURL("http://localhost:5173");
   } else {
-    mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
+    mainWindow.loadURL("app://kyalulu/index.html");
   }
 
   // Researcher時のみ DevTools を許可（Ctrl+Shift+I はデフォルトで有効）
-  if (is.dev) {
+  if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
     mainWindow.webContents.openDevTools({ mode: "detach" });
   }
 }
 
 app.whenReady().then(async () => {
+  installProtocol(join(__dirname, "../renderer"));
   electronApp.setAppUserModelId("com.kyalulu.app");
 
   app.on("browser-window-created", (_, window) => {
@@ -57,11 +58,10 @@ app.whenReady().then(async () => {
 
   // IPC: 将来の Python sidecar 用に app path などを公開
   ipcMain.handle("get-app-path", () => app.getAppPath());
-  ipcMain.handle("get-api-base", () => process.env["KYALULU_API_BASE"] || "http://127.0.0.1:8000");
+  ipcMain.handle("get-api-base", () => API_BASE);
   ipcMain.handle("check-python-health", async () => {
-    const base = process.env["KYALULU_API_BASE"] || "http://127.0.0.1:8000";
     try {
-      const res = await fetch(`${base}/api/health`);
+      const res = await fetch(`${API_BASE}/api/health`);
       return { ok: res.ok, status: res.status };
     } catch (e) {
       return { ok: false, error: String(e) };
@@ -69,10 +69,19 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle("get-le-status", () => leStatus());
+  ipcMain.handle("get-supervision", async () => ({ api: await apiStatus(), le: await leStatus() }));
 
-  // Startup order: LE first, then the renderer shows the actual local capability state.
+  // Startup order: LE first (the API reads its token), then the API, then the renderer.
   const le = await startLE();
+  if (quitting) return;
   console.log(`[le] ${le}`);
+  // Packaged builds keep data under userData; development keeps the repository's data.db.
+  const api = await startAPI({
+    searchFrom: app.getAppPath(),
+    dataDir: app.isPackaged ? join(app.getPath("userData"), "data") : undefined
+  });
+  if (quitting) return;
+  console.log(`[api] ${api}`);
 
   createWindow();
 
@@ -81,14 +90,19 @@ app.whenReady().then(async () => {
   });
 });
 
-let leStopped = false;
+let stopped = false;
 app.on("before-quit", (event) => {
-  if (leStopped) return;
+  if (stopped) return;
   event.preventDefault();
-  stopLE().finally(() => {
-    leStopped = true;
-    app.quit();
-  });
+  if (quitting) return;
+  quitting = true;
+  // API first so nothing is mid-request to LE when LE goes away.
+  stopAPI()
+    .then(() => stopLE())
+    .finally(() => {
+      stopped = true;
+      app.quit();
+    });
 });
 
 app.on("window-all-closed", () => {

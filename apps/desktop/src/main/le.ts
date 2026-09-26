@@ -17,6 +17,9 @@ const STOP_TIMEOUT_MS = 5_000;
 let child: ChildProcess | null = null;
 let state: LEState = "disabled";
 let lastError: string | undefined;
+let starting: Promise<LEState> | null = null;
+let stopping: Promise<void> | null = null;
+let generation = 0;
 
 function tokenFile(): string {
   if (process.env["LE_TOKEN_FILE"]) return process.env["LE_TOKEN_FILE"];
@@ -61,7 +64,19 @@ async function healthy(): Promise<boolean> {
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function startLE(): Promise<LEState> {
-  if (await healthy()) {
+  if (stopping) await stopping;
+  if (starting) return starting;
+  if (child) return state;
+  const pending = launchLE(generation);
+  starting = pending;
+  try { return await pending; }
+  finally { if (starting === pending) starting = null; }
+}
+
+async function launchLE(current: number): Promise<LEState> {
+  const available = await healthy();
+  if (current !== generation) return state;
+  if (available) {
     state = "external";
     return state;
   }
@@ -72,30 +87,38 @@ export async function startLE(): Promise<LEState> {
   }
   const port = new URL(LE_URL).port || "8130";
   state = "starting";
+  lastError = undefined;
   const proc = spawn(binary, [], {
     env: { ...process.env, LE_API_PORT: port },
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true
   });
   child = proc;
+  proc.stdout?.on("data", () => {});
   proc.stderr?.on("data", (d) => process.stderr.write(`[le] ${d}`));
   proc.on("error", (e) => {
+    if (child !== proc) return;
     lastError = String(e);
+    child = null;
   });
   proc.on("exit", (code) => {
-    if (child === proc) child = null;
+    if (child !== proc) return;
+    child = null;
     if (state !== "unavailable") state = "exited";
     if (code) lastError = `LE exited with code ${code}`;
   });
 
   const deadline = Date.now() + START_TIMEOUT_MS;
-  while (Date.now() < deadline && child === proc) {
-    if (await healthy()) {
+  while (Date.now() < deadline && child === proc && current === generation) {
+    const available = await healthy();
+    if (current !== generation) return state;
+    if (available && child === proc) {
       state = "owned";
       return state;
     }
     await delay(250);
   }
+  if (current !== generation) return state;
   lastError ??= "LE did not become healthy in time";
   state = "unavailable";
   if (child === proc) proc.kill();
@@ -103,13 +126,26 @@ export async function startLE(): Promise<LEState> {
 }
 
 export async function stopLE(): Promise<void> {
+  if (stopping) return stopping;
+  generation++;
+  const pending = stopOwnedLE();
+  stopping = pending;
+  try { await pending; }
+  finally { if (stopping === pending) stopping = null; }
+}
+
+async function stopOwnedLE(): Promise<void> {
   const proc = child;
-  if (!proc || state !== "owned") return;
-  const exited = new Promise<void>((resolve) => proc.once("exit", () => resolve()));
-  await call("/le/v1/shutdown", "POST");
-  const timedOut = await Promise.race([exited.then(() => false), delay(STOP_TIMEOUT_MS).then(() => true)]);
-  if (timedOut) proc.kill();
-  state = "exited";
+  if (proc) {
+    const exited = new Promise<void>((resolve) => proc.once("exit", () => resolve()));
+    if (state === "owned") await call("/le/v1/shutdown", "POST");
+    else proc.kill();
+    const timedOut = await Promise.race([exited.then(() => false), delay(STOP_TIMEOUT_MS).then(() => true)]);
+    if (timedOut) proc.kill();
+    if (child === proc) child = null;
+  }
+  if (state !== "external" && state !== "disabled") state = "exited";
+  await starting;
 }
 
 export async function leStatus(): Promise<{ state: LEState; url: string; healthy: boolean; error?: string }> {
