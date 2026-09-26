@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { fetchSessions, fetchWorlds, sessionTitle, type SessionInfo, type WorldInfo } from "../lib/api";
+import { Link, useNavigate } from "react-router-dom";
+import { fetchCharacters, fetchSessions, fetchWorlds, sessionTitle, type CharacterInfo, type SessionInfo, type WorldInfo } from "../lib/api";
+import { gradientFor } from "../components/ui/Avatar";
+import { useSavedCharacters } from "../lib/saved";
+import { useAdultContent } from "../lib/adult";
 import { Input } from "../components/ui/Input";
 import SessionRow from "../components/ui/SessionRow";
 import EmptyState from "../components/ui/EmptyState";
@@ -17,6 +20,10 @@ export default function ChatsLanding() {
   const [worlds, setWorlds] = useState<WorldInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
+  const [oldestFirst, setOldestFirst] = useState(false);
+  const [characters, setCharacters] = useState<CharacterInfo[]>([]);
+  const [adult] = useAdultContent();
+  const savedIds = useSavedCharacters();
   const pinned = usePinnedSessions();
   const navigate = useNavigate();
   useDocumentTitle("チャット");
@@ -30,17 +37,28 @@ export default function ChatsLanding() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    fetchCharacters(adult).then(setCharacters).catch(() => setCharacters([]));
+  }, [adult]);
+
+  const saved = useMemo(() => {
+    const byId = new Map(characters.map((c) => [c.id, c]));
+    return savedIds.map((id) => byId.get(id)).filter((c): c is CharacterInfo => !!c);
+  }, [characters, savedIds]);
+
   const worldName = (id?: string | null) => worlds.find((w) => w.id === id)?.display_name;
 
   const { pinnedList, recentList } = useMemo(() => {
     const q = query.trim().toLowerCase();
     const withData = sessions.filter((s) => s.count > 0);
-    const list = q ? withData.filter((s) => `${sessionTitle(s)} ${cleanPreview(s.last_preview, 400)}`.toLowerCase().includes(q)) : withData;
+    const matched = q ? withData.filter((s) => `${sessionTitle(s)} ${cleanPreview(s.last_preview, 400)}`.toLowerCase().includes(q)) : withData;
+    const time = (s: SessionInfo) => Date.parse(s.last_at ?? "") || 0;
+    const list = [...matched].sort((a, b) => (oldestFirst ? time(a) - time(b) : time(b) - time(a)));
     return {
       pinnedList: list.filter((s) => pinned.includes(s.session_id)),
       recentList: list.filter((s) => !pinned.includes(s.session_id)),
     };
-  }, [sessions, query, pinned]);
+  }, [sessions, query, pinned, oldestFirst]);
 
   const handleNew = () => navigate(`/chats/${encodeURIComponent(newSessionId())}`);
 
@@ -66,9 +84,37 @@ export default function ChatsLanding() {
         </Button>
       </div>
 
-      <div className="k-search-field">
-        <Icon name="search" size={17} />
-        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="キャラクター名や会話の内容で探す…" aria-label="チャットを検索" />
+      {saved.length > 0 && !query && (
+        <section className="k-section k-saved-strip" aria-labelledby="k-saved-title">
+          <div className="k-section__head">
+            <h2 id="k-saved-title" className="k-section__title k-section__title--sm">
+              <Icon name="heart" size={15} /> 保存したキャラクター
+            </h2>
+            <Link to="/profile" className="k-section__more">
+              すべて見る <Icon name="chevron" size={13} />
+            </Link>
+          </div>
+          <div className="k-saved-strip__row">
+            {saved.map((c) => (
+              <Link key={c.id} to={`/characters/${encodeURIComponent(c.id)}`} className="k-saved-strip__item" title={c.display_name}>
+                <span className="k-saved-strip__art" style={c.portrait_url ? undefined : { background: gradientFor(c.id) }}>
+                  {c.portrait_url ? <img src={c.portrait_url} alt="" loading="lazy" /> : <span aria-hidden="true">{c.display_name.trim().charAt(0)}</span>}
+                </span>
+                <span className="k-saved-strip__name">{c.display_name}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <div className="k-chats-tools">
+        <div className="k-search-field">
+          <Icon name="search" size={17} />
+          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="キャラクター名や会話の内容で探す…" aria-label="チャットを検索" />
+        </div>
+        <button type="button" className="k-sort-toggle" onClick={() => setOldestFirst((v) => !v)} aria-label={`並び順：${oldestFirst ? "古い順" : "新しい順"}（押すと切り替え）`}>
+          <Icon name="refresh" size={14} /> {oldestFirst ? "古い順" : "新しい順"}
+        </button>
       </div>
 
       {loading ? (
