@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 from .schemas import ScenarioCard, ExperimentMeta, RuntimeState
 from .prompt_compiler import compile_prompt, CHAR_DIR
-from python.core.registry import load_yaml_registry
+from python.core.registry import find_model
 from python.providers.factory import get_provider_for_model
 from .metrics import compute_metrics
 
@@ -53,10 +53,9 @@ def _hardware_meta() -> dict:
     }
 
 def _resolve_model_cfg(model_id: str) -> dict:
-    models = load_yaml_registry()
-    cfg = next((m for m in models if m.get("id") == model_id), None)
+    cfg = find_model(model_id)
     if not cfg:
-        raise ValueError(f"model {model_id} not found in models/*.yaml")
+        raise ValueError(f"model {model_id} not found in models/*.yaml or LE")
     return cfg
 
 OFFICIAL_SCENARIOS = {"mocha_daily_001": "mocha_sfw", "senior_daily_001": "senior_cool", "butler_daily_001": "butler"}
