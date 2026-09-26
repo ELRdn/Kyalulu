@@ -10,7 +10,8 @@ export default defineConfig({
   },
   preload: {
     build: {
-      outDir: "out/preload"
+      outDir: "out/preload",
+      rollupOptions: { output: { format: "cjs", entryFileNames: "index.cjs" } }
     }
   },
   renderer: {
@@ -30,7 +31,10 @@ export default defineConfig({
       }
     },
     server: {
-      port: 5174
+      port: 5174,
+      proxy: {
+        "/api": { target: process.env["KYALULU_API_BASE"] || "http://127.0.0.1:8000", changeOrigin: true }
+      }
     }
   }
 });
