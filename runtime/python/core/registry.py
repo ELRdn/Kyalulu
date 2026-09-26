@@ -33,8 +33,12 @@ LE_PREFIX = "le:"
 
 
 def le_model_entry(le_id: str) -> dict[str, Any]:
-    """Registry entry for a model LE serves, addressed as ``le:<LE model id>``."""
-    return {"id": LE_PREFIX + le_id, "display_name": f"{le_id} (LE)", "provider": {"type": "le", "model": le_id}}
+    """Registry entry for a model LE serves, addressed as ``le:<LE model id>``.
+
+    LE passes ``response_format`` through to llama-server / Ollama / LM Studio, all of which honor
+    a JSON schema, so the structured reply + state contract is enforced on this path too."""
+    return {"id": LE_PREFIX + le_id, "display_name": f"{le_id} (LE)",
+            "provider": {"type": "le", "model": le_id, "structured_output": True}}
 
 
 def find_model(model_id: str | None) -> dict[str, Any] | None:

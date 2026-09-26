@@ -6,7 +6,7 @@ import httpx
 from . import ModelProvider, default_http_timeout, resolve_messages, usage_event
 from python.core.config import settings
 class OllamaProvider(ModelProvider):
-    SUPPORTED = frozenset({"messages", "model", "temperature", "top_p", "seed", "max_tokens", "response_schema"})
+    SUPPORTED = frozenset({"messages", "model", "temperature", "top_p", "seed", "max_tokens", "response_schema", "think", "num_ctx"})
     def __init__(self, base_url: str | None = None, *, transport: Any | None = None, timeout: httpx.Timeout | None = None, **_ignored: Any) -> None:
         self.base_url = (base_url or settings.ollama_url).rstrip("/")
         self._transport = transport
@@ -37,7 +37,11 @@ class OllamaProvider(ModelProvider):
         if not model or not isinstance(model, str):
             raise ValueError("ollama: explicit model is required")
         payload: dict[str, Any] = {"model": model, "messages": messages, "stream": True}
+        if "think" in applied:
+            payload["think"] = applied["think"]
         options: dict[str, Any] = {}
+        if "num_ctx" in applied:
+            options["num_ctx"] = applied["num_ctx"]
         if "temperature" in applied:
             options["temperature"] = applied["temperature"]
         if "top_p" in applied:

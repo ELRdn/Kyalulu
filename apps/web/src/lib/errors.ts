@@ -1,10 +1,25 @@
-export type FriendlyError = { message: string; action?: { label: string; to: string } };
+export type FriendlyError = {
+  message: string;
+  action?: { label: string; to: string };
+  /** チャット欄でそのまま実行できるスラッシュコマンド。 */
+  command?: { label: string; input: string };
+};
 
 /** API・ネットワーク由来の生エラーを、利用者が次に取れる行動つきの日本語に言い換える。 */
 export function friendlyError(raw: unknown): FriendlyError {
   const text = String(raw ?? "").replace(/^(Type)?Error:\s*/, "").trim();
   if (/allow_nsfw|NSFW execution/i.test(text)) {
     return { message: "成人向けの会話は、プロフィールで成人向けコンテンツを有効にすると楽しめます。", action: { label: "設定をひらく", to: "/profile#adult" } };
+  }
+  const notLoaded = text.match(/model_not_loaded \[(?:le:)?(le\/[^\]\s]+)\]/);
+  if (notLoaded) {
+    return {
+      message: `「${notLoaded[1]}」はまだ読み込まれていません。ロードすると会話できます。`,
+      command: { label: "ロードする", input: `/le load ${notLoaded[1]}` }
+    };
+  }
+  if (/le_unavailable|LE unavailable|LE token not found/i.test(text)) {
+    return { message: "ローカルエンジン（LE）に接続できませんでした。LE が起動しているか確認してね。", action: { label: "接続を診断", to: "/status" } };
   }
   if (/ConnectError|ConnectTimeout|Connection refused|ECONNREFUSED|All connection attempts failed|provider.*(offline|unavailable)/i.test(text)) {
     return { message: "AIにつながりませんでした。会話エンジンの接続を確認してね。", action: { label: "接続を確認", to: "/studio" } };

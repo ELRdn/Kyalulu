@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 
 from python.storage.db import init_db
 from python.core.registry import load_yaml_registry, sync_to_db
+from python.api.origins import trusted_origins
 
 
 @asynccontextmanager
@@ -23,7 +24,13 @@ async def lifespan(app: FastAPI):
         await sync_to_db(models)
     except Exception as e:
         print(f"[lifespan] registry sync failed: {e}")
-    yield
+    from python.core.benchmark import recover_jobs
+    recover_jobs()
+    try:
+        yield
+    finally:
+        from python.api.benchmarks import shutdown
+        await shutdown()
 
 
 app = FastAPI(
@@ -41,19 +48,22 @@ async def invalid_input(_request, exc):
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-        "app://*",
-        "file://*",
-    ],
-    allow_origin_regex=r".*",
-    allow_credentials=True,
+    allow_origins=sorted(trusted_origins()),
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def require_trusted_browser(request, call_next):
+    origin = request.headers.get("origin")
+    if request.url.path.startswith("/api/") and (
+        (origin is not None and origin not in trusted_origins()) or
+        (origin is None and request.headers.get("sec-fetch-site") == "cross-site")
+    ):
+        return JSONResponse({"error": "この画面からのAPIアクセスは許可されていません。", "code": "untrusted_origin"}, status_code=403)
+    return await call_next(request)
 
 
 @app.get("/api/health")
@@ -71,6 +81,10 @@ from python.api.library import router as library_router
 from python.api.hubs import router as hubs_router
 from python.api.le import router as le_router
 from python.api.commands import router as commands_router
+from python.api.diagnostics import router as diagnostics_router
+from python.api.memory import router as memory_router
+from python.api.creator import router as creator_router
+from python.api.benchmarks import router as benchmarks_router
 
 app.include_router(chat_router, prefix="/api")
 app.include_router(providers_router, prefix="/api")
@@ -81,3 +95,7 @@ app.include_router(library_router, prefix="/api")
 app.include_router(hubs_router, prefix="/api")
 app.include_router(le_router, prefix="/api")
 app.include_router(commands_router, prefix="/api")
+app.include_router(diagnostics_router, prefix="/api")
+app.include_router(memory_router, prefix="/api")
+app.include_router(creator_router, prefix="/api")
+app.include_router(benchmarks_router, prefix="/api")

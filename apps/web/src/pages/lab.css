@@ -1,0 +1,20 @@
+.k-lab { max-width: 1140px; padding-bottom: 40px; }
+.k-lab h2 { font-size: 16px; margin: 0 0 12px; }
+.k-lab a { color: var(--accent); overflow-wrap: anywhere; }
+.k-lab-columns { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(0, 2fr); gap: 18px; }
+.k-lab-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.k-lab-form { display: grid; gap: 16px; min-width: 0; }
+.k-lab-form label { display: grid; gap: 6px; font-size: 13px; min-width: 0; }
+.k-lab-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 10px; }
+.k-lab input:not([type=checkbox]), .k-lab select { width: 100%; min-width: 0; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); color: var(--text-primary); }
+.k-lab fieldset { min-width: 0; border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.k-lab fieldset label { display: flex; align-items: center; }
+.k-lab-list { list-style: none; padding: 0; display: grid; gap: 8px; }
+.k-lab-list button { width: 100%; text-align: left; padding: 10px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); overflow-wrap: anywhere; cursor: pointer; }
+.k-lab-list button[aria-pressed=true] { border-color: var(--accent); }
+.k-lab small { color: var(--text-muted); }
+.k-lab-error { color: var(--error-text); }
+.k-lab-table { overflow-x: auto; margin: 12px 0; }
+.k-lab table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.k-lab td, .k-lab th { padding: 8px; text-align: left; border-bottom: 1px solid var(--border); }
+@media (max-width: 640px) { .k-lab-columns, .k-lab-fields { grid-template-columns: minmax(0, 1fr); } }
