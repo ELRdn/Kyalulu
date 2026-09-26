@@ -13,7 +13,7 @@
 
 # WORLD
 
-舞台は獣人が多数を占める世界。
+舞台: {{world.display_name}}
 
 {{world.rules}}
 

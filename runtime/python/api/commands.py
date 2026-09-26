@@ -14,15 +14,19 @@ from python.providers.le import LEProvider
 router = APIRouter()
 LOAD_WAIT_SECONDS = 120
 TERMINAL = {"completed", "failed", "cancelled", "interrupted"}
-OPTION_KEYS = {"ctx", "ngl", "sha256"}
+OPTION_KEYS = {"ctx", "ngl", "sha256", "device"}
 
 COMMANDS = [
     {"name": "/help", "usage": "/help", "description": "使えるコマンドを表示"},
     {"name": "/le status", "usage": "/le status", "description": "LE の状態・ロード中のモデル・メモリ"},
     {"name": "/le models", "usage": "/le models", "description": "LE のモデル一覧（インストール済み・配信中）"},
-    {"name": "/le load", "usage": "/le load <id> [ctx=8192] [ngl=99]", "description": "GGUF モデルをロード"},
+    {"name": "/le load", "usage": "/le load <id> [ctx=8192] [ngl=auto|N] [device=Vulkan0]",
+     "description": "GGUF モデルをロード（既定は空きVRAMから層数を自動決定）"},
+    {"name": "/le plan", "usage": "/le plan <id> [ctx=8192] [device=Vulkan0]", "description": "ロードせずに配置計画（GPU・層数・VRAM見積り）を表示"},
+    {"name": "/le devices", "usage": "/le devices", "description": "llama-server から見える GPU と空きメモリ"},
     {"name": "/le unload", "usage": "/le unload [id]", "description": "ロード中のモデルをアンロード"},
-    {"name": "/le download", "usage": "/le download <url> [filename] [sha256=...]", "description": "GGUF をダウンロード"},
+    {"name": "/le download", "usage": "/le download <url> [filename] [sha256=...]", "description": "GGUF をダウンロード（中断分は続きから）"},
+    {"name": "/le resume", "usage": "/le resume <id>", "description": "途中で止まったダウンロードを再開"},
     {"name": "/le delete", "usage": "/le delete <id>", "description": "インストール済みモデルを削除"},
     {"name": "/le jobs", "usage": "/le jobs", "description": "ジョブ一覧（実行中と直近）"},
     {"name": "/le cancel", "usage": "/le cancel <job_id>", "description": "ジョブをキャンセル"},
@@ -54,6 +58,10 @@ def _options(args: list[str]) -> tuple[list[str], dict[str, str]]:
         else:
             pos.append(a)
     return pos, opts
+
+
+def _mb(n) -> str:
+    return "不明" if n is None else f"{n / 1024 ** 2:,.0f} MiB"
 
 
 def _int(opts: dict, key: str) -> int | None:
@@ -100,9 +108,14 @@ async def _status(le, _args):
 
 async def _models(le, _args):
     installed = (await _call(le, "GET", "models")).get("models", [])
+    def row(m):
+        if m["state"] == "partial":
+            total = m.get("total_bytes")
+            pct = f" {m['done_bytes'] * 100 // total}%" if total else ""
+            return f"  {m['id']}  [途中{pct}]  /le resume {m['id']} で再開"
+        return f"  {m['id']}  [{m['state']}]  {_gb(m.get('size_bytes')) if m.get('size_bytes') else ''}".rstrip()
     lines = ["インストール済み (le/):"]
-    lines += [f"  {m['id']}  [{m['state']}]  {_gb(m.get('size_bytes')) if m.get('size_bytes') else ''}".rstrip()
-              for m in installed] or ["  なし"]
+    lines += [row(m) for m in installed] or ["  なし"]
     try:
         served = await le.served_models()
     except httpx.HTTPError:
@@ -115,15 +128,57 @@ async def _models(le, _args):
     return lines, False
 
 
+def _placement_body(model_id: str, opts: dict, ngl_default: str | None = "auto") -> dict:
+    body = {"id": _le_id(model_id)}
+    if (ctx := _int(opts, "ctx")) is not None:
+        body["context_length"] = ctx
+    ngl = opts.get("ngl", ngl_default)
+    if ngl is not None:
+        body["gpu_layers"] = "auto" if ngl.lower() == "auto" else _int({"ngl": ngl}, "ngl")
+    if opts.get("device"):
+        body["device"] = opts["device"]
+    return body
+
+
+def _plan_lines(plan: dict) -> list[str]:
+    total = plan.get("total_layers")
+    if plan.get("full_offload"):
+        layers = "全層"
+    else:
+        layers = f"{plan['gpu_layers']}/{total if total is not None else '?'} 層"
+    dev = f"{plan['device']} ({plan.get('device_name') or '?'})" if plan.get("device") else "なし（CPU）"
+    kv = _mb(plan.get("kv_cache_bytes")) + ("" if plan.get("kv_exact") else "（概算）")
+    lines = [
+        f"GPU: {dev}  空き {_mb(plan.get('free_bytes'))}",
+        f"GPU に載せる層: {layers}  (-ngl {plan['gpu_layers']})  ctx {plan['context_length']}",
+        f"見積り VRAM: {_mb(plan.get('estimated_vram_bytes'))}  = モデル {_mb(plan.get('model_bytes'))} の一部 + KV {kv} + 余裕 {_mb(plan.get('overhead_bytes'))}",
+    ]
+    return lines + [f"注: {n}" for n in plan.get("notes") or []]
+
+
+async def _plan(le, args):
+    pos, opts = _options(args)
+    if len(pos) != 1:
+        raise CommandError("使い方: /le plan <id> [ctx=8192] [device=Vulkan0]")
+    body = _placement_body(pos[0], opts)
+    body["gpu_layers"] = "auto"
+    data = await _call(le, "POST", "models/plan", body)
+    return [f"{body['id']} の配置計画:"] + [f"  {line}" for line in _plan_lines(data["plan"])], False
+
+
+async def _devices(le, _args):
+    devices = (await _call(le, "GET", "engine/devices")).get("devices", [])
+    if not devices:
+        return ["llama-server から見える GPU はないよ（CPU で動く）。"], False
+    return [f"{d['id']}: {d['name']}  空き {_mb(d['free_bytes'])} / {_mb(d['total_bytes'])}"
+            + ("  (内蔵GPU・自動選択しない)" if d.get("integrated") else "") for d in devices], False
+
+
 async def _load(le, args):
     pos, opts = _options(args)
     if len(pos) != 1:
-        raise CommandError("使い方: /le load <id> [ctx=8192] [ngl=99]")
-    body = {"id": _le_id(pos[0])}
-    if (ctx := _int(opts, "ctx")) is not None:
-        body["context_length"] = ctx
-    if (ngl := _int(opts, "ngl")) is not None:
-        body["gpu_layers"] = ngl
+        raise CommandError("使い方: /le load <id> [ctx=8192] [ngl=auto|N] [device=Vulkan0]")
+    body = _placement_body(pos[0], opts)
     job = (await _call(le, "POST", "models/load", body))["job"]
     loop = asyncio.get_running_loop()
     deadline = loop.time() + LOAD_WAIT_SECONDS
@@ -131,7 +186,10 @@ async def _load(le, args):
         await asyncio.sleep(0.5)
         job = await _call(le, "GET", f"jobs/{job['id']}")
     if job["state"] == "completed":
-        return [f"{body['id']} をロードしたよ。モデル一覧の le:{body['id']} で会話できる。"], True
+        lines = [f"{body['id']} をロードしたよ。モデル一覧の le:{body['id']} で会話できる。"]
+        if plan := (job.get("result") or {}).get("plan"):
+            lines += [f"  {line}" for line in _plan_lines(plan)]
+        return lines, True
     if job["state"] in TERMINAL:
         msg = (job.get("error") or {}).get("message") or job["state"]
         raise CommandError(f"{body['id']} のロードに失敗: {msg}")
@@ -156,6 +214,18 @@ async def _download(le, args):
         body["sha256"] = opts["sha256"]
     job = (await _call(le, "POST", "models/download", body))["job"]
     return [f"{filename} のダウンロードを開始したよ（job {job['id'][:8]}）。/le jobs で進捗を見られる。"], False
+
+
+async def _resume(le, args):
+    if len(args) != 1:
+        raise CommandError("使い方: /le resume <id>")
+    model_id = _le_id(args[0])
+    m = await _call(le, "GET", f"models/{model_id}")
+    if m.get("state") != "partial":
+        raise CommandError(f"{model_id} に再開できるダウンロードはないよ（状態: {m.get('state')}）")
+    filename = model_id.removeprefix("le/") + ".gguf"
+    job = (await _call(le, "POST", "models/download", {"url": m["url"], "filename": filename}))["job"]
+    return [f"{model_id} のダウンロードを {_gb(m.get('done_bytes'))} から再開したよ（job {job['id'][:8]}）。"], False
 
 
 async def _delete(le, args):
@@ -188,8 +258,9 @@ async def _cancel(le, args):
     return [f"job {jid[:8]} をキャンセルしたよ。"], False
 
 
-LE_SUB = {"status": _status, "models": _models, "load": _load, "unload": _unload, "download": _download,
-          "delete": _delete, "jobs": _jobs, "cancel": _cancel}
+LE_SUB = {"status": _status, "models": _models, "load": _load, "plan": _plan, "devices": _devices,
+          "unload": _unload, "download": _download, "resume": _resume, "delete": _delete, "jobs": _jobs,
+          "cancel": _cancel}
 
 
 def _help() -> list[str]:

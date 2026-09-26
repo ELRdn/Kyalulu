@@ -7,7 +7,8 @@ import time
 from copy import deepcopy
 from uuid import uuid4
 
-from .schemas import GenerationOutput, GenerationRecord, RuntimeState
+from .schemas import GenerationOutput, GenerationOutputWithMemory, GenerationRecord, RuntimeState
+from .memory import PROPOSAL_INSTRUCTION
 from .telemetry import MemorySampler
 from .prompt_compiler import _estimate_tokens
 
@@ -71,16 +72,34 @@ def public_config(cfg: dict) -> dict:
     return result
 
 
+def _error_label(exc: Exception, model: str) -> str:
+    """Exception type, plus the provider's structured error code and model when present
+    (``HTTPStatusError: model_not_loaded [le/x]``), so the UI can say what to do."""
+    label = type(exc).__name__
+    try:
+        code = (exc.response.json().get("error") or {}).get("code")  # type: ignore[attr-defined]
+    except Exception:
+        code = None
+    return f"{label}: {code} [{model}]" if isinstance(code, str) and code else label
+
+
 async def generate_events(provider, *, model: str, messages: list[dict], compiled,
                           state: RuntimeState, requested: dict, mode: str = "immersion",
-                          generation_id: str | None = None, journal: list | None = None):
-    """Yield token/reset/result events. A result is NOT persisted until the caller commits."""
+                          generation_id: str | None = None, journal: list | None = None,
+                          memory: dict | None = None):
+    """Yield token/reset/result events. A result is NOT persisted until the caller commits.
+
+    `memory` enables Memory Lab for this turn: ``{"block": <text to inject>, "trace": <retrieval trace>}``.
+    The model may then propose memories; they are returned in ``result["memory"]["proposals"]``
+    and stored only by the caller.
+    """
     generation_id = generation_id or str(uuid4())
     if compiled.sections.get('portable_snapshot'):
         from .portable_prompt import compile_portable
         compiled = compile_portable(compiled.sections['portable_snapshot'], messages)
     attempts = journal if journal is not None else []
-    schema = GenerationOutput.model_json_schema()
+    output_model = GenerationOutputWithMemory if memory is not None else GenerationOutput
+    schema = output_model.model_json_schema()
     config = provider.generation_config({**requested, "model": model, "response_schema": schema})
     instruction = (
         '\nReturn exactly one JSON object with "reply" first and "state_update" second. '
@@ -89,6 +108,9 @@ async def generate_events(provider, *, model: str, messages: list[dict], compile
         + json.dumps(schema, ensure_ascii=False)
         + '\nCurrent state:\n' + state.model_dump_json()
     )
+    if memory is not None:
+        # Order per the prompt contract: Runtime State -> Relevant Memory -> history.
+        instruction += memory.get("block", "") + PROPOSAL_INSTRUCTION
     system = compiled.system_prompt + instruction
     from .portable_prompt import assemble_messages
     base = assemble_messages(compiled, messages, instruction)
@@ -97,7 +119,7 @@ async def generate_events(provider, *, model: str, messages: list[dict], compile
     next_state = state.model_copy(deep=True)
     first_chunk = first_reply = None
     try:
-        async with asyncio.timeout(300), MemorySampler() as memory:
+        async with asyncio.timeout(300), MemorySampler() as sampler:
             for attempt_index in range(3):
                 if attempt_index:
                     yield {"type": "reset", "full": "", "attempt": attempt_index + 1}
@@ -129,7 +151,7 @@ async def generate_events(provider, *, model: str, messages: list[dict], compile
                                 yield {"type": "token", "token": preview[len(displayed):]}
                                 displayed = preview
                     received_complete_stream = True
-                    output = GenerationOutput.model_validate_json(attempt["raw"])
+                    output = output_model.model_validate_json(attempt["raw"])
                     if not output.reply.strip():
                         raise ValueError("reply must not be blank")
                     reply = output.reply
@@ -153,7 +175,7 @@ async def generate_events(provider, *, model: str, messages: list[dict], compile
         raise
     except Exception as exc:
         # Connection/auth/timeouts must not trigger another billable generation.
-        status, reply, error = "failed", "", type(exc).__name__
+        status, reply, error = "failed", "", _error_label(exc, model)
         if attempts:
             attempts[-1]["errors"].append(error)
     elapsed = round((time.perf_counter() - start) * 1000, 2)
@@ -167,7 +189,7 @@ async def generate_events(provider, *, model: str, messages: list[dict], compile
         "token_source": "provider" if output_tokens is not None else None,
         "unavailable_reason": None if output_tokens is not None else "provider did not report token usage",
         "speed_scope": "last_attempt_total_time_including_prefill",
-        "peak_vram_bytes": None, "peak_ram_bytes": memory.peak,
+        "peak_vram_bytes": None, "peak_ram_bytes": sampler.peak,
         "memory_scope": "RAM: Python runtime process RSS; VRAM unavailable; not inference-server memory"}
     telemetry["unavailable"] = {key: "provider did not report this value" for key in
         ("prompt_tokens", "completion_tokens", "thinking_tokens") if telemetry[key] is None}
@@ -179,8 +201,12 @@ async def generate_events(provider, *, model: str, messages: list[dict], compile
         "attempts": attempts, "telemetry": telemetry, "elapsed_ms": elapsed,
         "generation_config": config, "compiled": compiled.model_dump(), "raw_prompt": json.dumps(base, ensure_ascii=False) if compiled.ordered_messages else system,
         "error": error, "mode": mode}
+    if memory is not None:
+        proposals = [p.model_dump() for p in getattr(output, "memory_proposals", [])] if status == "completed" else []
+        result["memory"] = {**memory.get("trace", {}), "enabled": True, "proposals": proposals}
     result["token_budget"] = {"estimated": True, "method": "character-based approximation",
         "compiler_tokens": compiled.token_estimate, "runtime_contract_tokens": _estimate_tokens(instruction),
         "history_tokens": _estimate_tokens(json.dumps(messages, ensure_ascii=False)),
-        "total_prompt_tokens": _estimate_tokens(json.dumps(base, ensure_ascii=False))}
+        "total_prompt_tokens": _estimate_tokens(json.dumps(base, ensure_ascii=False)),
+        "memory_tokens": _estimate_tokens(memory["block"]) if memory and memory.get("block") else 0}
     yield {"type": "result", "result": GenerationRecord.model_validate(result).model_dump()}

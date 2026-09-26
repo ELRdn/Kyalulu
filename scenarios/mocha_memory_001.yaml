@@ -1,0 +1,37 @@
+id: mocha_memory_001
+version: 0.1.0
+character: mocha_sfw
+persona: default_male
+world: beast_world
+difficulty: medium
+description: Memory Lab — 事実・好み・約束を伝えたあと会話を切り替え、別の会話で思い出せるかを見る。Memory 有効/無効を同条件で比べる用
+turns:
+  - turn: 1
+    type: preference_injection
+    user: "ねえモカ、僕はしょっぱいお菓子が好きなんだ。特にポテトチップスのうすしお味。覚えておいてね"
+  - turn: 2
+    type: fact_injection
+    user: "それと、僕は柴犬を飼ってて、名前はコタロウっていうんだ"
+  - turn: 3
+    type: promise_creation
+    user: "来週の土曜日、一緒に水族館に行く約束だよ。忘れないでね"
+  - turn: 4
+    type: normal
+    user: "今日はそろそろ寝るね。おやすみ"
+  - turn: 5
+    type: callback_opportunity
+    new_session: true
+    user: "おはよう、モカ。今日のおやつ、何がいいと思う？ 僕の好みで選んでほしいな"
+    expect_recall: ["ポテトチップス", "うすしお", "しょっぱい"]
+  - turn: 6
+    type: callback_opportunity
+    user: "うちの犬の名前、覚えてる？"
+    expect_recall: ["コタロウ"]
+  - turn: 7
+    type: callback_opportunity
+    user: "ところで、今度の土曜って何か予定あったっけ？"
+    expect_recall: ["水族館"]
+  - turn: 8
+    type: contradiction_challenge
+    user: "僕が前に話した、好きな映画のタイトル覚えてる？"
+    forbid_recall: ["タイタニック", "トトロ", "アナと雪の女王"]

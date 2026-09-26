@@ -6,6 +6,8 @@ Research Mode の簡易自動メトリクス。human rating とは分離して�
 from __future__ import annotations
 import re
 import unicodedata
+import math
+import statistics
 from collections import Counter
 
 def _normalize(s: str) -> str:
@@ -95,6 +97,12 @@ def compute_metrics(turns: list[dict]) -> dict:
     elapsed_vals = [t.get("elapsed_ms") for t in turns if isinstance(t.get("elapsed_ms"), (int, float))]
     avg_elapsed = round(sum(elapsed_vals) / len(elapsed_vals), 1) if elapsed_vals else None
 
+    telemetry = [t.get("telemetry") or {} for t in turns]
+    first_reply = sorted(x["first_reply_ms"] for x in telemetry if isinstance(x.get("first_reply_ms"), (int, float)))
+    speeds = [x["tokens_per_second"] for x in telemetry if isinstance(x.get("tokens_per_second"), (int, float))]
+    structured = [t for t in turns if t.get("validation")]
+    budgets = [t["token_budget"]["total_prompt_tokens"] for t in turns
+               if isinstance((t.get("token_budget") or {}).get("total_prompt_tokens"), (int, float))]
     return {
         "turn_count": n,
         "char_count": total,
@@ -104,6 +112,13 @@ def compute_metrics(turns: list[dict]) -> dict:
         "failure_rate": failure_rate,
         "empty_rate": empty_rate,
         "avg_elapsed_ms": avg_elapsed,
+        "first_reply_ms_median": statistics.median(first_reply) if first_reply else None,
+        "first_reply_ms_p95": first_reply[max(0, math.ceil(len(first_reply) * .95) - 1)] if first_reply else None,
+        "tokens_per_second_median": statistics.median(speeds) if speeds else None,
+        "first_attempt_success_rate": round(sum(t["validation"].get("ok") and t["validation"].get("retries") == 0
+                                                   for t in structured) / len(structured), 3) if structured else None,
+        "validation_retries": sum(t["validation"].get("retries", 0) for t in structured),
+        "peak_estimated_prompt_tokens": max(budgets) if budgets else None,
     }
 
 def recompute_for_experiment_dir(exp_dir) -> dict | None:

@@ -105,6 +105,49 @@ CREATE TABLE IF NOT EXISTS library_assets (
 CREATE TABLE IF NOT EXISTS imported_history (
     message_id INTEGER PRIMARY KEY, origin_json TEXT NOT NULL
 );
+-- Memory Lab (Phase 1)
+CREATE TABLE IF NOT EXISTS creator_versions (
+    asset_id TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('persona','world')),
+    document_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY(asset_id, revision)
+);
+CREATE TABLE IF NOT EXISTS memories (
+    id TEXT PRIMARY KEY,
+    scope TEXT NOT NULL,
+    type TEXT NOT NULL CHECK(type IN ('semantic','episodic','relationship')),
+    content TEXT NOT NULL,
+    importance REAL,
+    origin TEXT NOT NULL DEFAULT 'model',
+    supported INTEGER,
+    source_session_id TEXT,
+    source_turn INTEGER,
+    source_generation_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    status TEXT NOT NULL DEFAULT 'active',
+    access_count INTEGER NOT NULL DEFAULT 0,
+    last_accessed TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS memories_scope ON memories(scope, status);
+CREATE TABLE IF NOT EXISTS memory_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    memory_id TEXT,
+    scope TEXT NOT NULL,
+    op TEXT NOT NULL,
+    generation_id TEXT,
+    detail_json TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS memory_events_memory ON memory_events(memory_id);
+CREATE TABLE IF NOT EXISTS session_memory (
+    session_id TEXT PRIMARY KEY,
+    enabled INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 
