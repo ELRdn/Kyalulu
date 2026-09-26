@@ -110,3 +110,107 @@ async def test_le_provider_reports_unauthorized_and_missing_token(monkeypatch):
     assert (await p.health_check())['status'] == 'unauthorized'
     monkeypatch.setattr('python.providers.le.resolve_le_token', lambda: '')
     assert (await LEProvider(base_url='http://le:8130').health_check())['status'] == 'offline'
+
+
+def test_find_model_falls_through_to_le():
+    from python.core.registry import find_model
+    cfg = find_model('le:ollama/qwen3:8b')
+    assert cfg['provider'] == {'type': 'le', 'model': 'ollama/qwen3:8b'}
+    assert find_model('le:') is None and find_model('nope') is None
+    assert isinstance(get_provider_for_model(cfg), LEProvider)
+
+
+def _fake_le(monkeypatch, handle, token='tok'):
+    real = LEProvider
+    def make(**kw):
+        return real(base_url='http://le:8130', api_key=token, transport=httpx.MockTransport(handle), **kw)
+    monkeypatch.setattr('python.providers.le.LEProvider', make)
+    monkeypatch.setattr('python.api.le.LEProvider', make)
+    monkeypatch.setattr('python.api.commands.LEProvider', make)
+
+
+@pytest.mark.asyncio
+async def test_le_models_listed_and_relay_passes_through(monkeypatch):
+    from python.core.registry import list_le_models
+    seen = []
+    def handle(req):
+        seen.append((req.method, req.url.path, req.url.query.decode(), req.headers.get('authorization'),
+                     req.headers.get('idempotency-key'), req.content))
+        if req.url.path == '/v1/models':
+            return httpx.Response(200, json={'data': [{'id': 'ollama/qwen3:8b'}, {'id': 'le/tiny'}]})
+        if req.url.path == '/le/v1/models/download':
+            return httpx.Response(202, json={'job': {'id': 'j1', 'state': 'queued'}})
+        if req.url.path == '/le/v1/events':
+            return httpx.Response(200, headers={'content-type': 'text/event-stream'}, content=b'id: 3\nevent: job\ndata: {}\n\n')
+        return httpx.Response(404, json={'error': {'code': 'model_not_found', 'message': 'x'}})
+    _fake_le(monkeypatch, handle)
+    assert [m['id'] for m in await list_le_models()] == ['le:ollama/qwen3:8b', 'le:le/tiny']
+
+    from python.api.main import app
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+        r = await client.post('/api/le/models/download', json={'url': 'https://x/y.gguf', 'filename': 'y.gguf'},
+                              headers={'idempotency-key': 'k1'})
+        assert r.status_code == 202 and r.json()['job']['id'] == 'j1'
+        r = await client.get('/api/le/models/le/missing')
+        assert r.status_code == 404 and r.json()['error']['code'] == 'model_not_found'
+        assert (await client.get('/api/le/models/le/../jobs')).status_code in (400, 404)
+        r = await client.get('/api/le/events?since=2')
+        assert r.headers['content-type'].startswith('text/event-stream') and b'event: job' in r.content
+    download = next(s for s in seen if s[1] == '/le/v1/models/download')
+    assert download[3:5] == ('Bearer tok', 'k1') and json.loads(download[5])['filename'] == 'y.gguf'
+    assert ('GET', '/le/v1/events', 'since=2') == next(s for s in seen if s[1] == '/le/v1/events')[:3]
+    assert ('GET', '/le/v1/models/le/missing') == next(s for s in seen if s[1].endswith('missing'))[:2]
+
+
+@pytest.mark.asyncio
+async def test_le_relay_without_le(monkeypatch):
+    def down(req):
+        raise httpx.ConnectError('refused')
+    _fake_le(monkeypatch, down)
+    from python.core.registry import list_le_models
+    from python.api.main import app
+    assert await list_le_models() == []
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+        for path in ('/api/le/models', '/api/le/events'):
+            r = await client.get(path)
+            assert r.status_code == 503 and r.json()['error']['code'] == 'le_unavailable'
+    _fake_le(monkeypatch, down, token='')
+    assert await list_le_models() == []
+
+
+@pytest.mark.asyncio
+async def test_slash_commands_drive_le(monkeypatch):
+    jobs = {}
+    calls = []
+    def handle(req):
+        body = json.loads(req.content) if req.content else None
+        calls.append((req.method, req.url.path, body))
+        path = req.url.path
+        if path == '/le/v1/models/load':
+            jobs['j1'] = {'id': 'j1' + '0' * 34, 'kind': 'load', 'state': 'completed', 'target': body['id']}
+            return httpx.Response(202, json={'job': {**jobs['j1'], 'state': 'queued'}})
+        if path.startswith('/le/v1/jobs/'):
+            return httpx.Response(200, json=jobs['j1'])
+        if path == '/le/v1/models/unload':
+            return httpx.Response(200, json={'unloaded': True})
+        if path == '/le/v1/jobs':
+            return httpx.Response(200, json={'jobs': [{'id': 'abcd' + '0' * 32, 'kind': 'download', 'state': 'running',
+                                                       'target': 'le/x', 'progress': {'phase': 'downloading', 'done': 5, 'total': 10}}]})
+        return httpx.Response(404, json={'error': {'code': 'model_not_found', 'message': 'no such model'}})
+    _fake_le(monkeypatch, handle)
+    from python.api.main import app
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+        assert any(c['name'] == '/le load' for c in (await client.get('/api/commands')).json()['commands'])
+        r = (await client.post('/api/commands', json={'input': '/le load tiny ctx=4096 ngl=20'})).json()
+        assert r['ok'] and r['refresh_models'] and 'le/tiny' in r['output']
+        assert calls[0] == ('POST', '/le/v1/models/load', {'id': 'le/tiny', 'context_length': 4096, 'gpu_layers': 20})
+        r = (await client.post('/api/commands', json={'input': '/le unload'})).json()
+        assert r['ok'] and calls[-1] == ('POST', '/le/v1/models/unload', {})
+        r = (await client.post('/api/commands', json={'input': '/le jobs'})).json()
+        assert '50%' in r['output'] and 'abcd0000' in r['output']
+        r = await client.post('/api/commands', json={'input': '/le delete nope'})
+        assert r.status_code == 400 and 'no such model' in r.json()['output']
+        for bad in ('/le load', '/le load x ctx=abc', '/nope', '/le warp', 'hello', '/le load "x'):
+            r = await client.post('/api/commands', json={'input': bad})
+            assert r.status_code == 400 and not r.json()['ok'], bad
+        assert '/le status' in (await client.post('/api/commands', json={'input': '/help'})).json()['output']

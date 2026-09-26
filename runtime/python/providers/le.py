@@ -23,11 +23,28 @@ class LEProvider(OpenAICompatibleProvider):
             r.raise_for_status()
             return r.json()
 
+    async def call(self, method: str, path: str, body: dict | None = None) -> tuple[int, dict]:
+        """(status, json) for a /le/v1 call; LE errors come back as data, not exceptions."""
+        async with self._client() as c:
+            r = await c.request(method, f"{self.root_url}/le/v1/{path}", json=body)
+        try:
+            data = r.json()
+        except ValueError:
+            data = {}
+        return r.status_code, data if isinstance(data, dict) else {}
+
     async def le_version(self) -> dict:
         return await self._system("version")
 
     async def le_capabilities(self) -> dict:
         return await self._system("capabilities")
+
+    async def served_models(self) -> list[str]:
+        """Model ids LE can route right now (backends + loaded le/ model)."""
+        async with self._client() as c:
+            r = await c.get(f"{self.base_url}/models")
+            r.raise_for_status()
+            return [m["id"] for m in r.json().get("data", []) if isinstance(m, dict) and m.get("id")]
 
     async def connect(self) -> bool:
         try:

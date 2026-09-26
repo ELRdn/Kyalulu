@@ -69,6 +69,8 @@ from python.api.catalog import router as catalog_router
 from python.api.experiments import router as experiments_router
 from python.api.library import router as library_router
 from python.api.hubs import router as hubs_router
+from python.api.le import router as le_router
+from python.api.commands import router as commands_router
 
 app.include_router(chat_router, prefix="/api")
 app.include_router(providers_router, prefix="/api")
@@ -77,3 +79,5 @@ app.include_router(catalog_router, prefix="/api")
 app.include_router(experiments_router, prefix="/api")
 app.include_router(library_router, prefix="/api")
 app.include_router(hubs_router, prefix="/api")
+app.include_router(le_router, prefix="/api")
+app.include_router(commands_router, prefix="/api")

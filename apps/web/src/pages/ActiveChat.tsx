@@ -18,6 +18,11 @@ import {
   deleteHistoryMessage,
   injectIntro,
   fetchChatDebug,
+  fetchSuggestions,
+  fetchCommands,
+  runCommand,
+  type SlashCommand,
+  type CommandResult,
   type ChatMessage,
   type SessionInfo,
   type SessionSettings,
@@ -50,7 +55,8 @@ import { useChatModel } from "../lib/models";
 import { useAdultContent } from "../lib/adult";
 import { friendlyError } from "../lib/errors";
 import { useDocumentTitle } from "../lib/title";
-import { useConfirm } from "../components/ui/Dialog";
+import Dialog, { useConfirm } from "../components/ui/Dialog";
+import { getReplyVersions, recordReplyVersion, selectReplyVersion } from "../lib/replyVersions";
 import { cleanPreview } from "../lib/text";
 import { useMediaQuery } from "../lib/useMediaQuery";
 import { NARRATION_STYLES, extractNarrationStyle, applyNarrationStyle } from "../lib/narrationStyle";
@@ -139,6 +145,14 @@ export default function ActiveChat() {
   const [selectedPresetId, setSelectedPresetId] = useState("");
   const [showNsfw, setShowNsfw] = useState(adult);
   const [debugOpen, setDebugOpen] = useState(false);
+  const [versionTick, setVersionTick] = useState(0);
+  const [directiveOpen, setDirectiveOpen] = useState(false);
+  const [directive, setDirective] = useState("");
+  const [suggestions, setSuggestions] = useState<string[] | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [commands, setCommands] = useState<SlashCommand[]>([]);
+  const [commandResult, setCommandResult] = useState<CommandResult | null>(null);
+  const [commandRunning, setCommandRunning] = useState(false);
   const [debugData, setDebugData] = useState<DebugData | null>(null);
   const [debugLoading, setDebugLoading] = useState(false);
   const [debugError, setDebugError] = useState<string | null>(null);
@@ -429,6 +443,7 @@ export default function ActiveChat() {
     setMessages([]);
     setDebugData(null);
     setInput("");
+    setSuggestions(null);
     if (stopRef.current) {
       stopRef.current();
       stopRef.current = null;
@@ -542,8 +557,32 @@ export default function ActiveChat() {
     }
   };
 
-  const send = async (regenerateId?: number) => {
+  useEffect(() => {
+    fetchCommands().then(setCommands).catch(() => setCommands([]));
+  }, []);
+
+  // 「/」で始まる入力はチャットに送らず、API のコマンドとして実行する（履歴には残らない）
+  const runSlash = async (text: string) => {
+    setCommandRunning(true);
+    setCommandResult({ ok: true, command: text.split(" ")[0], output: "実行中…", refresh_models: false });
+    try {
+      const result = await runCommand(text);
+      setCommandResult(result);
+      if (result.refresh_models) reloadModels();
+      if (result.ok) setInput("");
+    } catch (e) {
+      setCommandResult({ ok: false, command: text.split(" ")[0], output: String(e), refresh_models: false });
+    } finally {
+      setCommandRunning(false);
+    }
+  };
+
+  const send = async (regenerateId?: number, request?: string) => {
     const text = input.trim();
+    if (!regenerateId && text.startsWith("/")) {
+      if (!commandRunning) void runSlash(text);
+      return;
+    }
     if ((!text && !regenerateId) || sendingRef.current || !modelId || !settingsReady) return;
     const previous = messages;
     const next: ChatMessage[] = regenerateId
@@ -554,7 +593,9 @@ export default function ActiveChat() {
     const epoch = ++requestEpochRef.current;
     const gen = sessionGenRef.current;
     const current = () => epoch === requestEpochRef.current && gen === sessionGenRef.current;
+    const replaced = regenerateId ? messages.at(-1)?.content ?? "" : "";
     setError(null);
+    setSuggestions(null);
     setStreaming(true);
     setMessages([...next, { role: "assistant", content: "" }]);
     if (!regenerateId) setInput("");
@@ -577,12 +618,18 @@ export default function ActiveChat() {
       setMessages([...next, { role: "assistant", content: full }]);
     };
     stopRef.current = streamChat(modelId, next,
-      { session_id: sessionId, temperature, system_prompt: systemPrompt, regenerate_message_id: regenerateId, allow_nsfw: showNsfw }, {
+      { session_id: sessionId, temperature, regenerate_message_id: regenerateId, allow_nsfw: showNsfw,
+        // 「注文して作り直す」はこの1回の生成だけに指示を足す（保存される設定は変えない）
+        system_prompt: request ? `${systemPrompt.trim()}\n\n# この返事だけの注文\n${request}`.trim() : systemPrompt }, {
         onToken: token => display(reply + token),
         onReset: full => display(full),
         onDone: full => {
           if (!current()) return;
           display(full); sendingRef.current = false; setStreaming(false); stopRef.current = null;
+          if (regenerateId && replaced && full) {
+            recordReplyVersion(sessionId, regenerateId, replaced, full);
+            setVersionTick((v) => v + 1);
+          }
           void loadHistory(sessionId); void loadSessions();
           if (debugOpen) void loadDebug();
         },
@@ -593,6 +640,52 @@ export default function ActiveChat() {
           if (debugOpen) void loadDebug();
         },
       });
+  };
+
+  const lastMsg = messages.at(-1);
+  const replyVersions = useMemo(
+    () => (lastMsg?.role === "assistant" && lastMsg.id ? getReplyVersions(sessionId, lastMsg.id) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sessionId, lastMsg?.id, versionTick],
+  );
+  const showVersion = async (index: number) => {
+    const id = lastMsg?.id;
+    if (!replyVersions || !id || streaming) return;
+    const content = replyVersions.versions[index];
+    if (content === undefined) return;
+    selectReplyVersion(sessionId, id, index);
+    setVersionTick((v) => v + 1);
+    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, content } : m)));
+    try {
+      await updateHistoryMessage(id, content);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+  const submitDirective = () => {
+    const req = directive.trim();
+    const id = lastMsg?.id;
+    if (!req || !id) return;
+    setDirectiveOpen(false);
+    setDirective("");
+    void send(id, req);
+  };
+  const handleSuggest = async () => {
+    if (suggestions) return setSuggestions(null);
+    if (!modelId || suggesting) return;
+    setSuggesting(true);
+    setError(null);
+    const sid = sessionId;
+    try {
+      const list = await fetchSuggestions(modelId, sid, messages.map(({ role, content }) => ({ role, content })), showNsfw);
+      if (sid !== activeSessionRef.current) return;
+      if (list.length === 0) setError("返事の候補を作れませんでした。もう一度試してね。");
+      else setSuggestions(list);
+    } catch (e) {
+      if (sid === activeSessionRef.current) setError(String(e));
+    } finally {
+      setSuggesting(false);
+    }
   };
 
   const friendly = error ? friendlyError(error) : null;
@@ -647,6 +740,24 @@ export default function ActiveChat() {
   return (
     <div className="k-chat-layout">
       {confirmDialog}
+      <Dialog open={directiveOpen} onClose={() => setDirectiveOpen(false)} labelledBy="k-directive-title">
+        <form className="k-confirm" onSubmit={(e) => { e.preventDefault(); submitDirective(); }}>
+          <h2 id="k-directive-title" className="k-confirm__title">どんな返事にしたい？</h2>
+          <p className="k-confirm__desc">いまの返事を、この注文に沿って作り直します。注文はこの1回だけに使われます。</p>
+          <Textarea value={directive} onChange={(e) => setDirective(e.target.value)} rows={3} maxLength={300} placeholder="例：もっと照れた感じで / 話を少し進めて / 短めに" data-autofocus />
+          <div className="k-directive-presets">
+            {["もっと甘く", "もっと短く", "話を進めて", "照れた感じで", "情景をくわしく"].map((t) => (
+              <button key={t} type="button" className="k-chip" onClick={() => setDirective(t)}>{t}</button>
+            ))}
+          </div>
+          <div className="k-confirm__actions">
+            <Button variant="ghost" type="button" onClick={() => setDirectiveOpen(false)}>やめる</Button>
+            <Button variant="primary" type="submit" disabled={!directive.trim()}>
+              <Icon name="wand" size={15} /> 作り直す
+            </Button>
+          </div>
+        </form>
+      </Dialog>
       {/* 左: セッションレール */}
       <aside className="k-chat-rail" aria-label="会話リスト">
         <div className="k-chat-rail__head">
@@ -761,10 +872,28 @@ export default function ActiveChat() {
                     )}
                     {!isEditing && !isStreaming && (
                       <div className="k-msg__actions">
+                        {isAssistant && i === messages.length - 1 && replyVersions && (
+                          <span className="k-msg__versions" role="group" aria-label="返事の案を切り替える">
+                            <button type="button" className="k-msg__action k-msg__action--icon" onClick={() => void showVersion(replyVersions.index - 1)} disabled={replyVersions.index <= 0} aria-label="前の案">
+                              <Icon name="back" size={14} />
+                            </button>
+                            <span className="k-msg__versions-count" aria-live="polite">
+                              {replyVersions.index + 1}/{replyVersions.versions.length}
+                            </span>
+                            <button type="button" className="k-msg__action k-msg__action--icon" onClick={() => void showVersion(replyVersions.index + 1)} disabled={replyVersions.index >= replyVersions.versions.length - 1} aria-label="次の案">
+                              <Icon name="chevron" size={14} />
+                            </button>
+                          </span>
+                        )}
                         {isAssistant && i === messages.length - 1 && canRegenerate && (
-                          <button type="button" className="k-msg__action" onClick={() => void send(messages.at(-1)!.id)} disabled={!settingsReady}>
-                            <Icon name="refresh" size={14} /> 別の返事
-                          </button>
+                          <>
+                            <button type="button" className="k-msg__action" onClick={() => void send(messages.at(-1)!.id)} disabled={!settingsReady}>
+                              <Icon name="refresh" size={14} /> 別の返事
+                            </button>
+                            <button type="button" className="k-msg__action" onClick={() => setDirectiveOpen(true)} disabled={!settingsReady}>
+                              <Icon name="wand" size={14} /> 注文して作り直す
+                            </button>
+                          </>
                         )}
                         <button type="button" className="k-msg__action" onClick={() => startEdit(i)} aria-label="編集">
                           <Icon name="edit" size={14} /> 編集
@@ -815,7 +944,38 @@ export default function ActiveChat() {
         )}
 
         <div className="k-chat-composer-wrap">
+          {suggestions && (
+            <div className="k-suggest" role="group" aria-label="返事の候補">
+              {suggestions.map((t) => (
+                <button key={t} type="button" className="k-suggest__item" onClick={() => { setInput(t); setSuggestions(null); }}>
+                  {t}
+                </button>
+              ))}
+            </div>
+          )}
+          {commandResult && (
+            <div className={`k-cmd-result ${commandResult.ok ? "" : "is-error"}`} role="status">
+              <div className="k-cmd-result__head">{commandResult.command}</div>
+              <pre className="k-cmd-result__body">{commandResult.output}</pre>
+              <button type="button" className="k-cmd-result__close" onClick={() => setCommandResult(null)} aria-label="結果を閉じる">
+                <Icon name="close" size={14} />
+              </button>
+            </div>
+          )}
           <Composer
+            commands={commands}
+            tools={
+              <button
+                type="button"
+                className={`k-composer__tool ${suggestions ? "is-active" : ""}`}
+                onClick={() => void handleSuggest()}
+                disabled={!modelId || !settingsReady || streaming || suggesting || !messages.some((m) => m.role === "assistant")}
+                aria-pressed={!!suggestions}
+                title="次に送る返事の候補を出す"
+              >
+                <Icon name="sparkle" size={13} className={suggesting ? "k-spin" : undefined} /> {suggesting ? "考え中…" : "返事の候補"}
+              </button>
+            }
             value={input}
             onChange={setInput}
             onSend={() => void send()}
