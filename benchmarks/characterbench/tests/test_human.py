@@ -29,7 +29,7 @@ class HumanReviewTests(unittest.TestCase):
         return {'schema':'kcb-human-v0.1','study_id':self.key['study_id'],'rater_id':'synthetic-test-rater',
                 'annotations':[{'sample_id':item['sample_id'],'vote':choice}]}
     def test_html_and_blind_data_do_not_reveal_model_labels(self):
-        text=(self.root/'study/blind-arena.html').read_text()
+        text=(self.root/'study/blind-arena.html').read_text(encoding='utf-8')
         self.assertNotIn('SECRET_MODEL_LABEL_A',text);self.assertNotIn('SECRET_MODEL_LABEL_B',text)
         self.assertNotIn('run_snapshots',text)
     def test_all_natural_units_exported(self):self.assertEqual(len(self.key['items']),7)
