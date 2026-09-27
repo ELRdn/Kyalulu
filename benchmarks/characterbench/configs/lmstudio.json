@@ -1,0 +1,22 @@
+{
+  "provider": "openai",
+  "base_url": "http://127.0.0.1:1234/v1",
+  "model": "auto",
+  "label": "LM Studio candidate",
+  "api_key_env": "KCB_API_KEY",
+  "temperature": 0.7,
+  "top_p": 0.95,
+  "max_tokens": 768,
+  "stream": true,
+  "stream_usage": false,
+  "timeout_seconds": 180,
+  "send_seed": false,
+  "extra_body": {},
+  "track": "core",
+  "model_metadata": {
+    "quantization": "FILL_BEFORE_PUBLISHING",
+    "weight_sha256": "FILL_BEFORE_PUBLISHING",
+    "backend_version": "FILL_BEFORE_PUBLISHING",
+    "thinking_mode": "server_default_NOT_VERIFIED"
+  }
+}

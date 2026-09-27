@@ -1,0 +1,120 @@
+{
+  "checked_on": "2026-09-27",
+  "scope": "Primary research/official docs; ideas summarized, not datasets or code copied",
+  "sources": [
+    {
+      "id": "S01",
+      "title": "MMLU",
+      "url": "https://arxiv.org/abs/2009.03300",
+      "use": "Breadth and disaggregated accuracy"
+    },
+    {
+      "id": "S02",
+      "title": "GPQA",
+      "url": "https://arxiv.org/abs/2311.12022",
+      "use": "Expert review and item quality"
+    },
+    {
+      "id": "S03",
+      "title": "GSM8K",
+      "url": "https://arxiv.org/abs/2110.14168",
+      "use": "Verifiable final answer after multi-step reasoning"
+    },
+    {
+      "id": "S04",
+      "title": "HumanEval",
+      "url": "https://arxiv.org/abs/2107.03374",
+      "use": "Executable checks; not a claim that prose has a single test oracle"
+    },
+    {
+      "id": "S05",
+      "title": "IFEval",
+      "url": "https://arxiv.org/abs/2311.07911",
+      "use": "Verifiable instruction constraints"
+    },
+    {
+      "id": "S06",
+      "title": "MT-Bench and Chatbot Arena",
+      "url": "https://arxiv.org/abs/2306.05685",
+      "use": "Multiturn evaluation and LLM judge biases"
+    },
+    {
+      "id": "S07",
+      "title": "RULER",
+      "url": "https://arxiv.org/abs/2404.06654",
+      "use": "Retrieval, tracing and aggregation"
+    },
+    {
+      "id": "S08",
+      "title": "AlpacaEval",
+      "url": "https://github.com/tatsu-lab/alpaca_eval",
+      "use": "Pairwise evaluation; distinguish length control from raw preference"
+    },
+    {
+      "id": "S09",
+      "title": "Arena-Hard",
+      "url": "https://github.com/lmarena/arena-hard-auto",
+      "use": "Automatic benchmark comparison and measurement design"
+    },
+    {
+      "id": "S10",
+      "title": "LiveBench",
+      "url": "https://arxiv.org/abs/2406.19314",
+      "use": "Refreshing evaluations and contamination considerations"
+    },
+    {
+      "id": "S11",
+      "title": "CharacterBench",
+      "url": "https://arxiv.org/abs/2412.11912",
+      "use": "Sparse/dense dimensions and targeted queries"
+    },
+    {
+      "id": "S12",
+      "title": "CharacterEval",
+      "url": "https://aclanthology.org/2024.acl-long.638/",
+      "use": "Character dialogue evaluation; language-transfer caution"
+    },
+    {
+      "id": "S13",
+      "title": "PersonaGym",
+      "url": "https://personagym.com/",
+      "use": "Persona-conditioned environments"
+    },
+    {
+      "id": "S14",
+      "title": "InCharacter",
+      "url": "https://aclanthology.org/2024.acl-long.102/",
+      "use": "Interview-based personality observation"
+    },
+    {
+      "id": "S15",
+      "title": "CPO: Addressing Reward Ambiguity in Role-playing Dialogue via Comparative Policy Optimization",
+      "url": "https://aclanthology.org/2025.findings-emnlp.18/",
+      "use": "Comparison-based roleplay research, not reproduced training"
+    },
+    {
+      "id": "S16",
+      "title": "RP-Bench",
+      "url": "https://github.com/LeviTheWeasel/rp-benchmark",
+      "use": "Roleplay evaluation implementation; no copied live rankings"
+    },
+    {
+      "id": "S17",
+      "title": "LM Studio OpenAI Compatibility",
+      "url": "https://lmstudio.ai/docs/developer/openai-compat",
+      "use": "Local chat and model-list endpoints"
+    },
+    {
+      "id": "S18",
+      "title": "Ollama OpenAI compatibility",
+      "url": "https://docs.ollama.com/api/openai-compatibility",
+      "use": "Partial compatibility, explicit request settings"
+    },
+    {
+      "id": "S19",
+      "title": "llama.cpp server",
+      "url": "https://github.com/ggml-org/llama.cpp/tree/master/tools/server",
+      "use": "Reference local server interface"
+    }
+  ]
+}

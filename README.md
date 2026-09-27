@@ -25,11 +25,14 @@ LE は [Locally Uncensored](https://github.com/PurpleDoubleD/locally-uncensored)
 ├─ packages/
 │  ├─ schemas/        # 共通スキーマ (Zod / Pydantic 共通契約)
 │  └─ ui/             # 共通UIコンポーネント
-├─ benchmarks/official/
+├─ benchmarks/official/           # Kyalulu runtime benchmark
+├─ benchmarks/characterbench/     # independent MIT-licensed KCB pilot
 ├─ characters/ personas/ worlds/ prompts/ models/
 ├─ docs/
 └─ experiments/       # ローカル実験結果（gitignore）
 ```
+
+独立した日本語キャラクター評価パイロットは [CharacterBench](benchmarks/characterbench/README_JA.md) に置いている。12キャラ・264応答の固定問題集をCLIで実行できる。Kyalulu本体のRuntime/Memory評価とは別トラックで、状態診断・表面仕様の点数をキャラ品質の総合点とは扱わない。
 
 ## 必要環境
 
