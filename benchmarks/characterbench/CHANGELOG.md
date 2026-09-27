@@ -2,7 +2,7 @@
 
 ## 0.1.2 — 2026-09-27
 
-The literal no-headings/no-lists checker now recognizes common line-leading Japanese bullet markers. An explicit offline `regrade` command updates saved evaluations without regenerating model responses, archives old/new evaluations, and records generation and grading versions separately. This corrected 11 false surface passes in the Gemma 4 full-run pilot; it does not change the fixed corpus or Core prompt.
+The literal no-headings/no-lists checker now recognizes common line-leading Japanese bullet markers. An explicit offline `regrade` command updates saved evaluations without regenerating model responses, archives old/new evaluations, and records generation and grading versions separately. This corrected 11 false surface passes in the Gemma 4 full-run pilot; it does not change the fixed corpus or Core prompt. The blind-review HTML test now reads UTF-8 explicitly on Windows CI locales.
 
 ## 0.1.1 — 2026-09-27
 
