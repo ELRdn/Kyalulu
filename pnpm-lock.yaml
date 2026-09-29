@@ -47,6 +47,9 @@ importers:
 
   apps/web:
     dependencies:
+      noise-c.wasm:
+        specifier: 0.4.0
+        version: 0.4.0
       react:
         specifier: ^19.0.0
         version: 19.2.8
@@ -1835,6 +1838,9 @@ packages:
   node-releases@2.0.53:
     resolution: {integrity: sha512-D9UOmYG3UH1V+ENW56t5QXBwJw1YEY18ruVeus89Rw+SyIgjPkCO84bRzO3uNIYosJbNwiabWVn48o3uJLjxFQ==}
     engines: {node: '>=18'}
+
+  noise-c.wasm@0.4.0:
+    resolution: {integrity: sha512-dGkimM3UFKmidIBnI1SKSO+VqFT20xQoCJ194rf25huVIxdfwRf34ZVNsdSYpWYHHUQ4QS1vawvLThJKSMiIFw==}
 
   nopt@6.0.0:
     resolution: {integrity: sha512-ZwLpbTgdhuZUnZzjd7nb1ZV+4DoiC6/sfiVKok72ym/4Tlf+DFdlHYmT2JPmcNNWV6Pi3SDf1kT+A4r9RTuT9g==}
@@ -4543,6 +4549,8 @@ snapshots:
       - supports-color
 
   node-releases@2.0.53: {}
+
+  noise-c.wasm@0.4.0: {}
 
   nopt@6.0.0:
     dependencies:

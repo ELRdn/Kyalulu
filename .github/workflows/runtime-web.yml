@@ -1,0 +1,42 @@
+name: Runtime and Web
+
+on:
+  push:
+    paths: ['apps/**', 'packages/**', 'runtime/**', 'tests/**', 'scripts/**', 'deploy/remote/**', 'pnpm-lock.yaml', 'uv.lock', '.github/workflows/runtime-web.yml']
+  pull_request:
+    paths: ['apps/**', 'packages/**', 'runtime/**', 'tests/**', 'scripts/**', 'deploy/remote/**', 'pnpm-lock.yaml', 'uv.lock', '.github/workflows/runtime-web.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.13'
+      - run: pnpm install --frozen-lockfile
+      - run: uv sync --frozen --all-packages --all-extras --no-install-workspace
+      - run: pnpm typecheck
+      - run: pnpm --filter web test
+      - run: pnpm --filter web build
+      - run: pnpm --filter desktop build
+      - run: uv run --no-sync python -m pytest tests -q
+      - run: uv run --no-sync python -m playwright install --with-deps chromium
+      - run: node scripts/remote_crypto_build_wrapper.mjs
+      - run: uv run --no-sync python scripts/remote_crypto_wrapper_interop.py
+      - run: uv run --no-sync python tests/e2e_remote.py

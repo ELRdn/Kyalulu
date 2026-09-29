@@ -1,3 +1,4 @@
+import { apiFetch as fetch } from './transport';
 export async function labRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api/${path}`, {
     ...init, headers: { ...(init?.body ? { "Content-Type": "application/json" } : {}), ...init?.headers }

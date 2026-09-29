@@ -1,0 +1,15 @@
+id: gemma4-home
+display_name: Gemma 4 26B A4B · 自宅PC（思考なし）
+quantization: Q4_K_M
+context_length: 8192
+provider:
+  type: lm_studio
+  base_url: http://127.0.0.1:1234/v1
+  model: kyalulu-gemma4-home
+  structured_output: true
+recommended_generation:
+  temperature: 0.7
+  top_p: 0.95
+  max_tokens: 2048
+  reasoning_effort: none
+notes: Explicit local LM Studio instance; RX 9070 XT Vulkan, 60% offload, iGPU disabled. No cloud fallback.

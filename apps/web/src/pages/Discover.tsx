@@ -1,3 +1,4 @@
+import { scopedKey } from '../lib/remoteStore';
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import HubBrowser from "../components/HubBrowser";
@@ -13,13 +14,14 @@ import { collectMoods, matchesMood, moodsOf } from "../lib/moodTaxonomy";
 import { useAdultContent } from "../lib/adult";
 import { useDocumentTitle } from "../lib/title";
 import "./pages.css";
+import { useAdministrative } from '../components/RuntimeGate';
 
 type Source = "taverncard" | "sillytavern";
 
 const LS_RECENT = "kyalulu-recent-searches";
 function readRecent(): string[] {
   try {
-    const v = JSON.parse(localStorage.getItem(LS_RECENT) ?? "[]");
+    const v = JSON.parse(localStorage.getItem(scopedKey(LS_RECENT)) ?? "[]");
     return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").slice(0, 8) : [];
   } catch {
     return [];
@@ -27,13 +29,14 @@ function readRecent(): string[] {
 }
 function writeRecent(list: string[]) {
   try {
-    localStorage.setItem(LS_RECENT, JSON.stringify(list));
+    localStorage.setItem(scopedKey(LS_RECENT), JSON.stringify(list));
   } catch {
     /* Storage unavailable: recent searches are only a convenience. */
   }
 }
 
 export default function Discover() {
+  const administrative = useAdministrative();
   const [params, setParams] = useSearchParams();
   const [characters, setCharacters] = useState<CharacterInfo[]>([]);
   const [worlds, setWorlds] = useState<WorldInfo[]>([]);
@@ -224,7 +227,7 @@ export default function Discover() {
             <p className="k-page-sub">公開されているキャラクターカードを探して、マイライブラリに取り込めます。</p>
           </div>
         </div>
-        <div className="k-chip-row" role="tablist" aria-label="Hubを選ぶ">
+        {administrative ? <div className="k-chip-row" role="tablist" aria-label="Hubを選ぶ">
           {(["taverncard", "sillytavern"] as const).map((value) => (
             <button key={value} role="tab" aria-selected={hubSource === value} className={`k-chip ${hubSource === value ? "k-chip--active" : ""}`} onClick={() => setHubSource(hubSource === value ? null : value)}>
               <Icon name="search" size={13} /> {value === "taverncard" ? "TavernCardを検索" : "SillyTavern Contentを見る"}
@@ -236,8 +239,8 @@ export default function Discover() {
           <Link to="/create?import=characterai" className="k-chip">
             <Icon name="arrow" size={13} /> Character.AIから移行
           </Link>
-        </div>
-        {hubSource && <HubBrowser key={hubSource} source={hubSource} />}
+        </div> : <p>Hubの検索やURLからの取得はサーバー側のPCで行えます。この端末では「つくる」からファイルを取り込めます。</p>}
+        {administrative && hubSource && <HubBrowser key={hubSource} source={hubSource} />}
         <details className="k-hub-more">
           <summary>ほかのHubサイトを開く</summary>
           <div className="k-hubs">

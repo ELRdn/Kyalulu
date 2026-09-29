@@ -10,7 +10,7 @@ def _wrap_response_format(schema: Any) -> dict:
         return schema
     return {"type": "json_schema", "json_schema": {"name": "structured_response", "strict": True, "schema": schema}}
 class LMStudioProvider(ModelProvider):
-    BASE_SUPPORTED = frozenset({"messages", "model", "temperature", "top_p", "seed", "max_tokens"})
+    BASE_SUPPORTED = frozenset({"messages", "model", "temperature", "top_p", "seed", "max_tokens", "reasoning_effort"})
     def __init__(self, base_url: str | None = None, *, supports_structured_output: bool = False, transport: Any | None = None, timeout: httpx.Timeout | None = None, **_ignored: Any) -> None:
         self.base_url = (base_url or settings.lm_studio_url).rstrip("/")
         self.supports_structured_output = bool(supports_structured_output)
@@ -51,6 +51,10 @@ class LMStudioProvider(ModelProvider):
             payload["seed"] = applied["seed"]
         if "max_tokens" in applied:
             payload["max_tokens"] = applied["max_tokens"]
+        if "reasoning_effort" in applied:
+            if applied["reasoning_effort"] not in {"none", "low", "medium", "high"}:
+                raise ValueError("lmstudio: invalid reasoning_effort")
+            payload["reasoning_effort"] = applied["reasoning_effort"]
         if "response_schema" in applied:
             payload["response_format"] = _wrap_response_format(applied["response_schema"])
         return payload

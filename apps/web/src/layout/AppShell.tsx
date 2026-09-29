@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Outlet, Link, NavLink, useLocation } from "react-router-dom";
+import { Outlet, Link, useLocation } from "react-router-dom";
 import NavItem from "../components/ui/NavItem";
 import Avatar from "../components/ui/Avatar";
 import IconButton from "../components/ui/IconButton";
@@ -8,8 +8,16 @@ import CommandPalette from "../components/CommandPalette";
 import { useTheme } from "../lib/theme";
 import { useDisplayName } from "../lib/profile";
 import "./shell.css";
+import { useAdministrative } from '../components/RuntimeGate';
 
 const LS_SIDEBAR_COMPACT = "kyalulu-sidebar-compact";
+
+const MOBILE_NAV: { to: string; icon: IconName; label: string }[] = [
+  { to: "/chats", icon: "chat", label: "トーク" },
+  { to: "/discover", icon: "compass", label: "キャラクター" },
+  { to: "/create", icon: "pen", label: "つくる" },
+  { to: "/profile", icon: "settings", label: "設定" },
+];
 
 const CONSUMER_NAV: { to: string; icon: IconName; label: string; end?: boolean }[] = [
   { to: "/", icon: "home", label: "ホーム", end: true },
@@ -32,6 +40,7 @@ const DAILY_WORDS = [
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
 export default function AppShell() {
+  const administrative = useAdministrative();
   const [compact, setCompact] = useState(() => localStorage.getItem(LS_SIDEBAR_COMPACT) === "1");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const { theme, toggle } = useTheme();
@@ -70,7 +79,7 @@ export default function AppShell() {
     <div className={`k-shell ${inChat ? "k-shell--chat" : ""} ${location.pathname.startsWith("/characters/") ? "k-shell--immersive" : ""}`}>
       <header className="k-shell__header">
         <Link to="/" className="k-shell__logo" aria-label="Kyalulu ホーム">
-          <img className="k-shell__logo-mark" src="/apple-touch-icon.png" alt="" aria-hidden="true" />
+          <img className="k-shell__logo-mark" src={`${import.meta.env.BASE_URL}apple-touch-icon.png`} alt="" aria-hidden="true" />
           <span className="k-shell__wordmark">
             Kyalulu<span aria-hidden="true">✦</span>
           </span>
@@ -101,14 +110,14 @@ export default function AppShell() {
               <NavItem key={item.to} to={item.to} icon={<Icon name={item.icon} size={19} />} label={item.label} compact={rail} end={item.end} />
             ))}
           </div>
-          <div className="k-shell__sidebar-divider" />
+          {administrative && <><div className="k-shell__sidebar-divider" />
           <div className="k-shell__nav-group">
             <NavItem to="/studio" icon={<Icon name="sparkle" size={17} />} label="スタジオ" secondary compact={rail} badge={<span className="k-nav-item__badge">上級者向け</span>} />
-          </div>
+          </div></>}
 
           {!rail && (
             <div className="k-shell__companion">
-              <img src="/mascot/nap.webp" alt="" className="k-shell__companion-art" />
+              <img src={`${import.meta.env.BASE_URL}mascot/nap.webp`} alt="" className="k-shell__companion-art" />
               <div className="k-shell__daily">
                 <div className="k-shell__daily-title">✦ 今日のひとこと</div>
                 <p>{dailyWord}</p>
@@ -130,12 +139,16 @@ export default function AppShell() {
 
       <nav className="k-shell__bottomnav" aria-label="モバイルナビゲーション">
         <div className="k-shell__bottomnav-row">
-          {CONSUMER_NAV.map((item) => (
-            <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => `k-shell__bottomnav-item ${isActive ? "active" : ""}`}>
-              <Icon name={item.icon} size={21} />
-              <span>{item.label}</span>
-            </NavLink>
-          ))}
+          {MOBILE_NAV.map((item) => {
+            const active = location.pathname === item.to || location.pathname.startsWith(`${item.to}/`) ||
+              (item.to === "/discover" && location.pathname.startsWith("/characters/"));
+            return (
+              <Link key={item.to} to={item.to} aria-current={active ? "page" : undefined} className={`k-shell__bottomnav-item ${active ? "active" : ""}`}>
+                <Icon name={item.icon} size={21} />
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
         </div>
       </nav>
 

@@ -1,6 +1,16 @@
+import { apiFetch as fetch } from './transport';
 import { SSEDecoder } from "./sse";
 import type { GenerationRecord } from "../../../../packages/schemas/src";
 import type { LibraryBinding } from '../../../../packages/schemas/src/portable';
+/** Preserve server diagnostics while rejecting every failed HTTP response. */
+async function checkedJson(r: Response) {
+  if (!r.ok) {
+    const body = await r.json().catch(() => null);
+    const detail = body?.error ?? body?.detail ?? body?.output;
+    throw new Error(typeof detail === "string" ? detail : detail ? JSON.stringify(detail) : `HTTP ${r.status}`);
+  }
+  return r.json();
+}
 /** API クライアント - Milestone 2 */
 
 export type ModelInfo = {
@@ -23,13 +33,13 @@ export type ProviderHealth = {
 
 export async function fetchModels(): Promise<ModelInfo[]> {
   const r = await fetch(`/api/models?t=${Date.now()}`, { cache: "no-store" });
-  const j = await r.json();
+  const j = await checkedJson(r);
   return j.models ?? [];
 }
 
 export async function fetchProvidersHealth(): Promise<ProviderHealth[]> {
   const r = await fetch("/api/providers/health");
-  const j = await r.json();
+  const j = await checkedJson(r);
   return j.health ?? [];
 }
 
@@ -125,7 +135,7 @@ export type CommandResult = { ok: boolean; command: string; output: string; refr
 
 export async function fetchCommands(): Promise<SlashCommand[]> {
   const r = await fetch("/api/commands");
-  const j = await r.json();
+  const j = await checkedJson(r);
   return j.commands ?? [];
 }
 
@@ -135,14 +145,14 @@ export async function runCommand(input: string): Promise<CommandResult> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ input }),
   });
-  const j = await r.json().catch(() => null);
+  const j = await checkedJson(r);
   if (!j || typeof j.output !== "string") throw new Error(`command failed: ${r.status}`);
   return j;
 }
 
 export async function fetchHealth(): Promise<{ status: string; version: string }> {
   const r = await fetch("/api/health");
-  return r.json();
+  return checkedJson(r);
 }
 
 export type ChatMessage = { role: string; content: string };
@@ -167,11 +177,10 @@ export function sessionTitle(s: Pick<SessionInfo, "session_id" | "character_name
 
 const API_BASE_STREAM = ""; // Same-origin SSE through the tested Vite proxy.
 
-export async function fetchHistory(sessionId?: string): Promise<(ChatMessage & { id?: number; model_id?: string; created_at?: string; session_id?: string })[]> {
+export async function fetchHistory(sessionId?: string, signal?: AbortSignal): Promise<(ChatMessage & { id?: number; model_id?: string; created_at?: string; session_id?: string })[]> {
   const url = sessionId ? `/api/chat/history?session_id=${encodeURIComponent(sessionId)}&t=${Date.now()}` : `/api/chat/history?t=${Date.now()}`;
-  const r = await fetch(url, { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
-  const j = await r.json();
-  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  const r = await fetch(url, { signal, cache: "no-store", headers: { "Cache-Control": "no-cache" } });
+  const j = await checkedJson(r);
   return j.history ?? [];
 }
 
@@ -193,13 +202,14 @@ export async function deleteHistoryMessage(id: number): Promise<void> {
 
 export async function fetchSessions(): Promise<SessionInfo[]> {
   const r = await fetch(`/api/chat/sessions?t=${Date.now()}`, { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
-  const j = await r.json();
+  const j = await checkedJson(r);
   return j.sessions ?? [];
 }
 
 export async function clearHistory(sessionId?: string): Promise<void> {
   const url = sessionId ? `/api/chat/history?session_id=${encodeURIComponent(sessionId)}` : "/api/chat/history";
-  await fetch(url, { method: "DELETE" });
+  const r = await fetch(url, { method: "DELETE" });
+  if (!r.ok) await checkedJson(r);
 }
 
 export type SessionSettings = {
@@ -215,7 +225,7 @@ export type SessionSettings = {
 
 export async function fetchSettings(sessionId: string): Promise<SessionSettings> {
   const r = await fetch(`/api/chat/settings?session_id=${encodeURIComponent(sessionId)}`, { cache: "no-store" });
-  const j = await r.json();
+  const j = await checkedJson(r);
   return {
     session_id: j.session_id ?? sessionId,
     system_prompt: j.system_prompt ?? "",
@@ -230,8 +240,7 @@ export async function fetchSettings(sessionId: string): Promise<SessionSettings>
 
 export async function injectIntro(sessionId: string): Promise<{ injected: boolean; intro?: string }> {
   const r = await fetch(`/api/chat/intro/inject?session_id=${encodeURIComponent(sessionId)}`, { method: "POST" });
-  const j = await r.json();
-  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  const j = await checkedJson(r);
   return j;
 }
 
@@ -253,17 +262,17 @@ export type WorldInfo = { id: string; display_name: string; version: string; des
 
 export async function fetchCharacters(include_nsfw = false): Promise<(CharacterInfo & { nsfw?: boolean })[]> {
   const r = await fetch(`/api/characters?include_nsfw=${include_nsfw}`, { cache: "no-store" });
-  const j = await r.json();
+  const j = await checkedJson(r);
   return j.characters ?? [];
 }
 export async function fetchPersonas(): Promise<PersonaInfo[]> {
   const r = await fetch("/api/personas", { cache: "no-store" });
-  const j = await r.json();
+  const j = await checkedJson(r);
   return j.personas ?? [];
 }
 export async function fetchWorlds(): Promise<WorldInfo[]> {
   const r = await fetch("/api/worlds", { cache: "no-store" });
-  const j = await r.json();
+  const j = await checkedJson(r);
   return j.worlds ?? [];
 }
 
@@ -283,15 +292,13 @@ export async function compilePrompt(p: { character_id?: string | null; persona_i
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(p),
   });
-  const j = await r.json();
-  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  const j = await checkedJson(r);
   return j;
 }
 
 export async function fetchChatDebug(sessionId: string): Promise<{ session_id: string; settings: SessionSettings; compiled: CompiledPrompt; history_count: number; approx_turn: number; relationship: string; state: Record<string, unknown>; generation: GenerationResult | null }> {
   const r = await fetch(`/api/chat/debug?session_id=${encodeURIComponent(sessionId)}`, { cache: "no-store" });
-  const j = await r.json();
-  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  const j = await checkedJson(r);
   return j;
 }
 
@@ -308,7 +315,7 @@ export type PromptPreset = {
 
 export async function fetchPresets(include_nsfw = false): Promise<PromptPreset[]> {
   const r = await fetch(`/api/prompts/presets?include_nsfw=${include_nsfw}`, { cache: "no-store" });
-  const j = await r.json();
+  const j = await checkedJson(r);
   return j.presets ?? [];
 }
 
@@ -318,8 +325,7 @@ export async function createPreset(name: string, content: string, temperature: n
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, content, temperature, nsfw, nsfw_level }),
   });
-  const j = await r.json();
-  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  const j = await checkedJson(r);
   return j;
 }
 
@@ -329,8 +335,7 @@ export async function updatePreset(id: string, name: string, content: string, te
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, content, temperature }),
   });
-  const j = await r.json();
-  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  const j = await checkedJson(r);
   return j;
 }
 
@@ -358,12 +363,12 @@ export type ExperimentMeta = {
 export type ExperimentListItem = ExperimentMeta;
 export async function fetchExperiments(limit = 50, include_nsfw = false): Promise<ExperimentMeta[]> {
   const r = await fetch(`/api/experiments?limit=${limit}&include_nsfw=${include_nsfw}`, { cache: "no-store" });
-  const j = await r.json();
+  const j = await checkedJson(r);
   return j.experiments ?? [];
 }
 export async function fetchScenarios(include_nsfw = false): Promise<{ id: string; version: string; character: string; difficulty: string; turns: number; nsfw?: boolean; nsfw_level?: string | null }[]> {
   const r = await fetch(`/api/scenarios?include_nsfw=${include_nsfw}`, { cache: "no-store" });
-  const j = await r.json();
+  const j = await checkedJson(r);
   return j.scenarios ?? [];
 }
 export type ExperimentDetail = {
@@ -375,8 +380,7 @@ export type ExperimentDetail = {
 };
 export async function fetchExperimentDetail(id: string): Promise<ExperimentDetail> {
   const r = await fetch(`/api/experiments/${encodeURIComponent(id)}`, { cache: "no-store" });
-  const j = await r.json();
-  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  const j = await checkedJson(r);
   return j;
 }
 export async function putRating(experiment_id: string, turn: number, score: number, comment = "", rater = "local"): Promise<void> {
@@ -392,7 +396,7 @@ export async function putRating(experiment_id: string, turn: number, score: numb
 }
 export async function fetchRatings(experiment_id: string): Promise<{ turn: number; score: number; comment: string }[]> {
   const r = await fetch(`/api/ratings?experiment_id=${encodeURIComponent(experiment_id)}`, { cache: "no-store" });
-  const j = await r.json();
+  const j = await checkedJson(r);
   return j.ratings ?? [];
 }
 export async function runExperiments(scenario: string, model_id: string, runs = 1, temperature?: number, allow_nsfw = false, memory = false): Promise<{ experiment_id: string }[]> {
@@ -401,8 +405,7 @@ export async function runExperiments(scenario: string, model_id: string, runs = 
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ scenario, model_id, runs, temperature, allow_nsfw, memory }),
   });
-  const j = await r.json();
-  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  const j = await checkedJson(r);
   return j.results ?? [];
 }
 
@@ -410,7 +413,7 @@ export type LeaderboardEntry = { model_id: string; runs: number; avg_human: numb
 export type Leaderboard = { scope: string; ranking: LeaderboardEntry[]; generated_at: string; total_experiments: number; excluded?: Record<string, number> };
 export async function fetchLeaderboard(scope: "official" | "all" = "official"): Promise<Leaderboard> {
   const r = await fetch(`/api/leaderboard?scope=${scope}`, { cache: "no-store" });
-  const j = await r.json();
+  const j = await checkedJson(r);
   return j as Leaderboard;
 }
 
@@ -425,8 +428,7 @@ export async function fetchChatNonStream(model_id: string, messages: ChatMessage
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  const j = await r.json();
-  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  const j = await checkedJson(r);
   return j.reply ?? "";
 }
 
@@ -442,6 +444,23 @@ export async function fetchSuggestions(model_id: string, session_id: string, mes
   return Array.isArray(j.suggestions) ? j.suggestions : [];
 }
 
+/** Read-only reconciliation. A 404 is uncertain and must never trigger a POST retry. */
+export async function fetchGeneration(generationId: string, sessionId: string): Promise<import('./chatRecovery').GenerationStatus> {
+  const response = await fetch(`/api/chat/generations/${encodeURIComponent(generationId)}?session_id=${encodeURIComponent(sessionId)}`, {
+    cache: "no-store", signal: AbortSignal.timeout(15000),
+  });
+  if (!response.ok) throw new Error(`送信結果の確認に失敗しました (HTTP ${response.status})`);
+  return response.json();
+}
+
+/** Explicit user Stop only; never called by resume or reconnect. */
+export async function cancelGeneration(generationId: string, sessionId: string): Promise<void> {
+  const response = await fetch(`/api/chat/generations/${encodeURIComponent(generationId)}/cancel?session_id=${encodeURIComponent(sessionId)}`, {
+    method: "POST", cache: "no-store", signal: AbortSignal.timeout(15000),
+  });
+  if (!response.ok) await checkedJson(response);
+}
+
 /** SSEストリーミングでチャット — temperature/system_prompt未指定ならサーバ側のsession_settingsを使う */
 export function streamChat(
   model_id: string,
@@ -452,10 +471,13 @@ export function streamChat(
     onMeta?: (m: unknown) => void;
     onReset?: (full: string) => void;
     onDone?: (full: string, result?: GenerationResult) => void;
-    onError?: (e: string) => void;
+    onError?: (e: string, details?: { rejected: boolean }) => void;
+    /** Durable bookkeeping even if an auth gate has just unmounted the caller. */
+    onRejected?: () => void;
   },
 ): () => void {
   const controller = new AbortController();
+  let rejected = false;
   (async () => {
     const response = await fetch(`${API_BASE_STREAM}/api/chat/stream`, {
       method: "POST", headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
@@ -463,6 +485,8 @@ export function streamChat(
       body: JSON.stringify({ model_id, messages, ...opts, generation_id: opts.generation_id ?? crypto.randomUUID(), stream: true }),
     });
     if (!response.ok || !response.body) {
+      rejected = [400, 401, 403, 422].includes(response.status);
+      if (rejected) handlers.onRejected?.();
       const error = await response.json().catch(() => ({}));
       throw new Error(error.error ?? `HTTP ${response.status}`);
     }
@@ -474,6 +498,7 @@ export function streamChat(
       while (!terminal) {
         const { done, value } = await reader.read();
         for (const event of parser.feed(text.decode(value, { stream: !done }), done)) {
+          if (terminal || controller.signal.aborted) break;
           const data = JSON.parse(event.data);
           if (event.event === "token") handlers.onToken(data.token ?? "");
           else if (event.event === "reset") handlers.onReset?.(data.full ?? "");
@@ -490,7 +515,7 @@ export function streamChat(
       }
       if (!terminal) throw new Error("応答の途中で接続が終了しました。再送は自動実行しません。");
     } finally { await reader.cancel().catch(() => {}); }
-  })().catch(e => { if (!controller.signal.aborted) handlers.onError?.(String(e)); });
+  })().catch(e => { if (!controller.signal.aborted) handlers.onError?.(String(e), { rejected }); });
   return () => controller.abort();
 }
 
@@ -506,7 +531,6 @@ export async function replayExperiment(id: string, allow_nsfw = false): Promise<
   const r = await fetch(`/api/experiments/${encodeURIComponent(id)}/rerun`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runs: 1, allow_nsfw }),
   });
-  const j = await r.json();
-  if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+  const j = await checkedJson(r);
   return j.results;
 }

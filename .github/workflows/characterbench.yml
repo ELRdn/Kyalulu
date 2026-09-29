@@ -1,0 +1,28 @@
+name: CharacterBench
+
+on:
+  push:
+    paths:
+      - 'benchmarks/characterbench/**'
+      - '.github/workflows/characterbench.yml'
+  pull_request:
+    paths:
+      - 'benchmarks/characterbench/**'
+      - '.github/workflows/characterbench.yml'
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run CharacterBench tests
+        working-directory: benchmarks/characterbench
+        run: python -m unittest discover -s tests -q

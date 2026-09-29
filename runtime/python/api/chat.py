@@ -2,9 +2,12 @@
 
 import json
 import uuid
+import asyncio
+from contextlib import aclosing
 from typing import List
 
-from fastapi import APIRouter, Request
+import anyio
+from fastapi import APIRouter, Request, Query, Path as PathParam
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel, Field
@@ -21,6 +24,10 @@ from python.core.prompt_compiler import compile_prompt
 from python.core.portable_schema import LibraryBinding
 
 router = APIRouter()
+
+# Single-process runtime: cancellation targets only the task producing this ID.
+# Durable SQLite fences still prevent writes after cancellation/restart.
+_running: dict[str, asyncio.Task] = {}
 
 
 class ChatMessage(BaseModel):
@@ -317,7 +324,13 @@ async def run_chat(req, prepared):
     journal = []
     finished = False
     runtime_source = None
+    task = asyncio.current_task()
+    _running[req.generation_id] = task
     try:
+        current = await generations.status(req.generation_id, req.session_id)
+        if current["status"] != "pending":
+            yield {"type": "result", "result": {**current, "reply": "", "error": "generation cancelled"}}
+            return
         state = await generations.load_state(req.session_id, settings.model_dump())
         if req.regenerate_message_id:
             state = await generations.state_before(req.session_id, req.regenerate_message_id, settings.model_dump())
@@ -332,23 +345,43 @@ async def run_chat(req, prepared):
         async for event in runtime_source:
             if event["type"] == "result":
                 event["result"]["replace_message_id"] = req.regenerate_message_id
-                if memory_ctx is not None:
-                    conversation = "\n".join(m.content for m in req.messages) + "\n" + event["result"].get("reply", "")
-                    await memories.commit(scope, event["result"], session_id=req.session_id,
-                                          turn=state.turn + 1, evidence_text=conversation)
-                await generations.finish(req.generation_id, event["result"], req.messages[-1].model_dump(), req.model_id)
+                conversation = "\n".join(m.content for m in req.messages) + "\n" + event["result"].get("reply", "")
+                event["result"] = await generations.finish(
+                    req.generation_id, event["result"], req.messages[-1].model_dump(), req.model_id,
+                    memory_scope=scope, memory_turn=state.turn + 1, evidence_text=conversation)
                 finished = True
             yield event
     finally:
-        if not finished:
-            # Persist diagnostic output even when the SSE disconnect cancels its task group.
-            import anyio
+        try:
+            # No database work can escape cleanup because the transport cancelled
+            # its task group. Closing the provider must not skip reservation cleanup.
             with anyio.CancelScope(shield=True):
-                if runtime_source is not None:
-                    await runtime_source.aclose()
-                await generations.finish(req.generation_id,
-                    {"generation_id": req.generation_id, "status": "cancelled", "reply": "",
-                     "error": "generation interrupted", "attempts": journal}, None, req.model_id)
+                try:
+                    if runtime_source is not None:
+                        await runtime_source.aclose()
+                finally:
+                    if not finished:
+                        await generations.cancel_pending(req.generation_id, attempts=journal)
+        finally:
+            if _running.get(req.generation_id) is task:
+                _running.pop(req.generation_id, None)
+
+
+class GenerationStreamResponse(EventSourceResponse):
+    """Own the reservation even if no byte of the body iterator was consumed."""
+    def __init__(self, content, generation_id):
+        super().__init__(content, headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+        self.generation_id = generation_id
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            with anyio.CancelScope(shield=True):
+                try:
+                    await self.body_iterator.aclose()
+                finally:
+                    await generations.cancel_pending(self.generation_id)
 
 
 @router.post("/chat")
@@ -359,10 +392,11 @@ async def chat_non_stream(req: ChatRequest):
         return JSONResponse(status_code=409, content={"error": str(exc)})
     except ValueError as exc:
         return JSONResponse(status_code=400, content={"error": str(exc)})
-    async for event in run_chat(req, prepared):
-        if event["type"] == "result":
-            result = event["result"]
-            return JSONResponse(status_code=200 if result.get("reply") else 422, content=result)
+    async with aclosing(run_chat(req, prepared)) as source:
+        async for event in source:
+            if event["type"] == "result":
+                result = event["result"]
+                return JSONResponse(status_code=200 if result.get("reply") else 422, content=result)
 
 
 @router.post("/chat/stream")
@@ -390,11 +424,47 @@ async def chat_stream(req: ChatRequest, request: Request):
                 else:
                     yield {"event": kind, "data": json.dumps(event, ensure_ascii=False)}
         finally:
-            import anyio
             with anyio.CancelScope(shield=True):
-                await source.aclose()
-                await generations.cancel_pending(req.generation_id)
-    return EventSourceResponse(stream(), headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+                try:
+                    await source.aclose()
+                finally:
+                    await generations.cancel_pending(req.generation_id)
+    return GenerationStreamResponse(stream(), req.generation_id)
+
+
+@router.get("/chat/generations/{generation_id}")
+async def generation_status(generation_id: str = PathParam(min_length=1, max_length=128),
+                            session_id: str = Query(min_length=1)):
+    try:
+        return await generations.status(generation_id, session_id)
+    except generations.Conflict as exc:
+        return JSONResponse(status_code=409, content={"error": str(exc)})
+
+
+@router.post("/chat/generations/{generation_id}/cancel")
+async def cancel_generation(generation_id: str = PathParam(min_length=1, max_length=128),
+                            session_id: str = Query(min_length=1)):
+    try:
+        with anyio.CancelScope(shield=True):
+            result = await generations.cancel(generation_id, session_id)
+            if result["status"] == "cancelled":
+                task = _running.get(generation_id)
+                if task is not None and task is not asyncio.current_task() and not task.done():
+                    if not task.cancelling():
+                        task.cancel()
+                    # The durable fence already forbids a late commit. Also wait
+                    # briefly for the provider to close, without another cancel
+                    # interrupting its database cleanup if a provider stalls.
+                    with anyio.move_on_after(5):
+                        try:
+                            # A provider cleanup failure cannot undo the durable
+                            # cancellation or make its recovery endpoint fail.
+                            await asyncio.shield(asyncio.gather(task, return_exceptions=True))
+                        except asyncio.CancelledError:
+                            pass
+            return result
+    except generations.Conflict as exc:
+        return JSONResponse(status_code=409, content={"error": str(exc)})
 
 
 class SuggestRequest(BaseModel):

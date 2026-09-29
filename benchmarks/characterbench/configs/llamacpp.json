@@ -1,0 +1,1 @@
+{"provider":"openai","base_url":"http://127.0.0.1:8080/v1","model":"auto","label":"llama.cpp candidate","stream":true,"max_tokens":768,"api_key_env":"KCB_API_KEY"}

@@ -1,0 +1,1 @@
+{"provider":"system_http","base_url":"http://127.0.0.1:8766/kcb/v1","model":"auto","label":"Reference System bridge - NOT actual Kyalulu integration","track":"system","runtime_id":"reference-full-history-bridge-v0.1","stream":false,"max_tokens":768}
