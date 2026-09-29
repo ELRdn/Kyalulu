@@ -66,4 +66,7 @@ out/
 *.tsbuildinfo
 **/*.tsbuildinfo
 .artifacts/
+*.vault
+.runtime.lock
+.remote-host-owner
 .pytest_cache/

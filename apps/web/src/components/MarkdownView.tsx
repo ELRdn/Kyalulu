@@ -1,5 +1,6 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { RuntimeImage } from './RuntimeMedia';
 
 export default function MarkdownView({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
   const display = isStreaming && content ? content + " ▍" : content;
@@ -9,6 +10,7 @@ export default function MarkdownView({ content, isStreaming }: { content: string
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
+          img: ({ node: _node, ...props }) => <RuntimeImage {...props} />,
           h1: (props) => <h1 style={{ fontSize: 18, fontWeight: 700, margin: "12px 0 8px", borderBottom: "1px solid var(--border)", paddingBottom: 4 }} {...props} />,
           h2: (props) => <h2 style={{ fontSize: 16, fontWeight: 700, margin: "10px 0 6px" }} {...props} />,
           h3: (props) => <h3 style={{ fontSize: 14, fontWeight: 700, margin: "8px 0 4px" }} {...props} />,

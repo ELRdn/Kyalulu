@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily encrypted Kyalulu Relay snapshot
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 Asia/Tokyo
+RandomizedDelaySec=15m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

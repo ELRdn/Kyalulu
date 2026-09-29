@@ -1,0 +1,27 @@
+{
+  "provider": "openai",
+  "base_url": "http://127.0.0.1:1234/v1",
+  "model": "gemma4-26b-a4b-qat-uncensored-hauhaucs-balanced-mtp",
+  "label": "Gemma4 26B A4B Balanced Q4_K_M think off temperature 0",
+  "api_key_env": "KCB_API_KEY",
+  "temperature": 0,
+  "top_p": 0.95,
+  "max_tokens": 768,
+  "stream": true,
+  "stream_usage": false,
+  "timeout_seconds": 180,
+  "send_seed": false,
+  "require_no_reasoning": true,
+  "extra_body": {
+    "reasoning_effort": "none"
+  },
+  "track": "core",
+  "model_metadata": {
+    "quantization": "Q4_K_M",
+    "weight_sha256": "FILL_BEFORE_PUBLISHING",
+    "backend_version": "llama.cpp-win-x86_64-vulkan-avx2@2.46.0",
+    "load_parallel": 4,
+    "speculative_draft_mtp": false,
+    "thinking_mode": "off_requested_via_reasoning_effort_none; verify each environment"
+  }
+}

@@ -1,0 +1,1 @@
+{"provider":"openai","base_url":"http://127.0.0.1:18000/v1","model":"auto","label":"SSH tunneled candidate","stream":true,"max_tokens":768,"api_key_env":"KCB_API_KEY"}

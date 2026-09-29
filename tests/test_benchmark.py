@@ -92,7 +92,7 @@ async def test_partial_generation_saved_on_cancellation(isolated, monkeypatch):
         await task
     meta = experiment.list_experiments()[0]
     assert meta["status"] == "cancelled"
-    records = json.loads((experiment.EXPERIMENTS_DIR / meta["experiment_id"] / "turns.json").read_text())
+    records = json.loads((experiment.EXPERIMENTS_DIR / meta["experiment_id"] / "turns.json").read_text(encoding="utf-8"))
     assert records[0]["attempts"] and records[0]["status"] == "cancelled"
 
 

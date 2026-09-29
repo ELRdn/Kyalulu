@@ -9,6 +9,7 @@ import json
 import uuid
 
 import aiosqlite
+import anyio
 
 from . import db as storage
 
@@ -45,10 +46,15 @@ async def _log(db, scope: str, op: str, memory_id: str | None = None, generation
 
 async def list_memories(scope: str, include_deleted: bool = False) -> list[dict]:
     await init()
-    sql = f"SELECT {COLUMNS} FROM memories WHERE scope=?" + ("" if include_deleted else " AND status='active'")
     async with aiosqlite.connect(storage.DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        rows = await (await db.execute(sql + " ORDER BY rowid", (scope,))).fetchall()
+        return await _list_memories(db, scope, include_deleted)
+
+
+async def _list_memories(db, scope: str, include_deleted: bool = False) -> list[dict]:
+    sql = f"SELECT {COLUMNS} FROM memories WHERE scope=?" + ("" if include_deleted else " AND status='active'")
+    cursor = await db.execute(sql + " ORDER BY rowid", (scope,))
+    cursor.row_factory = aiosqlite.Row
+    rows = await cursor.fetchall()
     return [_row(r) for r in rows]
 
 
@@ -66,17 +72,24 @@ async def create(scope: str, type_: str, content: str, *, origin: str = "user", 
                  source_session_id: str | None = None, source_turn: int | None = None,
                  source_generation_id: str | None = None) -> dict:
     await init()
-    memory_id = "mem_" + uuid.uuid4().hex[:12]
     async with aiosqlite.connect(storage.DB_PATH) as db:
-        await db.execute(
-            "INSERT INTO memories(id,scope,type,content,origin,supported,source_session_id,source_turn,source_generation_id) "
-            "VALUES(?,?,?,?,?,?,?,?,?)",
-            (memory_id, scope, type_, content, origin, None if supported is None else int(supported),
-             source_session_id, source_turn, source_generation_id))
-        await _log(db, scope, "create", memory_id, source_generation_id,
-                   {"type": type_, "content": content, "origin": origin})
+        memory_id = await _create(db, scope, type_, content, origin, supported,
+                                  source_session_id, source_turn, source_generation_id)
         await db.commit()
     return await get(memory_id)
+
+
+async def _create(db, scope, type_, content, origin, supported,
+                  source_session_id, source_turn, source_generation_id):
+    memory_id = "mem_" + uuid.uuid4().hex[:12]
+    await db.execute(
+        "INSERT INTO memories(id,scope,type,content,origin,supported,source_session_id,source_turn,source_generation_id) "
+        "VALUES(?,?,?,?,?,?,?,?,?)",
+        (memory_id, scope, type_, content, origin, None if supported is None else int(supported),
+         source_session_id, source_turn, source_generation_id))
+    await _log(db, scope, "create", memory_id, source_generation_id,
+               {"type": type_, "content": content, "origin": origin})
+    return memory_id
 
 
 async def update(memory_id: str, *, content: str | None = None, type_: str | None = None) -> dict:
@@ -124,14 +137,18 @@ async def events(*, memory_id: str | None = None, scope: str | None = None, limi
 async def record_use(scope: str, generation_id: str | None, trace: dict) -> None:
     """Log one retrieval (all candidates) and mark injected memories as accessed."""
     async with aiosqlite.connect(storage.DB_PATH) as db:
-        await _log(db, scope, "retrieve", None, generation_id,
-                   {"candidates": [{k: c[k] for k in ("id", "score", "decision")} for c in trace["candidates"]],
-                    "injected_tokens": trace["injected_tokens"], "retrieval_ms": trace.get("retrieval_ms")})
-        for memory_id in trace["injected"]:
-            await db.execute("UPDATE memories SET access_count=access_count+1, last_accessed=datetime('now') WHERE id=?",
-                             (memory_id,))
-            await _log(db, scope, "inject", memory_id, generation_id, None)
+        await _record_use(db, scope, generation_id, trace)
         await db.commit()
+
+
+async def _record_use(db, scope, generation_id, trace):
+    await _log(db, scope, "retrieve", None, generation_id,
+               {"candidates": [{k: c[k] for k in ("id", "score", "decision")} for c in trace["candidates"]],
+                "injected_tokens": trace["injected_tokens"], "retrieval_ms": trace.get("retrieval_ms")})
+    for memory_id in trace["injected"]:
+        await db.execute("UPDATE memories SET access_count=access_count+1, last_accessed=datetime('now') WHERE id=?",
+                         (memory_id,))
+        await _log(db, scope, "inject", memory_id, generation_id, None)
 
 
 async def session_enabled(session_id: str) -> bool:
@@ -176,27 +193,35 @@ async def prepare(scope: str, query: str, **options) -> dict:
 
 
 async def commit(scope: str, result: dict, *, session_id: str | None, turn: int | None,
-                 evidence_text: str) -> None:
+                 evidence_text: str, db: aiosqlite.Connection | None = None) -> None:
     """After a turn: log retrieval, mark evidenced memories, validate and store proposals.
 
     Mutates ``result["memory"]`` so the persisted generation record carries every decision.
+    When db is supplied, ALL reads/writes use the caller's transaction; never commit it here.
     """
     from python.core import memory as logic
     trace = result.get("memory")
     if not trace:
         return
+    if db is None:
+        await init()
+        with anyio.CancelScope(shield=True):
+            async with aiosqlite.connect(storage.DB_PATH) as own:
+                await own.execute("BEGIN IMMEDIATE")
+                await commit(scope, result, session_id=session_id, turn=turn,
+                             evidence_text=evidence_text, db=own)
+                await own.commit()
+        return
     generation_id = result.get("generation_id")
-    await record_use(scope, generation_id, trace)
+    await _record_use(db, scope, generation_id, trace)
     injected = {c["id"]: c["content"] for c in trace.get("candidates", []) if c.get("decision") in logic.INJECTED}
     trace["evidenced"] = [i for i, content in injected.items() if logic.evidenced(content, result.get("reply", ""))]
     decisions = []
     if result.get("status") == "completed" and trace.get("proposals"):
         proposals = [logic.MemoryProposal.model_validate(p) for p in trace["proposals"]]
-        decisions = logic.validate_proposals(proposals, await list_memories(scope), evidence_text)
+        decisions = logic.validate_proposals(proposals, await _list_memories(db, scope), evidence_text)
         for d in decisions:
             if d["action"] == "store":
-                stored = await create(scope, d["type"], d["content"], origin="model", supported=d["supported"],
-                                      source_session_id=session_id, source_turn=turn,
-                                      source_generation_id=generation_id)
-                d["memory_id"] = stored["id"]
+                d["memory_id"] = await _create(db, scope, d["type"], d["content"], "model", d["supported"],
+                                                session_id, turn, generation_id)
     trace["decisions"] = decisions

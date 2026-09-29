@@ -25,11 +25,14 @@ LE は [Locally Uncensored](https://github.com/PurpleDoubleD/locally-uncensored)
 ├─ packages/
 │  ├─ schemas/        # 共通スキーマ (Zod / Pydantic 共通契約)
 │  └─ ui/             # 共通UIコンポーネント
-├─ benchmarks/official/
+├─ benchmarks/official/           # Kyalulu runtime benchmark
+├─ benchmarks/characterbench/     # independent MIT-licensed KCB pilot
 ├─ characters/ personas/ worlds/ prompts/ models/
 ├─ docs/
 └─ experiments/       # ローカル実験結果（gitignore）
 ```
+
+独立した日本語キャラクター評価パイロットは [CharacterBench](benchmarks/characterbench/README_JA.md) に置いている。12キャラ・264応答の固定問題集をCLIで実行できる。Kyalulu本体のRuntime/Memory評価とは別トラックで、状態診断・表面仕様の点数をキャラ品質の総合点とは扱わない。
 
 ## 必要環境
 
@@ -37,6 +40,10 @@ LE は [Locally Uncensored](https://github.com/PurpleDoubleD/locally-uncensored)
 - Node.js 20+ / pnpm 10+
 
 ## クイックスタート
+
+Androidで使う場合は [PWA導入ガイド](docs/ANDROID_PWA.md) を参照してください。自分のPC／サーバーへ端末登録して接続します。正式公開に必要な実機確認と自動検証は分けて記録しています。
+
+ポート開放なしで接続する [Kyalulu Remote](docs/REMOTE.md) の開発候補も実装しています。PWAとPCの間をNoiseで暗号化し、クラウドは中継のみを行います。公開前の実機・実モデル・外部セキュリティレビューは未完了です。
 
 ```bash
 # 0. 環境変数 (初回)

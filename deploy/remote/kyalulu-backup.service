@@ -1,0 +1,17 @@
+[Unit]
+Description=Encrypted Kyalulu Relay registration database snapshot
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/kyalulu-backup
+User=root
+UMask=0077
+TimeoutStartSec=120
+Nice=10
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/backups/kyalulu /run/lock
+PrivateTmp=true

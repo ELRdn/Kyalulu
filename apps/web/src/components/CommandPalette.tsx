@@ -8,11 +8,13 @@ import { newSessionId } from "../lib/session";
 import Avatar from "./ui/Avatar";
 import Icon, { type IconName } from "./ui/Icon";
 import "./commandPalette.css";
+import { useAdministrative } from './RuntimeGate';
 
 type Item = { id: string; group: string; label: string; hint?: string; keywords: string; leading: ReactNode; run: () => void };
 
 /** ⌘K / Ctrl+K で開く横断検索。キャラクター・会話・ワールド・画面・操作を1か所から呼び出す。 */
 export default function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const administrative = useAdministrative();
   const navigate = useNavigate();
   const { theme, toggle } = useTheme();
   const [query, setQuery] = useState("");
@@ -84,7 +86,10 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
       ["プロフィール", "/profile", "user", "profile settings"],
       ["スタジオ（上級者向け）", "/studio", "settings", "studio research status"],
     ];
-    for (const [label, to, name, kw] of pages) list.push({ id: `p:${to}`, group: "移動", label, keywords: `${label} ${kw}`, leading: icon(name), run: go(to) });
+    for (const [label, to, name, kw] of pages) {
+      if (to === '/studio' && !administrative) continue;
+      list.push({ id: `p:${to}`, group: "移動", label, keywords: `${label} ${kw}`, leading: icon(name), run: go(to) });
+    }
     list.push({
       id: "a:theme",
       group: "操作",
@@ -101,7 +106,7 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
     if (!q) return list;
     const needle = q.toLowerCase();
     return list.filter((i) => i.id === "search" || i.keywords.toLowerCase().includes(needle));
-  }, [query, characters, sessions, worlds, theme, toggle, navigate, onClose]);
+  }, [query, characters, sessions, worlds, theme, toggle, navigate, onClose, administrative]);
 
   useEffect(() => setActive(0), [query]);
   useEffect(() => {
