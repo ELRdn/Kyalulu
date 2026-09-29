@@ -88,6 +88,21 @@ def test_no_mock_fallback():
 
 
 @pytest.mark.asyncio
+async def test_lmstudio_no_thinking_reaches_server():
+    def handle(req):
+        body = json.loads(req.content)
+        assert body['reasoning_effort'] == 'none'
+        assert body['model'] == 'home-model'
+        return httpx.Response(200, text=sse(
+            {'choices': [{'delta': {'content': 'hello'}, 'finish_reason': 'stop'}]}, '[DONE]'))
+    provider = LMStudioProvider(transport=httpx.MockTransport(handle))
+    events = [e async for e in provider.stream_events(model='home-model', reasoning_effort='none')]
+    assert any(e.get('text') == 'hello' for e in events)
+    with pytest.raises(ValueError, match='invalid reasoning_effort'):
+        _ = [e async for e in provider.stream_events(model='home-model', reasoning_effort='invalid')]
+
+
+@pytest.mark.asyncio
 async def test_le_provider_routes_and_auth():
     seen = []
     def handle(req):

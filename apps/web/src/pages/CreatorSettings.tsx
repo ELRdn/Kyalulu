@@ -1,3 +1,4 @@
+import { RuntimeDownload } from '../components/RuntimeMedia';
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import Button from "../components/ui/Button";
@@ -81,10 +82,10 @@ export default function CreatorSettings() {
         <label>{kind === "persona" ? "性格・大切にしていること" : "世界のルール"}<Textarea disabled={busy} rows={5} maxLength={6000} value={kind === "persona" ? draft.traits : draft.rules} onChange={e => setDraft({ ...draft, [kind === "persona" ? "traits" : "rules"]: e.target.value })} /></label>
         <div className="k-lab-actions"><Button type="submit" disabled={busy || !draft.display_name.trim()}>{busy ? "処理中…" : selected ? "新しい版として保存" : "保存"}</Button>
           <Button type="button" variant="secondary" disabled={busy} onClick={() => input.current?.click()}>JSONを読み込む</Button>
-          {selected && <a href={`/api/creator/${kind}/${selected.id}/export`} download={`${kind}.json`}>JSONを書き出す</a>}
+          {selected && <RuntimeDownload href={`/api/creator/${kind}/${selected.id}/export`} download={`${kind}.json`}>JSONを書き出す</RuntimeDownload>}
         </div>
         <input ref={input} type="file" accept="application/json,.json" hidden onChange={e => { void importFile(e.target.files?.[0]); e.target.value = ""; }} />
-        {versions.length > 1 && <details><summary>保存履歴</summary><ul className="k-lab-list">{versions.map(x => <li key={x.id}>版{x.revision} · {x.display_name} <a href={`/api/creator/${kind}/${x.id}/export`} download>書き出す</a></li>)}</ul></details>}
+        {versions.length > 1 && <details><summary>保存履歴</summary><ul className="k-lab-list">{versions.map(x => <li key={x.id}>版{x.revision} · {x.display_name} <RuntimeDownload href={`/api/creator/${kind}/${x.id}/export`} download>書き出す</RuntimeDownload></li>)}</ul></details>}
       </form></Card>
     </div>
   </div>;

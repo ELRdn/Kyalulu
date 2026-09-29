@@ -1,3 +1,4 @@
+import { RuntimeImage } from '../components/RuntimeMedia';
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { fetchCharacters, fetchSessions, fetchWorlds, type CharacterInfo, type SessionInfo, type WorldInfo } from "../lib/api";
@@ -168,7 +169,7 @@ export default function CharacterEntry() {
   const back = () => (window.history.length > 1 ? navigate(-1) : navigate("/discover"));
 
   const art = character.portrait_url ? (
-    <img src={character.portrait_url} alt={name} />
+    <RuntimeImage src={character.portrait_url} alt={name} />
   ) : (
     <span className="k-char-entry__sigil" aria-hidden="true">
       {name.trim().charAt(0)}
@@ -177,7 +178,7 @@ export default function CharacterEntry() {
 
   return (
     <div className="k-plot">
-      <div className="k-plot-backdrop" style={character.portrait_url ? { backgroundImage: `url("${character.portrait_url}")` } : { background: gradientFor(character.id) }} aria-hidden="true" />
+      <div className="k-plot-backdrop" style={{ background: gradientFor(character.id) }} aria-hidden="true">{character.portrait_url && <RuntimeImage src={character.portrait_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}</div>
 
       <header className={`k-plot-bar ${scrolled ? "is-solid" : ""}`}>
         <button type="button" className="k-plot-bar__btn" onClick={back} aria-label="戻る">
@@ -275,7 +276,7 @@ export default function CharacterEntry() {
             <div className="k-plot-card">
               <div className="k-plot-profile__top">
                 <span className="k-plot-thumb" style={character.portrait_url ? undefined : { background: gradientFor(character.id) }}>
-                  {character.portrait_url ? <img src={character.portrait_url} alt="" /> : <span>{name.trim().charAt(0)}</span>}
+                  {character.portrait_url ? <RuntimeImage src={character.portrait_url} alt="" /> : <span>{name.trim().charAt(0)}</span>}
                 </span>
                 <div className="k-plot-profile__id">
                   <div className="k-plot-profile__name">{name}</div>

@@ -1,3 +1,4 @@
+import { RuntimeImage } from '../components/RuntimeMedia';
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { fetchCharacters, fetchSessions, fetchWorlds, sessionTitle, type CharacterInfo, type SessionInfo, type WorldInfo } from "../lib/api";
@@ -19,6 +20,8 @@ export default function ChatsLanding() {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [worlds, setWorlds] = useState<WorldInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [retry, setRetry] = useState(0);
   const [query, setQuery] = useState("");
   const [oldestFirst, setOldestFirst] = useState(false);
   const [characters, setCharacters] = useState<CharacterInfo[]>([]);
@@ -29,13 +32,22 @@ export default function ChatsLanding() {
   useDocumentTitle("チャット");
 
   useEffect(() => {
-    Promise.all([fetchSessions().catch(() => []), fetchWorlds().catch(() => [])])
+    let active = true;
+    setLoading(true);
+    setLoadError(false);
+    Promise.all([fetchSessions(), fetchWorlds().catch(() => [])])
       .then(([s, w]) => {
+        if (!active) return;
         setSessions(s);
         setWorlds(w);
       })
-      .finally(() => setLoading(false));
-  }, []);
+      .catch(() => { if (active) setLoadError(true); })
+      .finally(() => { if (active) setLoading(false); });
+    const refresh = () => { if (document.visibilityState === 'visible') setRetry(n => n + 1); };
+    document.addEventListener('visibilitychange', refresh);
+    window.addEventListener('online', refresh);
+    return () => { active = false; document.removeEventListener('visibilitychange', refresh); window.removeEventListener('online', refresh); };
+  }, [retry]);
 
   useEffect(() => {
     fetchCharacters(adult).then(setCharacters).catch(() => setCharacters([]));
@@ -98,7 +110,7 @@ export default function ChatsLanding() {
             {saved.map((c) => (
               <Link key={c.id} to={`/characters/${encodeURIComponent(c.id)}`} className="k-saved-strip__item" title={c.display_name}>
                 <span className="k-saved-strip__art" style={c.portrait_url ? undefined : { background: gradientFor(c.id) }}>
-                  {c.portrait_url ? <img src={c.portrait_url} alt="" loading="lazy" /> : <span aria-hidden="true">{c.display_name.trim().charAt(0)}</span>}
+                  {c.portrait_url ? <RuntimeImage src={c.portrait_url} alt="" loading="lazy" /> : <span aria-hidden="true">{c.display_name.trim().charAt(0)}</span>}
                 </span>
                 <span className="k-saved-strip__name">{c.display_name}</span>
               </Link>
@@ -123,6 +135,8 @@ export default function ChatsLanding() {
             <div key={i} className="k-skeleton-row" />
           ))}
         </div>
+      ) : loadError ? (
+        <div role="alert"><EmptyState title="会話を読み込めませんでした" description="サーバーとネットワークの接続を確認してください。保存済みの会話は削除されていません。" action={<Button variant="secondary" onClick={() => setRetry(n => n + 1)}>もう一度読み込む</Button>} /></div>
       ) : empty ? (
         <EmptyState
           mascot={query ? "shy" : "default"}

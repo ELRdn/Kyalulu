@@ -41,6 +41,10 @@ LE は [Locally Uncensored](https://github.com/PurpleDoubleD/locally-uncensored)
 
 ## クイックスタート
 
+Androidで使う場合は [PWA導入ガイド](docs/ANDROID_PWA.md) を参照してください。自分のPC／サーバーへ端末登録して接続します。正式公開に必要な実機確認と自動検証は分けて記録しています。
+
+ポート開放なしで接続する [Kyalulu Remote](docs/REMOTE.md) の開発候補も実装しています。PWAとPCの間をNoiseで暗号化し、クラウドは中継のみを行います。公開前の実機・実モデル・外部セキュリティレビューは未完了です。
+
 ```bash
 # 0. 環境変数 (初回)
 cp .env.example .env

@@ -1,0 +1,68 @@
+.k-pwa-root {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-canvas);
+}
+.k-pwa-root > .k-shell { flex: 1 1 0; min-height: 0; height: auto; }
+.k-pwa-root > .k-connect-screen { flex: 1 1 0; min-height: 0; overflow-y: auto; }
+.k-pwa-root:has(> .k-mobile-status) > .k-shell .k-shell__header { padding-top: 0; height: 64px; }
+.k-pwa-root:has(> .k-mobile-status) > .k-connect-screen { padding-top: 24px; }
+.k-pwa-root > .k-mobile-status { padding-top: env(safe-area-inset-top); }
+@media (max-width: 767px) {
+  .k-pwa-root:has(> .k-mobile-status) > .k-shell .k-shell__header { height: 56px; }
+}
+.k-mobile-status {
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 25;
+  color: var(--text-secondary);
+  background: var(--bg-surface-soft);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+}
+.k-mobile-status summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px max(16px, env(safe-area-inset-right)) 6px max(16px, env(safe-area-inset-left));
+  cursor: pointer;
+  list-style: none;
+}
+.k-mobile-status summary::-webkit-details-marker { display: none; }
+.k-mobile-status__dot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--success); }
+.k-mobile-status__dot.is-offline { background: var(--text-secondary); }
+.k-mobile-status__hint { margin-left: auto; flex-shrink: 0; color: var(--accent-primary); }
+.k-mobile-status__panel {
+  position: absolute;
+  inset: 100% max(12px, env(safe-area-inset-right)) auto max(12px, env(safe-area-inset-left));
+  max-width: 520px;
+  max-height: min(60dvh, 440px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0 0 20px 20px;
+  background: var(--bg-surface);
+  box-shadow: 0 12px 32px rgb(30 27 36 / 14%);
+  line-height: 1.7;
+}
+.k-mobile-status__panel p + p { margin-top: 8px; }
+.k-mobile-status__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.k-mobile-status button {
+  min-height: 48px;
+  padding: 10px 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  background: var(--bg-surface-soft);
+  color: var(--accent-primary);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.k-mobile-status button:disabled { opacity: .55; cursor: default; }
+.k-mobile-status :is(summary, button):focus-visible { outline: 3px solid var(--accent-primary); outline-offset: -3px; }

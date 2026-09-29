@@ -1,3 +1,4 @@
+import { apiFetch as fetch } from './transport';
 import { LibraryItemSchema, ImportPreviewSchema, PortableAssetSchema } from '../../../../packages/schemas/src/portable';
 import type { LibraryItem, ImportCommit, PortableDocument } from '../../../../packages/schemas/src/portable';
 export * from '../../../../packages/schemas/src/portable';

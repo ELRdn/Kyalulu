@@ -1,3 +1,4 @@
+import { RuntimeDownload } from '../components/RuntimeMedia';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import Button from '../components/ui/Button';
@@ -18,6 +19,7 @@ import { fetchPreview } from '../lib/hubs';
 import { fetchLibrary, assetUrl, previewFile, previewText, commitImport, saveLibraryItem, libraryRequest, PortableDocumentSchema, type LibraryItem, type ImportPreview, type PortableDocument, type ImportCommit } from '../lib/library';
 import './pages.css';
 import './create.css';
+import { useAdministrative } from '../components/RuntimeGate';
 
 type Draft = { document: PortableDocument; selected: boolean; histories: number[]; target?: LibraryItem; rating?: 'sfw' | 'nsfw'; copy?: boolean };
 const formats = ['ccv3-json', 'ccv3-png', 'charx', 'ccv2-json', 'ccv2-png', 'backup', 'original'];
@@ -26,6 +28,7 @@ const formatLabel: Record<string, string> = { 'ccv3-json': 'Character Card V3（
 const kindLabel = { character: 'キャラクター', profile: '生成プリセット', lorebook: 'Lorebook' } as const;
 
 export default function Create() {
+  const administrative = useAdministrative();
   const [query, setQuery] = useSearchParams();
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [adult] = useAdultContent();
@@ -170,9 +173,9 @@ export default function Create() {
           <label className={`k-btn k-btn--primary k-btn--md k-create-file ${busy ? 'is-disabled' : ''}`}>{busy ? '読み込み中…' : 'ファイルを選ぶ'}<input aria-label="取り込むファイル" type="file" accept=".json,.png,.apng,.charx,.byaf,.zip,.txt" disabled={busy} onChange={e => { importFile(e.target.files?.[0]); e.target.value = ''; }} /></label>
           <small>ドラッグ＆ドロップにも対応 · JSON・PNG・CHARX・BYAF・テキスト（最大32 MiB）</small>
         </div>
-        <Card className="k-create-url">
-          <UrlImportBox onPreview={receive} disabled={busy} onBusyChange={setBusy} />
-        </Card>
+          {administrative ? <Card className="k-create-url">
+            <UrlImportBox onPreview={receive} disabled={busy} onBusyChange={setBusy} />
+          </Card> : <Card className="k-create-url"><p>この端末ではファイルやテキストから取り込めます。URLからの取得はサーバー側のPCで行ってください。</p></Card>}
       </div>
       <div className="k-create-more">
         <details open={query.get('import') === 'characterai' || undefined}><summary>Character.AIの設定やLoreを貼り付ける</summary>
@@ -207,7 +210,7 @@ export default function Create() {
         <p className="k-confirm__desc">ほかのアプリで使える形式でファイルに保存します。形式によっては一部の設定が引き継がれません。</p>
         <label className="k-create-field">形式<select aria-label="書き出し形式" value={format} onChange={e => setFormat(e.target.value)}>{formats.filter(f => f !== 'original' || exportItem.original_id).map(f => <option key={f} value={f}>{formatLabel[f] ?? f}</option>)}</select></label>
         {exportInfo ? <>{exportInfo.notices.length > 0 && <ul className="k-create-notices">{exportInfo.notices.map((n, i) => <li key={i}>{n.path}：{n.reason}</li>)}</ul>}
-          <div className="k-confirm__actions"><Button variant="ghost" onClick={() => setExportItem(null)}>閉じる</Button><a className="k-btn k-btn--primary k-btn--md" href={`/api/library/${exportItem.id}/export?format=${format}&revision=${exportItem.revision}&download=true`} download><Icon name="download" size={15} /> {exportInfo.filename}</a></div></>
+          <div className="k-confirm__actions"><Button variant="ghost" onClick={() => setExportItem(null)}>閉じる</Button><RuntimeDownload className="k-btn k-btn--primary k-btn--md" href={`/api/library/${exportItem.id}/export?format=${format}&revision=${exportItem.revision}&download=true`} download><Icon name="download" size={15} /> {exportInfo.filename}</RuntimeDownload></div></>
           : <div className="k-confirm__actions"><Button variant="ghost" onClick={() => setExportItem(null)}>閉じる</Button><Button disabled={busy} onClick={() => void run(async () => setExportInfo(await libraryRequest(`/api/library/${exportItem.id}/export?format=${format}&revision=${exportItem.revision}`)))}>{busy ? '確認中…' : '書き出し内容を確認'}</Button></div>}
         {error && <p className="k-inline-error" role="alert">{error}</p>}
       </div>}

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useAdministrative } from '../components/RuntimeGate';
 
 /** Researcher/Beginner切替。Advanced機能（Studio導線・詳細設定）の表示可否を制御するグローバルフラグ。 */
 const LS_RESEARCHER = "my-zeta-researcher";
@@ -13,6 +14,7 @@ export function setResearcherMode(v: boolean) {
 }
 
 export function useResearcherMode(): [boolean, (v: boolean) => void] {
+  const administrative = useAdministrative();
   const [v, setV] = useState(isResearcherMode);
   useEffect(() => {
     const onChange = () => setV(isResearcherMode());
@@ -23,5 +25,5 @@ export function useResearcherMode(): [boolean, (v: boolean) => void] {
       window.removeEventListener("storage", onChange);
     };
   }, []);
-  return [v, setResearcherMode];
+  return [v && administrative, setResearcherMode];
 }

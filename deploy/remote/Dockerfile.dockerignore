@@ -1,0 +1,14 @@
+# Do not send models, secrets, Git history or unrelated dirty files to the daemon.
+**
+!runtime/
+!runtime/python/
+!runtime/python/relay/
+!runtime/python/relay/**
+!scripts/
+!scripts/relay.py
+!deploy/
+!deploy/remote/
+!deploy/remote/Dockerfile
+!deploy/remote/Dockerfile.dockerignore
+**/__pycache__/
+**/*.pyc

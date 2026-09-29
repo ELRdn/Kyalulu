@@ -4,6 +4,10 @@ import Button from "./Button";
 import Icon from "./Icon";
 import "./ui.css";
 
+export function preserveComposerKey(key: string, composing: boolean, nativeComposing: boolean, keyCode: number, coarsePointer: boolean) {
+  return composing || nativeComposing || keyCode === 229 || (key === "Enter" && coarsePointer);
+}
+
 export default function Composer({
   value,
   onChange,
@@ -11,6 +15,7 @@ export default function Composer({
   onStop,
   streaming = false,
   disabled = false,
+  sendBlocked = false,
   disabledText = "準備中…",
   placeholder = "きみの言葉を入力してね…",
   tools,
@@ -23,6 +28,8 @@ export default function Composer({
   onStop?: () => void;
   streaming?: boolean;
   disabled?: boolean;
+  /** Keep drafting available while an earlier generation is being reconciled. */
+  sendBlocked?: boolean;
   disabledText?: string;
   placeholder?: string;
   /** 入力欄の下段、左側に並べる補助ボタン */
@@ -31,6 +38,7 @@ export default function Composer({
   commands?: SlashCommand[];
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const composing = useRef(false);
   const [active, setActive] = useState(0);
   const [dismissed, setDismissed] = useState(false);
 
@@ -59,7 +67,7 @@ export default function Composer({
     t.style.height = Math.min(t.scrollHeight, 200) + "px";
   }, [value]);
 
-  const locked = disabled || streaming;
+  const locked = disabled || streaming || sendBlocked;
 
   // ト書き（動作・描写）を *…* で入れる。選択中の文字があれば囲む
   const insertAsterisk = () => {
@@ -100,7 +108,12 @@ export default function Composer({
           className="k-composer__input"
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onCompositionStart={() => { composing.current = true; }}
+          onCompositionEnd={() => { composing.current = false; }}
           onKeyDown={(e) => {
+            // Android keyboards may report isComposing=false on the final keydown.
+            if (preserveComposerKey(e.key, composing.current, e.nativeEvent.isComposing, e.keyCode,
+              window.matchMedia("(pointer: coarse)").matches)) return;
             if (selected && !e.nativeEvent.isComposing) {
               const partial = selected.name !== query.trimEnd() && selected.name.startsWith(query.trimEnd());
               if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -135,7 +148,7 @@ export default function Composer({
           <button type="button" className="k-composer__tool" onClick={insertAsterisk} disabled={disabled && !streaming} title="ト書きを入れる（*動作*）" aria-label="ト書きを入れる">
             <span aria-hidden="true">＊</span>
           </button>
-          <span className="k-composer__hint">
+          <span className="k-composer__hint k-composer__hint--keyboard">
             <kbd>Enter</kbd> 送信 · <kbd>Shift</kbd>+<kbd>Enter</kbd> 改行
           </span>
           {streaming && onStop ? (

@@ -1,3 +1,4 @@
+import { scopedKey } from './remoteStore';
 import { useEffect, useState } from "react";
 
 /**
@@ -9,7 +10,7 @@ const LS_PINS = "kyalulu-pinned-sessions";
 
 function read(): string[] {
   try {
-    const raw = localStorage.getItem(LS_PINS);
+    const raw = localStorage.getItem(scopedKey(LS_PINS));
     return raw ? (JSON.parse(raw) as string[]) : [];
   } catch {
     return [];
@@ -17,7 +18,7 @@ function read(): string[] {
 }
 
 function write(ids: string[]) {
-  localStorage.setItem(LS_PINS, JSON.stringify(ids));
+  localStorage.setItem(scopedKey(LS_PINS), JSON.stringify(ids));
   window.dispatchEvent(new Event("kyalulu-pins-change"));
 }
 

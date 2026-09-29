@@ -1,3 +1,4 @@
+import { scopedKey } from './remoteStore';
 /**
  * 作り直した返事の履歴。サーバーは最新の返事を上書き保存するので、
  * 以前の案はこのデバイスに残して「‹ 2/3 ›」で行き来できるようにする。
@@ -13,7 +14,7 @@ const keyOf = (sessionId: string, messageId: number) => `${sessionId}:${messageI
 
 function read(): Store {
   try {
-    const v = JSON.parse(localStorage.getItem(LS_KEY) ?? "{}");
+    const v = JSON.parse(localStorage.getItem(scopedKey(LS_KEY)) ?? "{}");
     return v && typeof v === "object" ? (v as Store) : {};
   } catch {
     return {};
@@ -23,7 +24,7 @@ function read(): Store {
 function write(store: Store) {
   const entries = Object.entries(store).sort((a, b) => b[1].at - a[1].at).slice(0, MAX_ENTRIES);
   try {
-    localStorage.setItem(LS_KEY, JSON.stringify(Object.fromEntries(entries)));
+    localStorage.setItem(scopedKey(LS_KEY), JSON.stringify(Object.fromEntries(entries)));
   } catch {
     /* Storage unavailable: versions last only for this view. */
   }

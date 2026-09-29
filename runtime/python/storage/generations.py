@@ -1,7 +1,9 @@
 """Atomic generation reservations, durable state and backward-compatible history."""
 import hashlib
 import json
+from contextlib import asynccontextmanager
 import aiosqlite
+import anyio
 
 from . import db as storage
 from python.core.schemas import RuntimeState
@@ -15,15 +17,28 @@ def fingerprint(body: dict) -> str:
     return hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
+@asynccontextmanager
+async def transaction():
+    """Serialize finish/cancel and protect SQLite commit/rollback/close from SSE cancellation."""
+    with anyio.CancelScope(shield=True):
+        async with aiosqlite.connect(storage.DB_PATH) as db:
+            await db.execute("BEGIN IMMEDIATE")
+            try:
+                yield db
+                await db.commit()
+            except BaseException:
+                await db.rollback()
+                raise
+
+
 async def reserve(generation_id: str, session_id: str, body: dict):
     await storage.init_db()
     digest = fingerprint(body)
-    async with aiosqlite.connect(storage.DB_PATH) as db:
-        await db.execute("BEGIN IMMEDIATE")
+    async with transaction() as db:
         db.row_factory = aiosqlite.Row
         row = await (await db.execute("SELECT * FROM generations WHERE generation_id=?", (generation_id,))).fetchone()
         if row:
-            if row["fingerprint"] != digest or not row["valid"]:
+            if row["session_id"] != session_id or row["fingerprint"] != digest or not row["valid"]:
                 raise Conflict("generation_id belongs to a different or edited request")
             if row["status"] == "pending":
                 raise Conflict("generation is already running")
@@ -33,7 +48,6 @@ async def reserve(generation_id: str, session_id: str, body: dict):
                              (generation_id, session_id, digest))
         except aiosqlite.IntegrityError as exc:
             raise Conflict("another generation is running in this session") from exc
-        await db.commit()
     return None
 
 
@@ -46,19 +60,27 @@ async def load_state(session_id: str, settings: dict) -> RuntimeState:
             state = RuntimeState(session_id=session_id)
         for key in ("character_id", "persona_id", "world_id"):
             setattr(state, key, settings.get(key))
-        await db.execute("INSERT INTO runtime_states VALUES(?,?) ON CONFLICT(session_id) DO UPDATE SET state_json=excluded.state_json",
-                         (session_id, state.model_dump_json()))
-        await db.commit()
+        # Reading/preparing a turn must not change durable state. Only finish may
+        # advance it, atomically with history and memories.
         return state
 
 
-async def finish(generation_id: str, result: dict, user: dict | None, model_id: str):
-    async with aiosqlite.connect(storage.DB_PATH) as db:
-        await db.execute("BEGIN IMMEDIATE")
-        row = await (await db.execute("SELECT session_id,status FROM generations WHERE generation_id=?", (generation_id,))).fetchone()
-        if not row or row[1] != "pending":
-            raise Conflict("generation no longer pending")
+async def finish(generation_id: str, result: dict, user: dict | None, model_id: str,
+                 *, memory_scope: str | None = None, memory_turn: int | None = None,
+                 evidence_text: str = ""):
+    async with transaction() as db:
+        row = await (await db.execute("SELECT session_id,status,result_json FROM generations WHERE generation_id=?", (generation_id,))).fetchone()
+        if not row:
+            raise Conflict("generation not reserved")
+        if row[1] != "pending":
+            # Cancellation or a prior finish already won. Never overwrite it or
+            # return an uncommitted provider reply as a successful SSE result.
+            return json.loads(row[2] or "{}")
         sid = row[0]
+        if memory_scope is not None:
+            from . import memories
+            await memories.commit(memory_scope, result, session_id=sid, turn=memory_turn,
+                                  evidence_text=evidence_text, db=db)
         user_id = assistant_id = None
         save_reply = result["status"] == "completed" or (result["status"] == "invalid" and result.get("reply") and result.get("mode") == "immersion")
         if save_reply:
@@ -80,9 +102,10 @@ async def finish(generation_id: str, result: dict, user: dict | None, model_id: 
         if result["status"] == "completed":
             await db.execute("INSERT INTO runtime_states VALUES(?,?) ON CONFLICT(session_id) DO UPDATE SET state_json=excluded.state_json",
                              (sid, json.dumps(result["state"], ensure_ascii=False)))
+        result.update(generation_id=generation_id, session_id=sid, user_id=user_id, assistant_id=assistant_id)
         await db.execute("UPDATE generations SET status=?,result_json=?,user_id=?,assistant_id=? WHERE generation_id=?",
                          (result["status"], json.dumps(result, ensure_ascii=False), user_id, assistant_id, generation_id))
-        await db.commit()
+    return result
 
 
 async def invalidate(db, session_id: str, message_id: int = 0):
@@ -123,9 +146,47 @@ async def recover_interrupted():
         await db.commit()
 
 
-async def cancel_pending(generation_id: str):
-    """Also covers a disconnect after meta, before run_chat has started."""
-    async with aiosqlite.connect(storage.DB_PATH) as db:
+async def cancel_pending(generation_id: str, *, attempts: list | None = None):
+    """Response cleanup only: never create a reservation or overwrite a terminal result."""
+    async with transaction() as db:
         await db.execute("UPDATE generations SET status='cancelled',result_json=? WHERE generation_id=? AND status='pending'",
-                         (json.dumps({"generation_id": generation_id, "status": "cancelled", "reply": "", "error": "stream disconnected before generation"}), generation_id))
-        await db.commit()
+                         (json.dumps({"generation_id": generation_id, "status": "cancelled", "reply": "",
+                                      "error": "generation interrupted", "attempts": attempts or []}), generation_id))
+
+
+async def _status(db, generation_id: str, session_id: str):
+    row = await (await db.execute(
+        "SELECT session_id,status,user_id,assistant_id FROM generations WHERE generation_id=?", (generation_id,))).fetchone()
+    if row and row[0] != session_id:
+        raise Conflict("generation_id belongs to a different session")
+    return {"generation_id": generation_id, "session_id": session_id,
+            "status": row[1] if row else "not_found", "user_id": row[2] if row else None,
+            "assistant_id": row[3] if row else None}
+
+
+async def status(generation_id: str, session_id: str):
+    """Public recovery snapshot; never expose prompts, memory traces or provider details."""
+    await storage.init_db()
+    async with aiosqlite.connect(storage.DB_PATH) as db:
+        return await _status(db, generation_id, session_id)
+
+
+async def cancel(generation_id: str, session_id: str):
+    """Explicit Stop fences late POSTs too. A missing ID gets a durable tombstone.
+
+    BEGIN IMMEDIATE arbitrates with reserve/finish: whichever commits first wins.
+    Existing terminal outcomes (including completed replies) are preserved.
+    """
+    await storage.init_db()
+    async with transaction() as db:
+        current = await _status(db, generation_id, session_id)
+        result = json.dumps({"generation_id": generation_id, "session_id": session_id,
+                             "status": "cancelled", "reply": "", "error": "cancelled by user"})
+        if current["status"] == "not_found":
+            await db.execute(
+                "INSERT INTO generations(generation_id,session_id,fingerprint,status,result_json,valid) "
+                "VALUES(?,?,'','cancelled',?,0)", (generation_id, session_id, result))
+        elif current["status"] == "pending":
+            await db.execute("UPDATE generations SET status='cancelled',result_json=? WHERE generation_id=?",
+                             (result, generation_id))
+        return await _status(db, generation_id, session_id)

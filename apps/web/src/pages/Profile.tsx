@@ -17,8 +17,12 @@ import { useTheme } from "../lib/theme";
 import { useResearcherMode } from "../lib/mode";
 import { usePinnedSessions, togglePin } from "../lib/pins";
 import "./pages.css";
+import ConnectionSettings from '../components/ConnectionSettings';
+import RemoteHostSettings from '../components/RemoteHostSettings';
+import { DeviceRegistration, useAdministrative } from '../components/RuntimeGate';
 
 export default function Profile() {
+  const administrative = useAdministrative();
   const displayName = useDisplayName();
   const [nameDraft, setNameDraft] = useState(displayName);
   const { theme, setTheme } = useTheme();
@@ -79,6 +83,9 @@ export default function Profile() {
   return (
     <div className="k-page" style={{ maxWidth: 780 }}>
       {confirmDialog}
+      <ConnectionSettings />
+      {administrative && <RemoteHostSettings />}
+      <DeviceRegistration />
       <section className="k-profile-card">
         <Avatar name={displayName} size="xl" />
         <div className="k-profile-card__main">
@@ -154,7 +161,7 @@ export default function Profile() {
         </section>
       )}
 
-      <section className="k-section">
+      {administrative && <section className="k-section">
         <h2 className="k-section__title">
           <span className="k-section__mark">✦</span> 上級者向け
         </h2>
@@ -170,7 +177,7 @@ export default function Profile() {
             </div>
           </div>
         </Card>
-      </section>
+      </section>}
     </div>
   );
 }
