@@ -30,7 +30,7 @@ jobs:
         with:
           python-version: '3.13'
       - run: pnpm install --frozen-lockfile
-      - run: uv sync --frozen --all-packages --all-extras
+      - run: uv sync --frozen --all-packages --all-extras --no-install-workspace
       - run: pnpm typecheck
       - run: pnpm --filter web test
       - run: pnpm --filter web build
