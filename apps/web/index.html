@@ -2,7 +2,11 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Kyalulu" />
+    <link rel="manifest" href="%BASE_URL%manifest.webmanifest" />
     <title>Kyalulu — キャラクターと物語をつむぐ場所</title>
     <meta name="description" content="Kyaluluは、キャラクターと出会い、つながり、あなただけのAIパートナーと物語を紡ぐプラットフォームです。" />
     <meta name="theme-color" content="#F6F6FA" media="(prefers-color-scheme: light)" />
@@ -10,20 +14,10 @@
     <meta property="og:title" content="Kyalulu" />
     <meta property="og:description" content="キャラクターと出会い、物語を紡ぐ場所。" />
     <meta property="og:image" content="/apple-touch-icon.png" />
-    <script>
-      // Apply the saved theme before first paint so dark-mode users never see a light flash.
-      try {
-        var t = localStorage.getItem("my-zeta-theme");
-        if (t !== "light" && t !== "dark") t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-        document.documentElement.setAttribute("data-theme", t);
-      } catch (e) {}
-    </script>
-    <link rel="icon" href="/favicon.ico" sizes="any" />
-    <link rel="icon" type="image/png" href="/favicon-32.png" sizes="32x32" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
+    <script src="%BASE_URL%theme-init.js"></script>
+    <link rel="icon" href="%BASE_URL%favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" href="%BASE_URL%favicon-32.png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="%BASE_URL%apple-touch-icon.png" />
   </head>
   <body>
     <div id="root"></div>

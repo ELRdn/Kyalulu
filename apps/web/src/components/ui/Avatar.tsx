@@ -1,3 +1,4 @@
+import { RuntimeImage } from '../RuntimeMedia';
 import "./ui.css";
 
 const GRADIENTS = [
@@ -33,7 +34,7 @@ export default function Avatar({
   const image = src ?? (mascot ? "/mascot/face-default.webp" : null);
   return (
     <span className={`k-avatar k-avatar--${size} ${image ? "k-avatar--image" : ""}`} style={image ? undefined : { background: gradientFor(seed ?? name) }} aria-hidden="true">
-      {image ? <img src={image} alt="" loading="lazy" /> : <span className="k-avatar__initial">{initial}</span>}
+      {image ? <RuntimeImage src={image} alt="" loading="lazy" /> : <span className="k-avatar__initial">{initial}</span>}
     </span>
   );
 }

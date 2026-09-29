@@ -9,13 +9,13 @@
 
 /* --- Header --- */
 .k-shell__header {
-  height: 64px;
+  height: calc(64px + env(safe-area-inset-top));
   flex-shrink: 0;
   display: grid;
   grid-template-columns: 1fr minmax(0, 560px) 1fr;
   align-items: center;
   column-gap: var(--space-4);
-  padding: 0 var(--space-5);
+  padding: env(safe-area-inset-top) max(var(--space-5), env(safe-area-inset-right)) 0 max(var(--space-5), env(safe-area-inset-left));
   border-bottom: 1px solid var(--border-subtle);
   background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
   backdrop-filter: saturate(1.4) blur(12px);
@@ -102,7 +102,7 @@
 .k-shell__profile-name { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* --- Body --- */
-.k-shell__body { flex: 1; min-height: 0; display: flex; }
+.k-shell__body { flex: 1; min-height: 0; display: flex; padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
 .k-shell__sidebar {
   width: 224px;
   flex-shrink: 0;
@@ -181,14 +181,18 @@
   gap: 3px;
   padding: 6px 4px;
   border-radius: 12px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   text-decoration: none;
   font-size: 10px;
   font-weight: 700;
   flex: 1;
   min-width: 0;
+  min-height: 52px;
+  justify-content: center;
+  touch-action: manipulation;
 }
-.k-shell__bottomnav-item.active { color: var(--accent-primary); }
+.k-shell__bottomnav-item.active { color: var(--accent-primary); background: var(--bg-surface-soft); }
+.k-shell__bottomnav-item:focus-visible { outline: 3px solid var(--accent-primary); outline-offset: -3px; }
 .k-shell__bottomnav-item.active svg { filter: drop-shadow(0 2px 6px rgba(108, 92, 231, 0.35)); }
 
 /* tablet: keep navigation reachable as an icon rail */
@@ -201,13 +205,21 @@
 @media (max-width: 767px) {
   .k-shell__sidebar { display: none; }
   .k-shell__bottomnav { display: block; }
-  .k-shell--chat .k-shell__bottomnav, .k-shell--immersive .k-shell__bottomnav { display: none; }
   .k-shell__search { display: none; }
   /* Touch widths: hide the classic scrollbar so the 16px gutters stay symmetric */
   .k-shell__main { scrollbar-width: none; }
   .k-shell__main::-webkit-scrollbar { display: none; }
   .k-shell__search-mobile { display: inline-flex; }
-  .k-shell__header { padding: 0 var(--space-3); height: 56px; grid-template-columns: 1fr auto; }
+  .k-shell__header { padding: env(safe-area-inset-top) max(var(--space-3), env(safe-area-inset-right)) 0 max(var(--space-3), env(safe-area-inset-left)); height: calc(56px + env(safe-area-inset-top)); grid-template-columns: minmax(0, 1fr) auto; column-gap: 4px; }
+  .k-shell__header-actions { gap: 2px; }
+  .k-shell__header-actions > :is(button, a) { min-width: 48px; min-height: 48px; justify-content: center; }
+  .k-shell__logo { min-height: 48px; gap: 6px; }
+  .k-shell__wordmark { font-size: 21px; }
+  .k-shell__bottomnav { padding-left: max(8px, env(safe-area-inset-left)); padding-right: max(8px, env(safe-area-inset-right)); }
   .k-shell__profile-name { display: none; }
   .k-shell__profile-chip { padding: 2px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .k-shell__companion-art { animation: none; }
+  .k-shell__logo-mark, .k-shell__sidebar { transition: none; }
 }

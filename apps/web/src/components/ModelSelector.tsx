@@ -13,6 +13,7 @@ export default function ModelSelector({
     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
       <label style={{ fontSize: 12, color: "var(--text-faint)", whiteSpace: "nowrap" }}>モデル</label>
       <select
+        aria-label="会話モデル"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         style={{

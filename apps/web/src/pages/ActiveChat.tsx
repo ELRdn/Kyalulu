@@ -1,3 +1,4 @@
+import { connectionScope } from '../lib/remoteStore';
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
@@ -52,7 +53,7 @@ import { useResearcherMode } from "../lib/mode";
 import { useContextPanelPref } from "../lib/contextPanel";
 import { usePinnedSessions, togglePin } from "../lib/pins";
 import { newSessionId, startNewSession } from "../lib/session";
-import { useChatModel } from "../lib/models";
+import { conversationModel, useChatModel } from "../lib/models";
 import { useAdultContent } from "../lib/adult";
 import { friendlyError } from "../lib/errors";
 import MemoryPanel from "../components/MemoryPanel";
@@ -64,6 +65,8 @@ import { getReplyVersions, recordReplyVersion, selectReplyVersion } from "../lib
 import { cleanPreview } from "../lib/text";
 import { useMediaQuery } from "../lib/useMediaQuery";
 import { NARRATION_STYLES, extractNarrationStyle, applyNarrationStyle } from "../lib/narrationStyle";
+import { useChatRecovery } from "../lib/useChatRecovery";
+import { useAdministrative } from "../components/RuntimeGate";
 import "./activeChat.css";
 
 type DebugData = {
@@ -111,21 +114,33 @@ function DebugJson({ value }: { value: unknown }) {
 }
 
 export default function ActiveChat() {
+  const { sessionId = "default" } = useParams<{ sessionId: string }>();
+  // A route switch must discard every old UI callback, not just stream callbacks.
+  return <ActiveChatSession key={`${connectionScope()}:${sessionId}`} />;
+}
+
+function ActiveChatSession() {
   const params = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const sessionId = params.sessionId ?? "default";
 
   const [researcher, setResearcher] = useResearcherMode();
+  const administrative = useAdministrative();
   const ctxPanel = useContextPanelPref();
   const pinned = usePinnedSessions();
 
-  const { models, modelId, setModelId, reload: reloadModels, loadFailed: modelsFailed } = useChatModel();
+  const [baselineModel, setBaselineModel] = useState<string | null>(null);
+  const { models, modelId, setModelId, reload: reloadModels, loadFailed: modelsFailed,
+    loading: modelsLoading, available: modelAvailable } = useChatModel({ conversationModel: baselineModel });
+  const modelChoices = models.some(m => m.id === modelId) ? models : [
+    { id: modelId, display_name: modelId ? `${modelId}（利用できません）` : "会話エンジンを選んでください", provider_type: "", provider_model: "", quantization: "" }, ...models,
+  ];
   const [adult] = useAdultContent();
   const [confirmDialog, confirm] = useConfirm();
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [messages, setMessages] = useState<(ChatMessage & { id?: number })[]>([]);
-  const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  const [online, setOnline] = useState(() => navigator.onLine !== false);
   const [error, setError] = useState<string | null>(null);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
@@ -166,11 +181,29 @@ export default function ActiveChat() {
   const autoSaveTimer = useRef<number | null>(null);
   const requestEpochRef = useRef(0);
   const sendingRef = useRef(false);
+  const mountedRef = useRef(true);
   const [settingsReady, setSettingsReady] = useState(false);
+  const [historyReady, setHistoryReady] = useState(false);
   const stopRef = useRef<(() => void) | null>(null);
   const sessionGenRef = useRef(0);
   const activeSessionRef = useRef(sessionId);
   activeSessionRef.current = sessionId;
+  const recovery = useChatRecovery(sessionId, history => {
+    requestEpochRef.current += 1;
+    stopRef.current?.();
+    stopRef.current = null;
+    sendingRef.current = false;
+    setStreaming(false);
+    setMessages(history.filter(m => m.role !== "system"));
+    setBaselineModel(conversationModel(history));
+    setHistoryReady(true);
+    void loadSessions();
+  });
+  const input = recovery.input;
+  const setInput = recovery.change;
+  const mutationLocked = streaming || recovery.unresolved;
+  const mutationBlocked = () => !mountedRef.current || sendingRef.current || recovery.blocked();
+
 
   const activeCharacter = characters.find((c: any) => c.id === characterId) as any;
   const activeWorld = worlds.find((w) => w.id === worldId);
@@ -203,11 +236,14 @@ export default function ActiveChat() {
 
   const loadHistory = async (sid: string) => {
     const gen = sessionGenRef.current;
+    const epoch = requestEpochRef.current;
     try {
       const h = await fetchHistory(sid);
-      if (gen !== sessionGenRef.current || sid !== activeSessionRef.current) return;
+      if (gen !== sessionGenRef.current || epoch !== requestEpochRef.current || sid !== activeSessionRef.current) return;
       const filtered = h.filter((x) => x.role !== "system").map((x) => ({ id: (x as any).id as number | undefined, role: x.role, content: x.content }));
       setMessages(filtered);
+      setBaselineModel(conversationModel(h));
+      setHistoryReady(true);
       setError(null);
     } catch (e) {
       if (gen === sessionGenRef.current) setError(`履歴の取得に失敗: ${String(e)}`);
@@ -223,6 +259,7 @@ export default function ActiveChat() {
   };
 
   const handleApplyPreset = (pid: string) => {
+    if (mutationBlocked()) return;
     const p = presets.find((x) => x.id === pid);
     if (!p) return;
     setSystemPrompt(p.content);
@@ -234,6 +271,7 @@ export default function ActiveChat() {
   const contentIncludesExplicit = (s: string) => /行為|挿入|絶頂|ベッドで/i.test(s);
 
   const handleSavePreset = async () => {
+    if (mutationBlocked()) return;
     const name = presetName.trim() || `プリセット ${new Date().toLocaleString()}`;
     if (!systemPrompt.trim()) {
       setSettingsStatus("システムプロンプトが空です");
@@ -252,8 +290,10 @@ export default function ActiveChat() {
   };
 
   const handleDeletePreset = async (pid: string) => {
+    if (mutationBlocked()) return;
     const p = presets.find((x) => x.id === pid);
     if (!p || !(await confirm({ title: `プリセット「${p.name}」を削除しますか？`, confirmLabel: "削除する", danger: true }))) return;
+    if (mutationBlocked()) return;
     try {
       await deletePreset(pid);
       await loadPresets();
@@ -301,6 +341,7 @@ export default function ActiveChat() {
   };
 
   const startEdit = (idx: number) => {
+    if (mutationBlocked()) return;
     setEditingIdx(idx);
     setEditText(messages[idx]?.content ?? "");
   };
@@ -309,6 +350,7 @@ export default function ActiveChat() {
     setEditText("");
   };
   const saveEdit = async (idx: number) => {
+    if (mutationBlocked()) return;
     const msg = messages[idx];
     const newContent = editText.trim();
     if (!newContent) {
@@ -335,8 +377,10 @@ export default function ActiveChat() {
     setEditText("");
   };
   const handleDelete = async (idx: number) => {
+    if (mutationBlocked()) return;
     const msg = messages[idx];
     if (!(await confirm({ title: "このメッセージを削除しますか？", description: <div className="k-confirm__quote">{cleanPreview(msg.content, 80)}</div>, confirmLabel: "削除する", danger: true }))) return;
+    if (mutationBlocked()) return;
     if (msg.id) {
       try {
         await deleteHistoryMessage(msg.id);
@@ -351,6 +395,7 @@ export default function ActiveChat() {
   };
 
   const handleInjectIntro = async () => {
+    if (mutationBlocked()) return;
     try {
       const r: any = await injectIntro(sessionId);
       if (r.injected) {
@@ -378,6 +423,7 @@ export default function ActiveChat() {
   };
 
   const handleSaveSettings = async () => {
+    if (mutationBlocked()) return;
     setSettingsSaving(true);
     setSettingsStatus(null);
     try {
@@ -393,11 +439,13 @@ export default function ActiveChat() {
   };
 
   const handleSelectNarrationStyle = (id: string | null) => {
+    if (mutationBlocked()) return;
     const next = applyNarrationStyle(systemPrompt, id as any);
     setSystemPrompt(next);
   };
 
   const loadDebug = async () => {
+    if (!administrative) return;
     const gen = sessionGenRef.current;
     setDebugLoading(true);
     setDebugError(null);
@@ -422,10 +470,21 @@ export default function ActiveChat() {
       stopRef.current = null;
     }
     setStreaming(false);
-    void loadHistory(sessionId);
+    if (recovery.pending) void recovery.cancel();
+    else void loadHistory(sessionId);
   };
 
   useEffect(() => setShowNsfw(adult), [adult]);
+
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine !== false);
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
 
   useEffect(() => {
     loadSessions();
@@ -447,7 +506,6 @@ export default function ActiveChat() {
     sendingRef.current = false;
     setMessages([]);
     setDebugData(null);
-    setInput("");
     setSuggestions(null);
     if (stopRef.current) {
       stopRef.current();
@@ -461,11 +519,11 @@ export default function ActiveChat() {
 
   // 自動保存：設定変更から800ms後にDBへ永続化（セッション世代で古い保存を無効化）
   useEffect(() => {
-    if (!settingsLoadedRef.current) return;
+    if (!settingsLoadedRef.current || mutationLocked) return;
     if (autoSaveTimer.current) window.clearTimeout(autoSaveTimer.current);
     const gen = sessionGenRef.current;
     autoSaveTimer.current = window.setTimeout(async () => {
-      if (gen !== sessionGenRef.current) return;
+      if (gen !== sessionGenRef.current || mutationBlocked()) return;
       try {
         await saveSettings({ session_id: sessionId, system_prompt: systemPrompt, temperature, character_id: characterId, persona_id: personaId, world_id: worldId, intro, library_binding: libraryBinding });
         if (gen !== sessionGenRef.current) return;
@@ -481,7 +539,7 @@ export default function ActiveChat() {
         autoSaveTimer.current = null;
       }
     };
-  }, [systemPrompt, temperature, characterId, personaId, worldId, intro, sessionId, libraryBinding]);
+  }, [systemPrompt, temperature, characterId, personaId, worldId, intro, sessionId, libraryBinding, mutationLocked]);
 
   // Ctrl+Shift+D: Researcherのみデバッグドロワーを開閉（設定Sheetはギアボタンで開く）
   useEffect(() => {
@@ -520,7 +578,9 @@ export default function ActiveChat() {
 
   // アンマウント時に進行中のストリームを中断
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       sessionGenRef.current += 1;
       requestEpochRef.current += 1;
       sendingRef.current = false;
@@ -539,13 +599,16 @@ export default function ActiveChat() {
   };
 
   const handleClearSession = async () => {
+    if (mutationBlocked()) return;
     if (!(await confirm({ title: `${headerName}との会話を削除しますか？`, description: "メッセージはすべて消え、元に戻せません。", confirmLabel: "削除する", danger: true }))) return;
+    if (mutationBlocked()) return;
     try {
       await clearHistory(sessionId);
     } catch (e) {
       setError(String(e));
       return;
     }
+    if (!mountedRef.current) return;
     ctxPanel.setOpen(false);
     navigate("/chats");
   };
@@ -555,6 +618,7 @@ export default function ActiveChat() {
     if (!characterId) return handleNewSession();
     try {
       const id = await startNewSession({ characterId, personaId, worldId, intro, temperature });
+      if (!mountedRef.current) return;
       ctxPanel.setOpen(false);
       navigate(`/chats/${encodeURIComponent(id)}`);
     } catch (e) {
@@ -563,18 +627,27 @@ export default function ActiveChat() {
   };
 
   useEffect(() => {
-    fetchCommands().then(setCommands).catch(() => setCommands([]));
-  }, []);
+    let active = true;
+    setCommands([]);
+    if (administrative) fetchCommands().then(value => { if (active) setCommands(value); }).catch(() => {});
+    return () => { active = false; };
+  }, [administrative]);
 
   // 「/」で始まる入力はチャットに送らず、API のコマンドとして実行する（履歴には残らない）
   const runSlash = async (text: string) => {
+    if (mutationBlocked()) return;
+    if (!administrative) {
+      setCommandResult({ ok: false, command: text.split(" ")[0], output: "モデルの管理はサーバー側のPCで行ってください", refresh_models: false });
+      return;
+    }
     setCommandRunning(true);
     setCommandResult({ ok: true, command: text.split(" ")[0], output: "実行中…", refresh_models: false });
     try {
       const result = await runCommand(text);
+      if (!mountedRef.current) return;
       setCommandResult(result);
       if (result.refresh_models) reloadModels();
-      if (result.ok) setInput("");
+      if (result.ok) recovery.clearCommand(text);
     } catch (e) {
       setCommandResult({ ok: false, command: text.split(" ")[0], output: String(e), refresh_models: false });
     } finally {
@@ -583,12 +656,14 @@ export default function ActiveChat() {
   };
 
   const send = async (regenerateId?: number, request?: string) => {
-    const text = input.trim();
+    if (mutationBlocked() || commandRunning || !online) return;
+    const submittedDraft = input;
+    const text = submittedDraft.trim();
     if (!regenerateId && text.startsWith("/")) {
       if (!commandRunning) void runSlash(text);
       return;
     }
-    if ((!text && !regenerateId) || sendingRef.current || !modelId || !settingsReady) return;
+    if ((!text && !regenerateId) || sendingRef.current || !modelAvailable || !settingsReady || !historyReady) return;
     const previous = messages;
     const next: ChatMessage[] = regenerateId
       ? messages.slice(0, -1)
@@ -603,7 +678,6 @@ export default function ActiveChat() {
     setSuggestions(null);
     setStreaming(true);
     setMessages([...next, { role: "assistant", content: "" }]);
-    if (!regenerateId) setInput("");
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     try {
       await saveSettings({ session_id: sessionId, system_prompt: systemPrompt, temperature,
@@ -611,11 +685,19 @@ export default function ActiveChat() {
     } catch (e) {
       if (current()) {
         setError(`設定保存に失敗したため送信しませんでした: ${String(e)}`);
-        setMessages(previous); setInput(text); setStreaming(false); sendingRef.current = false;
+        setMessages(previous); setStreaming(false); sendingRef.current = false;
       }
       return;
     }
     if (!current()) return;
+    const generationId = crypto.randomUUID();
+    try {
+      recovery.begin(generationId, !!regenerateId, submittedDraft);
+    } catch (e) {
+      setError(`送信前の保存に失敗しました: ${String(e)}`);
+      setMessages(previous); setStreaming(false); sendingRef.current = false;
+      return;
+    }
     let reply = "";
     const display = (full: string) => {
       if (!current()) return;
@@ -623,11 +705,12 @@ export default function ActiveChat() {
       setMessages([...next, { role: "assistant", content: full }]);
     };
     stopRef.current = streamChat(modelId, next,
-      { session_id: sessionId, temperature, regenerate_message_id: regenerateId, allow_nsfw: showNsfw,
+      { session_id: sessionId, generation_id: generationId, temperature, regenerate_message_id: regenerateId, allow_nsfw: showNsfw,
         // 「注文して作り直す」はこの1回の生成だけに指示を足す（保存される設定は変えない）
         system_prompt: request ? `${systemPrompt.trim()}\n\n# この返事だけの注文\n${request}`.trim() : systemPrompt }, {
         onToken: token => display(reply + token),
         onReset: full => display(full),
+        onRejected: () => recovery.rejected(generationId),
         onDone: full => {
           if (!current()) return;
           display(full); sendingRef.current = false; setStreaming(false); stopRef.current = null;
@@ -635,13 +718,15 @@ export default function ActiveChat() {
             recordReplyVersion(sessionId, regenerateId, replaced, full);
             setVersionTick((v) => v + 1);
           }
-          void loadHistory(sessionId); void loadSessions();
+          void recovery.reconcile();
           if (debugOpen) void loadDebug();
         },
-        onError: e => {
+        onError: (e, details) => {
           if (!current()) return;
           sendingRef.current = false; setStreaming(false); stopRef.current = null;
-          setMessages(previous); if (!regenerateId) setInput(text); setError(e);
+          setError(e);
+          if (details?.rejected) setMessages(previous);
+          else void recovery.reconcile();
           if (debugOpen) void loadDebug();
         },
       });
@@ -654,6 +739,7 @@ export default function ActiveChat() {
     [sessionId, lastMsg?.id, versionTick],
   );
   const showVersion = async (index: number) => {
+    if (mutationBlocked()) return;
     const id = lastMsg?.id;
     if (!replyVersions || !id || streaming) return;
     const content = replyVersions.versions[index];
@@ -700,7 +786,9 @@ export default function ActiveChat() {
   const railPinned = railSessions.filter((s) => pinned.includes(s.session_id));
   const railRecent = railSessions.filter((s) => !pinned.includes(s.session_id));
   const worldNameOf = (id?: string | null) => worlds.find((w) => w.id === id)?.display_name;
-  const canRegenerate = !streaming && messages.at(-1)?.role === "assistant" && !!messages.at(-1)?.id && messages.at(-2)?.role === "user";
+  const canRegenerate = !mutationLocked && messages.at(-1)?.role === "assistant" && !!messages.at(-1)?.id && messages.at(-2)?.role === "user";
+  const chatStatus = !online ? "接続待ち" : streaming ? "返事を生成中…" : recovery.unresolved ? "送信結果を確認中…"
+    : settingsReady && historyReady && modelAvailable ? "会話の準備完了" : "会話を準備中…";
   const starters = hasCharacter
     ? ["こんにちは！はじめまして", "今日はどんな一日だった？", "きみのこと、もっと教えて", "*そっと隣に座る*"]
     : ["こんにちは！", "おすすめの話題はある？", "物語をいっしょに作ろう"];
@@ -724,7 +812,7 @@ export default function ActiveChat() {
       onInjectIntro={handleInjectIntro}
       sessionId={sessionId}
       memoryRefresh={messages.length * 2 + (streaming ? 1 : 0)}
-      settings={{ personaId, personas, worldId, worlds, systemPrompt, setPersonaId, setWorldId, setSystemPrompt, settingsReady, streaming }}
+      settings={{ personaId, personas, worldId, worlds, systemPrompt, setPersonaId, setWorldId, setSystemPrompt, settingsReady, streaming: mutationLocked }}
     />
   );
 
@@ -797,7 +885,7 @@ export default function ActiveChat() {
             </span>
             <span className="k-chat-header__identity">
               <span className="k-chat-header__name" title={headerName}>{headerName}</span>
-              <span className="k-chat-header__sub">{activeWorld ? `✦ ${activeWorld.display_name}` : streaming ? "入力中…" : "オンライン"}</span>
+              <span className="k-chat-header__sub">{activeWorld ? `✦ ${activeWorld.display_name} · ` : ""}{chatStatus}</span>
             </span>
           </button>
           <div className="k-chat-header__actions">
@@ -878,7 +966,7 @@ export default function ActiveChat() {
                     ) : (
                       <MessageContent content={m.content} isStreaming={isStreaming} />
                     )}
-                    {!isEditing && !isStreaming && (
+                    {!isEditing && !isStreaming && !mutationLocked && (
                       <div className="k-msg__actions">
                         {isAssistant && i === messages.length - 1 && replyVersions && (
                           <span className="k-msg__versions" role="group" aria-label="返事の案を切り替える">
@@ -962,6 +1050,22 @@ export default function ActiveChat() {
           </div>
         )}
 
+        {historyReady && !modelsLoading && !modelAvailable && (
+          <div className="k-chat-recovery" role="status">
+            <span>{modelsFailed ? "会話エンジンを取得できませんでした。" : modelId ? `会話エンジン「${modelId}」を利用できません。別のモデルへ自動では切り替えません。` : "会話エンジンを選んでから送信してね。"}</span>
+            <button type="button" onClick={() => setPortableOpen(true)}>会話エンジンを選ぶ</button>
+            <button type="button" onClick={reloadModels}>再読込</button>
+          </div>
+        )}
+        {(recovery.unresolved || recovery.notice) && (
+          <div className="k-chat-recovery" role="status" aria-live="polite">
+            <span>{recovery.storageError ?? recovery.notice ?? "送信結果を確認しています。確認中は新しい送信・会話の変更を待ってね。"}</span>
+            {recovery.pending && <button type="button" disabled={recovery.checking} onClick={() => void recovery.reconcile()}>
+              {recovery.checking ? "確認中…" : "結果を確認"}
+            </button>}
+            {recovery.pending && !streaming && <button type="button" onClick={() => void recovery.cancel()}>停止して確認</button>}
+          </div>
+        )}
         <div className="k-chat-composer-wrap">
           {suggestions && (
             <div className="k-suggest" role="group" aria-label="返事の候補">
@@ -988,7 +1092,7 @@ export default function ActiveChat() {
                 type="button"
                 className={`k-composer__tool ${suggestions ? "is-active" : ""}`}
                 onClick={() => void handleSuggest()}
-                disabled={!modelId || !settingsReady || streaming || suggesting || !messages.some((m) => m.role === "assistant")}
+                disabled={!modelId || !settingsReady || mutationLocked || suggesting || !messages.some((m) => m.role === "assistant")}
                 aria-pressed={!!suggestions}
                 title="次に送る返事の候補を出す"
               >
@@ -1000,7 +1104,8 @@ export default function ActiveChat() {
             onSend={() => void send()}
             onStop={handleStop}
             streaming={streaming}
-            disabled={!modelId || !settingsReady}
+            sendBlocked={recovery.unresolved || commandRunning || !online || (!modelAvailable && !input.trim().startsWith("/"))}
+            disabled={!settingsReady || !historyReady}
             disabledText={!modelId ? (modelsFailed ? "サーバーに接続できません。アプリの起動状態を確認してね" : "会話エンジンを準備中…") : "会話を準備中…"}
             placeholder={hasCharacter ? `${headerName}への言葉を入力してね…` : "きみの言葉を入力してね…"}
           />
@@ -1024,7 +1129,11 @@ export default function ActiveChat() {
           </IconButton>
         </div>
         <div style={{ padding: 18, overflowY: "auto" }}>
-          <fieldset disabled={streaming || !settingsReady} style={{ border: 0, padding: 0 }}>
+          <fieldset disabled={mutationLocked || !settingsReady} style={{ border: 0, padding: 0 }}>
+            <div className="k-chat-model-choice">会話エンジン
+              <ModelSelector models={modelChoices} value={modelId} onChange={setModelId} />
+              <Button variant="ghost" onClick={reloadModels}>モデルを再読込</Button>
+            </div>
             <PortableSessionControls value={libraryBinding} characterId={characterId} character={portableCharacter} allowNsfw={showNsfw} onChange={setLibraryBinding} onTemperature={setTemperature} />
           </fieldset>
           <p role="status" className="k-sheet-status">{settingsStatus}</p>
@@ -1039,14 +1148,14 @@ export default function ActiveChat() {
           </div>
           <IconButton label="閉じる" onClick={() => setStudioOpen(false)}>×</IconButton>
         </div>
-        <div style={{ flex: 1, overflowY: "auto", padding: 14, display: "grid", gap: 14, alignContent: "start" }}>
+        <fieldset disabled={mutationLocked} className="k-chat-mutation-group" style={{ flex: 1, overflowY: "auto", padding: 14, display: "grid", gap: 14, alignContent: "start" }}>
           <label style={{ fontSize: 11, display: "flex", gap: 6, alignItems: "center", color: showNsfw ? "var(--error-text)" : "var(--text-muted)", cursor: "pointer" }}>
             <input type="checkbox" checked={showNsfw} onChange={(e) => setShowNsfw(e.target.checked)} /> 🔞 NSFWを表示（キャラ/プリセット/シナリオ）
           </label>
 
           <div style={{ display: "grid", gap: 8 }}>
             <label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)" }}>モデル</label>
-            <ModelSelector models={models} value={modelId} onChange={setModelId} />
+            <ModelSelector models={modelChoices} value={modelId} onChange={setModelId} />
             <Button variant="secondary" size="sm" onClick={reloadModels} style={{ width: "fit-content" }}>↻ 再読込</Button>
           </div>
 
@@ -1137,7 +1246,7 @@ export default function ActiveChat() {
               <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 11, lineHeight: 1.6, background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 8, padding: 10, maxHeight: 260, overflowY: "auto", color: "var(--text-primary)" }}>{compiled.system_prompt}</pre>
             </div>
           )}
-        </div>
+        </fieldset>
       </Sheet>
 
       {/* Debug: Researcherのみ Ctrl+Shift+D で開くデバッグドロワー */}
@@ -1275,7 +1384,7 @@ function ChatContextPanel({
         <div className="k-context-section">
           <div className="k-context-section__title">✦ はじまりのシーン</div>
           <div className="k-context-intro">{cleanPreview(intro, 400)}</div>
-          <Button variant="ghost" size="sm" onClick={onInjectIntro} style={{ justifySelf: "start" }}>
+          <Button variant="ghost" size="sm" onClick={onInjectIntro} disabled={streaming} style={{ justifySelf: "start" }}>
             <Icon name="play" size={12} /> 会話の最初に流す
           </Button>
         </div>
@@ -1289,17 +1398,19 @@ function ChatContextPanel({
         </div>
       </details>
       <StoryControls key={sessionId} value={systemPrompt} onChange={setSystemPrompt} disabled={!settingsReady || streaming} />
+      <fieldset className="k-chat-mutation-group" disabled={streaming}>
       <MemoryPanel key={`${sessionId}:${characterId}:${personaId}`} sessionId={sessionId} refreshKey={memoryRefresh}
         scopeOverride={characterId ? `char:${characterId}|persona:${personaId || 'default'}` : `session:${sessionId}`} />
+      </fieldset>
 
       <div className="k-context-section">
         <div className="k-context-section__title">✦ ナレーションスタイル</div>
         <div className="k-narration-style-grid">
-          <button className={`k-narration-style-chip ${!currentNarrationStyle ? "k-narration-style-chip--active" : ""}`} onClick={() => onSelectNarrationStyle(null)}>
+          <button className={`k-narration-style-chip ${!currentNarrationStyle ? "k-narration-style-chip--active" : ""}`} onClick={() => onSelectNarrationStyle(null)} disabled={streaming}>
             おまかせ
           </button>
           {NARRATION_STYLES.map((st) => (
-            <button key={st.id} className={`k-narration-style-chip ${currentNarrationStyle === st.id ? "k-narration-style-chip--active" : ""}`} onClick={() => onSelectNarrationStyle(st.id)}>
+            <button key={st.id} className={`k-narration-style-chip ${currentNarrationStyle === st.id ? "k-narration-style-chip--active" : ""}`} onClick={() => onSelectNarrationStyle(st.id)} disabled={streaming}>
               {st.label}
             </button>
           ))}
@@ -1325,7 +1436,7 @@ function ChatContextPanel({
           <Button variant="secondary" size="sm" onClick={onNewSession}>
             <Icon name="plus" size={14} /> 新しいチャット
           </Button>
-          <Button variant="danger" size="sm" onClick={onClearSession}>
+          <Button variant="danger" size="sm" onClick={onClearSession} disabled={streaming}>
             <Icon name="trash" size={14} /> この会話を削除
           </Button>
         </div>

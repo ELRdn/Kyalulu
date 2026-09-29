@@ -1,3 +1,4 @@
+import { RuntimeImage } from '../RuntimeMedia';
 import { Link } from "react-router-dom";
 import { moodsOf } from "../../lib/moodTaxonomy";
 import { gradientFor } from "./Avatar";
@@ -28,7 +29,7 @@ export default function CharacterCard({
     <Link to={`/characters/${encodeURIComponent(id)}`} className="k-media-card k-char-card">
       <div className="k-media-card__art" style={portraitUrl ? undefined : { background: gradientFor(id) }}>
         {portraitUrl ? (
-          <img src={portraitUrl} alt="" loading="lazy" className="k-media-card__img" />
+          <RuntimeImage src={portraitUrl} alt="" loading="lazy" className="k-media-card__img" />
         ) : (
           <span className="k-char-card__sigil" aria-hidden="true">
             <span>{displayName.trim().charAt(0)}</span>
