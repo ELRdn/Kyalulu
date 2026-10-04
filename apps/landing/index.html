@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="ja" data-phase="alpha" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kyalulu — キャラも記憶も、きみの手元に残るRPプラットフォーム</title>
+<meta name="description" content="Kyaluluは、キャラクターとの物語と記憶を手元に残せるローカルファーストのRPプラットフォーム。PCでもスマホでも、続きから。SillyTavernやCCv2/v3のキャラも持ち込めます。">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Kyalulu — あの子は、ちゃんと覚えている。">
+<meta property="og:description" content="キャラも記憶も、きみの手元に。PCでもスマホでも、続きから。">
+<meta property="og:url" content="https://kyalulu.com/">
+<meta property="og:image" content="https://kyalulu.com/assets/og.png">
+<meta property="og:locale" content="ja_JP">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#6C5CE7">
+<link rel="canonical" href="https://kyalulu.com/">
+<link rel="alternate" hreflang="ja" href="https://kyalulu.com/">
+<link rel="alternate" hreflang="en" href="https://kyalulu.com/en/">
+<link rel="alternate" hreflang="x-default" href="https://kyalulu.com/">
+<link rel="icon" href="assets/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Noto+Serif+JP:wght@700&display=swap">
+<link rel="stylesheet" href="style.css">
+<script defer src="main.js"></script>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="#top"><img src="assets/mascot/face-default.webp" alt="" width="34" height="34">Kyalulu</a>
+    <nav aria-label="メイン">
+      <a href="#memory">記憶</a>
+      <a href="#data">データ</a>
+      <a href="#devices">スマホ</a>
+      <a href="#start">はじめ方</a>
+      <a href="#faq">FAQ</a>
+      <a class="lang" href="en/" hreflang="en" lang="en">EN</a>
+      <a class="btn btn-ghost btn-sm" href="https://github.com/ELRdn/Kyalulu" rel="noopener">★ GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+<section class="hero">
+  <div class="wrap">
+    <div>
+      <span class="eyebrow">✦ Local-first Character AI</span>
+      <h1>あの子は、<br><em>ちゃんと覚えている。</em></h1>
+      <p class="lead">Kyaluluは、キャラクターとの物語と記憶を、きみの手元に残せるRPプラットフォーム。PCでもスマホでも、いつでも続きから。</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="https://github.com/ELRdn/Kyalulu" rel="noopener">
+          <span class="p-alpha">GitHubで試す（アルファ）</span><span class="p-launch">npmで導入する（ベータ）</span>
+        </a>
+        <a class="btn btn-ghost" href="#waitlist">クラウド版の通知を受け取る</a>
+      </div>
+      <p class="note">ローカル版は無料のオープンソース（AGPL-3.0）。ローカルでAIを動かせない方向けに、クラウド版を準備中です。</p>
+    </div>
+    <figure class="stage">
+      <span class="spark" style="top:-4%;left:10%" aria-hidden="true">✦</span>
+      <span class="spark" style="top:38%;right:-3%" aria-hidden="true">✧</span>
+      <span class="spark" style="bottom:4%;right:12%" aria-hidden="true">✦</span>
+      <div class="frame">
+        <img src="assets/screens/chat-pane.webp" alt="Kyaluluのチャット画面。キャラクターが、前に交わした満月の夜の約束を覚えて返事をしている" width="728" height="691" fetchpriority="high">
+      </div>
+      <p class="mem-chip" aria-hidden="true"><b>✦ 記憶</b>満月の夜、星見の丘で本を読む約束</p>
+      <img class="mascot" src="assets/mascot/guide.webp" alt="" width="250" height="250">
+      <figcaption>開発中の画面です。会話はイメージです。</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="values">
+  <div class="wrap">
+    <div class="val rv"><span class="ic" aria-hidden="true">✦</span><b>記憶が続く</b><span>約束も、好きなものも。あとから思い出せる長期記憶（Memory Lab）。</span></div>
+    <div class="val rv"><span class="ic" aria-hidden="true">∞</span><b>手元に残る</b><span>ローカル版は、ローカルのモデルを使えば、会話もキャラも自分の端末の中だけで完結します。</span></div>
+    <div class="val rv"><span class="ic" aria-hidden="true">☾</span><b>PCでもスマホでも</b><span>自宅のPCの続きを、スマホのPWAから。暗号化して接続します。</span></div>
+  </div>
+</section>
+
+<section class="memory" id="memory">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow">✦ Memory Lab</span>
+      <h2>三十ターン前の約束を、<br>あの子は忘れない。</h2>
+      <p>キャラクターとの会話から、覚えておきたいことを記憶として残します。話が長くなっても、必要な場面で思い出して返してくれる。記憶の中身は、あとから見て、直せます。</p>
+    </div>
+    <div class="chat" aria-label="会話例（イメージ）">
+      <div class="msg me"><small>ターン 3</small>次の満月の夜、星見の丘で待っててくれる？</div>
+      <div class="msg ai"><small>キャルル</small>うん、約束ね。……ちょっと眠いけど、ちゃんと起きてる。</div>
+      <p class="gap-note">· · · そして、27ターン後 · · ·</p>
+      <div class="msg me"><small>ターン 30</small>ねえ、今夜ってなにか約束してたっけ？</div>
+      <div class="recall">✦ 記憶を呼び出し：ターン3「星見の丘で満月の夜に待ち合わせ」</div>
+      <div class="msg ai"><small>キャルル</small>満月の夜、星見の丘で待ち合わせ、でしょ？ ふふ、ちゃんと覚えてるよ。</div>
+      <p class="caption">※ 会話例はイメージです</p>
+    </div>
+  </div>
+</section>
+
+<section class="modes" id="data">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow">✦ Your data</span>
+      <h2>どこに置くかは、<br>きみが選べる。</h2>
+      <p>使い方に合わせて、2つのモードから選べます。それぞれ、データの扱いが違います。</p>
+    </div>
+    <div class="grid">
+      <article class="mode rv">
+        <h3>ローカル版</h3>
+        <p>自分のPCで動かす、いちばん手元に近い使い方。</p>
+        <ul>
+          <li>ローカルのモデルを使えば、会話・キャラ・記憶は端末の中で完結</li>
+          <li>AIモデルもPC上で実行（LM Studio・Ollamaなどに接続）</li>
+          <li>無料のオープンソース</li>
+        </ul>
+        <p class="small">動かすには、AIを動かせる程度の性能のPCが必要です。</p>
+      </article>
+      <article class="mode cloud rv">
+        <h3>クラウド版 <span class="tag">準備中</span></h3>
+        <p>PCがなくても、スマホだけですぐに始められる。</p>
+        <ul>
+          <li>ローカルでAIを動かせない方も、クラウドのモデルで会話</li>
+          <li>会話データは任意でサーバーに同期（いつでも切れます）</li>
+          <li>安全にサービスを運営するための、最低限の基準を設ける予定</li>
+        </ul>
+        <p class="small">料金は Free $0／Plus 月$5／Pro 月$10 を予定。扱えるのは全年齢向け（SFW）の内容のみです。運用の準備が整いしだい公開します。</p>
+      </article>
+    </div>
+    <p class="more rv"><a href="#faq">データと安全基準について、くわしく見る →</a></p>
+  </div>
+</section>
+
+<section class="devices" id="devices">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow">✦ PC × Mobile <span class="tag">アルファ</span></span>
+      <h2>家のPCの続きを、<br>スマホの中に。</h2>
+      <p>スマホのPWAから、自宅のPCで動くKyaluluへ暗号化して接続。外にいても、いつもの子と、いつもの続きから話せます。ポート開放は不要です。</p>
+    </div>
+    <div class="rv">
+      <div class="frame">
+        <div class="frame-bar" aria-hidden="true"><i></i><i></i><i></i></div>
+        <img src="assets/screens/home.webp" alt="PCで開いたKyaluluのホーム画面" width="1200" height="780" loading="lazy">
+      </div>
+      <p class="link-line"><span aria-hidden="true">⇄</span> 暗号化して接続（開発中）</p>
+    </div>
+    <div class="rv">
+      <div class="phone"><img src="assets/screens/mobile-chat.webp" alt="スマホのPWAで、PCと同じ会話の続きを開いたところ" width="390" height="844" loading="lazy"></div>
+    </div>
+  </div>
+</section>
+
+<section class="import" id="import">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow">✦ Bring your characters</span>
+      <h2>お気に入りの子は、<br>そのまま連れてこられる。</h2>
+      <p>いま使っているキャラクターを、読み込んで続きから。取り込む前に、変換で変わることを確認できます。原本と編集後は別々に保存され、上書きしません。</p>
+    </div>
+    <div class="chips rv">
+      <span class="chip">SillyTavern<small>キャラ・Lorebook</small></span>
+      <span class="chip">Character Card v2 / v3<small>JSON・PNG</small></span>
+      <span class="chip">CHARX<small>CCv3</small></span>
+      <span class="chip">TavernCard<small>URLから取り込み</small></span>
+      <span class="chip">Character.AI<small>貼り付けで移行</small></span>
+    </div>
+  </div>
+</section>
+
+<section class="compare" id="compare">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow">✦ How it differs</span>
+      <h2>ほかのRPツールと、<br>どこが違う？</h2>
+      <p>一般的な傾向との比較です。サービスにより異なります。</p>
+    </div>
+    <div class="table-scroll rv">
+      <table>
+        <thead><tr><th></th><th>クラウド型RPサービス</th><th>ローカル型ツール</th><th class="us">Kyalulu</th></tr></thead>
+        <tbody>
+          <tr><th>データの置き場所</th><td data-label="クラウド型RPサービス">サービスのサーバー</td><td data-label="ローカル型ツール">自分の端末</td><td class="us" data-label="Kyalulu">ローカル版は端末内。クラウド版は任意で同期</td></tr>
+          <tr><th>長期記憶</th><td data-label="クラウド型RPサービス">サービスにより異なる</td><td data-label="ローカル型ツール">拡張や設定で補う</td><td class="us" data-label="Kyalulu">Memory Labで記憶を確認・編集</td></tr>
+          <tr><th>スマホで使う</th><td data-label="クラウド型RPサービス">手軽に使える</td><td data-label="ローカル型ツール">設定が必要なことが多い</td><td class="us" data-label="Kyalulu">PWA。PC連携またはクラウド版</td></tr>
+          <tr><th>既存キャラの持ち込み</th><td data-label="クラウド型RPサービス">貼り付けなど手作業が中心</td><td data-label="ローカル型ツール">形式による</td><td class="us" data-label="Kyalulu">CCv2/v3・SillyTavern・貼り付け移行に対応</td></tr>
+          <tr><th>はじめやすさ</th><td data-label="クラウド型RPサービス">登録してすぐ</td><td data-label="ローカル型ツール">導入に手間がかかる</td><td class="us" data-label="Kyalulu">アルファ版は導入に手順が必要。クラウド版を準備中</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="fine">記載の名称は各権利者のものです。Kyaluluは、各ツール・サービスの公式製品ではありません。</p>
+  </div>
+</section>
+
+<section class="steps" id="start">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow">✦ Get started <span class="tag p-alpha">アルファ</span></span>
+      <h2>3ステップで、会いにいく。</h2>
+      <p class="p-alpha">アルファ版は、GitHubから導入します。手順は少し開発者寄りです。扱いやすい形での配布は準備中です。</p>
+      <p class="p-launch">Node.js 22以上でnpmからローカル版（ベータ）を入れるか、ブラウザから全年齢向けのクラウド版へ。配布と運用の確認が終わりしだい利用できます。</p>
+    </div>
+    <ol class="rv">
+      <li>
+        <h3 class="p-alpha">リポジトリを入手する</h3><h3 class="p-launch">npmで導入する（ベータ）</h3>
+        <p class="p-alpha">GitHubからコードを取得し、READMEのクイックスタートに沿ってセットアップします。<br><code>git clone https://github.com/ELRdn/Kyalulu.git</code></p>
+        <p class="p-launch">Windows 11 x64／macOS Apple SiliconでNode.js 22以上を用意し、<code>npx kyalulu</code>で起動。配布物は検証後に公開します。</p>
+      </li>
+      <li>
+        <h3>ローカルエンジンを入れる</h3>
+        <p>AIを動かすローカルエンジン（Kyalulu Local Engine・LM Studio・Ollama）に接続して、使うモデルを選びます。</p>
+      </li>
+      <li>
+        <h3>キャラと会う</h3>
+        <p>用意されたキャラクターと話すか、持っているキャラクターを読み込んで、続きから。スマホから使うなら<a href="https://github.com/ELRdn/Kyalulu/blob/main/docs/ANDROID_PWA.md" rel="noopener">PWA導入ガイド</a>へ。</p>
+      </li>
+    </ol>
+    <div class="cta-row rv">
+      <a class="btn btn-primary" href="https://github.com/ELRdn/Kyalulu" rel="noopener">★ GitHubでStarする</a>
+      <a class="btn btn-ghost" href="#waitlist">PCがない方はクラウド版へ</a>
+    </div>
+  </div>
+</section>
+
+<section class="wait" id="waitlist">
+  <div class="wrap">
+    <div class="rv">
+      <span class="eyebrow">✦ Cloud · Coming soon</span>
+      <h2>パソコンがなくても、<br>あの子に会えるように。</h2>
+      <p>PCを閉じていても、ブラウザやスマホからそのまま話せるクラウド版（全年齢向け）を準備しています。公開のお知らせを、いち早くお届けします。</p>
+      <form id="waitlist-form" data-endpoint="" data-closed="受付の準備中です。公開までもう少しお待ちください。" data-ok="登録しました。公開のときにお知らせします。" data-error="送信できませんでした。時間をおいてもう一度お試しください。" data-invalid="メールアドレスを確認してください。" data-consent="同意のチェックをお願いします。" novalidate>
+        <div class="field">
+          <input type="email" name="email" placeholder="メールアドレス" autocomplete="email" required aria-label="メールアドレス">
+          <button class="btn btn-primary" type="submit">通知を受け取る</button>
+        </div>
+        <label class="consent"><input type="checkbox" name="consent" required><span>公開のお知らせの送信にのみ、メールアドレスを使うことに同意します（プライバシーポリシーは公開時に掲載します）。</span></label>
+        <p class="status" role="status" aria-live="polite"></p>
+        <div class="wl-fallback">
+          <p>メールでの受付は、まもなく開始します。それまでは、GitHubの「Watch → Releases」で更新のお知らせを受け取れます。</p>
+          <a class="btn btn-primary" href="https://github.com/ELRdn/Kyalulu" rel="noopener">GitHubでお知らせを受け取る</a>
+        </div>
+      </form>
+    </div>
+    <img src="assets/mascot/nap.webp" alt="眠っているマスコットのキャルル" width="320" height="320" loading="lazy">
+  </div>
+</section>
+
+<section class="faq" id="faq">
+  <div class="wrap">
+    <div class="sec-head rv"><h2>よくある質問</h2></div>
+    <div class="list rv">
+      <details><summary>ローカル版は、データが外に出ませんか？</summary><p>ローカル版は、お使いのPC上で動作し、会話・キャラ・記憶は端末内に保存されます。ローカルのモデルを使えば、会話が外に出ることはありません。スマホから使うときは、PCとスマホの間を暗号化して接続します。</p></details>
+      <details><summary>クラウド版では、データはどう扱われますか？</summary><p>クラウド版の会話・設定・記憶は、Kyaluluのクラウドに保存されます。返事の生成と安全チェックには、外部のAIモデル提供元を使う予定です（提供元による学習目的のデータ利用は拒否する設定にします）。ローカル版からの同期は任意で、初期設定はオフ。いつでも止められます。同期されたデータは、全年齢向けの基準にもとづいて自動で確認されます。詳しくは、公開時に利用規約・プライバシーポリシーで明示します。</p></details>
+      <details><summary>ローカル版にも、内容の制限はありますか？</summary><p>ローカル版は、お使いの端末の中で動作します。ローカルのモデルを使う限り、RPの内容が外部のサーバーに送られることはありません（外部のAPIを自分で設定した場合は、そのAPIの規約に従います）。どのモデルを使うか、どんな物語を作るかは、利用者の判断になります。</p></details>
+      <details><summary>無料で使えますか？</summary><p>ローカル版は、AGPL-3.0のオープンソースとして無料で使えます。自分のPCのモデルや、自分で契約したAPIキーで使う場合も、Kyalulu側の料金はかかりません（APIの利用料は各提供元へ）。クラウド版は Free $0／Plus 月$5／Pro 月$10 を予定しています。販売条件と運用の確認が終わってから開始します。</p></details>
+      <details><summary>どんなPCが必要ですか？</summary><p>動かすモデルによります。軽いモデルなら一般的なゲーミングPC程度、大きいモデルほど高い性能が必要です。動かせるか不安な方は、クラウド版をお待ちください。</p></details>
+      <details><summary>いま、すぐに使えますか？</summary><p>アルファ版を、GitHubで公開しています。導入には、READMEに沿ったセットアップが必要です。スマホのPWAは、現在はPC上のKyaluluに接続して使います。扱いやすい配布は準備中です。</p></details>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© Kyalulu contributors · AGPL-3.0</span>
+    <nav aria-label="フッター">
+      <a href="https://github.com/ELRdn/Kyalulu" rel="noopener">GitHub</a>
+      <a href="https://github.com/ELRdn/Kyalulu/tree/main/benchmarks/characterbench" rel="noopener">CharacterBench</a>
+      <a href="https://github.com/ELRdn/Kyalulu/blob/main/docs/ROADMAP.md" rel="noopener">ロードマップ</a>
+      <a href="en/" hreflang="en" lang="en">English</a>
+    </nav>
+  </div>
+  <p class="wrap fine">ローカル版は無料のオープンソース。クラウド版（全年齢向け）と、かんたん導入版は公開準備中です。</p>
+</footer>
+
+</body>
+</html>
