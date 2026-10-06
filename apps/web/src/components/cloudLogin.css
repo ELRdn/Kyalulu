@@ -1,0 +1,87 @@
+/* The connection shell loads these styles; all rules stay inside Cloud login. */
+.k-connect-screen.k-cloud-login {
+  min-height: calc(100dvh - 44px);
+  padding: 40px 20px;
+  background: radial-gradient(ellipse at 50% 0, color-mix(in srgb, var(--accent-primary) 12%, transparent), transparent 65%);
+  font-weight: 400;
+}
+.k-cloud-login .k-connect-screen__body {
+  max-width: 480px;
+  padding: 32px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 24px;
+  background: var(--bg-surface);
+  box-shadow: 0 20px 64px color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+.k-cloud-login .k-connect-screen__brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 30px;
+  letter-spacing: -.04em;
+}
+.k-cloud-login .k-connect-screen__brand::before {
+  content: '';
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: url('/mascot/face-default.webp') center / contain no-repeat;
+}
+.k-cloud-login h1 {
+  margin: 0 0 26px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 400;
+  text-align: center;
+  line-height: 1.7;
+  text-wrap: balance;
+}
+.k-cloud-login h2 { margin: 0 0 10px; font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+.k-cloud-login p { margin: 10px 0; color: var(--text-secondary); font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
+.k-cloud-login .k-cloud-login__destination {
+  margin: 16px 0 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--bg-surface-soft);
+  font-size: 12px;
+}
+.k-cloud-login .k-cloud-login__destination + p { font-size: 12px; }
+.k-cloud-login .k-connection__form { display: grid; gap: 12px; margin: 20px 0; }
+.k-cloud-login .k-connection__form label { display: flex; align-items: flex-start; gap: 10px; color: var(--text-secondary); font-size: 12px; line-height: 1.7; }
+.k-cloud-login .k-connection__form label:has(input[type='checkbox']) {
+  padding: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.k-cloud-login .k-connection__form label:has(input:checked) { border-color: var(--accent-primary); background: color-mix(in srgb, var(--accent-primary) 6%, var(--bg-surface)); }
+.k-cloud-login input[type='checkbox'] { width: 18px; height: 18px; flex-shrink: 0; margin: 1px 0 0; accent-color: var(--accent-primary); }
+.k-cloud-login .k-connection__form label:has(input[type='email']) { display: grid; gap: 8px; font-weight: 600; }
+.k-cloud-login input[type='email'] {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg-canvas);
+  box-sizing: border-box;
+  font-size: 16px;
+  font-weight: 400;
+}
+.k-cloud-login .k-connection__form p { margin: 0; font-size: 11px; text-align: center; }
+.k-cloud-login .k-connection__form > .k-btn { min-height: 48px; font-size: 14px; font-weight: 600; }
+.k-cloud-login .k-connection__form > .k-btn[type='submit'] { background: var(--bg-surface); color: var(--text-primary); border-color: var(--border-strong); }
+.k-cloud-login .k-connection__form > .k-btn[type='submit']:hover:not(:disabled) { background: var(--bg-hover); }
+.k-cloud-login .k-connection__form > .k-btn + p { display: flex; align-items: center; gap: 12px; margin: 4px 0; color: var(--text-muted); }
+.k-cloud-login .k-connection__form > .k-btn + p::before,
+.k-cloud-login .k-connection__form > .k-btn + p::after { content: ''; flex: 1; height: 1px; background: var(--border-subtle); }
+.k-cloud-login .k-connect-screen__body > p:last-child { margin: 20px 0 0; padding-top: 16px; border-top: 1px solid var(--border-subtle); font-size: 11px; }
+.k-cloud-login p[role='status'] { padding: 10px 12px; border-radius: 10px; background: var(--bg-surface-soft); color: var(--text-primary); }
+.k-cloud-login a { text-underline-offset: 3px; }
+@media (max-width: 520px) {
+  .k-connect-screen.k-cloud-login { padding: 24px 12px max(24px, env(safe-area-inset-bottom)); }
+  .k-cloud-login .k-connect-screen__body { padding: 24px 20px; border-radius: 18px; }
+}
