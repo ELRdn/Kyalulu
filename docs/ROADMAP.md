@@ -1,6 +1,85 @@
 # Kyalulu ロードマップ
 
-更新: 2026-09-26（Desktop API監督・Memory Lab・長ターン比較・Persona/World Creatorを追加）。
+更新: **2026-10-08**。現在は本人1人のクラウドテスト。一般公開・販売は未受け入れ。
+次スレッドは [引き継ぎ](HANDOFF.md) から開始する。
+
+## 次の作業（優先順）
+
+| 順序 | 作業 | 完了条件 |
+|---|---|---|
+| 1 | 10月6日修正版のCloud配布 | 本番は10月5日リリースのまま。費用境界・再送・所有者切替の修正を新releaseとして配布する。更新前の暗号化バックアップとrollback先を用意し、既存Cloudだけ更新。health・匿名401・本人ログインを確認 |
+| 2 | 本人のクラウド実操作 | 配布後の本番でGoogleログイン→作成→保存→再読込→編集→会話。表示名・保存キャラ・ピン留めを別の本人端末で確認 |
+| 3 | 台帳と人手品質 | 送信前上限・予約・成功精算・失敗0消費・二重課金なし・実請求の照合。返答原文の人手評価。累計API実費上限$0.10を維持 |
+| 4 | 実機・運用 | Android実機とクリーンWindowsを[実施手順](validation/2026-10-06-device-acceptance.md)で受け入れ（Macは未提供）。24時間VPS、別ホスト復旧、Relay負荷 |
+| 5 | npm・一般公開準備 | final4候補をクリーンOSのNodeだけで導入・再起動・更新失敗・復元。SMTP実配信、日英法務/処理先条件、公開前チェックの証拠登録 |
+| 6 | 公開範囲の拡張 | 10人受付→72時間観測→100人。販売・広告・Remote正式提供は各条件の受け入れ後 |
+
+24時間/72時間の観測や未提供の実機を、モック・開発PC確認で完了としない。
+画像保存/同期は判定精度の受け入れまで無効。
+KCS/Tool/Proactive/音声/Expo/自前GPUと研究用の長期学習は、初回公開の後続順を維持する。
+
+## 現在地
+
+| 項目 | 実装・確認済み | 残る確認 |
+|---|---|---|
+| ローンチ前の修正（10/6） | 実装担当と独立レビュー6回でP1〜P3を修正（logout/refresh競合、再送の重複、所有者切替、費用の取りこぼし、配布物のリンク収集、更新/rollback停止順）。Python618/Web119/費用47試験、CharacterBench136、Electron9項目。final4のWindows/npm/Cloud候補を生成・監査し、実npm CLIをNode22/26で隔離確認 | 本番未配布。詳細は[ローンチ前検証](validation/2026-10-06-launch-hardening.md) |
+| クラウド認証 | VPS/HTTPS/Supabase Google設定、本人ログイン、500 K-Credits単回付与、ログイン画面のレスポンシブ化 | メールリンクの独自SMTP・実配信、公開用認証/法務条件 |
+| アカウント同期 | 表示名・保存キャラ・ピン留めのサーバー保存、409競合、所有者分離 | 本人の実端末間確認。ローカルCoreの任意転送とは別 |
+| キャラ・プロット | サーバーの4体SFWキャラと公式画像、利用者プロットの永続保存、Cloudの403誤表示を修正 | 本人ログインで作成→保存→再読込→会話の確認 |
+| 作成UI | zeta参考の6タブ、イントロプレビュー、固定保存操作、所有者別一時下書き。PC/スマホ×明暗4条件合格 | 実Googleセッションでの保存、Android実機。UI試験はAPIモック |
+| クラウド推論・台帳 | DeepSeek V4.1 Flash / OpenRouter / InferenceNet固定、整数予約/精算、本人限定で有効 | 本番会話・使用量・実請求・人手品質確認。累計実費上限$0.10 |
+| 配布・運用 | npm CLI候補、暗号化バックアップ、PC退避と隔離復元の確認 | クリーンWindows/Mac、24時間運転・別ホスト復元・Relay負荷 |
+| 公開サイト・SEO | `kyalulu.com` 日英LP、`/docs/` 公式資料（36 URL sitemap、構造化データ）を公開。Search Consoleへsitemap送信、主要6 URLの登録リクエスト受理 | Googleのsitemap取得成功（初回は読込失敗表示）と登録の確認。[公開記録](validation/2026-10-05-docs-seo-publication.md)、[SEO記録](validation/2026-10-06-seo-search-console.md) |
+| PWA・Remote | `app.kyalulu.com` のPWAと暗号化中継で自宅Hostへ接続（[記録](validation/2026-09-29-published-pwa.md)） | Android実機の受け入れ。Remote正式提供は外部セキュリティレビュー後 |
+| 販売・広告 | 将来プランと実装候補を保持 | サブスク・購入・広告は停止。個人テスト中は有効化しない |
+
+公開面は `kyalulu.com`（LP/Docs）、`app.kyalulu.com`（PWA/Remote）、
+`cloud.kyalulu.com`（SFWクラウド）の3つ。関連記録は
+[作成UI](validation/2026-10-05-plot-creator-ui.md)、
+[プロフィール同期](validation/2026-10-05-cloud-profile-sync.md)、
+[キャラ表示修正](validation/2026-10-05-cloud-catalog.md) を参照。
+
+## モデル選定とローンチ方針
+
+選定時の評価候補：Ling 3.0 Flash VL / Muse Spark 1.3 Contributor / DeepSeek V4.1 Flash /
+GLM 5.3 Flash。現在の採用はDeepSeek V4.1 Flashで確定済み。
+[4モデルの提供先比較と残る条件](validation/2026-10-04-openrouter-model-candidates.md)。
+4候補の短期実APIと既存Adapterは16リクエスト通過。実費合計$0.0008195002。
+[少量実APIの結果と検証範囲](validation/2026-10-04-openrouter-live-smoke.md)。
+段階検証ではDeepSeek/InferenceNetが完全スキーマで日英20ターン×3を120/120初回通過。
+馴れ馴れしいRP3種類24ターンと境界指示の対照2ターンも確認。全検証の実費は$0.0446467502、
+未確定予約込み$0.0495487202（当時の上限$0.05、現在の累計上限$0.10）。Ling/GLMの実429、Museの約束記憶の不足、
+RPでの未発言の過去の付加を記録。人間レビュー・本番経路の受け入れは未完了。
+[会話・記憶・SFW・RPの原文と検証範囲](validation/2026-10-04-openrouter-quality.md)。
+
+2026-10-04確定：DeepSeek V4.1 FlashをOpenRouter → InferenceNetへ固定。
+Google/メールリンクのログイン画面・PKCE・本人メール許可リスト・管理者による
+500 K-Creditsの単回付与・使用履歴を実装。個人テストはサブスク/購入を停止し、
+過去検証の未確定予約を含む累計API上限$0.10を維持。Supabase/Google/HTTPSと本人ログインは完了。
+[Webログインの設定と個人テスト](WEB_AUTH.md)。
+Go契約を前提にせず、10人/72時間の観測は最初の10人の受付後、100人への拡張前に置く。
+新規10人の受付上限、別経路への再同意、請求超過の負債記録、バックアップ容量の全体予約を追加。
+Windows配布候補と合成250MB/1GB枠の保存処理を確認。クリーンOSでの導入・実VPS大容量同期・
+Android実機・本番推論の受け入れは残る。[選定当時の設定履歴](validation/2026-10-04-openrouter-initial.md)
+と [現在の接続設定・公開条件](HANDOFF.md)を参照。
+
+## 初回ローンチの優先順（2026-10-03）
+
+無料OSS Core＋任意SFWクラウドを採用。初回はブラウザ/PWAクラウドと
+Windows 11 x64 / macOS Apple Siliconのnpmローカルベータ。
+人格・記憶アルゴリズムは共通。有料はクラウド容量/復元/優先処理/API資源を増やす。
+ローカル/BYOKは無料でK-Credits不要。詳細は [ローンチ仕様](LAUNCH.md)。
+
+CLI・独立クラウドRuntime・同意付きモデル経路・SFW検査・同期CAS・
+整数予約台帳・Stripe・暗号化バックアップを実装候補として追加。
+外部設定/実機/実モデル/販売条件/24時間/72時間の受け入れ完了を意味しない。
+署名済みDesktopインストーラーの初回配布は見送り。GPU版はComing soon。
+
+後続順：KCS/Character Compiler → Tool/MCPとイベント → Proactive/通知 →
+音声/画像/Expo → 自前GPU。Remote正式提供は外部レビュー後。
+
+
+以下は2026-09-26までの実装・検証履歴（Desktop API監督・Memory Lab・長ターン比較・Persona/World Creator）。
 Phase 0 M1〜M7のMock受け入れは維持。LE・互換実装の完了と、Phase 0全体の実モデル受け入れ完了は区別する。
 
 ## 今回の追加実装と確認（2026-09-26）
@@ -70,7 +149,7 @@ Webは `http://127.0.0.1:5174/`、APIは8000番。モデル検証後は専用の
 - 型チェック: 全共有パッケージ/Web合格。schemasビルド/Web本番ビルド合格。
 - Gemma 4: 指定GGUFをLM Studio Vulkan / RX7600専用で読み込み、SFW構造化1ターンが初回検証で合格。最終測定の表示開始87.11秒、全体97.97秒。通常利用の速度は要改善。
 
-## 優先順位
+## ローカル研究・Desktopの継続課題（2026-09-26時点）
 
 正式なフェーズ定義は [PROJECT_SPEC.md 91章](../PROJECT_SPEC.md#91-phase-roadmap) を維持する。
 Phase 3の互換／Creator機能を先行実装し、残作業を次の順に進める。
@@ -87,8 +166,8 @@ Phase 3の互換／Creator機能を先行実装し、残作業を次の順に進
 
 Phase 0の正式受け入れには、[仕様94章](../PROJECT_SPEC.md#94-initial-acceptance-test) の**3ローカルモデル比較**が残る。
 Gemma 4の過去の短期確認に加えて、Qwen3.5 9Bの直結・短期比較を確認した。正式な3モデルの組み合わせと共通条件、20ターン×3回の実測は未完了。モデル登録だけでは比較完了にならない。
-Muse Spark 1.3 Contributor APIは、ローカル性能が実用条件に届かない場合の代替候補として保持する。
-製品からのAPI接続・速度・品質は未検証であり、API比較を3ローカルモデルの条件に数えない。
+Muse Spark 1.3 Contributorは評価履歴を保持するが、初期クラウド経路には採用しない。
+少量API評価は実施済みであり、製品受け入れや3ローカルモデル比較の条件には数えない。
 受け入れ前にM8の独立した作業を進める場合も、Phase 0の未完了項目は残して管理する。
 
 M8は開発用checkoutのPython環境を起動・監督できる状態まで進めた。
