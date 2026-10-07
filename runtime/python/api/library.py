@@ -1,6 +1,7 @@
 """Two-phase local imports and versioned library editing/export."""
 from urllib.parse import quote
-from fastapi import APIRouter, UploadFile, File, Form, Request
+from uuid import UUID
+from fastapi import APIRouter, UploadFile, File, Form, Request, Header
 from fastapi.routing import APIRoute
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
@@ -74,8 +75,8 @@ async def list_library(include_nsfw: bool = False):
 
 
 @router.post('/library')
-async def create_document(body: PortableDocument):
-    return library.save_item(body).model_dump()
+async def create_document(body: PortableDocument, request_id: UUID | None = Header(None, alias='Idempotency-Key')):
+    return library.save_item(body, request_id=str(request_id) if request_id else None).model_dump()
 
 
 def require_item(item_id, revision=None):
@@ -114,8 +115,9 @@ class EditDocument(BaseModel):
 
 
 @router.put('/library/{item_id}')
-async def edit_document(item_id: str, body: EditDocument):
-    return library.save_item(body.document, item_id, body.expected_revision).model_dump()
+async def edit_document(item_id: str, body: EditDocument, request_id: UUID | None = Header(None, alias='Idempotency-Key')):
+    return library.save_item(body.document, item_id, body.expected_revision,
+                             request_id=str(request_id) if request_id else None).model_dump()
 
 
 @router.get('/library/{item_id}/export')

@@ -1,4 +1,5 @@
 """Immutable Persona/World revisions. Session IDs name an exact revision."""
+from python.storage.context import get_db_path
 import json
 import re
 import sqlite3
@@ -13,7 +14,7 @@ REF = re.compile(r"^(created_[0-9a-f]{32})@(\d+)$")
 
 @contextmanager
 def _connect():
-    db = sqlite3.connect(storage.DB_PATH, timeout=10)
+    db = sqlite3.connect(get_db_path(storage.DB_PATH), timeout=10)
     db.row_factory = sqlite3.Row
     try:
         with db:
@@ -30,7 +31,7 @@ def _item(row):
 
 def get(reference: str, kind: str | None = None):
     match = REF.fullmatch(reference)
-    if not match or not storage.DB_PATH.exists():
+    if not match or not get_db_path(storage.DB_PATH).exists():
         return None
     with _connect() as db:
         row = db.execute("SELECT * FROM creator_versions WHERE asset_id=? AND revision=?",

@@ -1,0 +1,17 @@
+# Overlay for the existing Docker Caddy. No extra public port or TLS server.
+services:
+  cloud:
+    image: ${KYALULU_CLOUD_IMAGE:?Set an explicitly built release image}
+    build: !reset null
+    networks:
+      default:
+      relay_proxy:
+        aliases: [kyalulu-cloud-runtime]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: none
+networks:
+  relay_proxy:
+    external: true
+    name: kyalulu-remote_default

@@ -1,4 +1,5 @@
 """Atomic generation reservations, durable state and backward-compatible history."""
+from python.storage.context import get_db_path
 import hashlib
 import json
 from contextlib import asynccontextmanager
@@ -21,7 +22,7 @@ def fingerprint(body: dict) -> str:
 async def transaction():
     """Serialize finish/cancel and protect SQLite commit/rollback/close from SSE cancellation."""
     with anyio.CancelScope(shield=True):
-        async with aiosqlite.connect(storage.DB_PATH) as db:
+        async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
             await db.execute("BEGIN IMMEDIATE")
             try:
                 yield db
@@ -52,7 +53,7 @@ async def reserve(generation_id: str, session_id: str, body: dict):
 
 
 async def load_state(session_id: str, settings: dict) -> RuntimeState:
-    async with aiosqlite.connect(storage.DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
         row = await (await db.execute("SELECT state_json FROM runtime_states WHERE session_id=?", (session_id,))).fetchone()
         if row:
             state = RuntimeState.model_validate_json(row[0])
@@ -67,8 +68,10 @@ async def load_state(session_id: str, settings: dict) -> RuntimeState:
 
 async def finish(generation_id: str, result: dict, user: dict | None, model_id: str,
                  *, memory_scope: str | None = None, memory_turn: int | None = None,
-                 evidence_text: str = ""):
+                 evidence_text: str = "", cloud_revision: tuple | None = None):
     async with transaction() as db:
+        if cloud_revision:
+            await db.execute("ATTACH DATABASE ? AS control", (str(cloud_revision[0]),))
         row = await (await db.execute("SELECT session_id,status,result_json FROM generations WHERE generation_id=?", (generation_id,))).fetchone()
         if not row:
             raise Conflict("generation not reserved")
@@ -105,6 +108,8 @@ async def finish(generation_id: str, result: dict, user: dict | None, model_id: 
         result.update(generation_id=generation_id, session_id=sid, user_id=user_id, assistant_id=assistant_id)
         await db.execute("UPDATE generations SET status=?,result_json=?,user_id=?,assistant_id=? WHERE generation_id=?",
                          (result["status"], json.dumps(result, ensure_ascii=False), user_id, assistant_id, generation_id))
+        if cloud_revision and result["status"] == "completed":
+            await db.execute("INSERT INTO control.sync_heads VALUES(?,'workspace',1,0,'{}') ON CONFLICT(owner,id) DO UPDATE SET revision=revision+1,deleted=0", (cloud_revision[1],))
     return result
 
 
@@ -122,7 +127,7 @@ async def invalidate(db, session_id: str, message_id: int = 0):
 
 
 async def latest(session_id: str):
-    async with aiosqlite.connect(storage.DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
         row = await (await db.execute("SELECT result_json,valid FROM generations WHERE session_id=? AND status!='pending' ORDER BY rowid DESC LIMIT 1", (session_id,))).fetchone()
         if not row:
             return None
@@ -130,7 +135,7 @@ async def latest(session_id: str):
 
 
 async def state_before(session_id: str, message_id: int, settings: dict):
-    async with aiosqlite.connect(storage.DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
         row = await (await db.execute("SELECT result_json FROM generations WHERE session_id=? AND assistant_id=? AND valid=1 ORDER BY rowid DESC LIMIT 1", (session_id, message_id))).fetchone()
     state = RuntimeState.model_validate(json.loads(row[0])["state_before"]) if row else RuntimeState(session_id=session_id)
     for key in ("character_id", "persona_id", "world_id"):
@@ -140,7 +145,7 @@ async def state_before(session_id: str, message_id: int, settings: dict):
 
 async def recover_interrupted():
     """Called once at application startup, never on each request."""
-    async with aiosqlite.connect(storage.DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
         await db.execute("UPDATE generations SET status='cancelled',result_json=? WHERE status='pending'",
                          (json.dumps({"status": "cancelled", "error": "runtime restarted", "reply": ""}),))
         await db.commit()
@@ -167,7 +172,7 @@ async def _status(db, generation_id: str, session_id: str):
 async def status(generation_id: str, session_id: str):
     """Public recovery snapshot; never expose prompts, memory traces or provider details."""
     await storage.init_db()
-    async with aiosqlite.connect(storage.DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
         return await _status(db, generation_id, session_id)
 
 

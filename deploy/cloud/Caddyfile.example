@@ -1,0 +1,16 @@
+cloud.kyalulu.com {
+    # This service is distinct from app.kyalulu.com / relay.kyalulu.com.
+    encode zstd gzip
+    request_body {
+        max_size 16MB
+    }
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Frame-Options "DENY"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+    }
+    # No access-log directive: query codes/identifiers never become operational logs.
+    reverse_proxy 127.0.0.1:8020
+}

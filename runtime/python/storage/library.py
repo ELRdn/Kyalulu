@@ -1,5 +1,6 @@
 """Portable library revisions and transactional imports. Originals are immutable."""
 from __future__ import annotations
+from python.storage.context import get_db_path
 import hashlib
 import json
 import re
@@ -20,7 +21,7 @@ def encode(value):
 
 @contextmanager
 def connect():
-    con = sqlite3.connect(database.DB_PATH, timeout=15)
+    con = sqlite3.connect(get_db_path(database.DB_PATH), timeout=15)
     try:
         with con:
             con.row_factory = sqlite3.Row
@@ -36,7 +37,7 @@ def _item(row):
 
 
 def get_item(item_id: str, revision: int | None = None) -> LibraryItem | None:
-    if not database.DB_PATH.exists():
+    if not get_db_path(database.DB_PATH).exists():
         return None
     with connect() as con:
         if not con.execute("SELECT 1 FROM sqlite_master WHERE name='library_versions'").fetchone():
@@ -54,7 +55,7 @@ def list_items():
 def asset_path(asset_id: str):
     if not re.fullmatch(r'[0-9a-f]{64}', asset_id):
         raise ValueError('invalid asset ID')
-    return database.DB_PATH.parent / 'library_assets' / asset_id
+    return get_db_path(database.DB_PATH).parent / 'library_assets' / asset_id
 
 
 def store_assets(assets):
@@ -135,16 +136,38 @@ def _write(con, document, original_id=None, target_id=None, expected_revision=No
     return LibraryItem(id=item_id, revision=revision, document=document, original_id=original_id)
 
 
-def save_item(document, target_id=None, expected_revision=None):
+def _save_replay(con, document, target_id, expected_revision, request_id):
+    fingerprint = hashlib.sha256(encode({'operation': 'save', 'document': document.model_dump(),
+        'target_id': target_id, 'expected_revision': expected_revision}).encode()).hexdigest()
+    saved = con.execute('SELECT * FROM library_commits WHERE request_id=?', (request_id,)).fetchone()
+    if saved and saved['fingerprint'] != fingerprint:
+        raise LibraryConflict('request ID reused with different save')
+    return fingerprint, LibraryItem.model_validate_json(saved['result_json']) if saved else None
+
+
+def replay_save(document, target_id=None, expected_revision=None, *, request_id):
+    with connect() as con:
+        return _save_replay(con, document, target_id, expected_revision, request_id)[1]
+
+
+def save_item(document, target_id=None, expected_revision=None, *, request_id=None):
     with connect() as con:
         con.execute('BEGIN IMMEDIATE')
+        if request_id:
+            fingerprint, saved = _save_replay(con, document, target_id, expected_revision, request_id)
+            if saved:
+                return saved
         old = con.execute('SELECT original_id,document_json FROM library_versions WHERE id=? ORDER BY revision DESC LIMIT 1', (target_id,)).fetchone()
         document = document.model_copy(deep=True)
         if old:
             document.source = json.loads(old['document_json'])['source']
         else:
             document.source.pop('remote', None)
-        return _write(con, document, old[0] if old else None, target_id, expected_revision)
+        item = _write(con, document, old[0] if old else None, target_id, expected_revision)
+        if request_id:
+            con.execute('INSERT INTO library_commits VALUES (?,?,?)',
+                        (request_id, fingerprint, item.model_dump_json()))
+        return item
 
 
 def commit(preview_id: str, body: ImportCommit):

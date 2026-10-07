@@ -1,0 +1,24 @@
+services:
+  cloud:
+    build:
+      context: ../..
+      dockerfile: deploy/cloud/Dockerfile
+    env_file: .env
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    volumes:
+      - cloud-data:/data
+      - cloud-backups:/backups
+    ports: ["127.0.0.1:8020:8000"]
+    mem_limit: 512m
+    cpus: 0.50
+    pids_limit: 64
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,urllib.request; r=urllib.request.Request('http://127.0.0.1:8000/api/health',headers={'Host':os.environ['KYALULU_CLOUD_ORIGIN'].removeprefix('https://')}); urllib.request.urlopen(r,timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+volumes:
+  cloud-data:
+  cloud-backups:
