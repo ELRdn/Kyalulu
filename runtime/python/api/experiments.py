@@ -1,5 +1,6 @@
 """Experiments API — POST run + GET list"""
 
+from python.storage.context import get_db_path
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -88,7 +89,7 @@ async def get_leaderboard(scope: str = "official", limit: int = 50):
     # ratings をまとめて読む（モデル集計用）
     ratings_by_exp: dict[str, list[int]] = {}
     try:
-        async with aiosqlite.connect(DB_PATH) as db:
+        async with aiosqlite.connect(get_db_path(DB_PATH)) as db:
             db.row_factory = aiosqlite.Row
             cur = await db.execute("SELECT experiment_id, score FROM ratings")
             for r in await cur.fetchall():
@@ -237,7 +238,7 @@ async def get_experiment(experiment_id: str):
         await init_db()
         ratings = {}
         try:
-            async with aiosqlite.connect(DB_PATH) as db:
+            async with aiosqlite.connect(get_db_path(DB_PATH)) as db:
                 db.row_factory = aiosqlite.Row
                 cur = await db.execute("SELECT turn, score, comment, rater, updated_at FROM ratings WHERE experiment_id=?", (experiment_id,))
                 for r in await cur.fetchall():
@@ -303,7 +304,7 @@ async def put_rating(body: RatingIn):
     if body.score < 1 or body.score > 5:
         return JSONResponse(status_code=400, content={"error": "score 1-5"})
     await init_db()
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(DB_PATH)) as db:
         await db.execute(
             """INSERT INTO ratings (experiment_id, turn, score, comment, rater, updated_at)
                VALUES (?, ?, ?, ?, ?, datetime('now'))
@@ -316,7 +317,7 @@ async def put_rating(body: RatingIn):
 @router.get("/ratings")
 async def get_ratings(experiment_id: str):
     await init_db()
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(DB_PATH)) as db:
         db.row_factory = aiosqlite.Row
         cur = await db.execute("SELECT turn, score, comment, rater, updated_at FROM ratings WHERE experiment_id=? ORDER BY turn", (experiment_id,))
         rows = await cur.fetchall()

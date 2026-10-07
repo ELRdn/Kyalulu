@@ -1,5 +1,6 @@
 """SQLite 初期化・マイグレーション (軽量版)"""
 
+from python.storage.context import get_db_path
 import aiosqlite
 import os
 from pathlib import Path
@@ -165,8 +166,8 @@ MIGRATIONS = [
 
 async def init_db() -> None:
     """DB初期化（存在しなければ作成）+ 軽量マイグレーション"""
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    async with aiosqlite.connect(DB_PATH) as db:
+    get_db_path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(get_db_path(DB_PATH)) as db:
         await db.executescript(DDL)
         await db.commit()
         # マイグレーション（列が無ければ追加、あれば無視）
@@ -181,6 +182,6 @@ async def init_db() -> None:
 
 async def get_db():
     """依存注入用: async generator"""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(DB_PATH)) as db:
         db.row_factory = aiosqlite.Row
         yield db

@@ -1,5 +1,6 @@
 """Prompt Presets API - システムプロンプトのプリセット管理"""
 
+from python.storage.context import get_db_path
 import uuid
 from typing import List
 from fastapi import APIRouter
@@ -34,7 +35,7 @@ class PresetOut(BaseModel):
 @router.get("/prompts/presets")
 async def list_presets(include_nsfw: bool = False):
     await init_db()
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(DB_PATH)) as db:
         db.row_factory = aiosqlite.Row
         if include_nsfw:
             cur = await db.execute("SELECT id, name, content, temperature, nsfw, nsfw_level, created_at, updated_at FROM prompt_presets ORDER BY updated_at DESC")
@@ -67,7 +68,7 @@ async def create_preset(body: PresetIn):
     pid = f"preset_{uuid.uuid4().hex[:8]}"
     nsfw_int = 1 if body.nsfw else 0
     try:
-        async with aiosqlite.connect(DB_PATH) as db:
+        async with aiosqlite.connect(get_db_path(DB_PATH)) as db:
             await db.execute(
                 "INSERT INTO prompt_presets (id, name, content, temperature, nsfw, nsfw_level) VALUES (?, ?, ?, ?, ?, ?)",
                 (pid, name, content, temp, nsfw_int, body.nsfw_level),
@@ -97,7 +98,7 @@ async def update_preset(preset_id: str, body: PresetIn):
     if not name or not content:
         return JSONResponse(status_code=400, content={"error": "name and content required"})
     temp = max(0.0, min(2.0, body.temperature))
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(DB_PATH)) as db:
         db.row_factory = aiosqlite.Row
         cur = await db.execute("SELECT id FROM prompt_presets WHERE id=?", (preset_id,))
         if not await cur.fetchone():
@@ -124,7 +125,7 @@ async def update_preset(preset_id: str, body: PresetIn):
 @router.delete("/prompts/presets/{preset_id}")
 async def delete_preset(preset_id: str):
     await init_db()
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(DB_PATH)) as db:
         await db.execute("DELETE FROM prompt_presets WHERE id=?", (preset_id,))
         await db.commit()
         return {"ok": True}

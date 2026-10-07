@@ -1,5 +1,6 @@
 """Chat API - SSEストリーミング対応"""
 
+from python.storage.context import get_db_path, task_key
 import json
 import uuid
 import asyncio
@@ -115,7 +116,7 @@ async def _save_settings(
         intro_val = intro_val[:10000]
     if sp is not None and len(sp) > 10000:
         sp = sp[:10000]
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(DB_PATH)) as db:
         # 既存レコードの有無で分岐せず、常に全列をupsert（存在しない列はマイグレーション後に作成済み）
         await db.execute(
             """
@@ -140,7 +141,7 @@ async def _load_settings(session_id: str) -> SessionSettings:
     """session_settings から取得、なければグローバル(__global__)→デフォルトをフォールバック"""
     await init_db()
     sid = session_id or "default"
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(DB_PATH)) as db:
         db.row_factory = aiosqlite.Row
         row = await (await db.execute(
             "SELECT * FROM session_settings WHERE session_id IN (?, '__global__') ORDER BY CASE WHEN session_id=? THEN 0 ELSE 1 END LIMIT 1",
@@ -194,7 +195,8 @@ async def list_models():
         if not models:
             models = load_yaml_registry()
         known = {m.get("id") for m in models}
-        models = [*models, *(m for m in await list_le_models() if m["id"] not in known)]
+        from python.core.registry import list_local_models
+        models = [*models, *(m for m in [*await list_le_models(), *await list_local_models()] if m["id"] not in known)]
         # 簡易整形
         out = []
         for m in models:
@@ -267,7 +269,7 @@ async def inject_intro(session_id: str = "default"):
             intro = char["intro"].strip()
     if not intro:
         return JSONResponse(status_code=400, content={"error": "intro is empty (set session intro or character intro)"})
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(DB_PATH)) as db:
         await db.execute('BEGIN IMMEDIATE')
         cur = await db.execute("SELECT COUNT(*) as c FROM chat_history WHERE session_id=?", (session_id,))
         row = await cur.fetchone()
@@ -292,7 +294,7 @@ async def prepare_generation(req: ChatRequest):
         raise ValueError("last message must be a user message")
     await init_db()
     if req.regenerate_message_id:
-        async with aiosqlite.connect(DB_PATH) as db:
+        async with aiosqlite.connect(get_db_path(DB_PATH)) as db:
             row = await (await db.execute("SELECT id,role FROM chat_history WHERE session_id=? ORDER BY id DESC LIMIT 1", (req.session_id,))).fetchone()
             if not row or row != (req.regenerate_message_id, "assistant"):
                 raise ValueError("only the latest assistant can be regenerated")
@@ -325,7 +327,7 @@ async def run_chat(req, prepared):
     finished = False
     runtime_source = None
     task = asyncio.current_task()
-    _running[req.generation_id] = task
+    _running[task_key(req.generation_id)] = task
     try:
         current = await generations.status(req.generation_id, req.session_id)
         if current["status"] != "pending":
@@ -363,8 +365,8 @@ async def run_chat(req, prepared):
                     if not finished:
                         await generations.cancel_pending(req.generation_id, attempts=journal)
         finally:
-            if _running.get(req.generation_id) is task:
-                _running.pop(req.generation_id, None)
+            if _running.get(task_key(req.generation_id)) is task:
+                _running.pop(task_key(req.generation_id), None)
 
 
 class GenerationStreamResponse(EventSourceResponse):
@@ -448,7 +450,7 @@ async def cancel_generation(generation_id: str = PathParam(min_length=1, max_len
         with anyio.CancelScope(shield=True):
             result = await generations.cancel(generation_id, session_id)
             if result["status"] == "cancelled":
-                task = _running.get(generation_id)
+                task = _running.get(task_key(generation_id))
                 if task is not None and task is not asyncio.current_task() and not task.done():
                     if not task.cancelling():
                         task.cancel()
@@ -542,7 +544,7 @@ async def chat_history(limit: int = 50, session_id: str | None = None):
     """直近履歴を取得（session_id指定で絞り込み）"""
     try:
         await init_db()
-        async with aiosqlite.connect(DB_PATH) as db:
+        async with aiosqlite.connect(get_db_path(DB_PATH)) as db:
             db.row_factory = aiosqlite.Row
             if session_id:
                 cur = await db.execute("SELECT id, role, content, model_id, created_at, session_id FROM chat_history WHERE session_id=? ORDER BY id DESC LIMIT ?", (session_id, limit))
@@ -570,7 +572,7 @@ async def update_history_message(msg_id: int, body: HistoryUpdateIn):
         return JSONResponse(status_code=400, content={"error": "content too long"})
     try:
         await init_db()
-        async with aiosqlite.connect(DB_PATH) as db:
+        async with aiosqlite.connect(get_db_path(DB_PATH)) as db:
             await db.execute("BEGIN IMMEDIATE")
             cur = await db.execute("SELECT session_id FROM chat_history WHERE id=?", (msg_id,))
             row = await cur.fetchone()
@@ -590,7 +592,7 @@ async def update_history_message(msg_id: int, body: HistoryUpdateIn):
 async def delete_history_message(msg_id: int):
     try:
         await init_db()
-        async with aiosqlite.connect(DB_PATH) as db:
+        async with aiosqlite.connect(get_db_path(DB_PATH)) as db:
             await db.execute("BEGIN IMMEDIATE")
             cur = await db.execute("SELECT session_id FROM chat_history WHERE id=?", (msg_id,))
             row = await cur.fetchone()
@@ -611,7 +613,7 @@ async def list_sessions():
     """会話（セッション）一覧を取得"""
     try:
         await init_db()
-        async with aiosqlite.connect(DB_PATH) as db:
+        async with aiosqlite.connect(get_db_path(DB_PATH)) as db:
             db.row_factory = aiosqlite.Row
             cur = await db.execute("""
                 SELECT session_id, COUNT(*) as count, MAX(created_at) as last_at,
@@ -649,7 +651,7 @@ async def chat_debug(session_id: str = "default"):
         await init_db()
         history_count = 0
         try:
-            async with aiosqlite.connect(DB_PATH) as db:
+            async with aiosqlite.connect(get_db_path(DB_PATH)) as db:
                 cur = await db.execute("SELECT COUNT(*) as c FROM chat_history WHERE session_id=?", (session_id,))
                 row = await cur.fetchone()
                 if row:
@@ -675,7 +677,7 @@ async def clear_history(session_id: str | None = None):
     """履歴削除（session_id指定でその会話のみ、無指定で全削除）"""
     try:
         await init_db()
-        async with aiosqlite.connect(DB_PATH) as db:
+        async with aiosqlite.connect(get_db_path(DB_PATH)) as db:
             await db.execute("BEGIN IMMEDIATE")
             ids = [session_id] if session_id else [r[0] for r in await (await db.execute("SELECT session_id FROM runtime_states UNION SELECT session_id FROM chat_history")).fetchall()]
             for sid in ids:

@@ -5,6 +5,7 @@ providers answer, is LE reachable with a valid token, is a built-in model
 loaded. Each check carries a Japanese message and, when it fails, a hint that
 names the next step. Nothing here generates text or changes state.
 """
+from python.storage.context import get_db_path
 import asyncio
 import os
 
@@ -27,14 +28,14 @@ def _check(id_: str, ok: bool | None, message: str, hint: str | None = None, **d
 
 async def _storage() -> dict:
     try:
-        async with aiosqlite.connect(storage.DB_PATH) as db:
+        async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
             sessions = (await (await db.execute("SELECT COUNT(DISTINCT session_id) FROM chat_history")).fetchone())[0]
             library = (await (await db.execute("SELECT COUNT(*) FROM library_versions")).fetchone())[0]
     except Exception as e:
         return _check("storage", False, f"データベースを読めません（{type(e).__name__}）",
-                      "KYALULU_DATA_DIR の場所と書き込み権限を確認してね", path=str(storage.DB_PATH))
+                      "KYALULU_DATA_DIR の場所と書き込み権限を確認してね", path=str(get_db_path(storage.DB_PATH)))
     return _check("storage", True, f"会話 {sessions} 件・ライブラリ {library} 件を保存済み",
-                  path=str(storage.DB_PATH), sessions=sessions, library_versions=library,
+                  path=str(get_db_path(storage.DB_PATH)), sessions=sessions, library_versions=library,
                   data_dir_env=bool(os.environ.get("KYALULU_DATA_DIR")))
 
 

@@ -4,6 +4,7 @@ Session secrets are hashed in memory: restart revokes every device. Run one work
 Never trust forwarded headers for local administration.
 """
 
+from python.storage.context import get_db_path
 import hashlib
 import ipaddress
 import os
@@ -282,7 +283,7 @@ async def validate_remote_session(request, receive):
         from python.storage.db import DB_PATH, init_db
 
         await init_db()
-        async with aiosqlite.connect(DB_PATH) as db:
+        async with aiosqlite.connect(get_db_path(DB_PATH)) as db:
             row = await (
                 await db.execute(
                     "SELECT session_id FROM chat_history WHERE id=?", (int(path.rsplit("/", 1)[1]),)

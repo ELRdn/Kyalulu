@@ -5,6 +5,7 @@ run for research) so they survive across sessions but never leak between
 experiment runs. Deletion is soft; every create/update/delete/retrieve/inject
 is appended to `memory_events` so the inspector can replay what happened.
 """
+from python.storage.context import get_db_path
 import json
 import uuid
 
@@ -46,7 +47,7 @@ async def _log(db, scope: str, op: str, memory_id: str | None = None, generation
 
 async def list_memories(scope: str, include_deleted: bool = False) -> list[dict]:
     await init()
-    async with aiosqlite.connect(storage.DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
         return await _list_memories(db, scope, include_deleted)
 
 
@@ -60,7 +61,7 @@ async def _list_memories(db, scope: str, include_deleted: bool = False) -> list[
 
 async def get(memory_id: str) -> dict:
     await init()
-    async with aiosqlite.connect(storage.DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
         db.row_factory = aiosqlite.Row
         row = await (await db.execute(f"SELECT {COLUMNS} FROM memories WHERE id=?", (memory_id,))).fetchone()
     if not row:
@@ -72,7 +73,7 @@ async def create(scope: str, type_: str, content: str, *, origin: str = "user", 
                  source_session_id: str | None = None, source_turn: int | None = None,
                  source_generation_id: str | None = None) -> dict:
     await init()
-    async with aiosqlite.connect(storage.DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
         memory_id = await _create(db, scope, type_, content, origin, supported,
                                   source_session_id, source_turn, source_generation_id)
         await db.commit()
@@ -100,7 +101,7 @@ async def update(memory_id: str, *, content: str | None = None, type_: str | Non
              "type": type_ if type_ is not None else before["type"]}
     if after["content"] == before["content"] and after["type"] == before["type"]:
         return before
-    async with aiosqlite.connect(storage.DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
         await db.execute("UPDATE memories SET content=?, type=?, version=version+1, origin=CASE WHEN origin='model' "
                          "THEN 'model_edited' ELSE origin END, updated_at=datetime('now') WHERE id=?",
                          (after["content"], after["type"], memory_id))
@@ -115,7 +116,7 @@ async def delete(memory_id: str) -> dict:
     before = await get(memory_id)
     if before["status"] != "active":
         raise NotFound(memory_id)
-    async with aiosqlite.connect(storage.DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
         await db.execute("UPDATE memories SET status='deleted', updated_at=datetime('now') WHERE id=?", (memory_id,))
         await _log(db, before["scope"], "delete", memory_id, None, {"content": before["content"]})
         await db.commit()
@@ -125,7 +126,7 @@ async def delete(memory_id: str) -> dict:
 async def events(*, memory_id: str | None = None, scope: str | None = None, limit: int = 200) -> list[dict]:
     await init()
     where, args = ("memory_id=?", (memory_id,)) if memory_id else ("scope=?", (scope,))
-    async with aiosqlite.connect(storage.DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
         db.row_factory = aiosqlite.Row
         rows = await (await db.execute(
             f"SELECT id, memory_id, scope, op, generation_id, detail_json, created_at FROM memory_events "
@@ -136,7 +137,7 @@ async def events(*, memory_id: str | None = None, scope: str | None = None, limi
 
 async def record_use(scope: str, generation_id: str | None, trace: dict) -> None:
     """Log one retrieval (all candidates) and mark injected memories as accessed."""
-    async with aiosqlite.connect(storage.DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
         await _record_use(db, scope, generation_id, trace)
         await db.commit()
 
@@ -153,14 +154,14 @@ async def _record_use(db, scope, generation_id, trace):
 
 async def session_enabled(session_id: str) -> bool:
     await init()
-    async with aiosqlite.connect(storage.DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
         row = await (await db.execute("SELECT enabled FROM session_memory WHERE session_id=?", (session_id,))).fetchone()
     return bool(row and row[0])
 
 
 async def set_session_enabled(session_id: str, enabled: bool) -> None:
     await init()
-    async with aiosqlite.connect(storage.DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
         await db.execute("INSERT INTO session_memory(session_id,enabled) VALUES(?,?) ON CONFLICT(session_id) "
                          "DO UPDATE SET enabled=excluded.enabled, updated_at=datetime('now')", (session_id, int(enabled)))
         await db.commit()
@@ -168,7 +169,7 @@ async def set_session_enabled(session_id: str, enabled: bool) -> None:
 
 async def scopes() -> list[dict]:
     await init()
-    async with aiosqlite.connect(storage.DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
         rows = await (await db.execute(
             "SELECT scope, SUM(status='active'), COUNT(*), MAX(updated_at) FROM memories GROUP BY scope "
             "ORDER BY MAX(updated_at) DESC")).fetchall()
@@ -206,7 +207,7 @@ async def commit(scope: str, result: dict, *, session_id: str | None, turn: int 
     if db is None:
         await init()
         with anyio.CancelScope(shield=True):
-            async with aiosqlite.connect(storage.DB_PATH) as own:
+            async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as own:
                 await own.execute("BEGIN IMMEDIATE")
                 await commit(scope, result, session_id=session_id, turn=turn,
                              evidence_text=evidence_text, db=own)

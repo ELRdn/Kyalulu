@@ -86,7 +86,8 @@ def _error_label(exc: Exception, model: str) -> str:
 async def generate_events(provider, *, model: str, messages: list[dict], compiled,
                           state: RuntimeState, requested: dict, mode: str = "immersion",
                           generation_id: str | None = None, journal: list | None = None,
-                          memory: dict | None = None):
+                          memory: dict | None = None, validation_error_budget: int | None = None,
+                          character_constraints: str = ""):
     """Yield token/reset/result events. A result is NOT persisted until the caller commits.
 
     `memory` enables Memory Lab for this turn: ``{"block": <text to inject>, "trace": <retrieval trace>}``.
@@ -111,6 +112,7 @@ async def generate_events(provider, *, model: str, messages: list[dict], compile
     if memory is not None:
         # Order per the prompt contract: Runtime State -> Relevant Memory -> history.
         instruction += memory.get("block", "") + PROPOSAL_INSTRUCTION
+    instruction += character_constraints
     system = compiled.system_prompt + instruction
     from .portable_prompt import assemble_messages
     base = assemble_messages(compiled, messages, instruction)
@@ -125,7 +127,10 @@ async def generate_events(provider, *, model: str, messages: list[dict], compile
                     yield {"type": "reset", "full": "", "attempt": attempt_index + 1}
                 prompt = deepcopy(base)
                 if attempts:
-                    prompt[0]["content"] += '\nPrevious output failed validation: ' + json.dumps(attempts[-1]["errors"], ensure_ascii=False) + '\nCorrect the output; keep reply first.'
+                    errors = json.dumps(attempts[-1]["errors"], ensure_ascii=False)
+                    if validation_error_budget is not None:
+                        errors = errors.encode()[:validation_error_budget].decode("utf-8", errors="ignore")
+                    prompt[0]["content"] += '\nPrevious output failed validation: ' + errors + '\nCorrect the output; keep reply first.'
                 attempt = {"number": attempt_index + 1, "raw": "", "errors": [],
                            "elapsed_ms": 0, "usage": {}, "messages": prompt}
                 attempts.append(attempt)
