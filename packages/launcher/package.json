@@ -1,0 +1,12 @@
+{
+  "name": "kyalulu",
+  "version": "0.1.0-beta.1",
+  "description": "Free local Character AI Runtime; optional SFW cloud",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "bin": {"kyalulu": "bin/kyalulu.mjs"},
+  "engines": {"node": ">=22"},
+  "files": ["bin/", "src/", "runtime-manifest.json", "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md"],
+  "scripts": {"test": "node --test test/*.test.mjs", "typecheck": "node --check bin/kyalulu.mjs"},
+  "publishConfig": {"access": "public"}
+}
