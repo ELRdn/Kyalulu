@@ -1,0 +1,41 @@
+name: npm local beta artifacts (no publication)
+on:
+  workflow_dispatch:
+jobs:
+  bundle:
+    strategy:
+      matrix:
+        include:
+          - os: windows-2025
+            target: win32-x64
+          - os: macos-15
+            target: darwin-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.8.22'
+          python-version: '3.13.7'
+      - run: pnpm install --frozen-lockfile
+      - run: uv sync --frozen --all-packages --all-extras --no-install-workspace
+      - run: pnpm --filter web build
+      - run: uv run --no-sync python scripts/build_local_bundle.py --output .artifacts/npm-beta --target ${{ matrix.target }}
+      - run: node scripts/verify_npm_beta.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kyalulu-${{ matrix.target }}
+          path: .artifacts/npm-beta/*.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: manifest-${{ matrix.target }}
+          path: .artifacts/npm-beta/*.manifest.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: acceptance-${{ matrix.target }}
+          path: .artifacts/npm-verify-*/acceptance.json
