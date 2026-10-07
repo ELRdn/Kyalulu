@@ -19,7 +19,7 @@ import { useDocumentTitle } from "../lib/title";
 import "./pages.css";
 import "./characterEntry.css";
 
-type Character = CharacterInfo & { nsfw?: boolean; species?: string; age?: string; personality?: string; speaking_style?: string };
+type Character = CharacterInfo & { nsfw?: boolean; species?: string; age?: string; personality?: string; speaking_style?: string; portrait_urls?: string[] };
 
 /** 最初の一文をキャッチコピー、残りを紹介文として分ける */
 function splitDescription(text: string): [string, string] {
@@ -36,8 +36,11 @@ export default function CharacterEntry() {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
   const [starting, setStarting] = useState(false);
   const [greetingIndex, setGreetingIndex] = useState(0);
+  const [portraitIndex, setPortraitIndex] = useState(0);
   const [profileOpen, setProfileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [adult] = useAdultContent();
@@ -45,17 +48,24 @@ export default function CharacterEntry() {
   const heroRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    Promise.all([fetchCharacters(true).catch(() => []), fetchWorlds().catch(() => []), fetchSessions().catch(() => [])])
+    let active = true;
+    setLoading(true);
+    setLoadError(null);
+    Promise.all([fetchCharacters(true), fetchWorlds().catch(() => []), fetchSessions().catch(() => [])])
       .then(([c, w, s]) => {
+        if (!active) return;
         setCharacters(c);
         setWorlds(w);
         setSessions(s);
       })
-      .finally(() => setLoading(false));
-  }, []);
+      .catch((cause) => { if (active) setLoadError(friendlyMessage(cause)); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [reload]);
 
   useEffect(() => {
     setGreetingIndex(0);
+    setPortraitIndex(0);
     setProfileOpen(false);
   }, [characterId]);
 
@@ -69,7 +79,7 @@ export default function CharacterEntry() {
   }, [loading, characterId]);
 
   const character = characters.find((c) => c.id === characterId);
-  useDocumentTitle(loading ? null : character?.display_name ?? "キャラクターが見つかりません");
+  useDocumentTitle(loading ? null : loadError ? "キャラクターを読み込めませんでした" : character?.display_name ?? "キャラクターが見つかりません");
 
   const recommendations = useMemo(() => {
     if (!character) return [];
@@ -91,6 +101,19 @@ export default function CharacterEntry() {
           <div className="k-skeleton-line" style={{ width: "85%" }} />
           <div className="k-skeleton-line" style={{ width: "40%" }} />
         </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="k-page">
+        <EmptyState
+          mascot="shy"
+          title="キャラクターを読み込めませんでした"
+          description={loadError}
+          action={<Button variant="secondary" onClick={() => setReload((value) => value + 1)}>再読み込み</Button>}
+        />
       </div>
     );
   }
@@ -135,6 +158,8 @@ export default function CharacterEntry() {
   }
 
   const name = character.display_name;
+  const portraits = [...new Set([character.portrait_url, ...(character.portrait_urls ?? [])].filter((url): url is string => !!url))];
+  const portrait = portraits[portraitIndex] ?? portraits[0];
   const greetings = [character.intro ?? "", ...(character.alternate_greetings ?? [])].filter((g) => g.trim());
   const greeting = greetings[greetingIndex] ?? "";
   const moods = moodsOf(character.tags);
@@ -168,8 +193,8 @@ export default function CharacterEntry() {
   const resume = () => pastSessions[0] && navigate(`/chats/${encodeURIComponent(pastSessions[0].session_id)}`);
   const back = () => (window.history.length > 1 ? navigate(-1) : navigate("/discover"));
 
-  const art = character.portrait_url ? (
-    <RuntimeImage src={character.portrait_url} alt={name} />
+  const art = portrait ? (
+    <RuntimeImage src={portrait} alt={name} />
   ) : (
     <span className="k-char-entry__sigil" aria-hidden="true">
       {name.trim().charAt(0)}
@@ -178,7 +203,7 @@ export default function CharacterEntry() {
 
   return (
     <div className="k-plot">
-      <div className="k-plot-backdrop" style={{ background: gradientFor(character.id) }} aria-hidden="true">{character.portrait_url && <RuntimeImage src={character.portrait_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}</div>
+      <div className="k-plot-backdrop" style={{ background: gradientFor(character.id) }} aria-hidden="true">{portrait && <RuntimeImage src={portrait} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}</div>
 
       <header className={`k-plot-bar ${scrolled ? "is-solid" : ""}`}>
         <button type="button" className="k-plot-bar__btn" onClick={back} aria-label="戻る">
@@ -193,11 +218,20 @@ export default function CharacterEntry() {
       </header>
 
       <div ref={heroRef} className="k-plot-hero">
-        <div className="k-plot-hero__art" style={character.portrait_url ? undefined : { background: gradientFor(character.id) }}>
+        <div className="k-plot-hero__art" style={portrait ? undefined : { background: gradientFor(character.id) }}>
           {art}
           <span className="k-char-card__sparkles" aria-hidden="true" />
         </div>
         {moods[0] && <span className="k-plot-hero__badge">{moods[0].label}</span>}
+        {portraits.length > 1 && (
+          <div className="k-plot-hero__photos" role="group" aria-label="写真を選択">
+            {portraits.map((url, index) => (
+              <button key={url} type="button" aria-label={`写真 ${index + 1} を表示`} aria-pressed={index === portraitIndex} onClick={() => setPortraitIndex(index)}>
+                <RuntimeImage src={url} alt="" />
+              </button>
+            ))}
+          </div>
+        )}
         <button type="button" className={`k-plot-hero__save ${isSaved ? "is-on" : ""}`} onClick={() => toggleSaved(character.id)} aria-pressed={isSaved}>
           <Icon name="heart" size={15} /> {isSaved ? "保存済み" : "保存"}
         </button>

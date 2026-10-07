@@ -7,6 +7,7 @@ import { useTheme } from "../lib/theme";
 import { newSessionId } from "../lib/session";
 import Avatar from "./ui/Avatar";
 import Icon, { type IconName } from "./ui/Icon";
+import Dialog from "./ui/Dialog";
 import "./commandPalette.css";
 import { useAdministrative } from './RuntimeGate';
 
@@ -22,14 +23,12 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
   const [characters, setCharacters] = useState<CharacterInfo[]>([]);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [worlds, setWorlds] = useState<WorldInfo[]>([]);
-  const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     setQuery("");
     setActive(0);
-    requestAnimationFrame(() => inputRef.current?.focus());
     fetchCharacters().then(setCharacters).catch(() => {});
     fetchSessions().then(setSessions).catch(() => {});
     fetchWorlds().then(setWorlds).catch(() => {});
@@ -116,6 +115,7 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
   if (!open) return null;
 
   const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setActive((i) => Math.min(items.length - 1, i + 1));
@@ -133,12 +133,12 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
 
   let lastGroup = "";
   return (
-    <div className="k-cmd-overlay" onMouseDown={onClose}>
-      <div className="k-cmd" role="dialog" aria-modal="true" aria-label="検索とコマンド" onMouseDown={(e) => e.stopPropagation()} onKeyDown={onKeyDown}>
+    <Dialog open={open} onClose={onClose} label="検索とコマンド" contentClassName="k-cmd" overlayClassName="k-cmd-overlay">
         <div className="k-cmd__search">
           <Icon name="search" size={18} />
           <input
-            ref={inputRef}
+            data-autofocus
+            onKeyDown={onKeyDown}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="キャラクター、会話、ワールド、画面を検索…"
@@ -150,10 +150,10 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
           />
           <kbd>Esc</kbd>
         </div>
-        <div className="k-cmd__list" id="k-cmd-list" role="listbox" ref={listRef}>
+        <div className="k-cmd__list" id="k-cmd-list" role="listbox" tabIndex={-1} ref={listRef}>
           {items.length === 0 && (
             <div className="k-cmd__empty">
-              <img src="/mascot/face-sleep.webp" alt="" />
+              <img src={`${import.meta.env.BASE_URL}mascot/v1.2/face-curious.png`} alt="" />
               見つからなかったみたい…
             </div>
           )}
@@ -193,7 +193,6 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
           </span>
           <span className="k-cmd__brand">✦ Kyalulu</span>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }

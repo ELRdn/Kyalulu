@@ -81,7 +81,7 @@
 .k-cmd__hint { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .k-cmd__enter { color: var(--accent-primary); flex-shrink: 0; }
 .k-cmd__empty { display: grid; justify-items: center; gap: 8px; padding: 32px 0; color: var(--text-muted); font-size: 13px; }
-.k-cmd__empty img { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; }
+.k-cmd__empty img { width: 72px; height: 72px; object-fit: contain; }
 .k-cmd__foot {
   display: flex;
   gap: 16px;

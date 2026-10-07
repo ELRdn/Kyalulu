@@ -1,5 +1,6 @@
 import { apiFetch as fetch } from './transport';
 import { SSEDecoder } from "./sse";
+import { cloudJson, isCloud } from './cloud';
 import type { GenerationRecord } from "../../../../packages/schemas/src";
 import type { LibraryBinding } from '../../../../packages/schemas/src/portable';
 /** Preserve server diagnostics while rejecting every failed HTTP response. */
@@ -261,7 +262,7 @@ export type PersonaInfo = { id: string; display_name: string; version: string; d
 export type WorldInfo = { id: string; display_name: string; version: string; description: string };
 
 export async function fetchCharacters(include_nsfw = false): Promise<(CharacterInfo & { nsfw?: boolean })[]> {
-  const r = await fetch(`/api/characters?include_nsfw=${include_nsfw}`, { cache: "no-store" });
+  const r = await fetch(`/api/characters?include_nsfw=${include_nsfw && !isCloud()}`, { cache: "no-store" });
   const j = await checkedJson(r);
   return j.characters ?? [];
 }
@@ -465,7 +466,7 @@ export async function cancelGeneration(generationId: string, sessionId: string):
 export function streamChat(
   model_id: string,
   messages: ChatMessage[],
-  opts: { temperature?: number | null; system_prompt?: string | null; session_id?: string; generation_id?: string; regenerate_message_id?: number; allow_nsfw?: boolean } = {},
+  opts: { temperature?: number | null; system_prompt?: string | null; session_id?: string; generation_id?: string; regenerate_message_id?: number; allow_nsfw?: boolean; route_profile?:'auto'|'structured'|'contributor';contributor_training_consent?:boolean } = {},
   handlers: {
     onToken: (t: string) => void;
     onMeta?: (m: unknown) => void;
@@ -479,10 +480,22 @@ export function streamChat(
   const controller = new AbortController();
   let rejected = false;
   (async () => {
+    const request = { model_id, messages, ...opts, generation_id: opts.generation_id ?? crypto.randomUUID(), stream: true };
+    let quote: {quote_id?: string; max_credits?: number} = {};
+    if (isCloud()) {
+      try {
+        const preview = await cloudJson('quotes', {method:'POST',body:JSON.stringify(request),signal:controller.signal});
+        if (!Number.isSafeInteger(preview.max_credits) || preview.max_credits < 0) throw Error('見積もりを確認できません。');
+        if (controller.signal.aborted) return;
+        const accepted = window.confirm(`送信先：${preview.route.display_name} / ${preview.route.provider}${preview.route.upstream ? ' / '+preview.route.upstream : ''} / ${preview.route.model}\n最大 ${preview.max_credits.toLocaleString()} K-Creditsを予約します。\n安全検査・キャッシュ未命中・最大3回の生成を含み、完了後に精算します。失敗時のK-Credits消費は0です。\n${opts.route_profile==='contributor' ? '会話・設定・記憶と出力をMetaのモデル学習に使う条件で送信します。\n' : ''}${preview.max_credits === 0 ? 'BYOKの提供元への料金は別途利用者負担です。' : ''}\n送信しますか？`);
+        if (!accepted) throw Error('送信を取り消しました。');
+        quote = {quote_id:preview.quote_id,max_credits:preview.max_credits};
+      } catch(error) {rejected=true;handlers.onRejected?.();throw error;}
+    }
     const response = await fetch(`${API_BASE_STREAM}/api/chat/stream`, {
       method: "POST", headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
       signal: controller.signal,
-      body: JSON.stringify({ model_id, messages, ...opts, generation_id: opts.generation_id ?? crypto.randomUUID(), stream: true }),
+      body: JSON.stringify({...request,...quote}),
     });
     if (!response.ok || !response.body) {
       rejected = [400, 401, 403, 422].includes(response.status);

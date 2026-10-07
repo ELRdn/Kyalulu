@@ -3,9 +3,12 @@ import { apiFetch } from '../lib/transport';
 import ConnectionSettings from './ConnectionSettings';
 import Button from './ui/Button';
 import './connection.css';
-import { activeRemote } from '../lib/remoteStore';
+import { activeRemote, connectionScope } from '../lib/remoteStore';
+import CloudLogin from './CloudLogin';
+import { setCloud, setCloudOwner } from '../lib/cloud';
+import { refreshAccountProfile } from '../lib/accountProfile';
 
-type Access = { remote_mode: boolean; authenticated: boolean; administrative?: boolean; device_name?: string };
+type Access = { remote_mode: boolean; authenticated: boolean; administrative?: boolean; device_name?: string; cloud_mode?: boolean };
 const AccessContext = createContext<Access>({ remote_mode: false, authenticated: true });
 export const useRuntimeAccess = () => useContext(AccessContext);
 export function useAdministrative() { const access = useRuntimeAccess(); return access.administrative ?? !access.remote_mode; }
@@ -42,6 +45,14 @@ export default function RuntimeGate({ children }: { children: ReactNode }) {
     try {
       const result = await readResponse(await apiFetch('/api/mobile/status', { signal: AbortSignal.timeout(10000) }));
       if (typeof result.remote_mode !== 'boolean' || typeof result.authenticated !== 'boolean') throw new Error('サーバーの応答を確認できません。Kyaluluのバージョンを確認してください。');
+      if (!mounted.current || attempt!==epoch.current) return;
+      if (result.cloud_mode && result.authenticated && (typeof result.owner_scope !== 'string' || !result.owner_scope.trim())) {
+        setCloudOwner(''); setAccess(null);
+        throw new Error('アカウントを確認できません。もう一度接続してください。');
+      }
+      setCloud(result.cloud_mode === true);
+      setCloudOwner(result.authenticated && typeof result.owner_scope === 'string' ? result.owner_scope : '');
+      if (result.cloud_mode && result.authenticated) void refreshAccountProfile();
       if (mounted.current && attempt === epoch.current) { setAccess(result); setError(''); }
     } catch {
       if (mounted.current && attempt === epoch.current) setError('サーバーに接続できません。PC・サーバーの起動とネットワークを確認してください。');
@@ -50,13 +61,14 @@ export default function RuntimeGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     mounted.current = true;
     void check();
-    const required = () => { ++epoch.current; setBusy(false); setAccess({ remote_mode: true, authenticated: false }); setError('端末登録の有効期限が切れたか、登録が解除されました。もう一度登録してください。'); };
+    const required = () => { ++epoch.current; setCloudOwner(''); setBusy(false); setAccess(previous=>({...previous, remote_mode: previous?.remote_mode ?? true, authenticated: false})); setError('認証の有効期限が切れました。もう一度ログインしてください。'); };
     const online = () => { void check(); };
     const visible = () => { if (document.visibilityState === 'visible') void check(); };
     window.addEventListener('kyalulu-auth-required', required);
     window.addEventListener('online', online);
+    window.addEventListener('focus', online);
     document.addEventListener('visibilitychange', visible);
-    return () => { mounted.current = false; ++epoch.current; window.removeEventListener('kyalulu-auth-required', required); window.removeEventListener('online', online); document.removeEventListener('visibilitychange', visible); };
+    return () => { mounted.current = false; ++epoch.current; window.removeEventListener('kyalulu-auth-required', required); window.removeEventListener('online', online); window.removeEventListener('focus', online); document.removeEventListener('visibilitychange', visible); };
   }, [check]);
   const pair = async (event: React.FormEvent) => {
     event.preventDefault(); setBusy(true); setError('');
@@ -66,7 +78,8 @@ export default function RuntimeGate({ children }: { children: ReactNode }) {
     } catch (error) { setError(error instanceof Error ? error.message : '端末を登録できませんでした。'); }
     finally { setBusy(false); }
   };
-  if (access?.authenticated) return <AccessContext.Provider value={access}>{children}</AccessContext.Provider>;
+  if (access?.authenticated) return <AccessContext.Provider key={connectionScope()} value={access}>{children}</AccessContext.Provider>;
+  if (access?.cloud_mode) return <CloudLogin />;
   return <main className="k-connect-screen"><div className="k-connect-screen__body">
     <div className="k-connect-screen__brand">Kyalulu ✦</div>
     <h1>{access ? 'いつもの会話を、このスマホで。' : '会話のサーバーに接続'}</h1>

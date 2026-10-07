@@ -7,6 +7,7 @@ import Icon, { type IconName } from "../components/ui/Icon";
 import CommandPalette from "../components/CommandPalette";
 import { useTheme } from "../lib/theme";
 import { useDisplayName } from "../lib/profile";
+import { useAccountProfile } from '../lib/accountProfile';
 import "./shell.css";
 import { useAdministrative } from '../components/RuntimeGate';
 
@@ -45,6 +46,7 @@ export default function AppShell() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const { theme, toggle } = useTheme();
   const displayName = useDisplayName();
+  const accountSync = useAccountProfile();
   const location = useLocation();
   const mainRef = useRef<HTMLElement>(null);
   const dailyWord = DAILY_WORDS[Math.floor(Date.now() / 86_400_000) % DAILY_WORDS.length];
@@ -79,7 +81,7 @@ export default function AppShell() {
     <div className={`k-shell ${inChat ? "k-shell--chat" : ""} ${location.pathname.startsWith("/characters/") ? "k-shell--immersive" : ""}`}>
       <header className="k-shell__header">
         <Link to="/" className="k-shell__logo" aria-label="Kyalulu ホーム">
-          <img className="k-shell__logo-mark" src={`${import.meta.env.BASE_URL}apple-touch-icon.png`} alt="" aria-hidden="true" />
+          <img className="k-shell__logo-mark" src={`${import.meta.env.BASE_URL}mascot/v1.2/face-default.png`} alt="" aria-hidden="true" width={34} height={34} />
           <span className="k-shell__wordmark">
             Kyalulu<span aria-hidden="true">✦</span>
           </span>
@@ -117,7 +119,7 @@ export default function AppShell() {
 
           {!rail && (
             <div className="k-shell__companion">
-              <img src={`${import.meta.env.BASE_URL}mascot/nap.webp`} alt="" className="k-shell__companion-art" />
+              <img src={`${import.meta.env.BASE_URL}mascot/v1.2/nap.png`} alt="" className="k-shell__companion-art" width={160} height={160} decoding="async" />
               <div className="k-shell__daily">
                 <div className="k-shell__daily-title">✦ 今日のひとこと</div>
                 <p>{dailyWord}</p>
@@ -133,6 +135,7 @@ export default function AppShell() {
         </nav>
 
         <main className="k-shell__main" id="main" ref={mainRef}>
+          {accountSync.error && location.pathname!=='/profile' && <div className="k-shell__sync-alert" role="alert">{accountSync.error} <Link to="/profile">プロフィールで確認</Link></div>}
           <Outlet />
         </main>
       </div>

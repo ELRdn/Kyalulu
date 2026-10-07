@@ -84,6 +84,8 @@ export default function Discover() {
 
   const setParam = (key: "mood" | "world", value: string | null) => {
     const next = new URLSearchParams(params);
+    if (query) next.set("q", query);
+    else next.delete("q");
     if (value) next.set(key, value);
     else next.delete(key);
     setParams(next, { replace: true });

@@ -66,7 +66,8 @@ import { cleanPreview } from "../lib/text";
 import { useMediaQuery } from "../lib/useMediaQuery";
 import { NARRATION_STYLES, extractNarrationStyle, applyNarrationStyle } from "../lib/narrationStyle";
 import { useChatRecovery } from "../lib/useChatRecovery";
-import { useAdministrative } from "../components/RuntimeGate";
+import { useAdministrative, useRuntimeAccess } from "../components/RuntimeGate";
+import CloudRouteControls, {defaultCloudRoute,type CloudRouteChoice} from '../components/CloudRouteControls';
 import "./activeChat.css";
 
 type DebugData = {
@@ -80,6 +81,12 @@ type DebugData = {
   generation: GenerationResult | null;
   memory?: MemoryTrace | null;
 };
+
+function settingsSnapshot(settings: SessionSettings) {
+  return JSON.stringify([settings.session_id, settings.system_prompt, settings.temperature,
+    settings.character_id ?? null, settings.persona_id ?? null, settings.world_id ?? null,
+    settings.intro ?? "", settings.library_binding ?? null]);
+}
 
 function DebugSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -140,6 +147,9 @@ function ActiveChatSession() {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [messages, setMessages] = useState<(ChatMessage & { id?: number })[]>([]);
   const [streaming, setStreaming] = useState(false);
+  const {cloud_mode} = useRuntimeAccess();
+  const [cloudRoute,setCloudRoute] = useState<CloudRouteChoice>(defaultCloudRoute);
+  useEffect(()=>setCloudRoute(defaultCloudRoute),[sessionId,cloud_mode]);
   const [online, setOnline] = useState(() => navigator.onLine !== false);
   const [error, setError] = useState<string | null>(null);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
@@ -178,6 +188,7 @@ function ActiveChatSession() {
   const [debugError, setDebugError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const settingsLoadedRef = useRef(false);
+  const savedSettingsRef = useRef<string | null>(null);
   const autoSaveTimer = useRef<number | null>(null);
   const requestEpochRef = useRef(0);
   const sendingRef = useRef(false);
@@ -308,6 +319,7 @@ function ActiveChatSession() {
   const loadSettings = async (sid: string) => {
     const gen = sessionGenRef.current;
     settingsLoadedRef.current = false;
+    savedSettingsRef.current = null;
     setSettingsReady(false);
     if (autoSaveTimer.current) {
       window.clearTimeout(autoSaveTimer.current);
@@ -333,6 +345,7 @@ function ActiveChatSession() {
       setWorldId(s.world_id ?? null);
       setIntro(s.intro ?? "");
       setLibraryBinding(s.library_binding ?? null);
+      savedSettingsRef.current = settingsSnapshot(s);
       settingsLoadedRef.current = true;
       setSettingsReady(true);
     } catch {
@@ -429,6 +442,7 @@ function ActiveChatSession() {
     try {
       const s: SessionSettings = { session_id: sessionId, system_prompt: systemPrompt, temperature, character_id: characterId, persona_id: personaId, world_id: worldId, intro, library_binding: libraryBinding };
       await saveSettings(s);
+      savedSettingsRef.current = settingsSnapshot(s);
       setSettingsStatus("保存しました ✓");
       setTimeout(() => setSettingsStatus(null), 2000);
     } catch (e) {
@@ -521,12 +535,16 @@ function ActiveChatSession() {
   useEffect(() => {
     if (!settingsLoadedRef.current || mutationLocked) return;
     if (autoSaveTimer.current) window.clearTimeout(autoSaveTimer.current);
+    const settings: SessionSettings = { session_id: sessionId, system_prompt: systemPrompt, temperature, character_id: characterId, persona_id: personaId, world_id: worldId, intro, library_binding: libraryBinding };
+    const snapshot = settingsSnapshot(settings);
+    if (snapshot === savedSettingsRef.current) return;
     const gen = sessionGenRef.current;
     autoSaveTimer.current = window.setTimeout(async () => {
       if (gen !== sessionGenRef.current || mutationBlocked()) return;
       try {
-        await saveSettings({ session_id: sessionId, system_prompt: systemPrompt, temperature, character_id: characterId, persona_id: personaId, world_id: worldId, intro, library_binding: libraryBinding });
+        await saveSettings(settings);
         if (gen !== sessionGenRef.current) return;
+        savedSettingsRef.current = snapshot;
         setSettingsStatus("自動保存 ✓");
         setTimeout(() => setSettingsStatus((prev) => (prev === "自動保存 ✓" ? null : prev)), 1800);
       } catch (e) {
@@ -704,8 +722,11 @@ function ActiveChatSession() {
       reply = full;
       setMessages([...next, { role: "assistant", content: full }]);
     };
+    const submittedCloudRoute = cloudRoute;
+    if (cloud_mode) setCloudRoute({...cloudRoute,contributor_training_consent:false});
     stopRef.current = streamChat(modelId, next,
       { session_id: sessionId, generation_id: generationId, temperature, regenerate_message_id: regenerateId, allow_nsfw: showNsfw,
+        ...(cloud_mode && modelId==='cloud-standard' ? submittedCloudRoute : {}),
         // 「注文して作り直す」はこの1回の生成だけに指示を足す（保存される設定は変えない）
         system_prompt: request ? `${systemPrompt.trim()}\n\n# この返事だけの注文\n${request}`.trim() : systemPrompt }, {
         onToken: token => display(reply + token),
@@ -1134,6 +1155,7 @@ function ActiveChatSession() {
               <ModelSelector models={modelChoices} value={modelId} onChange={setModelId} />
               <Button variant="ghost" onClick={reloadModels}>モデルを再読込</Button>
             </div>
+            {cloud_mode&&modelId==='cloud-standard'&&<CloudRouteControls key={sessionId} value={cloudRoute} onChange={setCloudRoute} disabled={mutationLocked || !settingsReady}/>}
             <PortableSessionControls value={libraryBinding} characterId={characterId} character={portableCharacter} allowNsfw={showNsfw} onChange={setLibraryBinding} onTemperature={setTemperature} />
           </fieldset>
           <p role="status" className="k-sheet-status">{settingsStatus}</p>

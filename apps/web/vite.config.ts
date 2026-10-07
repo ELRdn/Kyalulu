@@ -14,7 +14,8 @@ function shellPrecache(): Plugin {
     enforce: "post",
     configResolved(config) { root = config.root; outDir = resolve(root, config.build.outDir); },
     async writeBundle(_options, bundle) {
-      const files = ["index.html", "theme-init.js", "manifest.webmanifest", "apple-touch-icon.png", "favicon.ico", "favicon-32.png", "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "mascot/nap.webp",
+      const files = ["index.html", "theme-init.js", "manifest.webmanifest", "apple-touch-icon.png", "favicon.ico", "favicon-32.png", "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png",
+        ...["sit", "guide", "nap", "face-default", "face-wink", "face-curious"].map(name => `mascot/v1.2/${name}.png`),
         ...Object.keys(bundle).filter((name) => /\.(js|css|wasm)$/.test(name)),
       ].sort();
       const hash = createHash("sha256");

@@ -16,6 +16,7 @@ export default defineConfig({
   },
   renderer: {
     root: "src/renderer",
+    publicDir: resolve(__dirname, "../web/public"),
     build: {
       outDir: "out/renderer",
       rollupOptions: {

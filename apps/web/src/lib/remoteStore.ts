@@ -1,4 +1,5 @@
 /** Secrets live in IndexedDB, never URL queries or localStorage. */
+import {isCloud,cloudOwner} from './cloudMode';
 export type RemoteDevice = {
   id: string; ownerId: string; hostId: string; deviceId: string;
   relay: string; name: string; hostName?: string; token: string; privateKey: string; hostKey: string;
@@ -7,10 +8,10 @@ const DB = 'kyalulu-remote-v1';
 let selected: RemoteDevice | null = null;
 export function activeRemote() { return selected; }
 export function connectionScope() {
-  return selected ? `remote:${selected.relay}:${selected.ownerId}:${selected.hostId}` : window.location.origin;
+  return selected ? `remote:${selected.relay}:${selected.ownerId}:${selected.hostId}` : isCloud() ? `cloud:${window.location.origin}:${cloudOwner()}` : window.location.origin;
 }
 export function scopedKey(key: string) {
-  return selected ? `${key}:${encodeURIComponent(connectionScope())}` : key;
+  return selected || isCloud() ? `${key}:${encodeURIComponent(connectionScope())}` : key;
 }
 function database(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {

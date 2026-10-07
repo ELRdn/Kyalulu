@@ -30,6 +30,7 @@ export default function Sheet({
       .filter(node => node.getClientRects().length && !node.closest('[inert]'));
     (focusable()[0] ?? element).focus({ preventScroll: true });
     const key = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || document.querySelector('dialog:modal')) return;
       const panels = document.querySelectorAll('.k-sheet[aria-modal="true"]');
       if (panels[panels.length - 1] !== element) return;
       if (event.key === 'Escape') { event.preventDefault(); close.current(); }
