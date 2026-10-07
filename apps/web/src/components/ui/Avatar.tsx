@@ -31,10 +31,12 @@ export default function Avatar({
   mascot?: boolean;
 }) {
   const initial = name.trim().charAt(0).toUpperCase() || "?";
-  const image = src ?? (mascot ? "/mascot/face-default.webp" : null);
+  // Bundled art is local; runtime portraits still use the encrypted media transport.
+  const showMascot = !src && mascot;
+  const image = src || (showMascot ? `${import.meta.env.BASE_URL}mascot/v1.2/face-default.png` : null);
   return (
-    <span className={`k-avatar k-avatar--${size} ${image ? "k-avatar--image" : ""}`} style={image ? undefined : { background: gradientFor(seed ?? name) }} aria-hidden="true">
-      {image ? <RuntimeImage src={image} alt="" loading="lazy" /> : <span className="k-avatar__initial">{initial}</span>}
+    <span className={`k-avatar k-avatar--${size} ${image ? "k-avatar--image" : ""} ${showMascot ? "k-avatar--mascot" : ""}`} style={image ? undefined : { background: gradientFor(seed ?? name) }} aria-hidden="true">
+      {image ? (showMascot ? <img src={image} alt="" loading="lazy" decoding="async" /> : <RuntimeImage src={image} alt="" loading="lazy" />) : <span className="k-avatar__initial">{initial}</span>}
     </span>
   );
 }

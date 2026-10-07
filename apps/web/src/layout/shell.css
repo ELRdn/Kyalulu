@@ -34,10 +34,8 @@
 .k-shell__logo-mark {
   width: 34px;
   height: 34px;
-  border-radius: 11px;
-  object-fit: cover;
+  object-fit: contain;
   flex-shrink: 0;
-  box-shadow: 0 4px 14px rgba(108, 92, 231, 0.28);
   transition: transform 0.3s var(--ease-kyalulu);
 }
 .k-shell__logo:hover .k-shell__logo-mark { transform: rotate(-6deg) scale(1.05); }
@@ -100,6 +98,7 @@
 }
 .k-shell__profile-chip:hover { background: var(--bg-hover); border-color: var(--accent-secondary); }
 .k-shell__profile-name { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.k-shell__sync-alert { margin-bottom: 16px; padding: 12px 16px; border: 1px solid var(--danger-border); border-radius: 10px; background: var(--danger-bg); color: var(--text-primary); font-size: 13px; line-height: 1.6; }
 
 /* --- Body --- */
 .k-shell__body { flex: 1; min-height: 0; display: flex; padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
@@ -131,16 +130,14 @@
 }
 .k-shell__companion-art {
   width: 100%;
-  max-width: 200px;
-  margin-bottom: -10px;
+  max-width: 160px;
+  height: auto;
+  margin-bottom: -18px;
   position: relative;
   z-index: 1;
-  mix-blend-mode: multiply;
-  -webkit-mask-image: radial-gradient(ellipse 58% 62% at 50% 58%, #000 70%, transparent 100%);
-  mask-image: radial-gradient(ellipse 58% 62% at 50% 58%, #000 70%, transparent 100%);
+  object-fit: contain;
   animation: k-breathe 5s ease-in-out infinite;
 }
-[data-theme="dark"] .k-shell__companion-art { mix-blend-mode: normal; opacity: 0.85; -webkit-mask-image: radial-gradient(ellipse 50% 56% at 50% 60%, #000 55%, transparent 100%); mask-image: radial-gradient(ellipse 50% 56% at 50% 60%, #000 55%, transparent 100%); }
 @keyframes k-breathe { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-2px) scale(1.012); } }
 .k-shell__daily {
   width: 100%;

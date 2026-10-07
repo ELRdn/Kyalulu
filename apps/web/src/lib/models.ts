@@ -2,7 +2,7 @@ import { scopedKey } from './remoteStore';
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchModels, fetchProvidersHealth, type ModelInfo, type ProviderHealth } from "./api";
 
-import { useAdministrative } from "../components/RuntimeGate";
+import { useAdministrative, useRuntimeAccess } from "../components/RuntimeGate";
 
 const LS_EXPLICIT_MODEL = "kyalulu-explicit-model";
 const LS_MODEL = "my-zeta-model";
@@ -69,6 +69,7 @@ export async function loadModelCatalog(administrative: boolean) {
 
 export function useChatModel(options: { conversationModel?: string | null } = {}) {
   const administrative = useAdministrative();
+  const {cloud_mode} = useRuntimeAccess();
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [health, setHealth] = useState<ProviderHealth[] | null>(null);
   const [explicit, setExplicit] = useState("");
@@ -101,7 +102,7 @@ export function useChatModel(options: { conversationModel?: string | null } = {}
       window.removeEventListener("storage", sync);
     };
   }, []);
-  const modelId = pickConversationModel(models, health, {
+  const modelId = cloud_mode && !options.conversationModel && !explicit && !stored.explicit ? 'cloud-standard' : pickConversationModel(models, health, {
     administrative, baseline: options.conversationModel, explicit,
     storedExplicit: stored.explicit, stored: stored.legacy,
   });

@@ -86,7 +86,7 @@ export default function Home() {
           <div className="k-hero__arch">
             <div className="k-hero__arch-glow" />
           </div>
-          <img className="k-hero__mascot" src="/mascot/sit.webp" alt="" />
+          <img className="k-hero__mascot" src={`${import.meta.env.BASE_URL}mascot/v1.2/sit.png`} alt="" width={280} height={280} />
           <span className="k-hero__bubble">ねえねえ、今日は何する？</span>
         </div>
       </section>

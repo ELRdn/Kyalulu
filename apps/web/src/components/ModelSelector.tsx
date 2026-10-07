@@ -10,7 +10,7 @@ export default function ModelSelector({
   onChange: (v: string) => void;
 }) {
   return (
-    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+    <div style={{ display: "flex", gap: 8, alignItems: "center", minWidth: 0 }}>
       <label style={{ fontSize: 12, color: "var(--text-faint)", whiteSpace: "nowrap" }}>モデル</label>
       <select
         aria-label="会話モデル"
@@ -18,6 +18,7 @@ export default function ModelSelector({
         onChange={(e) => onChange(e.target.value)}
         style={{
           flex: 1,
+          minWidth: 0,
           padding: "8px 10px",
           borderRadius: 8,
           border: "1px solid var(--border)",

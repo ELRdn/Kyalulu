@@ -24,8 +24,8 @@ export default function NavItem({
       to={to}
       end={end}
       className={({ isActive }) => `k-nav-item ${isActive ? "k-nav-item--active" : ""} ${secondary ? "k-nav-item--secondary" : ""}`}
-      title={compact ? label : undefined}
-      aria-label={compact ? label : undefined}
+      title={label}
+      aria-label={label}
     >
       <span className="k-nav-item__icon" aria-hidden="true">
         {icon}
