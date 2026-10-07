@@ -1,0 +1,31 @@
+name: Documentation site
+
+on:
+  push:
+    paths: ['apps/landing/**', 'scripts/build_docs.mjs', 'scripts/check_docs.py', 'scripts/preview_docs.mjs', 'scripts/verify_docs.py', '.github/workflows/docs-site.yml']
+  pull_request:
+    paths: ['apps/landing/**', 'scripts/build_docs.mjs', 'scripts/check_docs.py', 'scripts/preview_docs.mjs', 'scripts/verify_docs.py', '.github/workflows/docs-site.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: node scripts/build_docs.mjs
+      - run: python scripts/check_docs.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kyalulu-landing-docs
+          path: .artifacts/landing-site
+          if-no-files-found: error
+          retention-days: 14

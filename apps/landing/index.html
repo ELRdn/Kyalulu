@@ -3,15 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Kyalulu — キャラも記憶も、きみの手元に残るRPプラットフォーム</title>
-<meta name="description" content="Kyaluluは、キャラクターとの物語と記憶を手元に残せるローカルファーストのRPプラットフォーム。PCでもスマホでも、続きから。SillyTavernやCCv2/v3のキャラも持ち込めます。">
+<title>Kyalulu — ローカルファーストのオープンソースCharacter AI</title>
+<meta name="description" content="KyaluluはローカルファーストのオープンソースCharacter AI。キャラクター・会話・記憶をPCに保存し、ローカルLLMで会話できます。外部APIも任意で接続でき、送信データは提供元の規約に従います。">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Kyalulu — あの子は、ちゃんと覚えている。">
-<meta property="og:description" content="キャラも記憶も、きみの手元に。PCでもスマホでも、続きから。">
+<meta property="og:title" content="Kyalulu — ローカルファーストのオープンソースCharacter AI">
+<meta property="og:description" content="KyaluluはローカルファーストのオープンソースCharacter AI。キャラクター・会話・記憶をPCに保存し、ローカルLLMで会話できます。外部APIも任意で接続でき、送信データは提供元の規約に従います。">
 <meta property="og:url" content="https://kyalulu.com/">
 <meta property="og:image" content="https://kyalulu.com/assets/og.png">
 <meta property="og:locale" content="ja_JP">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Kyalulu — ローカルファーストのオープンソースCharacter AI">
+<meta name="twitter:description" content="KyaluluはローカルファーストのオープンソースCharacter AI。キャラクター・会話・記憶をPCに保存し、ローカルLLMで会話できます。外部APIも任意で接続でき、送信データは提供元の規約に従います。">
+<meta name="twitter:image" content="https://kyalulu.com/assets/og.png">
 <meta name="theme-color" content="#15121D">
 <link rel="canonical" href="https://kyalulu.com/">
 <link rel="alternate" hreflang="ja" href="https://kyalulu.com/">
@@ -23,6 +26,32 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,600..800&family=Noto+Sans+JP:wght@400;500;700&family=Zen+Maru+Gothic:wght@700;900&display=swap">
 <link rel="stylesheet" href="style.css?v=2">
 <script defer src="main.js?v=2"></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {"@type": "Organization","@id": "https://kyalulu.com/#contributors","name": "Kyalulu contributors","url": "https://kyalulu.com","sameAs": ["https://github.com/ELRdn/Kyalulu"]},
+    {"@type": "WebSite","@id": "https://kyalulu.com/#website","url": "https://kyalulu.com","name": "Kyalulu","inLanguage": ["ja","en"],"publisher": {"@id": "https://kyalulu.com/#contributors"}},
+    {"@type": "SoftwareApplication","@id": "https://kyalulu.com/#software","name": "Kyalulu","alternateName": "キャルル","url": "https://kyalulu.com","applicationCategory": "EntertainmentApplication","description": "ローカルLLMに接続し、キャラクター・会話・記憶を手元に保存するローカルファーストのオープンソースCharacter AIランタイム。外部モデルAPIにも接続できます。","sameAs": ["https://github.com/ELRdn/Kyalulu"],"softwareHelp": {"@type": "CreativeWork","url": "https://kyalulu.com/docs/"}},
+    {"@type": "WebPage","@id": "https://kyalulu.com/#webpage","url": "https://kyalulu.com/","name": "Kyalulu — ローカルファーストのオープンソースCharacter AI","description": "KyaluluはローカルファーストのオープンソースCharacter AI。キャラクター・会話・記憶をPCに保存し、ローカルLLMで会話できます。外部APIも任意で接続でき、送信データは提供元の規約に従います。","inLanguage": "ja","isPartOf": {"@id": "https://kyalulu.com/#website"},"mainEntity": {"@id": "https://kyalulu.com/#software"}},
+    {
+      "@type": "FAQPage",
+      "@id": "https://kyalulu.com/#faq",
+      "inLanguage": "ja",
+      "isPartOf": {"@id": "https://kyalulu.com/#webpage"},
+      "about": {"@id": "https://kyalulu.com/#software"},
+      "mainEntity": [
+        {"@type": "Question","name": "ローカル版は、データが外に出ませんか？","acceptedAnswer": {"@type": "Answer","text": "ローカル版では、会話・キャラクター・記憶をお使いのPCに保存します。ローカルLLMだけで会話する場合、生成のために会話を外部AI提供元へ送信しません。外部APIを設定すると、会話に必要なデータをその提供元へ送信し、提供元のデータ利用・保存規約が適用されます。外部Hubの検索・取り込みや、スマホからPCへの接続には通信が発生します。"}},
+        {"@type": "Question","name": "クラウド版では、データはどう扱われますか？","acceptedAnswer": {"@type": "Answer","text": "クラウド版は準備中です。保存先・外部AI提供元への送信範囲・同期・利用条件は、公開時の利用規約とプライバシーポリシーで確認してください。"}},
+        {"@type": "Question","name": "ローカル版にも、内容の制限はありますか？","acceptedAnswer": {"@type": "Answer","text": "ローカル版は、お使いの端末の中で動作します。ローカルのモデルを使う限り、RPの内容が外部のサーバーに送られることはありません（外部のAPIを自分で設定した場合は、そのAPIの規約に従います）。どのモデルを使うか、どんな物語を作るかは、利用者の判断になります。"}},
+        {"@type": "Question","name": "無料で使えますか？","acceptedAnswer": {"@type": "Answer","text": "ローカル版は、AGPL-3.0のオープンソースとして無料で使えます。外部APIの利用料は各提供元の条件によります。クラウド版の料金・利用条件は公開時に案内します。"}},
+        {"@type": "Question","name": "どんなPCが必要ですか？","acceptedAnswer": {"@type": "Answer","text": "動かすモデルによります。軽いモデルなら一般的なゲーミングPC程度、大きいモデルほど高い性能が必要です。動かせるか不安な方は、クラウド版をお待ちください。"}},
+        {"@type": "Question","name": "いま、すぐに使えますか？","acceptedAnswer": {"@type": "Answer","text": "アルファ版を、GitHubで公開しています。導入には、READMEに沿ったセットアップが必要です。スマホのPWAは、現在はPC上のKyaluluに接続して使います。扱いやすい配布は準備中です。"}}
+      ]
+    }
+  ]
+}
+</script>
 </head>
 <body>
 
@@ -41,6 +70,7 @@
     <a href="#devices">スマホ</a>
     <a href="#start">はじめ方</a>
     <a href="#faq">FAQ</a>
+    <a href="/docs/">Docs</a>
   </nav>
   <a class="lang" href="en/" hreflang="en" lang="en">EN</a>
   <a class="btn btn-dark btn-sm" href="https://github.com/ELRdn/Kyalulu" rel="noopener">★ GitHub</a>
@@ -51,9 +81,10 @@
 <section class="panel hero">
   <div class="aurora" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
   <div class="hero-copy">
-    <p class="eyebrow rv">✦ Local-first Character AI</p>
-    <h1 class="split">あの子は、<br><em>ちゃんと覚えている。</em></h1>
-    <p class="lead rv">Kyaluluは、キャラクターとの物語と記憶を、きみの手元に残せるRPプラットフォーム。PCでもスマホでも、いつでも続きから。</p>
+    <p class="eyebrow rv">✦ Local-first · Open-source Character AI</p>
+    <h1 class="split"><em>Kyalulu</em><br> 手元で使うキャラクターAI</h1>
+    <p class="lead rv"><strong>あの子は、ちゃんと覚えている。</strong></p>
+    <p class="lead rv">Kyaluluは、ローカルファーストのオープンソースCharacter AI。キャラクター・会話・記憶をPCに保存し、ローカルLLMで物語の続きを楽しめます。外部APIも任意で接続でき、その場合は会話に必要なデータを提供元へ送信します。</p>
     <div class="cta-row rv">
       <a class="btn btn-dark" href="https://github.com/ELRdn/Kyalulu" rel="noopener">
         <span class="p-alpha">GitHubで試す（アルファ）</span><span class="p-launch">npmで導入する（ベータ）</span>
@@ -98,8 +129,9 @@
     <div class="card-in">
       <div class="card-copy">
         <p class="num">01 <span>Memory Lab</span></p>
-        <h2 class="split">三十ターン前の約束を、<br>あの子は忘れない。</h2>
-        <p class="rv">キャラクターとの会話から、覚えておきたいことを記憶として残します。話が長くなっても、必要な場面で思い出して返してくれる。記憶の中身は、あとから見て、直せます。</p>
+        <h2 class="split">あの日の約束を、<br>記憶として手元に。</h2>
+        <p class="rv">記憶をオンにすると、会話から覚えておきたいことを保存し、返事のために参照できます。想起は保証されず、結果はモデルや設定によって異なります。記憶の中身は、あとから見て、直せます。</p>
+        <p class="more rv"><a href="/docs/memory/">記憶の保存・確認・訂正ガイド →</a></p>
       </div>
       <div class="chat" aria-label="会話例（イメージ）">
         <div class="msg me"><small>ターン 3</small>次の満月の夜、星見の丘で待っててくれる？</div>
@@ -127,7 +159,8 @@
           <p>自分のPCで動かす、いちばん手元に近い使い方。</p>
           <ul>
             <li>ローカルのモデルを使えば、会話・キャラ・記憶は端末の中で完結</li>
-            <li>AIモデルもPC上で実行（LM Studio・Ollamaなどに接続）</li>
+            <li>ローカルLLMをPC上で実行（LE・LM Studio・Ollamaなどに接続）</li>
+            <li>外部APIも任意で接続可能。送信データの扱いは提供元の規約によります</li>
             <li>無料のオープンソース</li>
           </ul>
           <p class="small">動かすには、AIを動かせる程度の性能のPCが必要です。</p>
@@ -140,7 +173,7 @@
             <li>会話データは任意でサーバーに同期（いつでも切れます）</li>
             <li>安全にサービスを運営するための、最低限の基準を設ける予定</li>
           </ul>
-          <p class="small">料金は Free $0／Plus 月$5／Pro 月$10 を予定。扱えるのは全年齢向け（SFW）の内容のみです。運用の準備が整いしだい公開します。</p>
+          <p class="small">料金・利用条件は公開時に案内します。扱えるのは全年齢向け（SFW）の内容のみです。運用の準備が整いしだい公開します。</p>
         </article>
       </div>
     </div>
@@ -224,7 +257,7 @@
       </li>
       <li class="rv">
         <h3>ローカルエンジンを入れる</h3>
-        <p>AIを動かすローカルエンジン（Kyalulu Local Engine・LM Studio・Ollama）に接続して、使うモデルを選びます。</p>
+        <p>AIを動かすローカルエンジン（Kyalulu Local Engine・LM Studio・Ollama）に接続して、使うモデルを選びます。外部APIも任意で設定できます。<a href="/docs/models/">モデルの接続ガイド</a>へ。</p>
       </li>
       <li class="rv">
         <h3>キャラと会う</h3>
@@ -270,13 +303,14 @@
     <div class="sec-head"><h2 class="split">よくある質問</h2></div>
     <div class="faq-art" aria-hidden="true"><span>?</span><img src="assets/mascot/face-curious.webp" alt="" width="560" height="560" loading="lazy"></div>
     <div class="list rv">
-      <details><summary>ローカル版は、データが外に出ませんか？</summary><p>ローカル版は、お使いのPC上で動作し、会話・キャラ・記憶は端末内に保存されます。ローカルのモデルを使えば、会話が外に出ることはありません。スマホから使うときは、PCとスマホの間を暗号化して接続します。</p></details>
-      <details><summary>クラウド版では、データはどう扱われますか？</summary><p>クラウド版の会話・設定・記憶は、Kyaluluのクラウドに保存されます。返事の生成と安全チェックには、外部のAIモデル提供元を使う予定です（提供元による学習目的のデータ利用は拒否する設定にします）。ローカル版からの同期は任意で、初期設定はオフ。いつでも止められます。同期されたデータは、全年齢向けの基準にもとづいて自動で確認されます。詳しくは、公開時に利用規約・プライバシーポリシーで明示します。</p></details>
+      <details><summary>ローカル版は、データが外に出ませんか？</summary><p>ローカル版では、会話・キャラクター・記憶をお使いのPCに保存します。ローカルLLMだけで会話する場合、生成のために会話を外部AI提供元へ送信しません。外部APIを設定すると、会話に必要なデータをその提供元へ送信し、提供元のデータ利用・保存規約が適用されます。外部Hubの検索・取り込みや、スマホからPCへの接続には通信が発生します。</p></details>
+      <details><summary>クラウド版では、データはどう扱われますか？</summary><p>クラウド版は準備中です。保存先・外部AI提供元への送信範囲・同期・利用条件は、公開時の利用規約とプライバシーポリシーで確認してください。</p></details>
       <details><summary>ローカル版にも、内容の制限はありますか？</summary><p>ローカル版は、お使いの端末の中で動作します。ローカルのモデルを使う限り、RPの内容が外部のサーバーに送られることはありません（外部のAPIを自分で設定した場合は、そのAPIの規約に従います）。どのモデルを使うか、どんな物語を作るかは、利用者の判断になります。</p></details>
-      <details><summary>無料で使えますか？</summary><p>ローカル版は、AGPL-3.0のオープンソースとして無料で使えます。自分のPCのモデルや、自分で契約したAPIキーで使う場合も、Kyalulu側の料金はかかりません（APIの利用料は各提供元へ）。クラウド版は Free $0／Plus 月$5／Pro 月$10 を予定しています。販売条件と運用の確認が終わってから開始します。</p></details>
+      <details><summary>無料で使えますか？</summary><p>ローカル版は、AGPL-3.0のオープンソースとして無料で使えます。外部APIの利用料は各提供元の条件によります。クラウド版の料金・利用条件は公開時に案内します。</p></details>
       <details><summary>どんなPCが必要ですか？</summary><p>動かすモデルによります。軽いモデルなら一般的なゲーミングPC程度、大きいモデルほど高い性能が必要です。動かせるか不安な方は、クラウド版をお待ちください。</p></details>
       <details><summary>いま、すぐに使えますか？</summary><p>アルファ版を、GitHubで公開しています。導入には、READMEに沿ったセットアップが必要です。スマホのPWAは、現在はPC上のKyaluluに接続して使います。扱いやすい配布は準備中です。</p></details>
     </div>
+    <p class="more rv"><a href="/docs/faq/">導入・モデル・記憶のFAQを読む →</a></p>
   </div>
 </section>
 
@@ -293,6 +327,7 @@
   <div class="foot-card">
     <p class="foot-big">あの子に、<br>会いにいこう。</p>
     <nav aria-label="フッター">
+      <a href="/docs/">使い方・ドキュメント</a>
       <a href="https://github.com/ELRdn/Kyalulu" rel="noopener">GitHub</a>
       <a href="https://github.com/ELRdn/Kyalulu/tree/main/benchmarks/characterbench" rel="noopener">CharacterBench</a>
       <a href="https://github.com/ELRdn/Kyalulu/blob/main/docs/ROADMAP.md" rel="noopener">ロードマップ</a>

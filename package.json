@@ -6,6 +6,9 @@
   "description": "Local-first Character AI Runtime / Benchmark - Monorepo",
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
+    "build:docs": "node scripts/build_docs.mjs",
+    "check:docs": "python scripts/check_docs.py",
+    "preview:docs": "node scripts/preview_docs.mjs",
     "dev": "pnpm --filter web dev",
     "dev:desktop": "pnpm --filter desktop dev",
     "build": "pnpm -r build",
