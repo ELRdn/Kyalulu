@@ -56,7 +56,7 @@ p { margin: 0; }
 
 /* hero */
 .hero { margin-top: 8px; padding: 168px 0 clamp(64px, 8vw, 104px); background: #F7F3FF; text-align: center; isolation: isolate; }
-.aurora { position: absolute; inset: 0; z-index: -1; overflow: hidden; }
+.aurora { position: absolute; inset: 0 0 auto; height: 1200px; z-index: -1; overflow: hidden; } /* fixed height: a late web-font swap changing the hero height must not move the blobs (CLS) */
 .aurora i { position: absolute; width: 46vw; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(closest-side, var(--c), transparent); opacity: .85; animation: drift 18s ease-in-out infinite alternate; }
 .aurora i:nth-child(1) { --c: #D9CCFF; left: -10%; top: -12%; }
 .aurora i:nth-child(2) { --c: #FFD3E8; right: -8%; top: 4%; animation-delay: -6s; }
@@ -67,6 +67,8 @@ p { margin: 0; }
 .hero h1 { font-size: clamp(36px, 7.4vw, 104px); line-height: 1.12; letter-spacing: -.03em; }
 .hero h1 em { font-style: normal; color: var(--purple); white-space: nowrap; background: linear-gradient(transparent 64%, var(--butter) 64% 92%, transparent 92%) no-repeat 0 0 / 0% 100%; transition: background-size 1s cubic-bezier(.6, 0, .2, 1) .9s; }
 .hero h1.in em, .no-js .hero h1 em { background-size: 100% 100%; }
+.br-sm { display: none; }
+@media (max-width: 640px) { .br-sm { display: inline; } } /* fixed mobile line breaks, so the late web-font swap can't rewrap the headline (CLS) */
 .lead { max-width: 34em; font-size: clamp(15px, 1.7vw, 18px); color: var(--ink-2); }
 .note { font-size: 13px; color: var(--muted); max-width: 40em; }
 
