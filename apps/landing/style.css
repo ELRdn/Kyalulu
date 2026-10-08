@@ -1,11 +1,11 @@
 /* Kyalulu LP — static, no build. Night-sky storybook pop on top of the Soft Mystic Portal palette. */
 :root {
-  --void: #15121D; --ink: #1E1B24; --ink-2: #4B4758; --muted: #7D7790; --paper: #FFFFFF;
+  --void: #15121D; --ink: #1E1B24; --ink-2: #3E3A4A; --muted: #655F7A; --paper: #FFFFFF;
   --purple: #6C5CE7; --violet: #BFA7FF; --lav: #ECE6FF; --pink: #FFB8D8; --mint: #B8F2E6;
   --sky: #CFE3FF; --butter: #FFE59A; --peach: #FFCFB5;
-  --head: "Zen Maru Gothic", "Noto Sans JP", sans-serif;
+  --head: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", "Hiragino Sans", "Yu Gothic", sans-serif;
   --display: "Bricolage Grotesque", "Zen Maru Gothic", sans-serif;
-  --sans: "Noto Sans JP", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --sans: system-ui, -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo", "Segoe UI", sans-serif;
   --spring: cubic-bezier(.2, .9, .25, 1.15);
   --wrap: 1180px;
   color-scheme: light;
@@ -57,11 +57,11 @@ p { margin: 0; }
 /* hero */
 .hero { margin-top: 8px; padding: 168px 0 clamp(64px, 8vw, 104px); background: #F7F3FF; text-align: center; isolation: isolate; }
 .aurora { position: absolute; inset: 0; z-index: -1; overflow: hidden; }
-.aurora i { position: absolute; width: 46vw; aspect-ratio: 1; border-radius: 50%; filter: blur(70px); opacity: .7; animation: drift 18s ease-in-out infinite alternate; }
-.aurora i:nth-child(1) { background: #D9CCFF; left: -10%; top: -12%; }
-.aurora i:nth-child(2) { background: #FFD3E8; right: -8%; top: 4%; animation-delay: -6s; }
-.aurora i:nth-child(3) { background: #CDE6FF; left: 24%; top: 38%; animation-delay: -11s; }
-.aurora i:nth-child(4) { background: #C9F5EA; right: 10%; bottom: -16%; width: 34vw; animation-delay: -3s; }
+.aurora i { position: absolute; width: 46vw; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(closest-side, var(--c), transparent); opacity: .85; animation: drift 18s ease-in-out infinite alternate; }
+.aurora i:nth-child(1) { --c: #D9CCFF; left: -10%; top: -12%; }
+.aurora i:nth-child(2) { --c: #FFD3E8; right: -8%; top: 4%; animation-delay: -6s; }
+.aurora i:nth-child(3) { --c: #CDE6FF; left: 24%; top: 38%; animation-delay: -11s; }
+.aurora i:nth-child(4) { --c: #C9F5EA; right: 10%; bottom: -16%; width: 34vw; animation-delay: -3s; }
 @keyframes drift { 50% { transform: translate(6vw, 4vw) scale(1.12); } 100% { transform: translate(-4vw, 6vw) scale(.94); } }
 .hero-copy { position: relative; z-index: 2; width: min(980px, 100% - 32px); margin-inline: auto; display: grid; gap: 26px; justify-items: center; }
 .hero h1 { font-size: clamp(36px, 7.4vw, 104px); line-height: 1.12; letter-spacing: -.03em; }
@@ -255,8 +255,8 @@ details p { padding: 0 0 22px; color: var(--ink-2); font-size: 15px; }
 /* reveals */
 .rv { opacity: 0; transform: translateY(28px); transition: opacity .8s, transform .9s var(--spring); }
 .rv.in { opacity: 1; transform: none; }
-.split .ch { display: inline-block; opacity: 0; transform: translateY(.6em) rotate(8deg) scale(.9); filter: blur(4px); transition: opacity .5s, transform .8s var(--spring), filter .5s; transition-delay: calc(var(--i) * 28ms); }
-.split.in .ch { opacity: 1; transform: none; filter: none; }
+.split .ch { display: inline-block; opacity: 0; transform: translateY(.6em) rotate(8deg) scale(.9); transition: opacity .5s, transform .8s var(--spring); transition-delay: calc(var(--i) * 28ms); }
+.split.in .ch { opacity: 1; transform: none; }
 .split .wd { display: inline-block; white-space: nowrap; }
 .no-js .rv, .no-js .chat > * { opacity: 1; transform: none; }
 
