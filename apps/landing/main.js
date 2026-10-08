@@ -3,6 +3,15 @@
   doc.classList.remove('no-js');
   const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+  // Web fonts are decorative: request them only after the first paint so they never delay it.
+  const fonts = document.getElementById('webfonts');
+  const addFonts = () => document.head.insertAdjacentHTML('beforeend', fonts.textContent);
+  try {
+    new PerformanceObserver((_, o) => { o.disconnect(); addFonts(); }).observe({ type: 'paint', buffered: true });
+  } catch {
+    addEventListener('load', addFonts, { once: true });
+  }
+
   // Split headings into per-character spans for the staggered reveal. The full text stays as aria-label.
   document.querySelectorAll('.split').forEach((el) => {
     el.setAttribute('aria-label', el.textContent.replace(/\s+/g, ' ').trim());

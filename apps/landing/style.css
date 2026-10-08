@@ -255,6 +255,9 @@ details p { padding: 0 0 22px; color: var(--ink-2); font-size: 15px; }
 /* reveals */
 .rv { opacity: 0; transform: translateY(28px); transition: opacity .8s, transform .9s var(--spring); }
 .rv.in { opacity: 1; transform: none; }
+/* Above the fold: reveal on first paint with CSS, not after JS/IntersectionObserver, so LCP isn't delayed. */
+.hero .rv { opacity: 1; transform: none; animation: rise .8s var(--spring) backwards; }
+@keyframes rise { from { opacity: 0; transform: translateY(28px); } }
 .split .ch { display: inline-block; opacity: 0; transform: translateY(.6em) rotate(8deg) scale(.9); transition: opacity .5s, transform .8s var(--spring); transition-delay: calc(var(--i) * 28ms); }
 .split.in .ch { opacity: 1; transform: none; }
 .split .wd { display: inline-block; white-space: nowrap; }
