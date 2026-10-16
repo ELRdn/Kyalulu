@@ -6,19 +6,23 @@ export default [
     slug: 'imports',
     group: 'use',
     icon: '📥',
-    title: { ja: 'キャラクターを取り込む', en: 'Import characters' },
+    title: { ja: 'SillyTavernからKyaluluへ移行：カード・Lore・プリセット', en: 'Migrate from SillyTavern to Kyalulu: cards, Lore and presets' },
     description: {
-      ja: 'ファイル、公開URL、Character.AIの手動貼り付けから、原本を残して自分のライブラリへ移す。',
-      en: 'Move files, public URLs, or manually pasted Character.AI settings into your library while retaining the source.'
+      ja: 'SillyTavernのキャラクターカード、World Info、生成設定を原本を残して移行。プレビュー・保存・動作確認の手順と、保持のみの設定を説明します。',
+      en: 'Move SillyTavern character cards, World Info and generation settings while keeping originals. Review previews, save and check behavior, including settings that are preserved only.'
     },
     keywords: {
-      ja: ['取り込み', 'インポート', 'キャラクターカード', 'Character.AI', 'URL', '原本', '出典'],
-      en: ['import', 'character card', 'Character.AI', 'URL', 'preview', 'provenance', 'source']
+      ja: ['SillyTavern', '移行', 'World Info', 'プリセット', 'キャラクターカード', 'Character.AI', '原本'],
+      en: ['SillyTavern', 'migration', 'World Info', 'presets', 'character card', 'Character.AI', 'original']
     },
     readingMinutes: 6,
     sources: ['README.md', 'docs/COMPATIBILITY.md'],
     sections: {
       ja: [
+        {
+          id: 'sillytavern-migration', title: 'SillyTavernから移す最短手順',
+          html: `<p><strong>キャラカード・World Info・生成設定をファイルから移せますが、SillyTavern環境全体の移行ではありません。</strong>アカウント、拡張機能、接続先、APIキー、モデルロードは移りません。元データを残し、小さなカード1件から始めます。</p><ol><li>SillyTavern側で利用権のあるCharacter Card、World Info／Lorebook、必要なプリセットをそれぞれ書き出し、原本を保管します。</li><li>KyaluluのCreateでカードのJSON・PNG・CHARXを選び、必要なLoreや設定もプレビューで確認します。</li><li>人物設定・挨拶・会話例、対応するプロンプト要素、変換理由を確認して保存します。履歴は対応形式と選択範囲だけが対象です。</li><li><a href="{{doc:models}}">モデル接続</a>を別途設定し、利用する段階で短い会話を確認します。文体やLoreが違えばResearcher Debugで適用状況を確認します。</li><li>復元用バックアップと原本を残します。編集後の設定をSillyTavern専用形式へ完全に戻せるとは考えないでください。</li></ol><p><strong>保持のみ：</strong>Text Completionの区切り、Instruct／モデル専用整形、動的な深さ挿入、複雑なHandlebars式、未対応マクロは実行されません。生成プリセットもProviderが対応する値だけが効きます。<a href="{{doc:compatibility}}">互換対応表</a>で、保持と実行を分けて確認してください。</p><figure><img src="/assets/docs-examples/import.webp" width="960" height="720" loading="lazy" alt="Mock・架空カードによる取り込みプレビューの説明図"><figcaption>Mock／架空のカードと設定による説明用画面。実在作品の移行結果や外部アプリでの往復互換の証明ではありません。</figcaption></figure>`
+        },
         {
           id: 'choose-a-source', title: '取り込み元を選ぶ',
           html: `<p>Createは、外部の設定を会話用のライブラリへ移す入口です。手元のカードはファイル選択やドロップで、公開ファイルはURL欄で取り込みます。DiscoverのTavernCardやSillyTavern Contentからは、詳細を開いて「取り込み内容を確認」へ進みます。URLを入力しただけでは保存されません。</p><p>公開URLはTavernCard／RisuRealmのコンテンツページと、GitHub／Hugging Faceの公開ファイルが対象です。リポジトリ全体、モデル重み、認証が必要なファイルは対象外。RisuRealmはブラウザー取得とCORSに依存し、独自Module・独自プリセット・CHARX取得には対応しません。外部Hubを選ぶと検索語やコンテンツIDなどが配布元へ送られますが、会話履歴やモデル認証情報はHubへ送りません。</p>`
@@ -42,6 +46,10 @@ Definition: 日本語で簡潔に話す。
         }
       ],
       en: [
+        {
+          id: 'sillytavern-migration', title: 'A short SillyTavern migration checklist',
+          html: `<p><strong>Import character cards, World Info and generation settings from files; this does not migrate an entire SillyTavern environment.</strong> Accounts, extensions, endpoints, API keys and model loading do not move. Keep source data and start with one small card.</p><ol><li>In SillyTavern, export the Character Card, World Info/Lorebook and any needed preset you are entitled to use, retaining each original.</li><li>In Kyalulu Create, select the card JSON, PNG or CHARX and review any needed Lore and settings in the preview.</li><li>Check personality, greetings, examples, supported prompt elements and conversion explanations, then save. History import covers supported formats and selected content only.</li><li>Configure <a href="{{doc:models}}">model connections</a> separately and check a short conversation when ready to use a model. Inspect applied settings in Researcher Debug if style or Lore differs.</li><li>Keep a restoration backup and originals. Do not assume edited settings can be exported fully back into SillyTavern-specific formats.</li></ol><p><strong>Preserved only:</strong> Text Completion separators, Instruct/model-specific formatting, dynamic depth insertion, complex Handlebars expressions and unsupported macros are not executed. Only generation-preset values supported by the provider take effect. Use the <a href="{{doc:compatibility}}">compatibility matrix</a> to distinguish preservation from execution.</p><figure><img src="/assets/docs-examples/import.webp" width="960" height="720" loading="lazy" alt="Illustrative Mock import preview with a fictional card"><figcaption>Mock / fictional card and settings for illustration. This is not a real work migration result or proof of round-trip compatibility in another app.</figcaption></figure>`
+        },
         {
           id: 'choose-a-source', title: 'Choose a source',
           html: `<p>Create moves external settings into your conversation library. Select or drop a local card, or enter a public file URL. In Discover, open a TavernCard or SillyTavern Content item and choose the import preview action. Entering a URL alone does not save anything.</p><p>Supported public URLs cover TavernCard and RisuRealm content pages and public files on GitHub or Hugging Face. Whole repositories, model weights, and files requiring authentication are excluded. RisuRealm retrieval runs in the browser and depends on CORS; its proprietary Modules, proprietary presets, and CHARX retrieval are unsupported. Selecting an external Hub sends search terms or content identifiers to that distributor, but does not send conversation history or model credentials to the Hub.</p>`
@@ -70,7 +78,7 @@ Definition: Speak concisely in Japanese.
     slug: 'compatibility',
     group: 'reference',
     icon: '🗂️',
-    title: { ja: '移行形式と互換性', en: 'Formats and compatibility' },
+    title: { ja: 'Kyaluluの移行互換性：使える項目・保持のみの項目', en: 'Kyalulu import compatibility: usable and preserved-only fields' },
     description: {
       ja: 'カード、プリセット、Lore、履歴の対応範囲と、保持されても動かない項目を確認する。',
       en: 'Check support for cards, presets, Lore, and history, including fields retained without being executed.'
@@ -86,6 +94,10 @@ Definition: Speak concisely in Japanese.
         {
           id: 'support-matrix', title: '取り込みと実行の対応表',
           html: `<p>「読み込める」「保持する」「生成に使う」は別の意味です。まず次の表で、移したい設定がどこまで使えるか確認してください。対応は公開スナップショットの範囲であり、外部アプリの全バージョンで同じ動作になる保証ではありません。</p><table><thead><tr><th>形式</th><th>使える内容</th><th>保持のみ／対象外</th></tr></thead><tbody><tr><td>Character Card V1／V2／V3</td><td>JSON、PNG／APNG内カード、CHARX。人物設定、挨拶、例文、system／履歴後指示、Lore、画像</td><td>未知フィールド・拡張は保持。作者コメントは生成に不使用。画像アニメーションの再生は保証しない</td></tr><tr><td>SillyTavern</td><td>生成プリセット、System Prompt、Story String、順序付きPrompt Manager、World Info</td><td>Text Completion／Instructのモデル専用整形、動的な深さ挿入、複雑なHandlebars、未対応マクロは実行しない</td></tr><tr><td>Backyard AI BYAF v1</td><td>シナリオ別のキャラ設定、画像、例文、初回メッセージ、サンプラー、選択した履歴</td><td>grammar／promptTemplateは実行しない。返答候補は最新activeTimestampを採用し、他候補は原本に保持</td></tr><tr><td>RisuAI</td><td>共通カードの拡張、共通Lore、画像・表情・背景参照、静的文字列変数</td><td>スクリプト、動的変数操作、独自HTMLは実行しない。アプリ全体のバックアップは対象外</td></tr><tr><td>Character.AI</td><td>名前、説明、Greeting、Definitionの手動テキスト／JSON、所定Lore形式</td><td>アカウント自動取得、非公開情報抽出、全履歴専用Importerは対象外</td></tr></tbody></table>`
+        },
+        {
+          id: 'verify-a-migration', title: '移行結果を確認する手順',
+          html: `<p><strong>原本の保管 → 取り込みプレビュー → 保存 → 適用設定の確認 → 書き出しの欠落確認の順です。</strong>ファイルを読めたことだけで同じ返事や往復互換を判定しません。</p><ol><li><a href="{{doc:imports}}">SillyTavern移行手順</a>からカード1件で始め、<a href="{{doc:characters}}">キャラ編集と保存版</a>で会話に使う版を確認します。</li><li>Instruct、Text Completionの区切り・モデル専用整形、動的な深さ挿入、複雑なHandlebars式、未対応マクロは保持と理由表示のみです。保存されても実行されません。</li><li>Loreの採用理由とProviderが適用したサンプラーを確認し、必要な動的機能は静的な文章へ編集します。</li><li>復元用バックアップと原本を残し、受け取り側でも対応項目を確認します。</li></ol>`
         },
         {
           id: 'prompt-and-lore', title: '文体やLoreが変わったら',
@@ -106,6 +118,10 @@ Definition: Speak concisely in Japanese.
           html: `<p>Reading a field, retaining it, and using it during generation are different capabilities. Check what your settings actually support below. This describes the public snapshot and does not guarantee identical behavior across every version of another app.</p><table><thead><tr><th>Format</th><th>Usable content</th><th>Retained only / excluded</th></tr></thead><tbody><tr><td>Character Card V1 / V2 / V3</td><td>JSON, cards in PNG/APNG, and CHARX; personality, greetings, examples, system/post-history instructions, Lore, images</td><td>Unknown fields and extensions retained; creator comments excluded from generation; animated image playback not guaranteed</td></tr><tr><td>SillyTavern</td><td>Generation presets, System Prompt, Story String, ordered Prompt Manager elements, World Info</td><td>Model-specific Text Completion/Instruct formatting, dynamic depth insertion, complex Handlebars, and unsupported macros are not executed</td></tr><tr><td>Backyard AI BYAF v1</td><td>Scenario-specific character settings, images, examples, initial message, samplers, selected history</td><td>grammar/promptTemplate not executed; newest activeTimestamp selects the reply variant, others remain in the original</td></tr><tr><td>RisuAI</td><td>Common-card extensions, common Lore, image/expression/background references, static string variables</td><td>Scripts, dynamic variable operations, and custom HTML not executed; whole-app backups excluded</td></tr><tr><td>Character.AI</td><td>Manual text/JSON for name, description, Greeting, Definition, and the specified Lore formats</td><td>Automatic account retrieval, private information extraction, and a dedicated full-history importer excluded</td></tr></tbody></table>`
         },
         {
+          id: 'verify-a-migration', title: 'Check the migration result',
+          html: `<p><strong>Retain the original, review the import preview, save, inspect applied settings, then review export losses.</strong> Reading a file alone establishes neither identical replies nor round-trip compatibility.</p><ol><li>Start with one card in the <a href="{{doc:imports}}">SillyTavern migration guide</a> and check the revision used in <a href="{{doc:characters}}">character editing and saved revisions</a>.</li><li>Instruct, Text Completion separators/model-specific formatting, dynamic depth insertion, complex Handlebars expressions and unsupported macros are preserved with explanations only. Saving them does not execute them.</li><li>Inspect Lore selection and sampler values actually applied by the provider. Rewrite needed dynamic features as static text.</li><li>Keep a restoration backup and originals, and check supported fields in the receiving app too.</li></ol>`
+        },
+        {
           id: 'prompt-and-lore', title: 'When style or Lore behaves differently',
           html: `<p>Imported characters do not automatically receive the existing beastfolk setting or Zeta style. The Runtime always adds its reply/state_update contract, however, so it does not reproduce the original app's inference template unchanged. Standard macros, {{char}}, {{user}}, and static {{getvar::name}} variables are supported. Unsupported macros are not silently expanded.</p><p>Lore supports keywords, constant activation, secondary keywords, order, before/after positions, scan depth, estimated budgets, and recursive retrieval. Defaults scan the latest two messages with an estimated 1,024-token budget per Lorebook. Unsupported conditions such as regex, probability, and time are disabled with an explanation; restoring an enabled checkbox alone does not execute them.</p><ol><li>Read conversion explanations in the preview.</li><li>Use Researcher Debug to inspect Lore selection and requested, applied, and unsupported settings.</li><li>Where necessary, rewrite dependencies on dynamic features as static text.</li></ol><p>Only sampler values supported by the actual Provider are sent. Retaining a value does not make it effective.</p>`
         },
@@ -124,7 +140,7 @@ Definition: Speak concisely in Japanese.
     slug: 'mobile',
     group: 'connect',
     icon: '📱',
-    title: { ja: '自分のPCへスマホから接続する', en: 'Connect to your PC from a phone' },
+    title: { ja: 'Kyaluluをスマホで使う：Android PWA・HTTPS接続', en: 'Use Kyalulu on a phone: Android PWA and HTTPS setup' },
     description: {
       ja: '直接HTTPSで端末を登録し、PC上の会話をAndroid PWAから使う。',
       en: 'Pair over direct HTTPS and use conversations on your PC from the Android PWA.'
@@ -137,6 +153,10 @@ Definition: Speak concisely in Japanese.
     sources: ['docs/ANDROID_PWA.md', 'scripts/HOME_SERVER.md', 'README.md'],
     sections: {
       ja: [
+        {
+          id: 'prepare-device', title: 'PC・スマホ・接続経路を準備する',
+          html: `<p><strong>この手順はAndroidから稼働中の自分のPCへ接続するPWAです。PC不要のCloudとは別です。</strong>PC不要の利用を探している方は<a href="{{doc:cloud}}">Cloudの招待条件</a>を先に確認してください。</p><p>準備するのは、<a href="{{doc:quickstart}}">起動確認済みのKyalulu</a>、起動したままのPC／サーバー、Android Chrome、到達可能なHTTPSアドレス、端末が信頼する証明書です。PWAのインストールだけではサーバー・認証・モデルは用意されません。PC側の停止やスリープを防ぎ、既存データは先にバックアップします。</p><p>直接HTTPSのネットワーク準備が難しい場合は<a href="{{doc:remote}}">RemoteのHost・Relay方式</a>を比較します。こちらも稼働中のPCが必要です。</p>`
+        },
         {
           id: 'how-mobile-works', title: 'PC上の会話を持ち歩く仕組み',
           html: `<p>Android PWAは、自分のPC／サーバーのKyaluluへ直接HTTPSで接続します。キャラ、履歴、記憶の正本とモデル推論は接続先にあり、スマホは操作画面です。1台のRuntimeを1人が管理し、自分の複数端末で同じデータを使います。端末登録は複数ユーザーの権限分離ではありません。</p><p>マネージドCloud、スマホ単体のLLM、接続先間の自動同期、Google Play配布を提供するものではありません。クラウドのモデルを選んでも、会話を持つPCが停止・スリープすれば使えません。ポート開放なしの中継方式を検討する場合は<a href="{{doc:remote}}">Remoteガイド</a>を読んでください。</p>`
@@ -158,6 +178,10 @@ Definition: Speak concisely in Japanese.
         }
       ],
       en: [
+        {
+          id: 'prepare-device', title: 'Prepare the PC, phone and connection route',
+          html: `<p><strong>This procedure connects an Android PWA to your own running PC. It is separate from PC-free Cloud access.</strong> If you want a route without a personal PC, first check <a href="{{doc:cloud}}">Cloud invitation requirements</a>.</p><p>Prepare a <a href="{{doc:quickstart}}">working Kyalulu setup</a>, an awake PC/server, Android Chrome, a reachable HTTPS address and a certificate the device trusts. Installing the PWA does not supply a server, authentication or model. Keep the PC running and back up existing data first.</p><p>If direct HTTPS network preparation is difficult, compare the <a href="{{doc:remote}}">Remote Host/Relay route</a>. It also requires a running PC.</p>`
+        },
         {
           id: 'how-mobile-works', title: 'Take your PC conversations with you',
           html: `<p>The Android PWA connects directly over HTTPS to Kyalulu on your own PC or server. That server owns the characters, history, and memories and runs model inference; the phone provides the interface. One person manages one Runtime and accesses the same data from their own devices. Pairing does not isolate multiple users.</p><p>This does not provide managed Cloud, phone-only LLM execution, automatic synchronization between servers, or Google Play distribution. Even with an external cloud model, the PC holding your conversations must remain awake and online. For relay access without inbound port forwarding, see the <a href="{{doc:remote}}">Remote guide</a>.</p>`
@@ -313,7 +337,7 @@ curl.exe http://127.0.0.1:8000/api/library</code></pre><p>Streaming generation u
     slug: 'characterbench',
     group: 'build',
     icon: '🧪',
-    title: { ja: 'CharacterBenchで何を測れるか', en: 'What CharacterBench measures' },
+    title: { ja: 'Kyalulu CharacterBench：日本語キャラAI評価と限界', en: 'Kyalulu CharacterBench: Japanese character AI evaluation and limits' },
     description: {
       ja: '12キャラ・264応答の固定パイロットで、機械採点とキャラ品質を分けて比較する。',
       en: 'Use a fixed 12-character, 264-response pilot while separating mechanical checks from character quality.'
@@ -329,6 +353,10 @@ curl.exe http://127.0.0.1:8000/api/library</code></pre><p>Streaming generation u
     ],
     sections: {
       ja: [
+        {
+          id: 'name-and-scope', title: '同名のthu-coai CharacterBenchとは別プロジェクト',
+          html: `<p><strong>この記事はKyalulu CharacterBench（KCB）を説明します。</strong><a href="https://arxiv.org/abs/2412.11912">thu-coaiのCharacterBench（AAAI 2025、arXiv:2412.11912）</a>とは別プロジェクトで、関係はありません。同じ名称でも、データ、評価手順、スコア、ランキングを共通のものとして扱いません。</p><p>KCBの応答数は実行計画の規模であり、測定結果ではありません。このガイドは新たな実測値やモデル順位を掲載せず、再現手順と採点上の限界を説明します。</p>`
+        },
         {
           id: 'two-benchmark-tracks', title: '本体ベンチとは別の評価系',
           html: `<p>CharacterBench v0.1は、日本語キャラクターAIを比較する独立したMITライセンスの工学パイロットです。12人のオリジナル成人架空キャラ、120単発プローブと12本の12ターン対話から、モデルごと・1反復あたり264応答を生成します。公開合成データの固定問題集であり、人間によって妥当性を検証したモデルランキングではありません。</p><p>benchmarks/officialはKyalulu Runtimeの状態、記憶、保存、共通プロンプトなどを使う別トラックです。CharacterBenchのCoreとSystemも混ぜません。同梱System bridgeは参考セッションアダプターで、実際のKyaluluアプリとの統合ではありません。MITはこのサブディレクトリのコードと新作コーパスに適用され、本体のAGPLを変更しません。</p>`
@@ -351,6 +379,10 @@ python -m kcb demo --out runs/my-demo</code></pre><p>planはネットワーク�
         }
       ],
       en: [
+        {
+          id: 'name-and-scope', title: 'Separate from thu-coai CharacterBench',
+          html: `<p><strong>This article covers Kyalulu CharacterBench (KCB).</strong> It is a separate project with no relation to <a href="https://arxiv.org/abs/2412.11912">thu-coai CharacterBench (AAAI 2025, arXiv:2412.11912)</a>. The shared name does not make their data, protocols, scores or rankings interchangeable.</p><p>KCB response counts describe the execution plan, not measured results. This guide explains reproducible procedures and scoring limits without presenting new measurements or model rankings.</p>`
+        },
         {
           id: 'two-benchmark-tracks', title: 'Separate from the Runtime benchmark',
           html: `<p>CharacterBench v0.1 is an independent MIT-licensed engineering pilot for Japanese character AI. Twelve original adult fictional characters, 120 single-turn probes, and twelve 12-turn dialogues produce 264 responses per model per repeat. It is a fixed public synthetic corpus, not a human-validated model leaderboard.</p><p>benchmarks/official is a separate track using Kyalulu Runtime state, memory, persistence, and shared prompts. CharacterBench Core and System tracks must also remain separate. The bundled System bridge is a reference session adapter, not integration with the actual Kyalulu app. MIT applies to this subdirectory's code and newly authored corpus; it does not change the main repository's AGPL license.</p>`

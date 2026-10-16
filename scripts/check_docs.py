@@ -176,6 +176,20 @@ def check() -> dict:
     assert 'noindex' in (OUTPUT / '404.html').read_text(encoding='utf-8')
     assert '/docs/' in (OUTPUT / 'index.html').read_text(encoding='utf-8')
     assert '/docs/en/' in (OUTPUT / 'en/index.html').read_text(encoding='utf-8')
+    analytics = json.loads((ROOT / 'packages/analytics/config.json').read_text(encoding='utf-8'))
+    assert (OUTPUT / 'analytics-core.js').read_bytes() == (ROOT / 'packages/analytics/analytics.js').read_bytes()
+    for url in ['/', '/en/', *manifest['pages']]:
+        html = (OUTPUT / url.lstrip('/') / 'index.html').read_text(encoding='utf-8')
+        page = Page(html)
+        assert page.select('meta', name='kyalulu-ga4')[0]['content'] == analytics['measurementId']
+        assert page.select('script', src='/analytics.js')[0]['type'] == 'module'
+        assert 'p-launch' not in html and 'waitlist-form' not in html
+        for image in page.select('img'):
+            if '/assets/docs-examples/' in image.get('src', ''):
+                assert image['width'] == '960' and image['height'] == '720' and image.get('alt')
+                assert image.get('loading') == 'lazy'
+                assert (OUTPUT / image['src'].lstrip('/')).is_file()
+    assert '/docs/cloud/' in manifest['pages'] and '/docs/en/cloud/' in manifest['pages']
     assert not (OUTPUT / 'docs/content').exists(), 'Authored source must not be copied into the public bundle'
     unsafe = [p for p in OUTPUT.rglob('*') if p.is_file() and (p.name.startswith('.env') or p.suffix in {'.pem', '.key', '.sqlite', '.db', '.map', '.mjs', '.py'})]
     assert not unsafe, f'Unexpected build contents: {unsafe}'

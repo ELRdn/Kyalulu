@@ -19,3 +19,7 @@ dialog{padding:0;border:1px solid var(--line);border-radius:14px;background:var(
 @media(max-width:850px){.header-actions .search-trigger,.theme-button{min-width:40px;min-height:40px}.language{min-width:32px;min-height:40px;display:grid;place-items:center}}
 @media(max-width:540px){.answer-summary{padding:15px 17px}.answer-summary ul{font-size:12px}}
 @media(max-width:360px){.brand-divider,.brand-docs{display:none}}
+
+.article-section figure { margin: 24px 0; }
+.article-section figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 12px; }
+.article-section figcaption { margin-top: 10px; font-size: .85rem; line-height: 1.7; }
