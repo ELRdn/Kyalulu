@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import essentials from '../apps/landing/docs/content/essentials.mjs';
 import userGuides from '../apps/landing/docs/content/user-guides.mjs';
 import advancedGuides from '../apps/landing/docs/content/advanced-guides.mjs';
+import cloudGuides from '../apps/landing/docs/content/cloud-guide.mjs';
 import answers from '../apps/landing/docs/content/answers.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -12,9 +13,12 @@ const landing = path.join(root, 'apps/landing');
 const output = path.join(root, '.artifacts/landing-site');
 const manifest = JSON.parse(await readFile(path.join(landing, 'docs/content/sources.json'), 'utf8'));
 const origin = 'https://kyalulu.com';
-const order = ['overview', 'quickstart', 'models', 'characters', 'imports', 'memory', 'worlds', 'mobile', 'remote', 'development', 'characterbench', 'compatibility', 'privacy', 'troubleshooting', 'faq', 'release-status'];
-const articles = [...essentials, ...userGuides, ...advancedGuides].sort((a, b) => order.indexOf(a.slug) - order.indexOf(b.slug));
-const articleIcons = { overview: 'spark', quickstart: 'arrow', models: 'code', characters: 'heart', imports: 'book', memory: 'spark', worlds: 'heart', mobile: 'phone', remote: 'phone', development: 'code', characterbench: 'code', compatibility: 'file', privacy: 'file', troubleshooting: 'tool', faq: 'question', 'release-status': 'file' };
+const analytics = JSON.parse(await readFile(path.join(root, 'packages/analytics/config.json'), 'utf8'));
+if (!/^G-[A-Z0-9]{4,20}$/.test(analytics.measurementId)) throw new Error('Invalid public GA4 measurement ID');
+const analyticsHead = `<meta name="kyalulu-ga4" content="${analytics.measurementId}"><link rel="stylesheet" href="/analytics.css"><script type="module" src="/analytics.js"></script>`;
+const order = ['overview', 'quickstart', 'cloud', 'models', 'characters', 'imports', 'memory', 'worlds', 'mobile', 'remote', 'development', 'characterbench', 'compatibility', 'privacy', 'troubleshooting', 'faq', 'release-status'];
+const articles = [...essentials, ...userGuides, ...advancedGuides, ...cloudGuides].sort((a, b) => order.indexOf(a.slug) - order.indexOf(b.slug));
+const articleIcons = { overview: 'spark', quickstart: 'arrow', cloud: 'phone', models: 'code', characters: 'heart', imports: 'book', memory: 'spark', worlds: 'heart', mobile: 'phone', remote: 'phone', development: 'code', characterbench: 'code', compatibility: 'file', privacy: 'file', troubleshooting: 'tool', faq: 'question', 'release-status': 'file' };
 for (const article of articles) article.icon = articleIcons[article.slug];
 const escape = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const plain = html => html.replace(/<[^>]*>/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
@@ -57,7 +61,16 @@ for (const article of articles) {
     const ids = article.sections[lang].map(s => s.id);
     if (ids.some(id => !/^[a-z][a-z0-9-]*$/.test(id)) || new Set(ids).size !== ids.length) throw new Error(`Invalid section IDs: ${article.slug}`);
     for (const s of article.sections[lang]) {
-      if (/<\s*(script|iframe|style|img|h1|h2)\b|\son[a-z]+\s*=|\sstyle\s*=|(?:javascript|data):/i.test(s.html)) throw new Error(`Unsafe article markup: ${article.slug}/${s.id}`);
+      for (const image of s.html.matchAll(/<img\b([^>]*)>/gi)) {
+        const attrs = [...image[1].matchAll(/([a-z-]+)="([^"]*)"/g)];
+        const values = Object.fromEntries(attrs.map(m => [m[1], m[2]]));
+        const residue = image[1].replace(/([a-z-]+)="([^"]*)"/g, '').trim();
+        if (residue || attrs.length !== Object.keys(values).length || attrs.some(m => !['src', 'alt', 'width', 'height', 'loading'].includes(m[1]))
+            || !['/assets/docs-examples/setup.webp', '/assets/docs-examples/import.webp', '/assets/docs-examples/memory.webp'].includes(values.src)
+            || !values.alt || values.width !== '960' || values.height !== '720' || values.loading !== 'lazy') throw new Error(`Unreviewed article image: ${article.slug}/${s.id}`);
+        await readFile(path.join(landing, values.src.slice(1)));
+      }
+      if (/<\s*(script|iframe|style|h1|h2)\b|\son[a-z]+\s*=|\sstyle\s*=|(?:javascript|data):/i.test(s.html)) throw new Error(`Unsafe article markup: ${article.slug}/${s.id}`);
     }
   }
   if (article.sections.ja.map(s => s.id).join() !== article.sections.en.map(s => s.id).join()) throw new Error(`Section translation mismatch: ${article.slug}`);
@@ -96,7 +109,7 @@ function shell(lang, slug, title, description, content, toc, schema) {
 <link rel="canonical" href="${canonical}">
 <link rel="alternate" hreflang="ja" href="${origin}${route('ja', slug)}"><link rel="alternate" hreflang="en" href="${origin}${route('en', slug)}"><link rel="alternate" hreflang="x-default" href="${origin}${route('ja', slug)}">
 <meta property="og:type" content="${slug === 'index' ? 'website' : 'article'}"><meta property="og:title" content="${escape(title)} | Kyalulu Docs"><meta property="og:description" content="${escape(description)}"><meta property="og:url" content="${canonical}"><meta property="og:locale" content="${lang === 'ja' ? 'ja_JP' : 'en_US'}"><meta property="og:image" content="${origin}/assets/og.png"><meta property="og:image:alt" content="Kyalulu — Local-first Character AI"><meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="/assets/favicon.png"><link rel="stylesheet" href="/docs/assets/docs.css"><script src="/docs/assets/docs.js" defer></script>
+${analyticsHead}<link rel="icon" href="/assets/favicon.png"><link rel="stylesheet" href="/docs/assets/docs.css"><script src="/docs/assets/docs.js" defer></script>
 <script type="application/ld+json">${json}</script>
 </head><body data-language="${lang}" data-search-index="${route(lang)}search-index.json" data-no-results="${escape(w.noResults)}" data-load-error="${escape(w.loadError)}" data-results-label="${escape(w.results)}" data-copy="${escape(w.copy)}" data-copied="${escape(w.copied)}">
 <a class="skip-link" href="#main">${lang === 'ja' ? '本文へスキップ' : 'Skip to content'}</a>
@@ -152,7 +165,12 @@ function articlePage(lang, article, index) {
 
 const schemaHashes = new Map();
 await mkdir(output, { recursive: true });
-for (const file of ['index.html', 'en', 'style.css', 'main.js', 'assets']) await cp(path.join(landing, file), path.join(output, file), { recursive: true });
+for (const file of ['index.html', 'en', 'style.css', 'main.js', 'assets', 'analytics.js', 'analytics.css']) await cp(path.join(landing, file), path.join(output, file), { recursive: true });
+await cp(path.join(root, 'packages/analytics/analytics.js'), path.join(output, 'analytics-core.js'));
+for (const file of ['index.html', 'en/index.html']) {
+  const target = path.join(output, file);
+  await writeFile(target, (await readFile(target, 'utf8')).replace('</head>', analyticsHead + '\n</head>'));
+}
 await mkdir(path.join(output, 'docs/assets'), { recursive: true });
 for (const file of ['docs.css', 'docs.js']) await cp(path.join(landing, 'docs', file), path.join(output, 'docs/assets', file));
 const pages = [];
@@ -195,7 +213,7 @@ function readable(html, lang) {
 }
 await writeFile(path.join(output, 'docs/llms-full.txt'), `# Kyalulu documentation\n\nPublic source: https://github.com/${manifest.repository}/tree/${manifest.commit}\nReviewed: ${manifest.reviewed}. Implementation is separate from release acceptance. Canonical HTML pages are the primary sources.\n\n${['ja', 'en'].flatMap(lang => articles.map(a => `## ${a.title[lang]}\n\nCanonical: ${origin}${route(lang, a.slug)}\nLanguage: ${lang}\n\n${answers[a.slug][lang].map(text => `- ${text}`).join('\n')}\n\n${a.sections[lang].map(s => `### ${s.title}\n\n${readable(s.html, lang)}`).join('\n\n')}\n\nSources:\n${a.sources.map(s => `- https://github.com/${manifest.repository}/blob/${manifest.commit}/${s}`).join('\n')}`)).join('\n\n---\n\n')}\n`);
 await writeFile(path.join(output, '_redirects'), pages.map(p => `${p.slice(0, -1)} ${p} 301\n${p}index.html ${p} 301`).join('\n') + '\n');
-const csp = hash => `default-src 'none'; script-src 'self' ${hash}; style-src 'self'; img-src 'self'; connect-src 'self'; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'; object-src 'none'`;
+const csp = hash => `default-src 'none'; script-src 'self' ${hash} https://www.googletagmanager.com; style-src 'self'; img-src 'self'; connect-src 'self' https://www.googletagmanager.com https://www.google-analytics.com https://region1.google-analytics.com; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'; object-src 'none'`;
 await writeFile(path.join(output, '_headers'), `/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n  Permissions-Policy: camera=(), microphone=(), geolocation=()\n/docs/*\n  Cache-Control: no-cache\n/docs/assets/*\n  Cache-Control: public, max-age=3600\n/llms.txt\n  Content-Type: text/plain; charset=utf-8\n  X-Robots-Tag: noindex\n/docs/llms-full.txt\n  Content-Type: text/plain; charset=utf-8\n  X-Robots-Tag: noindex\n${[...schemaHashes].map(([url, hash]) => `${url}\n  Content-Security-Policy: ${csp(hash)}`).join('\n')}\n`);
 await writeFile(path.join(output, '404.html'), `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>ページが見つかりません | Kyalulu</title><link rel="stylesheet" href="/docs/assets/docs.css"></head><body><main class="not-found"><p class="eyebrow">404 · KYALULU</p><h1>ページが見つかりません</h1><p>URLが変わったか、まだ公開されていないページです。</p><a href="/docs/">ドキュメントへ →</a><p lang="en">Page not found. <a href="/docs/en/">Browse the English documentation.</a></p></main></body></html>\n`);
 await writeFile(path.join(output, 'docs/build-manifest.json'), JSON.stringify({ origin, sourceCommit: manifest.commit, reviewed: manifest.reviewed, pages, articleCount: articles.length, languages: ['ja', 'en'] }, null, 2) + '\n');

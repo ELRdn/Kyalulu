@@ -1,19 +1,19 @@
 <!doctype html>
-<html lang="en" data-phase="alpha" class="no-js">
+<html lang="en" class="no-js">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Kyalulu — Local-first, open-source Character AI</title>
-<meta name="description" content="Kyalulu is local-first, open-source Character AI. Store characters, conversations and memories on your PC. Chat with local LLMs or optional external providers under their data terms.">
+<title>Kyalulu | Japanese character AI with local LLMs</title>
+<meta name="description" content="Chat with Japanese AI characters using local LLMs. Kyalulu is free, open-source software for characters, conversations and editable memory. Explore SillyTavern imports and phone-to-PC setup. Cloud public access is in preparation.">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Kyalulu — Local-first, open-source Character AI">
-<meta property="og:description" content="Kyalulu is local-first, open-source Character AI. Store characters, conversations and memories on your PC. Chat with local LLMs or optional external providers under their data terms.">
+<meta property="og:title" content="Kyalulu | Japanese character AI with local LLMs">
+<meta property="og:description" content="Chat with Japanese AI characters using local LLMs. Kyalulu is free, open-source software for characters, conversations and editable memory. Explore SillyTavern imports and phone-to-PC setup. Cloud public access is in preparation.">
 <meta property="og:url" content="https://kyalulu.com/en/">
 <meta property="og:image" content="https://kyalulu.com/assets/og.png">
 <meta property="og:locale" content="en_US">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Kyalulu — Local-first, open-source Character AI">
-<meta name="twitter:description" content="Kyalulu is local-first, open-source Character AI. Store characters, conversations and memories on your PC. Chat with local LLMs or optional external providers under their data terms.">
+<meta name="twitter:title" content="Kyalulu | Japanese character AI with local LLMs">
+<meta name="twitter:description" content="Chat with Japanese AI characters using local LLMs. Kyalulu is free, open-source software for characters, conversations and editable memory. Explore SillyTavern imports and phone-to-PC setup. Cloud public access is in preparation.">
 <meta name="twitter:image" content="https://kyalulu.com/assets/og.png">
 <meta name="theme-color" content="#15121D">
 <link rel="canonical" href="https://kyalulu.com/en/">
@@ -24,31 +24,17 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <noscript id="webfonts"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,600..800&family=Zen+Maru+Gothic:wght@700;900&display=swap"></noscript>
-<link rel="stylesheet" href="../style.css?v=6">
-<script defer src="../main.js?v=4"></script>
+<link rel="stylesheet" href="../style.css?v=7">
+<script defer src="../main.js?v=5"></script>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@graph": [
-    {"@type": "Organization","@id": "https://kyalulu.com/#contributors","name": "Kyalulu contributors","url": "https://kyalulu.com","sameAs": ["https://github.com/ELRdn/Kyalulu"]},
-    {"@type": "WebSite","@id": "https://kyalulu.com/#website","url": "https://kyalulu.com","name": "Kyalulu","inLanguage": ["ja","en"],"publisher": {"@id": "https://kyalulu.com/#contributors"}},
-    {"@type": "SoftwareApplication","@id": "https://kyalulu.com/#software","name": "Kyalulu","alternateName": "キャルル","url": "https://kyalulu.com","applicationCategory": "EntertainmentApplication","description": "A local-first, open-source Character AI runtime with local LLM connections and locally stored characters, conversations and memories. External model APIs are optional.","sameAs": ["https://github.com/ELRdn/Kyalulu"],"softwareHelp": {"@type": "CreativeWork","url": "https://kyalulu.com/docs/en/"}},
-    {"@type": "WebPage","@id": "https://kyalulu.com/en/#webpage","url": "https://kyalulu.com/en/","name": "Kyalulu — Local-first, open-source Character AI","description": "Kyalulu is local-first, open-source Character AI. Store characters, conversations and memories on your PC. Chat with local LLMs or optional external providers under their data terms.","inLanguage": "en","isPartOf": {"@id": "https://kyalulu.com/#website"},"mainEntity": {"@id": "https://kyalulu.com/#software"}},
-    {
-      "@type": "FAQPage",
-      "@id": "https://kyalulu.com/en/#faq",
-      "inLanguage": "en",
-      "isPartOf": {"@id": "https://kyalulu.com/en/#webpage"},
-      "about": {"@id": "https://kyalulu.com/#software"},
-      "mainEntity": [
-        {"@type": "Question","name": "Does my data leave my device with the local version?","acceptedAnswer": {"@type": "Answer","text": "The local version stores conversations, characters and memories on your PC. With only a local LLM, conversations are not sent to an external AI provider for generation. If you configure an external API, the data needed for a reply is sent to that provider and its data use and retention terms apply. External Hub searches and imports, and phone-to-PC connections, involve network traffic."}},
-        {"@type": "Question","name": "How is data handled in the cloud version?","acceptedAnswer": {"@type": "Answer","text": "The cloud version is in preparation. Check the terms of service and privacy policy at launch for storage locations, data sent to external AI providers, sync options and usage terms."}},
-        {"@type": "Question","name": "Does the local version restrict content?","acceptedAnswer": {"@type": "Answer","text": "The local version runs inside your own device. As long as you use a local model, your roleplay is not sent to an external server (if you configure an external API yourself, that API's terms apply). Which model you use and which stories you write are your own decisions."}},
-        {"@type": "Question","name": "Is it free?","acceptedAnswer": {"@type": "Answer","text": "The local version is free, open-source software under AGPL-3.0. External API usage is subject to each provider's pricing. Cloud pricing and terms will be announced at launch."}},
-        {"@type": "Question","name": "What kind of PC do I need?","acceptedAnswer": {"@type": "Answer","text": "It depends on the model. Lighter models run on a typical gaming PC, and bigger models need more power. If you're unsure your PC can handle it, wait for the cloud version."}},
-        {"@type": "Question","name": "Can I use it right now?","acceptedAnswer": {"@type": "Answer","text": "An alpha is available on GitHub. Setup follows the README. The phone PWA currently connects to Kyalulu running on your PC. A friendlier distribution is in preparation."}}
-      ]
-    }
+    {"@type":"Organization","@id":"https://kyalulu.com/#contributors","name":"Kyalulu contributors","url":"https://kyalulu.com","sameAs":["https://github.com/ELRdn/Kyalulu"]},
+    {"@type":"WebSite","@id":"https://kyalulu.com/#website","url":"https://kyalulu.com","name":"Kyalulu","inLanguage":["ja","en"],"publisher":{"@id":"https://kyalulu.com/#contributors"}},
+    {"@type":"SoftwareApplication","@id":"https://kyalulu.com/#software","name":"Kyalulu","alternateName":"キャルル","url":"https://kyalulu.com","applicationCategory":"EntertainmentApplication","description":"A local-first, open-source Character AI runtime with local LLM connections and locally stored characters, conversations and memories. External model APIs are optional.","sameAs":["https://github.com/ELRdn/Kyalulu"],"softwareHelp":{"@type":"CreativeWork","url":"https://kyalulu.com/docs/en/"}},
+    {"@type":"WebPage","@id":"https://kyalulu.com/en/#webpage","url":"https://kyalulu.com/en/","name":"Kyalulu | Japanese character AI with local LLMs","description":"Chat with Japanese AI characters using local LLMs. Kyalulu is free, open-source software for characters, conversations and editable memory. Explore SillyTavern imports and phone-to-PC setup. Cloud public access is in preparation.","inLanguage":"en","isPartOf":{"@id":"https://kyalulu.com/#website"},"mainEntity":{"@id":"https://kyalulu.com/#software"}},
+    {"@type":"FAQPage","@id":"https://kyalulu.com/en/#faq","inLanguage":"en","isPartOf":{"@id":"https://kyalulu.com/en/#webpage"},"about":{"@id":"https://kyalulu.com/#software"},"mainEntity":[{"@type":"Question","name":"Does my data leave my device with the local version?","acceptedAnswer":{"@type":"Answer","text":"The local version stores conversations, characters and memories on your PC. With only a local LLM, conversations are not sent to an external AI provider for generation. If you configure an external API, the data needed for a reply is sent to that provider and its data use and retention terms apply. External Hub searches and imports, and phone-to-PC connections, involve network traffic."}},{"@type":"Question","name":"How is data handled in the cloud version?","acceptedAnswer":{"@type":"Answer","text":"Cloud is currently an owner-only private test. Conversations, settings and memory are stored on the operated server and necessary data is sent to the selected AI provider. Retention and training conditions differ by route. External content safety screening is disabled; public registration terms are still pending."}},{"@type":"Question","name":"Does the local version restrict content?","acceptedAnswer":{"@type":"Answer","text":"The local version runs inside your own device. As long as you use a local model, your roleplay is not sent to an external server (if you configure an external API yourself, that API's terms apply). Which model you use and which stories you write are your own decisions."}},{"@type":"Question","name":"Is it free?","acceptedAnswer":{"@type":"Answer","text":"The local version is free, open-source software under AGPL-3.0. External API usage is subject to each provider's pricing. Cloud pricing and terms will be announced at launch."}},{"@type":"Question","name":"What kind of PC do I need?","acceptedAnswer":{"@type":"Answer","text":"It depends on the model. Lighter models run on a typical gaming PC, and bigger models need more power. If you're unsure your PC can handle it, wait for the cloud version."}},{"@type":"Question","name":"Can I use it right now?","acceptedAnswer":{"@type":"Answer","text":"An alpha is available on GitHub. Setup follows the README. The phone PWA currently connects to Kyalulu running on your PC. A friendlier distribution is in preparation."}}]}
   ]
 }
 </script>
@@ -82,14 +68,14 @@
   <div class="aurora" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
   <div class="hero-copy">
     <p class="eyebrow rv">✦ Local-first · Open-source Character AI</p>
-    <h1 class="split"><em>Kyalulu</em><br> Local-first<br class="br-sm"> Character AI</h1>
-    <p class="lead rv"><strong>Your character remembers.</strong></p>
+    <h1 class="split"><em>Kyalulu</em><br> Japanese character AI<br class="br-sm"> with local LLMs</h1>
+    <p class="lead rv"><strong>Your characters, conversations and memory stay yours.</strong></p>
     <p class="lead rv">Kyalulu is local-first, open-source Character AI. Keep characters, conversations and memories on your PC, and continue your stories with local LLMs. External providers are optional; using them sends the data needed for a reply to that provider.</p>
     <div class="cta-row rv">
-      <a class="btn btn-dark" href="https://github.com/ELRdn/Kyalulu" rel="noopener">
-        <span class="p-alpha">Try it on GitHub (alpha)</span><span class="p-launch">Install with npm (beta)</span>
+      <a class="btn btn-dark" href="/docs/en/quickstart/">
+        <span>Read the local setup guide</span>
       </a>
-      <a class="btn btn-light" href="#waitlist">Get notified about the cloud version</a>
+      <a class="btn btn-light" href="/docs/en/cloud/">Check Cloud launch preparation</a>
     </div>
     <p class="note rv">The local version is free, open-source software (AGPL-3.0). A cloud version for people who can't run AI locally is in the works.</p>
   </div>
@@ -173,7 +159,7 @@
             <li>Conversations can optionally sync to a server (you can turn it off anytime)</li>
             <li>A minimum set of safety standards is planned to keep the service safe to operate</li>
           </ul>
-          <p class="small">Pricing and terms will be announced at launch. Cloud content is limited to all-ages (SFW). It opens once operations are ready.</p>
+          <p class="small">Pricing and terms will be announced at launch. Cloud content is SFW; account access requires age 18 or over. It opens once operations are ready.</p>
         </article>
       </div>
     </div>
@@ -244,16 +230,16 @@
 <section class="panel steps" id="start">
   <div class="wrap">
     <div class="sec-head">
-      <p class="eyebrow rv">✦ Get started <span class="tag p-alpha">Alpha</span></p>
+      <p class="eyebrow rv">✦ Get started <span class="tag">Alpha</span></p>
       <h2 class="split">Three steps to meet them.</h2>
-      <p class="p-alpha rv">The alpha is installed from GitHub, and the steps lean toward developers. A friendlier distribution is in preparation.</p>
-      <p class="p-launch rv">Install the local beta with npm (Node.js 22+), or start in the browser with the all-ages cloud version. Available once distribution and service checks are complete.</p>
+      <p class="rv">The alpha is installed from GitHub, and the steps lean toward developers. A friendlier distribution is in preparation.</p>
+
     </div>
     <ol>
       <li class="rv">
-        <h3 class="p-alpha">Get the repository</h3><h3 class="p-launch">Install with npm (beta)</h3>
-        <p class="p-alpha">Fetch the code from GitHub and follow the README's quick start.<br><code>git clone https://github.com/ELRdn/Kyalulu.git</code></p>
-        <p class="p-launch">On Windows 11 x64 or macOS Apple Silicon with Node.js 22+, run <code>npx kyalulu</code>. Packages are published after verification.</p>
+        <h3 >Get the repository</h3>
+        <p >Fetch the code from GitHub and follow the README's quick start.<br><code>git clone https://github.com/ELRdn/Kyalulu.git</code></p>
+
       </li>
       <li class="rv">
         <h3>Install the local engine</h3>
@@ -266,7 +252,7 @@
     </ol>
     <div class="cta-row rv">
       <a class="btn btn-light" href="https://github.com/ELRdn/Kyalulu" rel="noopener">★ Star on GitHub</a>
-      <a class="btn btn-ghost-dark" href="#waitlist">No PC? See the cloud version</a>
+      <a class="btn btn-ghost-dark" href="/docs/en/cloud/">No PC? Check Cloud preparation</a>
     </div>
   </div>
 </section>
@@ -276,19 +262,8 @@
     <div>
       <p class="eyebrow rv">✦ Cloud · Coming soon</p>
       <h2 class="split">Meet them, even without a powerful PC.</h2>
-      <p class="rv">We're preparing an all-ages cloud version you can use from a browser or phone, even when your PC is off. Be the first to know when it opens.</p>
-      <form id="waitlist-form" class="rv" data-endpoint="" data-closed="Sign-ups are not open yet. Please check back soon." data-ok="You're on the list. We'll let you know at launch." data-error="Couldn't send. Please try again in a moment." data-invalid="Please check your email address." data-consent="Please tick the consent box." novalidate>
-        <div class="field">
-          <input type="email" name="email" placeholder="Email address" autocomplete="email" required aria-label="Email address">
-          <button class="btn btn-dark" type="submit">Notify me</button>
-        </div>
-        <label class="consent"><input type="checkbox" name="consent" required><span>I agree that my email will be used only to send the launch announcement. (A privacy policy will be published at launch.)</span></label>
-        <p class="status" role="status" aria-live="polite"></p>
-        <div class="wl-fallback">
-          <p>Email sign-ups open soon. Until then, use "Watch → Releases" on GitHub to get update notifications.</p>
-          <a class="btn btn-dark" href="https://github.com/ELRdn/Kyalulu" rel="noopener">Get updates on GitHub</a>
-        </div>
-      </form>
+      <p class="rv">Cloud runs independently of your PC. It is currently a private owner-only test, not open registration. A free beta for ten adults aged 18 or over is planned after funding, terms and operational acceptance. Cloud content is SFW.</p>
+      <p class="rv">Email waitlist registration is not available. Check launch status or start with the available local version.</p><div class="cta-row rv"><a class="btn btn-dark" href="/docs/en/cloud/">Cloud status and requirements</a><a class="btn btn-ghost-dark" href="/docs/en/quickstart/">Start with the local version</a></div>
     </div>
     <div class="wait-art" aria-hidden="true">
       <svg class="wait-moon" viewBox="0 0 100 100"><path d="M62 8A44 44 0 1 0 92 70 36 36 0 1 1 62 8Z"/></svg>
@@ -304,7 +279,7 @@
     <div class="faq-art" aria-hidden="true"><span>?</span><img src="../assets/mascot/face-curious-320.webp" srcset="../assets/mascot/face-curious-160.webp 160w, ../assets/mascot/face-curious-320.webp 320w, ../assets/mascot/face-curious.webp 560w" sizes="260px" alt="" width="560" height="560" loading="lazy"></div>
     <div class="list rv">
       <details><summary>Does my data leave my device with the local version?</summary><p>The local version stores conversations, characters and memories on your PC. With only a local LLM, conversations are not sent to an external AI provider for generation. If you configure an external API, the data needed for a reply is sent to that provider and its data use and retention terms apply. External Hub searches and imports, and phone-to-PC connections, involve network traffic.</p></details>
-      <details><summary>How is data handled in the cloud version?</summary><p>The cloud version is in preparation. Check the terms of service and privacy policy at launch for storage locations, data sent to external AI providers, sync options and usage terms.</p></details>
+      <details><summary>How is data handled in the cloud version?</summary><p>Cloud is currently an owner-only private test. Conversations, settings and memory are stored on the operated server and necessary data is sent to the selected AI provider. Retention and training conditions differ by route. External content safety screening is disabled; public registration terms are still pending.</p></details>
       <details><summary>Does the local version restrict content?</summary><p>The local version runs inside your own device. As long as you use a local model, your roleplay is not sent to an external server (if you configure an external API yourself, that API's terms apply). Which model you use and which stories you write are your own decisions.</p></details>
       <details><summary>Is it free?</summary><p>The local version is free, open-source software under AGPL-3.0. External API usage is subject to each provider's pricing. Cloud pricing and terms will be announced at launch.</p></details>
       <details><summary>What kind of PC do I need?</summary><p>It depends on the model. Lighter models run on a typical gaming PC, and bigger models need more power. If you're unsure your PC can handle it, wait for the cloud version.</p></details>
@@ -329,11 +304,11 @@
     <nav aria-label="Footer">
       <a href="/docs/en/">Documentation</a>
       <a href="https://github.com/ELRdn/Kyalulu" rel="noopener">GitHub</a>
-      <a href="https://github.com/ELRdn/Kyalulu/tree/main/benchmarks/characterbench" rel="noopener">CharacterBench</a>
+      <a href="https://github.com/ELRdn/Kyalulu/tree/main/benchmarks/characterbench" rel="noopener">Kyalulu CharacterBench</a>
       <a href="https://github.com/ELRdn/Kyalulu/blob/main/docs/ROADMAP.md" rel="noopener">Roadmap</a>
       <a href="../" hreflang="ja" lang="ja">日本語</a>
     </nav>
-    <p class="fine">The local version is free and open source. The all-ages cloud version and an easy installer are in preparation.</p>
+    <p class="fine">The local version is free and open source. Cloud public registration and an easy installer are in preparation.</p>
     <p class="fine">© Kyalulu contributors · AGPL-3.0</p>
     <img class="foot-guide" src="../assets/mascot/guide-320.webp" srcset="../assets/mascot/guide-160.webp 160w, ../assets/mascot/guide-320.webp 320w, ../assets/mascot/guide.webp 560w" sizes="(max-width: 900px) 140px, 320px" alt="" width="560" height="560" loading="lazy">
   </div>

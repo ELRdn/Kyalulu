@@ -6,10 +6,10 @@ export default [
     slug: 'quickstart',
     group: 'start',
     icon: 'rocket',
-    title: { ja: 'はじめてのKyalulu', en: 'Getting started with Kyalulu' },
+    title: { ja: 'Kyaluluのローカル導入：Mock Echoで起動確認', en: 'Kyalulu local setup: start with Mock Echo' },
     description: {
-      ja: '公開ソースからAPIとWebを起動し、Mock Echoで確認してから推論エンジンを接続します。',
-      en: 'Run the API and web app from public source, check the setup with Mock Echo, then connect an inference engine.',
+      ja: 'Python・uv・Node.js・pnpmを用意し、公開ソースからAPIとWebを起動。モデルやAPIキー不要のMock Echoで接続と履歴保存を確認します。',
+      en: 'Prepare Python, uv, Node.js and pnpm, then run the API and web app from public source. Check connectivity and saved history with Mock Echo, without a model or API key.',
     },
     keywords: {
       ja: ['導入', '起動', 'クイックスタート', 'uv', 'pnpm', 'Mock Echo', 'Desktop'],
@@ -22,8 +22,8 @@ export default [
         {
           id: 'before-you-start',
           title: '用意するもの',
-          html: `<p>Kyaluluはキャラクター、会話、記憶を管理するアプリです。文章を生成するモデルは別の推論エンジンで動かします。まずはモデル不要のMock Echoで画面と保存を確認し、その後にエンジンを接続すると、起動の問題とモデルの問題を切り分けられます。</p>
-<ul><li>Python 3.11以上、uv 0.12以上。</li><li>Node.js 20以上、pnpm 10以上。公開workspaceの指定はpnpm 10.30.1です。</li><li>Gitと、依存パッケージを取得できるネットワーク。</li></ul>
+          html: `<p><strong>ローカル版は公開ソースから起動し、Mock Echoならモデル・APIキーなしで接続と履歴保存を確認できます。</strong>Cloudの本人限定の試験とは別の導入経路です。PC不要の経路を探している場合は、先に<a href="{{doc:cloud}}">Cloudの提供条件</a>を確認してください。</p><p>Kyaluluはキャラクター、会話、記憶を管理するアプリです。文章を生成するモデルは別の推論エンジンで動かします。まずはモデル不要のMock Echoで画面と保存を確認し、その後にエンジンを接続すると、起動の問題とモデルの問題を切り分けられます。</p>
+<ul><li>Python 3.11以上、uv 0.12以上。</li><li>Node.js 20以上、pnpm 10以上。公開workspaceの指定はpnpm 10.30.1です。</li><li>Gitと、依存パッケージを取得できるネットワーク。</li><li>書き込み可能な作業フォルダーと空きディスク。実モデル用の重み・RAM／VRAMはこのMock確認とは別に用意します。</li></ul>
 <aside class="callout"><p>この手順は2026年10月5日に確認した公開コミットを基にした<strong>ソースからの開発起動</strong>です。npm配布版やCloudサービスの公開・動作保証を示すものではありません。公開資料は<a href="https://github.com/ELRdn/Kyalulu/tree/eea271beb3eef9211f8b588db331daf2761ba3e2">確認済みのソースツリー</a>で参照できます。今後のmainでは手順が変わる可能性があります。</p></aside>`,
         },
         {
@@ -64,7 +64,7 @@ pnpm install --frozen-lockfile</code></pre>
         {
           id: 'check-with-mock',
           title: 'Mock Echoで最初の会話を確認する',
-          html: `<ol><li>新しい会話を開き、モデルとして<strong>Mock Echo</strong>を明示的に選びます。</li><li>「こんにちは。これは起動確認です」と送信します。</li><li>入力を反映したダミーの返事が表示され、履歴が残ることを確認します。</li><li>別の画面へ移動して会話を開き直し、必要なら再読み込みして履歴を確認します。</li></ol>
+          html: `<figure><img src="/assets/docs-examples/setup.webp" width="960" height="720" loading="lazy" alt="Mock・架空データによる起動確認画面の説明図"><figcaption>Mock／架空データの説明用画面。実サービスの画面キャプチャ、実モデルの応答、性能測定ではありません。</figcaption></figure><ol><li>新しい会話を開き、モデルとして<strong>Mock Echo</strong>を明示的に選びます。</li><li>「こんにちは。これは起動確認です」と送信します。</li><li>入力を反映したダミーの返事が表示され、履歴が残ることを確認します。</li><li>別の画面へ移動して会話を開き直し、必要なら再読み込みして履歴を確認します。</li></ol>
 <p>期待する結果は、画面・API・保存がつながり、送信した内容に対応する返事が見えることです。Mockの文章はキャラクター品質や実モデルの速度の評価には使えません。モデル一覧が空ならAPIの起動ログとYAMLレジストリ同期を確認し、一覧にモデルがあっても準備完了とは考えないでください。</p>
 <p>接続診断はStatusから確認できます。APIの<code>GET /api/models</code>と<code>GET /api/providers/health</code>も切り分けに使えます。まずこの段階が安定してから、<a href="{{doc:characters}}">キャラクターの取り込み</a>へ進むと設定を確認しやすくなります。</p>`,
         },
@@ -81,8 +81,8 @@ pnpm install --frozen-lockfile</code></pre>
         {
           id: 'before-you-start',
           title: 'What you need',
-          html: `<p>Kyalulu manages characters, conversations, and memory. Models generate text through a separate inference engine. Start with Mock Echo, which needs no model, to check the interface and persistence. Connecting an engine afterward makes it easier to distinguish setup problems from model problems.</p>
-<ul><li>Python 3.11 or later and uv 0.12 or later.</li><li>Node.js 20 or later and pnpm 10 or later. The public workspace specifies pnpm 10.30.1.</li><li>Git and network access to download dependencies.</li></ul>
+          html: `<p><strong>Run the local version from public source. Mock Echo checks connectivity and saved history without a model or API key.</strong> This is separate from the Cloud private test. For a route without a personal PC, first check <a href="{{doc:cloud}}">Cloud availability and requirements</a>.</p><p>Kyalulu manages characters, conversations, and memory. Models generate text through a separate inference engine. Start with Mock Echo, which needs no model, to check the interface and persistence. Connecting an engine afterward makes it easier to distinguish setup problems from model problems.</p>
+<ul><li>Python 3.11 or later and uv 0.12 or later.</li><li>Node.js 20 or later and pnpm 10 or later. The public workspace specifies pnpm 10.30.1.</li><li>Git and network access to download dependencies.</li><li>A writable working folder and free disk space. Real-model weights and RAM/VRAM requirements are separate from this Mock check.</li></ul>
 <aside class="callout"><p>This guide describes a <strong>development setup from source</strong>, based on the public commit verified on October 5, 2026. It does not establish the availability or readiness of an npm distribution or Cloud service. See the <a href="https://github.com/ELRdn/Kyalulu/tree/eea271beb3eef9211f8b588db331daf2761ba3e2">verified source tree</a> for the public materials. Future changes to main may require different steps.</p></aside>`,
         },
         {
@@ -123,7 +123,7 @@ pnpm install --frozen-lockfile</code></pre>
         {
           id: 'check-with-mock',
           title: 'Check your first conversation with Mock Echo',
-          html: `<ol><li>Open a new conversation and explicitly select <strong>Mock Echo</strong> as the model.</li><li>Send “Hello. This is a setup check.”</li><li>Check that a dummy reply reflecting your input appears and the history is saved.</li><li>Navigate away and reopen the conversation; reload if needed to check persistence.</li></ol>
+          html: `<figure><img src="/assets/docs-examples/setup.webp" width="960" height="720" loading="lazy" alt="Illustrative Mock setup screen with fictional data"><figcaption>Mock / fictional data for illustration. This is not a live-service screenshot, real-model response or performance measurement.</figcaption></figure><ol><li>Open a new conversation and explicitly select <strong>Mock Echo</strong> as the model.</li><li>Send “Hello. This is a setup check.”</li><li>Check that a dummy reply reflecting your input appears and the history is saved.</li><li>Navigate away and reopen the conversation; reload if needed to check persistence.</li></ol>
 <p>The expected result is a working connection between the interface, API, and storage, with a reply corresponding to your input. Mock output cannot establish character quality or real-model speed. If the model list is empty, inspect API startup and YAML registry synchronization. A listed model does not necessarily mean it is ready to generate.</p>
 <p>Use Status for connection diagnostics. The API's <code>GET /api/models</code> and <code>GET /api/providers/health</code> endpoints can also help identify the problem. Once this stage works reliably, continue to <a href="{{doc:characters}}">Importing and editing characters</a>.</p>`,
         },
@@ -142,10 +142,10 @@ pnpm install --frozen-lockfile</code></pre>
     slug: 'models',
     group: 'start',
     icon: 'cpu',
-    title: { ja: 'モデルと接続先', en: 'Models and connections' },
+    title: { ja: 'Kyaluluのモデル接続：LE・LM Studio・Ollama', en: 'Connect Kyalulu models: LE, LM Studio and Ollama' },
     description: {
-      ja: 'LEのモデルID、直接接続のYAML、ローカルと外部APIの違いを確認します。',
-      en: 'Understand LE model IDs, YAML configuration for direct providers, and local versus external inference.',
+      ja: 'LE・LM Studio・OllamaとOpenAI互換APIを接続。必要なモデル・メモリ・認証、URLとYAMLの設定、表示と生成準備の違いを確認します。',
+      en: 'Connect LE, LM Studio, Ollama or an OpenAI-compatible API. Check model, memory and credential requirements, URL/YAML configuration and readiness beyond model listings.',
     },
     keywords: {
       ja: ['モデル', 'LE', 'LM Studio', 'Ollama', 'OpenAI互換', 'YAML', '接続診断'],
@@ -158,7 +158,9 @@ pnpm install --frozen-lockfile</code></pre>
         {
           id: 'choose-a-provider',
           title: 'アプリの保存とモデルの実行を分ける',
-          html: `<p>Kyaluluが持つのはキャラクター、人物像、世界観、会話状態、記憶などの保存データです。返事の計算は選んだProviderが担当します。LEを経由してもキャラクターの正本がLEへ移るわけではありません。モデルを変更すると文体や設定への従い方は変わりますが、モデルの登録だけで重みの準備や品質検証が済むこともありません。</p>
+          html: `<p><strong>モデル接続には、稼働中の実行エンジン・正確なモデルID・十分なRAM／VRAM、または外部APIの認証と利用枠が必要です。</strong>モデルの大きさ、量子化、文脈長、CPUへの退避で要件は変わり、全モデル共通の最低GPU容量や速度保証はありません。</p>
+<ol><li>実行先とモデルの配布条件・必要ディスクを確認します。</li><li>エンジンでモデルを用意し、利用可能なメモリに収まる設定でロードします。</li><li>Kyalulu側のURLとIDを合わせ、StatusでAPI・Provider・モデルの準備を別々に確認します。</li><li>利用する段階では短い会話から始め、最初の文字までと返信完了までの待ち時間、返事と状態更新を確認します。外部APIへの送信は費用が生じる場合があります。</li></ol>
+<p>Kyaluluが持つのはキャラクター、人物像、世界観、会話状態、記憶などの保存データです。返事の計算は選んだProviderが担当します。LEを経由してもキャラクターの正本がLEへ移るわけではありません。モデルを変更すると文体や設定への従い方は変わりますが、モデルの登録だけで重みの準備や品質検証が済むこともありません。</p>
 <table><thead><tr><th>接続方法</th><th>準備するもの</th></tr></thead><tbody><tr><td>Mock Echo</td><td>起動確認用。外部API・モデル不要。</td></tr><tr><td>LE</td><td>別プロセスのdaemonと、LE側で使えるモデル。</td></tr><tr><td>LM Studio／Ollama直結</td><td>ローカルサーバー、モデル、対応するYAML。</td></tr><tr><td>OpenAI互換</td><td>接続先のベースURL、必要なキー、対応モデルID。</td></tr></tbody></table>
 <p>初めてなら<a href="{{doc:quickstart}}">導入手順</a>のMock確認を先に終えましょう。外部サーバーを選ぶ場合、保存場所がローカルでも生成用の情報は送信されます。送信範囲は<a href="{{doc:privacy}}">プライバシー</a>で確認できます。</p>`,
         },
@@ -202,7 +204,9 @@ LLM_API_KEY=</code></pre>
         {
           id: 'choose-a-provider',
           title: 'Separate stored data from model execution',
-          html: `<p>Kyalulu owns stored characters, personas, worlds, conversation state, and memory. The selected provider performs generation. Routing through LE does not transfer ownership of the character's canonical data to LE. Changing models can change writing style and instruction following, but registering a model does not prepare its weights or establish its quality.</p>
+          html: `<p><strong>Model connections need a running inference engine, the correct model ID and enough RAM/VRAM, or external API credentials and usage allowance.</strong> Requirements vary with model size, quantization, context length and CPU offloading. There is no universal minimum GPU capacity or speed guarantee for all models.</p>
+<ol><li>Check the execution provider, model distribution terms and disk requirements.</li><li>Prepare and load the model in that engine with settings that fit available memory.</li><li>Match Kyalulu URLs and IDs, then check API, provider and model readiness separately in Status.</li><li>When ready to generate, start with a short conversation. Check time to first visible text, completion time, the reply and state update. External API sends may incur costs.</li></ol>
+<p>Kyalulu owns stored characters, personas, worlds, conversation state, and memory. The selected provider performs generation. Routing through LE does not transfer ownership of the character's canonical data to LE. Changing models can change writing style and instruction following, but registering a model does not prepare its weights or establish its quality.</p>
 <table><thead><tr><th>Connection</th><th>What to prepare</th></tr></thead><tbody><tr><td>Mock Echo</td><td>A setup check; no external API or model required.</td></tr><tr><td>LE</td><td>A separate daemon and a model available through LE.</td></tr><tr><td>Direct LM Studio / Ollama</td><td>A local server, a model, and a matching YAML definition.</td></tr><tr><td>OpenAI-compatible API</td><td>A base URL, any required key, and a supported model ID.</td></tr></tbody></table>
 <p>For your first setup, complete the Mock check in <a href="{{doc:quickstart}}">Getting started</a>. With an external server, generation inputs are transmitted even if your saved data stays local. See <a href="{{doc:privacy}}">Data and privacy</a> for the distinction.</p>`,
         },
@@ -336,10 +340,10 @@ Definition: Speak calmly in English. Do not invent details about unfamiliar book
     slug: 'memory',
     group: 'use',
     icon: 'brain',
-    title: { ja: '記憶を確認し、訂正する', en: 'Reviewing and correcting memory' },
+    title: { ja: 'Kyaluluの記憶：Memory Labの有効化・確認・訂正', en: 'Kyalulu memory: enable, inspect and correct Memory Lab' },
     description: {
-      ja: '初期オフの記憶機能を使い、共有範囲・確認待ち・検索と反映の限界を理解します。',
-      en: 'Enable optional memory and understand its scope, pending proposals, retrieval, and practical limits.',
+      ja: '初期オフのMemory Labを有効にし、記憶一覧で追加・訂正・削除。共有するキャラと人物像の版、確認待ち、保存と想起の限界を確認します。',
+      en: 'Enable Memory Lab, which is off by default, then add, correct or remove entries. Check shared character/persona revisions, pending proposals and storage versus recall limits.',
     },
     keywords: {
       ja: ['記憶', 'Memory Lab', '訂正', '確認待ち', '人物像', 'スコープ', 'Inspector'],
@@ -367,7 +371,9 @@ Definition: Speak calmly in English. Do not invent details about unfamiliar book
         {
           id: 'correct-and-remove-memories',
           title: '短く登録し、誤りを直接訂正する',
-          html: `<p>登録できる種類は「好み・事実」「出来事・約束」「関係」です。一項目に多くの情報を詰めず、誰のことか、何が事実かを短く書くと確認しやすくなります。</p>
+          html: `<figure><img src="/assets/docs-examples/memory.webp" width="960" height="720" loading="lazy" alt="Mock・架空の記憶による確認と訂正の説明図"><figcaption>Mock／架空の記憶による説明用画面。実会話の保存結果や、長期記憶の精度を示す測定ではありません。</figcaption></figure>
+<p><strong>訂正は記憶一覧の項目を直接編集して確認します。</strong>初めてなら架空の好みを1件手動登録し、訂正して一覧を開き直し、本文が更新されるか確かめます。次に「忘れる」で一覧から消えるか確認します。この操作確認だけなら実モデルへの送信は不要です。履歴や過去のバックアップからの消去とは別です。</p>
+<p>登録できる種類は「好み・事実」「出来事・約束」「関係」です。一項目に多くの情報を詰めず、誰のことか、何が事実かを短く書くと確認しやすくなります。</p>
 <table><thead><tr><th>種類</th><th>登録例</th></tr></thead><tbody><tr><td>好み・事実</td><td>旅人は辛い食べ物が苦手。</td></tr><tr><td>出来事・約束</td><td>旅人とリオは次の休日に書庫を整理する約束をした。</td></tr><tr><td>関係</td><td>旅人とリオは本を一緒に探す友人。</td></tr></tbody></table>
 <p>誤りを見つけたら一覧の「訂正」で本文を直し、不要なら「忘れる」でその記憶を削除します。根拠の薄いモデル提案は「確認待ち・会話には未使用」として残り、未訂正のままでは注入されません。正しい内容に直すか削除するかを判断してください。</p>
 <p>チャットで「それは違う」と返すだけでは保存項目が正しく直ったか判断できません。訂正後に一覧の本文を確認します。過去の会話文や書き出したバックアップまで消えるわけではないため、共有前にはそれらも確認しましょう。</p>`,
@@ -378,7 +384,7 @@ Definition: Speak calmly in English. Do not invent details about unfamiliar book
           html: `<p>「保存した」「検索候補になった」「プロンプトへ入った」「返事へ反映したと推定された」は別の段階です。ResearcherモードのMemory Inspectorでは、由来、時刻、版、候補、注入、推定量などを確認できます。保存があるのに思い出さない場合は、まず検索と注入を確認し、その後にモデルの返事を見ます。</p>
 <p>公開実装の検索は文字bigramを使う方式で、意味の理解や矛盾の自動解消を保証するものではありません。返事への反映も文字一致などによる推定です。重要な約束は一覧を直接確認し、架空の内容が混ざっていないか見直してください。</p>
 <aside class="callout warning"><p>公開の短期実モデル検証では、約束の未保存や虚偽想起が報告されています。Mockで長い会話を完走しても、長期記憶の正確さを保証しません。記憶は修正可能な補助情報として使い、完全な想起や忘却を前提にしないでください。</p></aside>
-<p>キャラの知識をあらかじめ定義するLoreは<a href="{{doc:characters}}">キャラクター設定</a>で管理します。全ガイドへは<a href="{{doc:index}}">ドキュメント一覧</a>から戻れます。</p>`,
+<p>キャラの知識をあらかじめ定義するLoreは<a href="{{doc:characters}}">キャラクター設定</a>で管理します。記憶が見つからない場合は共有するキャラ・人物像の版を再確認し、接続の問題は<a href="{{doc:troubleshooting}}">確認手順</a>へ進みます。Cloudでの送信先と同意は<a href="{{doc:cloud}}">Cloudガイド</a>で別途確認してください。</p>`,
         },
       ],
       en: [
@@ -400,7 +406,9 @@ Definition: Speak calmly in English. Do not invent details about unfamiliar book
         {
           id: 'correct-and-remove-memories',
           title: 'Write concise entries and correct errors directly',
-          html: `<p>Memory categories are preferences and facts, events and promises, and relationships. Keep each entry focused, with a clear subject and a short factual statement.</p>
+          html: `<figure><img src="/assets/docs-examples/memory.webp" width="960" height="720" loading="lazy" alt="Illustrative Mock memory inspection and correction with fictional data"><figcaption>Mock / fictional memories for illustration. This is not a real conversation storage result or a measurement of long-term memory accuracy.</figcaption></figure>
+<p><strong>Correct an entry directly in the memory list and inspect the result.</strong> For a first check, manually add one fictional preference, correct it, reopen the list and verify the text changed. Then choose Forget and check that it disappears from the list. This workflow check needs no real-model send. Erasure from history and earlier backups is separate.</p>
+<p>Memory categories are preferences and facts, events and promises, and relationships. Keep each entry focused, with a clear subject and a short factual statement.</p>
 <table><thead><tr><th>Category</th><th>Example entry</th></tr></thead><tbody><tr><td>Preferences and facts</td><td>The traveler dislikes spicy food.</td></tr><tr><td>Events and promises</td><td>The traveler and Rio agreed to organize the archive on their next day off.</td></tr><tr><td>Relationships</td><td>The traveler and Rio are friends who look for books together.</td></tr></tbody></table>
 <p>Use “Correct” (訂正) to edit an inaccurate entry, or “Forget” (忘れる) to remove it. Model proposals with weak evidence remain marked as pending review and unused in conversation. They are not injected until corrected. Decide whether to replace them with accurate information or remove them.</p>
 <p>A chat reply such as “That's wrong” does not establish that the stored item was corrected. Check its text in the list afterward. This also does not erase earlier conversation text or exported backups, so inspect those before sharing.</p>`,
@@ -411,7 +419,7 @@ Definition: Speak calmly in English. Do not invent details about unfamiliar book
           html: `<p>“Stored,” “retrieval candidate,” “injected into the prompt,” and “apparently used in the reply” are different stages. Memory Inspector in Researcher mode shows provenance, time, revision, candidates, injection, and estimates. If a saved fact is not recalled, inspect retrieval and injection before assessing the model's reply.</p>
 <p>The public implementation retrieves memory using character bigrams. It does not guarantee semantic understanding or automatic resolution of contradictions. Apparent use in a reply is also inferred from signals such as text matches. Check important promises directly in the memory list and look for invented details.</p>
 <aside class="callout warning"><p>Public short-term real-model testing reports missed promise storage and false recall. Completing a long Mock conversation does not guarantee accurate long-term memory. Use memory as editable supporting information, without assuming perfect recall or forgetting.</p></aside>
-<p>Predefined character knowledge belongs in Lore under <a href="{{doc:characters}}">character settings</a>. Return to the <a href="{{doc:index}}">documentation index</a> for all guides.</p>`,
+<p>Predefined character knowledge belongs in Lore under <a href="{{doc:characters}}">character settings</a>. For missing memories, recheck the shared character and persona revision; use <a href="{{doc:troubleshooting}}">troubleshooting</a> for connection problems. Review Cloud destinations and consent separately in the <a href="{{doc:cloud}}">Cloud guide</a>.</p>`,
         },
       ],
     },
@@ -504,7 +512,7 @@ Pace: Take it slowly.</code></pre>
     slug: 'privacy',
     group: 'reference',
     icon: 'shield',
-    title: { ja: 'データとプライバシー', en: 'Data and privacy' },
+    title: { ja: 'Kyaluluのプライバシー：保存先・送信先・任意のアクセス解析', en: 'Kyalulu privacy: storage, destinations and optional analytics' },
     description: {
       ja: 'ローカル保存、推論先への送信、Hub取得、書き出し、Remoteの境界を確認します。',
       en: 'Understand local storage, provider requests, Hub fetching, exports, and the limits of Remote.',
@@ -517,6 +525,11 @@ Pace: Take it slowly.</code></pre>
     sources: ['README.md', '.env.example', 'docs/COMPATIBILITY.md', 'docs/REMOTE.md', 'docs/ROADMAP.md'],
     sections: {
       ja: [
+        {
+          id: 'website-analytics',
+          title: '公式サイト・運営Cloudの任意のアクセス解析',
+          html: `<p><strong>2026-10-12の現行実装説明：</strong>公式サイトと運営するCloudでは、同意した場合だけ任意のGoogle Analytics 4（GA4）計測を行います。拒否しても利用できます。ローカル版とRemoteではこの計測を行いません。この節は記事末尾の2026-10-05確認のGitHub固定出典とは別の現行実装情報であり、Cloudの一般提供を示すものでもありません。</p><p>送るのは、画面の種類、JA／ENの言語、利用が成功したことを示すイベントです。会話本文、記憶、メール、アプリのowner ID・session ID・card ID、認証コードは送りません。URLはクエリーやフラグメントなどを除いた許可済みのcanonical URLへ整え、参照元はパスやクエリーを除いたOriginだけにします。UTMは管理された許可値だけを使い、自由入力の広告パラメーターをそのまま送信しません。</p><p><strong>アプリの個人識別子を除外することは、GA4側で識別情報を一切処理しないという意味ではありません。</strong>GA4はアクセス・セッションを区別する仮名のCookie識別子を使い、通信時のIPアドレスもGoogle側で処理します。アプリのIDをGA4のuser_idへ設定せず、Google Signals、広告向け機能は有効にしません。</p><p>同意Cookieの保持期間とGA Cookieに設定する有効期間は180日で、kyalulu.com配下で共有します。この期間はGA4プロパティ内の過去データの保存期間とは別です。「アクセス解析の設定」で拒否へ変更すると、以後の送信を止め、削除できる範囲のGA Cookieを削除します。ブラウザーからアクセスできないCookieまで削除を保証するものではありません。すでに送ったデータは自動削除されず、GAプロパティの保持・削除方針に従います。</p><p>Cloudでの会話データの送信とProviderの学習同意は、アクセス解析の同意とは別です。利用前に<a href="{{doc:cloud}}">Cloudの招待条件とデータ送信</a>も確認してください。</p>`,
+        },
         {
           id: 'understand-local-first',
           title: 'ローカル保存と通信を分けて考える',
@@ -549,6 +562,11 @@ Pace: Take it slowly.</code></pre>
         },
       ],
       en: [
+        {
+          id: 'website-analytics',
+          title: 'Optional analytics on the official site and operated Cloud',
+          html: `<p><strong>Current implementation described on 2026-10-12:</strong> the official site and operated Cloud use optional Google Analytics 4 (GA4) only after consent. You can use them after rejecting analytics. This measurement does not run in local or Remote mode. This section describes current implementation separately from the GitHub sources reviewed on 2026-10-05 and pinned below. It does not establish general Cloud availability.</p><p>Events contain page categories, JA/EN language and successful-use signals. They exclude conversation text, memories, email, application owner IDs, session IDs, card IDs and authentication codes. Page URLs are sanitized to allowlisted canonical URLs without query strings or fragments; referrers contain only their origin, without paths or queries. UTM values come from a controlled allowlist rather than forwarding arbitrary campaign input.</p><p><strong>Excluding application personal identifiers does not mean GA4 processes no identifying information.</strong> GA4 uses pseudonymous cookie identifiers to distinguish visits and analytics sessions, and Google processes IP addresses during network requests. Application IDs are not set as GA4 user_id; Google Signals and advertising features are not enabled.</p><p>The consent cookie lifetime and configured GA cookie expiry are 180 days, shared under kyalulu.com. This is separate from retention of historical data within the GA4 property. Change Analytics preferences to Reject to stop future sends and remove accessible GA cookies. Removal of cookies inaccessible to the browser is not guaranteed. Previously sent data is not automatically erased; it remains subject to the GA property's retention and deletion policy.</p><p>Consent for Cloud conversation transmission and provider training is separate from analytics consent. Also review <a href="{{doc:cloud}}">Cloud invitation requirements and data transmission</a> before use.</p>`,
+        },
         {
           id: 'understand-local-first',
           title: 'Distinguish local storage from network traffic',

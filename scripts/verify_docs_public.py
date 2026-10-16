@@ -4,6 +4,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
+import re
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -15,6 +16,21 @@ ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / '.artifacts/landing-site'
 ORIGIN = 'https://kyalulu.com'
 EVIDENCE = ROOT / '.artifacts/docs-review-public'
+
+# shortcut: only this reviewed Cloudflare JSD wrapper; review a replacement if the edge wrapper changes.
+CF_JSD = b'''<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'RAY',t:'TIME'};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script>'''
+
+
+def reviewed_html(raw: bytes, expected: bytes) -> bool:
+    if raw == expected:
+        return False
+    before, after = expected.rsplit(b'</body>', 1)
+    tail = b'</body>' + after
+    assert raw.startswith(before) and raw.endswith(tail), 'Reviewed HTML changed'
+    extra = raw[len(before):-len(tail)]
+    extra = re.sub(rb"r:'[0-9a-f]{16}',t:'[A-Za-z0-9+/=]{12,32}'", b"r:'RAY',t:'TIME'", extra)
+    assert extra == CF_JSD, 'Unknown edge HTML or script'
+    return True
 
 
 def fetch(path: str, agent: str = 'Mozilla/5.0'):
@@ -34,11 +50,11 @@ def check_page(path: str):
     assert headers['content-type'].startswith('text/html'), path
     assert 'content-security-policy' in headers and headers.get('cache-control') == 'no-cache', path
     expected = (OUTPUT / path.lstrip('/') / 'index.html').read_bytes()
-    assert raw == expected, f'Public content differs from reviewed build: {path}'
+    edge_jsd = reviewed_html(raw, expected)
     page = Page(raw.decode('utf-8'))
     assert page.select('link', rel='canonical')[0]['href'] == ORIGIN + path
     assert 'index,follow' in page.select('meta', name='robots')[0]['content']
-    return {'path': path, 'status': status, 'sha256': hashlib.sha256(raw).hexdigest(), 'canonical': ORIGIN + path}
+    return {'path': path, 'status': status, 'response_sha256': hashlib.sha256(raw).hexdigest(), 'reviewed_html_sha256': hashlib.sha256(expected).hexdigest(), 'cloudflare_jsd_added': edge_jsd, 'canonical': ORIGIN + path}
 
 
 def run():
@@ -53,7 +69,7 @@ def run():
     assert sitemap_status == 200 and sitemap_raw == (OUTPUT / 'sitemap.xml').read_bytes()
     sitemap = ET.fromstring(sitemap_raw)
     sitemap_urls = sitemap.findall('{http://www.sitemaps.org/schemas/sitemap/0.9}url')
-    assert len(sitemap_urls) == 36
+    assert len(sitemap_urls) == len(manifest['pages']) + 2
     for path in ['/llms.txt', '/docs/llms-full.txt']:
         status, _, headers, raw = fetch(path)
         headers = {key.lower(): value for key, value in headers.items()}
@@ -72,10 +88,13 @@ def run():
             headers = {key.lower(): value for key, value in headers.items()}
             assert status == 200 and 'cf-mitigated' not in headers, (agent, path, status)
             expected = OUTPUT / ('robots.txt' if path == '/robots.txt' else 'docs/quickstart/index.html')
-            assert raw == expected.read_bytes(), (agent, path)
+            if path.endswith('.txt'):
+                assert raw == expected.read_bytes(), (agent, path)
+            else:
+                reviewed_html(raw, expected.read_bytes())
             crawlers.append({'agent': agent, 'path': path, 'status': status})
     for path, expected in [('/', 'index.html'), ('/en/', 'en/index.html')]:
-        assert fetch(path)[3] == (OUTPUT / expected).read_bytes(), f'Landing page mismatch: {path}'
+        reviewed_html(fetch(path)[3], (OUTPUT / expected).read_bytes())
     result = {'passed': True, 'origin': ORIGIN, 'pages': pages, 'sitemap_urls': len(sitemap_urls), 'crawler_checks': crawlers, 'real_404': True, 'canonical_redirects': True, 'supplemental_text_indexed': False, 'inference_attempts': 0}
     (EVIDENCE / 'http-results.json').write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     print(json.dumps({**result, 'pages': len(pages)}, ensure_ascii=False, indent=2))

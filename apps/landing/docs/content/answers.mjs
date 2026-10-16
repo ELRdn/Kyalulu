@@ -1,12 +1,16 @@
 // Visible, source-supported answers. These supplement prose, never hide SEO text.
 export default {
   overview: {
-    ja: ['Kyaluluは、キャラクター・会話・記憶を手元に保存するローカルファーストのオープンソースCharacter AIランタイムです。', '返事の生成にはLE、LM Studio、OllamaなどのローカルLLM実行先や外部モデルAPIを接続します。', '公開アルファです。スマホ接続には稼働中のPC・個人サーバーが必要です。'],
-    en: ['Kyalulu is a local-first, open-source Character AI runtime with locally stored characters, conversations and memories.', 'Connect local LLM providers such as LE, LM Studio or Ollama, or an external model API, to generate replies.', 'It is a public alpha. Mobile access requires a running PC or personal server.'],
+    ja: ['Kyaluluは、キャラクター・会話・記憶を手元に保存するローカルファーストのオープンソースCharacter AIランタイムです。', '返事の生成にはLE、LM Studio、OllamaなどのローカルLLM実行先や外部モデルAPIを接続します。', 'ローカル版は公開アルファ。PWA・Remoteは稼働中のPCが必要で、PC不要のCloudは現在本人限定の試験です。'],
+    en: ['Kyalulu is a local-first, open-source Character AI runtime with locally stored characters, conversations and memories.', 'Connect local LLM providers such as LE, LM Studio or Ollama, or an external model API, to generate replies.', 'The local version is a public alpha. PWA/Remote need a running PC; PC-free Cloud currently has a private test limited to one owner.'],
   },
   quickstart: {
     ja: ['公開ソースから導入します。Python 3.11以上、uv、Node.js 20以上、pnpm 10以上を用意します。', '依存を導入し、Kyalulu APIとWebを別々のターミナルで起動します。', '最初はモデル不要のMock Echoで接続と保存を確認し、その後に実モデルへ接続します。'],
     en: ['Install from public source with Python 3.11+, uv, Node.js 20+ and pnpm 10+.', 'Install dependencies, then run the Kyalulu API and Web in separate terminals.', 'Check connectivity and storage with Mock Echo before connecting a real model.'],
+  },
+  cloud: {
+    ja: ['Kyalulu Cloudは個人PCの常時起動が不要な独立した経路です。現在は本人限定の試験で、一般提供ではありません。', '10名の無料ベータは法務・予算・実機と実モデルの受け入れ後の予定です。現在のログインは18歳以上の確認とデータ送信の同意が必要です。', '2026-10-12の公開statusでは外部SFW検査・画像・販売・広告が無効。学習利用があるProvider経路は個別の明示的同意が必要です。'],
+    en: ['Kyalulu Cloud is a standalone route without an always-on personal PC. It currently has a private test limited to one owner, not general availability.', 'A free beta for ten participants is planned after legal, budget and real-device/model acceptance. Current login requires 18+ confirmation and data-transmission consent.', 'Public status observed on 2026-10-12 showed external SFW screening, images, sales and ads disabled. Provider routes allowing training require explicit route-specific consent.'],
   },
   models: {
     ja: ['Kyaluluが会話データを管理し、接続したProviderが返事を生成します。', 'LEが配信中のモデルはle:<id>で表示されます。直接接続するモデルはYAMLで登録できます。', '外部APIを選ぶと生成に必要な情報が提供元へ送信されます。モデルの表示と準備完了は別です。'],
@@ -17,8 +21,8 @@ export default {
     en: ['Import, edit and save a character in Create, then select a greeting to start chatting.', 'Originals and edited revisions are stored separately. Existing chats retain their selected revision.', 'Apply Lore and presets within supported scope; not every original application feature is reproduced.'],
   },
   imports: {
-    ja: ['キャラクターはファイル・対応する公開URL・手動貼り付けから取り込めます。', 'プレビューで内容と変換の制約を確認してから保存します。URLを入力するだけでは保存しません。', 'Character.AIは設定の手動移行です。アカウントや全会話履歴の自動取得ではありません。'],
-    en: ['Import characters from files, supported public URLs or manually pasted settings.', 'Review content and conversion limits in the preview before saving; entering a URL alone does not save it.', 'Character.AI uses manual settings migration, not automatic account or full-history retrieval.'],
+    ja: ['SillyTavernのカード・World Info・生成設定は原本を残して移行し、Createのプレビューで確認して保存します。', 'Instruct・Text Completion整形・動的な深さ挿入・複雑なHandlebars式・未対応マクロは保持のみで実行されません。元アプリ全体の移行ではありません。', 'モデル接続は別途設定します。Character.AIは設定の手動移行で、アカウントや全会話履歴の自動取得ではありません。'],
+    en: ['Migrate SillyTavern cards, World Info and generation settings while keeping originals; review the Create preview before saving.', 'Instruct/Text Completion formatting, dynamic depth insertion, complex Handlebars expressions and unsupported macros are preserved only, not executed. This is not a whole-app migration.', 'Configure model connections separately. Character.AI uses manual settings migration, not automatic account or full-history retrieval.'],
   },
   memory: {
     ja: ['Memory Labは記憶を保存・検索・確認・訂正する機能で、初期設定はオフです。', '記憶の共有範囲はキャラと人物像の保存版に関係します。キャラ未指定なら会話内で使います。', 'すべての発言や約束を覚える保証はありません。確認待ちの提案と、重要な記憶は自分で確認します。'],
@@ -41,27 +45,27 @@ export default {
     en: ['Web uses React and Vite; the Python FastAPI runtime stores data in SQLite. LE is a separate process.', 'Install locked dependencies for the public uv workspace and run the API and Web separately.', 'Check the affected API, storage and interface behavior. Mock success is separate from model quality and release approval.'],
   },
   characterbench: {
-    ja: ['CharacterBenchは日本語Character AIを評価する独立したMITライセンスのパイロットです。', '12キャラ、120単発問題、12本の12ターン対話で、モデル・反復ごとに264応答を生成します。', '構造化状態や表面条件の点数を、キャラクター品質の総合点や検証済みランキングとして扱いません。'],
-    en: ['CharacterBench is an independent MIT-licensed pilot for evaluating Japanese Character AI.', 'Twelve characters, 120 single-turn probes and twelve 12-turn dialogues produce 264 responses per model per repeat.', 'Structured-state and surface-constraint scores are not overall character-quality scores or a validated leaderboard.'],
+    ja: ['Kyalulu CharacterBench（KCB）は日本語Character AIを評価するMITライセンスのパイロットです。thu-coaiのCharacterBench（AAAI 2025）とは別プロジェクトで、関係はありません。', '12キャラ、120単発問題、12本の12ターン対話で、モデル・反復ごとに264応答の実行計画です。これは実測値ではありません。', '構造化状態や表面条件の点数を、キャラクター品質の総合点や検証済みランキングとして扱いません。'],
+    en: ['Kyalulu CharacterBench (KCB) is an MIT-licensed pilot for Japanese Character AI. It is separate from and unrelated to thu-coai CharacterBench (AAAI 2025).', 'Twelve characters, 120 single-turn probes and twelve 12-turn dialogues plan 264 responses per model per repeat. These counts are not measured results.', 'Structured-state and surface-constraint scores are not overall character-quality scores or a validated leaderboard.'],
   },
   compatibility: {
     ja: ['Character Card、SillyTavern、BYAF、Risuの共通拡張、Character.AIの手動設定に形式別の対応があります。', '取り込める項目、生成に使える項目、保持のみの項目を分けて確認します。', 'スクリプトや元アプリ固有の全機能は実行しません。書き出し前にも変換・欠落の説明を確認します。'],
     en: ['Support is format-specific for Character Cards, SillyTavern, BYAF, shared Risu extensions and manual Character.AI settings.', 'Distinguish imported fields, fields used in generation and fields preserved only.', 'Scripts and all application-specific features are not executed. Review conversion and loss notices before exporting.'],
   },
   privacy: {
-    ja: ['ローカルのRuntimeが会話・キャラ・記憶の正本を保存します。', 'ローカルモデルへの接続と外部APIへの接続では送信先が異なります。Hub利用も通信を伴います。', 'Remoteの暗号化は端末自体の安全を保証しません。ブラウザーの下書きは暗号化された保管庫ではありません。'],
-    en: ['The local runtime stores authoritative conversations, characters and memories.', 'Local models and external APIs have different data destinations. Hub access also involves network requests.', 'Remote encryption does not secure a compromised endpoint. Browser drafts are not an encrypted vault.'],
+    ja: ['ローカルのRuntimeが会話・キャラ・記憶の正本を保存します。Cloud利用時はCloud側の保存・送信条件を確認します。', 'ローカルモデルと外部APIでは送信先が異なります。任意のGA4計測は公式サイト・運営Cloudで同意した場合だけで、ローカル版・Remoteでは行いません。', 'アプリの個人識別子や会話・記憶はGA4へ送りませんが、GA4は仮名CookieやIPを処理します。停止しても過去の計測データは自動削除されません。'],
+    en: ['The local runtime stores authoritative conversations, characters and memories. Cloud use has separate storage and transmission terms.', 'Local models and external APIs have different destinations. Optional GA4 measurement requires consent on the official site/operated Cloud and does not run in local or Remote mode.', 'Application personal identifiers, conversations and memories are excluded from GA4, which still processes pseudonymous cookies and IP addresses. Opting out does not automatically erase historical measurements.'],
   },
   troubleshooting: {
     ja: ['画面、Kyalulu API、Providerの順に切り分け、Statusの接続診断を確認します。', 'モデル一覧への表示はロード完了を意味しません。Mock Echoと実モデルを分けて確認します。', 'スマホでは直接HTTPSとRemoteの登録手順を混ぜず、PCの稼働・証明書・登録状態を確認します。'],
     en: ['Check the interface, Kyalulu API and provider separately, starting with connection diagnostics in Status.', 'A listed model is not necessarily loaded. Separate Mock Echo checks from real-model checks.', 'On phones, keep direct HTTPS and Remote enrollment procedures separate; check PC readiness, certificates and enrollment.'],
   },
   faq: {
-    ja: ['ローカル版のコードはAGPL-3.0-onlyのOSSです。外部APIなどの費用は別に発生する場合があります。', 'スマホPWA・Remoteは稼働中のPCへ接続します。端末内のLLM実行やオフライン生成ではありません。', '移行と記憶は対応範囲があります。元アプリの全機能や完全な想起を保証するものではありません。'],
-    en: ['The local code is open source under AGPL-3.0-only. External APIs and other costs may still apply.', 'The mobile PWA and Remote require a running PC. They do not run an LLM on the phone or generate offline.', 'Imports and memory have defined limits; they do not guarantee every original feature or perfect recall.'],
+    ja: ['ローカル版のコードはAGPL-3.0-onlyのOSSです。外部APIなどの費用は別に発生する場合があります。', 'スマホPWA・Remoteは稼働中のPCへ接続します。PC不要のCloudは現在本人限定の試験です。どちらもオフライン生成ではありません。', '移行と記憶は対応範囲があります。元アプリの全機能や完全な想起を保証するものではありません。'],
+    en: ['The local code is open source under AGPL-3.0-only. External APIs and other costs may still apply.', 'The mobile PWA and Remote require a running PC. PC-free Cloud currently has an invited private test limited to one owner. Neither provides offline generation.', 'Imports and memory have defined limits; they do not guarantee every original feature or perfect recall.'],
   },
   'release-status': {
-    ja: ['このdocsは2026年10月5日に確認した公開GitHubのコミットを基準にしています。', '機能の実装、特定環境での検証、正式公開の受け入れを分けて記載します。', '各記事末尾の出典はコミット固定です。資料確認日は全機能の実機再試験日ではありません。'],
-    en: ['These docs are based on a public GitHub commit reviewed on October 5, 2026.', 'Implementation, checks in particular environments and release acceptance are documented separately.', 'Article sources are commit-pinned. A source review date does not assert fresh device testing of every feature.'],
+    ja: ['技術資料の基準は2026年10月5日に確認した公開GitHubのコミットです。Cloud観測とサイト計測の現行実装説明は2026-10-12として別記します。', '機能の実装、特定環境での検証、正式公開の受け入れを分けて記載します。', '各記事末尾の出典はコミット固定です。資料確認日は全機能の実機再試験日ではありません。'],
+    en: ['Technical sources are pinned to a public GitHub commit reviewed on October 5, 2026. Cloud observations and current website analytics implementation are separately dated 2026-10-12.', 'Implementation, checks in particular environments and release acceptance are documented separately.', 'Article sources are commit-pinned. A source review date does not assert fresh device testing of every feature.'],
   },
 };

@@ -19,7 +19,6 @@ h1, h2, h3 { font-family: var(--head); font-weight: 900; line-height: 1.25; marg
 p { margin: 0; }
 .wrap { width: min(var(--wrap), 100% - 40px); margin-inline: auto; }
 .tag { font: 700 11px/1 var(--sans); letter-spacing: .06em; padding: 4px 10px; border-radius: 999px; background: var(--pink); color: var(--ink); vertical-align: middle; }
-[data-phase="alpha"] .p-launch, [data-phase="launch"] .p-alpha { display: none !important; }
 
 /* buttons */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px; padding: 0 26px; border-radius: 999px; border: 2px solid var(--ink); font: 700 15px/1.2 var(--sans); text-decoration: none; cursor: pointer; transition: transform .3s var(--spring), box-shadow .3s var(--spring), background .2s; }
@@ -222,8 +221,6 @@ tr:last-child > * { border-bottom: 0; }
 .status { font-size: 14px; min-height: 1.6em; color: var(--purple); font-weight: 700; }
 .wl-fallback { display: none; gap: 16px; justify-items: start; }
 .wl-fallback p { font-size: 14px; }
-#waitlist-form[data-endpoint=""] > :not(.wl-fallback) { display: none; }
-#waitlist-form[data-endpoint=""] .wl-fallback { display: grid; }
 .wait-art { position: relative; justify-self: center; width: min(360px, 80%); }
 .wait-moon { position: absolute; width: 58%; right: -6%; top: -14%; fill: var(--butter); stroke: var(--ink); stroke-width: 3; rotate: -16deg; animation: bob 8s ease-in-out infinite; }
 .wait-art img { position: relative; animation: bob 6s ease-in-out infinite; }
