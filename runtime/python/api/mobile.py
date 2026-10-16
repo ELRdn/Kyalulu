@@ -162,10 +162,12 @@ def local_admin(request):
 ALLOWED = {
     "GET": [
         r"/api/health",
+        r"/api/capabilities",
         r"/api/models",
         r"/api/mobile/(status|models)",
         r"/api/(characters|personas|worlds)",
         r"/api/chat/(settings|history|sessions)",
+        r"/api/chat/context/[^/]+",
         r"/api/chat/generations/[^/]+",
         r"/api/prompts/presets",
         r"/api/library",
@@ -234,6 +236,9 @@ async def validate_remote_session(request, receive):
     import json
 
     path, method = request.url.path, request.method
+    if method == "GET" and path.startswith("/api/chat/context/"):
+        if not valid_session_id(path.removeprefix("/api/chat/context/")):
+            return error("session_id_required", 400), receive
     body_paths = {"/api/chat", "/api/chat/stream", "/api/chat/suggest", "/api/chat/settings"}
     if method in {"POST", "PUT"} and path in body_paths:
         raw = bytearray()
