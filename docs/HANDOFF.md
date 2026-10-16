@@ -1,3 +1,15 @@
+## 2026-10-16 追記：PR #7マージ・Cloud／LP／PWA本番反映
+
+[反映・検証記録](validation/2026-10-16-pr7-production.md)。PR #7は全CI成功後に`b51d726`でマージし、ローカルmainも同期した。
+Cloudは`/opt/kyalulu-cloud/releases/20261016-pr7-rp/bundle`、imageは`kyalulu-cloud:20261016-pr7-rp`。
+RP v1.1は`*（内心）*`をユーザーに表示し、明示的な`@:`だけでナレーター枠を開始する。
+更新前暗号化backupのPC複製と隔離復元、配布物／対応ソース一致、台帳・会話の全行ハッシュ一致を確認した。
+1 account／425 Credits／26 operations、pending／holds／debt／review0、本人限定・受付1・販売等OFFを保持。Relay／Caddyも維持した。
+LPはPages`0d3a2a14`、PWAは`159cc182`。PWAのHTML変換とSRIの衝突を`b996614`の`no-transform`配布ヘッダーで解消し、整合性検証を保持した。
+Cloud／PWAとも6画面条件が通過。PWAはService Worker起動、画面cache31件、API cache0件を確認した。
+新規有料推論0。実機Android・実OAuth・本人PCとの再接続・実モデルのRP知識境界・長時間運用・一般受付は別の未確認事項。
+以下は旧時点の記録。
+
 ## 2026-10-12 追記：無料β準備・Pixel設定ボタン修正、一般受付は保留
 
 詳細は [無料β受け入れ・検索観測](validation/2026-10-12-cloud-beta-followup.md)。
