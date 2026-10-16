@@ -57,6 +57,22 @@ async def pair(app, remote):
 
 
 @pytest.mark.asyncio
+async def test_paired_capabilities_and_scoped_context(app, isolated):
+    async with client(app) as remote:
+        assert (await remote.get('/api/capabilities')).status_code == 401
+        await pair(app, remote)
+        response = await remote.get('/api/capabilities')
+        assert response.status_code == 200
+        features = response.json()['features']
+        assert features['stored_context']
+        assert not any(features[key] for key in ('branch', 'permanent_delete', 'summaries'))
+        context = await remote.get('/api/chat/context/paired-session')
+        assert context.status_code == 200 and 'history_revision' in context.json()
+        assert (await remote.get('/api/chat/context/__reserved')).status_code == 400
+        assert (await remote.get('/api/diagnostics')).status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_pair_cookie_one_use_logout_and_revocation(app):
     async with client(app) as remote, client(app, local=True) as admin:
         assert (await remote.get("/api/mobile/status")).json() == {

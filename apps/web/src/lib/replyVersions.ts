@@ -56,3 +56,16 @@ export function selectReplyVersion(sessionId: string, messageId: number, index: 
   store[key] = { ...store[key], index, at: Date.now() };
   write(store);
 }
+
+/** Permanent erasure must surface storage failures and preserve other sessions. */
+export function eraseReplyVersions(sessionId: string) {
+  const key = scopedKey(LS_KEY);
+  const raw = localStorage.getItem(key);
+  if (raw === null) return;
+  const store = JSON.parse(raw);
+  if (!store || typeof store !== 'object' || Array.isArray(store)) throw Error('端末の返信履歴を読み込めません。');
+  const remaining = Object.fromEntries(Object.entries(store).filter(([id]) => id.slice(0, id.lastIndexOf(':')) !== sessionId));
+  const next = JSON.stringify(remaining);
+  localStorage.setItem(key, next);
+  if (localStorage.getItem(key) !== next) throw Error('端末の返信履歴を消去できません。');
+}

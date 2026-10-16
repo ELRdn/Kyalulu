@@ -18,6 +18,7 @@ export default function MessageContent({ content, isStreaming = false }: { conte
           </div>
         ) : (
           <div key={i} className="k-bubble k-bubble--character">
+            {seg.speaker && <div className="k-msg__meta"><span className="k-msg__name">{seg.speaker}</span></div>}
             <MarkdownView content={seg.text} isStreaming={streamingHere} />
           </div>
         );

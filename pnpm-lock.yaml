@@ -85,6 +85,8 @@ importers:
         specifier: ^5.0.0
         version: 5.0.0(@types/node@26.4.0)(vite@6.4.3(@types/node@26.4.0))
 
+  packages/launcher: {}
+
   packages/schemas:
     dependencies:
       zod:

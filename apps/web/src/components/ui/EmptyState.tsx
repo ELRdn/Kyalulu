@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import "./ui.css";
 
-type Mascot = "default" | "wink" | "excited" | "shy" | "sleep";
+const MASCOT_ART = { default: "guide", wink: "face-wink", excited: "guide", shy: "face-curious", sleep: "nap" } as const;
+type Mascot = keyof typeof MASCOT_ART;
 
 export default function EmptyState({
   motif = "✦",
@@ -20,7 +21,7 @@ export default function EmptyState({
   return (
     <div className="k-empty">
       {mascot ? (
-        <img className="k-empty__mascot" src={`/mascot/face-${mascot}.webp`} alt="" />
+        <img className="k-empty__mascot" src={`${import.meta.env.BASE_URL}mascot/v1.2/${MASCOT_ART[mascot]}.png`} alt="" width={120} height={120} decoding="async" />
       ) : (
         <div className="k-empty__motif" aria-hidden="true">
           {motif}

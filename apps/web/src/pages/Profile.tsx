@@ -19,11 +19,18 @@ import { usePinnedSessions, togglePin } from "../lib/pins";
 import "./pages.css";
 import ConnectionSettings from '../components/ConnectionSettings';
 import RemoteHostSettings from '../components/RemoteHostSettings';
-import { DeviceRegistration, useAdministrative } from '../components/RuntimeGate';
+import { DeviceRegistration, useAdministrative, useRuntimeAccess } from '../components/RuntimeGate';
+import CloudSettings from '../components/CloudSettings';
+import LocalCloudSync from '../components/LocalCloudSync';
+import Button from '../components/ui/Button';
+import { useAccountProfile, refreshAccountProfile } from '../lib/accountProfile';
+import { friendlyMessage } from '../lib/errors';
 
 export default function Profile() {
   const administrative = useAdministrative();
+  const {cloud_mode} = useRuntimeAccess();
   const displayName = useDisplayName();
+  const accountSync = useAccountProfile();
   const [nameDraft, setNameDraft] = useState(displayName);
   const { theme, setTheme } = useTheme();
   const [researcher, setResearcher] = useResearcherMode();
@@ -32,6 +39,9 @@ export default function Profile() {
   const [adult, setAdult] = useAdultContent();
   const savedIds = useSavedCharacters();
   const [characters, setCharacters] = useState<CharacterInfo[]>([]);
+  const [loadError, setLoadError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [retry, setRetry] = useState(0);
   const [confirmDialog, confirm] = useConfirm();
   const location = useLocation();
   useDocumentTitle("プロフィール");
@@ -63,16 +73,13 @@ export default function Profile() {
   }, [displayName]);
 
   useEffect(() => {
-    fetchSessions()
-      .then(setSessions)
-      .catch(() => setSessions([]));
-  }, []);
-
-  useEffect(() => {
-    fetchCharacters(adult)
-      .then(setCharacters)
-      .catch(() => setCharacters([]));
-  }, [adult]);
+    let active = true; setLoadError(''); setLoading(true);
+    Promise.all([fetchSessions(), fetchCharacters(adult)]).then(([sessions, characters]) => {
+      if (active) { setSessions(sessions); setCharacters(characters); }
+    }).catch(error => { if (active) setLoadError(friendlyMessage(error)); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [adult, retry]);
 
   const savedCharacters = savedIds.map((id) => characters.find((c) => c.id === id)).filter((c): c is CharacterInfo => !!c);
   const pinnedSessions = sessions.filter((s) => pinned.includes(s.session_id));
@@ -83,10 +90,11 @@ export default function Profile() {
   return (
     <div className="k-page" style={{ maxWidth: 780 }}>
       {confirmDialog}
-      <ConnectionSettings />
+      {loadError && <p role="alert">{loadError}<Button size="sm" variant="secondary" onClick={() => setRetry(value => value + 1)}>再読込</Button></p>}
+      {!cloud_mode && <ConnectionSettings />}
       {administrative && <RemoteHostSettings />}
       <DeviceRegistration />
-      <section className="k-profile-card">
+      <section className={`k-profile-card ${cloud_mode?'k-profile-card--cloud':''}`}>
         <Avatar name={displayName} size="xl" />
         <div className="k-profile-card__main">
           <label className="k-profile-card__label" htmlFor="k-profile-name">
@@ -96,19 +104,29 @@ export default function Profile() {
             id="k-profile-name"
             value={nameDraft}
             onChange={(e) => setNameDraft(e.target.value)}
-            onBlur={() => setDisplayName(nameDraft)}
-            onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
+            onBlur={() => {if(!cloud_mode) setDisplayName(nameDraft);}}
+            onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229 && e.currentTarget.blur()}
             placeholder="表示名"
             className="k-profile-card__name"
+            maxLength={80}
+            disabled={cloud_mode && !accountSync.profile}
           />
-          <div className="k-profile-card__note">このデバイスにだけ保存されます（アカウント同期は未対応）</div>
+          {cloud_mode && <Button size="sm" variant="secondary" disabled={!accountSync.profile || accountSync.pending>0 || nameDraft.trim()===displayName}
+            onClick={()=>void Promise.resolve(setDisplayName(nameDraft)).catch(()=>{})}>{accountSync.pending?'保存中…':'表示名を保存'}</Button>}
+          <div className="k-profile-card__note" role="status">{cloud_mode
+            ? accountSync.pending?'アカウントに保存しています…':'表示名・保存したキャラ・ピン留めは、同じアカウントの端末で共有されます。'
+            : '表示名はこのデバイスに保存されます。'}</div>
+          {cloud_mode && accountSync.error && <div className="k-profile-card__note" role="alert">{accountSync.error}
+            <Button size="sm" variant="ghost" onClick={()=>void refreshAccountProfile()}>再読み込み</Button></div>}
         </div>
-        <div className="k-profile-stats">
+        {loading ? <p role="status">会話の集計を読み込んでいます…</p> : !loadError && <div className="k-profile-stats">
           <Stat value={talked.length} label="会話" />
           <Stat value={characterCount} label="出会ったキャラ" />
           <Stat value={messageCount} label="メッセージ" />
-        </div>
+        </div>}
       </section>
+
+      <CloudSettings />
 
       <section className="k-section">
         <h2 className="k-section__title">
@@ -126,14 +144,16 @@ export default function Profile() {
                 </button>
               </div>
             </Row>
-            <div id="adult" className="k-setting-anchor">
+            {!cloud_mode && <div id="adult" className="k-setting-anchor">
               <Row label="成人向けコンテンツ" desc="18歳以上の方のみ。成人向けのキャラクターと会話を表示します。">
                 <Switch checked={adult} onChange={(v) => void toggleAdult(v)} label="成人向けコンテンツを表示" />
               </Row>
-            </div>
+            </div>}
           </div>
         </Card>
       </section>
+
+      {administrative && <LocalCloudSync />}
 
       {savedCharacters.length > 0 && (
         <section className="k-section">

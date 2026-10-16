@@ -1,5 +1,6 @@
 """Model Registry - YAML(正) + SQLite(キャッシュ) の両方対応"""
 
+from python.storage.context import get_db_path
 import asyncio
 from pathlib import Path
 import yaml
@@ -17,7 +18,12 @@ def load_yaml_registry() -> list[dict[str, Any]]:
     if not MODELS_DIR.exists():
         return []
     result = []
-    for p in sorted(MODELS_DIR.glob("*.yaml")):
+    import os
+    custom = Path(os.environ["KYALULU_MODELS_DIR"]) if os.getenv("KYALULU_MODELS_DIR") else DB_PATH.parent / "models"
+    files = {p.name: p for p in MODELS_DIR.glob("*.yaml")}
+    if custom.resolve() != MODELS_DIR.resolve():
+        files.update({p.name: p for p in custom.glob("*.yaml")})
+    for p in sorted(files.values()):
         try:
             data = yaml.safe_load(p.read_text(encoding="utf-8"))
             if isinstance(data, dict):
@@ -46,7 +52,25 @@ def find_model(model_id: str | None) -> dict[str, Any] | None:
     cfg = next((m for m in load_yaml_registry() if m.get("id") == model_id), None)
     if cfg is None and model_id and model_id.startswith(LE_PREFIX) and len(model_id) > len(LE_PREFIX):
         cfg = le_model_entry(model_id[len(LE_PREFIX):])
+    if cfg is None and model_id:
+        for prefix, provider in (("ollama:", "ollama"), ("lmstudio:", "lm_studio")):
+            if model_id.startswith(prefix) and len(model_id) > len(prefix):
+                cfg = {"id": model_id, "display_name": model_id, "provider": {"type": provider, "model": model_id[len(prefix):], "structured_output": True}}
     return cfg
+
+
+async def list_local_models():
+    from python.providers.factory import get_provider
+    async def discover(kind, prefix):
+        try:
+            async with asyncio.timeout(3):
+                models = await get_provider(kind).list_models()
+                return [{"id": prefix+m["id"], "display_name": m.get("display_name", m["id"]),
+                         "provider": {"type": kind, "model": m["id"], "structured_output": True}} for m in models]
+        except Exception:
+            return []
+    results = await asyncio.gather(discover("ollama", "ollama:"), discover("lm_studio", "lmstudio:"))
+    return [m for result in results for m in result]
 
 
 async def list_le_models() -> list[dict[str, Any]]:
@@ -68,7 +92,7 @@ async def sync_to_db(models: list[dict[str, Any]]) -> None:
         return
     # init_db 済み前提だが念のためDDL実行
     from python.storage.db import DDL
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(DB_PATH)) as db:
         await db.executescript(DDL)
         for m in models:
             await db.execute(
@@ -99,7 +123,7 @@ async def sync_to_db(models: list[dict[str, Any]]) -> None:
 async def list_models_from_db() -> list[dict[str, Any]]:
     """SQLiteから一覧取得、なければYAMLから"""
     try:
-        async with aiosqlite.connect(DB_PATH) as db:
+        async with aiosqlite.connect(get_db_path(DB_PATH)) as db:
             db.row_factory = aiosqlite.Row
             cur = await db.execute("SELECT extra_json FROM models")
             rows = await cur.fetchall()

@@ -153,7 +153,7 @@ async def run_single(scenario: ScenarioCard, model_id: str, run_number: int = 1,
                     result = event["result"]
             if memory_ctx is not None:
                 await memory_store.commit(scope, result, session_id=state.session_id, turn=turn.turn,
-                                          evidence_text="\n".join(m["content"] for m in history) + "\n" + result["reply"])
+                                          evidence_text="\n".join(m["content"] for m in history if m.get("role") == "user"))
         except BaseException as exc:
             meta.status = "cancelled" if isinstance(exc, (asyncio.CancelledError, GeneratorExit)) else "failed"
             turns_out.append({"turn": turn.turn, "type": turn.type, "user": turn.user,

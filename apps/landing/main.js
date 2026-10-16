@@ -3,6 +3,15 @@
   doc.classList.remove('no-js');
   const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+  // Web fonts are decorative: request them only after the first paint so they never delay it.
+  const fonts = document.getElementById('webfonts');
+  const addFonts = () => document.head.insertAdjacentHTML('beforeend', fonts.textContent);
+  try {
+    new PerformanceObserver((_, o) => { o.disconnect(); addFonts(); }).observe({ type: 'paint', buffered: true });
+  } catch {
+    addEventListener('load', addFonts, { once: true });
+  }
+
   // Split headings into per-character spans for the staggered reveal. The full text stays as aria-label.
   document.querySelectorAll('.split').forEach((el) => {
     el.setAttribute('aria-label', el.textContent.replace(/\s+/g, ' ').trim());
@@ -92,29 +101,5 @@
     });
   }
 
-  // Waitlist: set data-endpoint on <form> to a POST URL that accepts {email, lang}. Empty = not open yet.
-  const form = document.querySelector('#waitlist-form');
-  if (!form) return;
-  const status = form.querySelector('.status');
-  form.addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    const msg = form.dataset;
-    const endpoint = form.dataset.endpoint;
-    if (!form.email.checkValidity()) { status.textContent = msg.invalid; form.email.focus(); return; }
-    if (!form.consent.checked) { status.textContent = msg.consent; form.consent.focus(); return; }
-    if (!endpoint) { status.textContent = msg.closed; return; }
-    status.textContent = '…';
-    try {
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: form.email.value, lang: doc.lang }),
-      });
-      if (!res.ok) throw new Error(res.status);
-      form.reset();
-      status.textContent = msg.ok;
-    } catch {
-      status.textContent = msg.error;
-    }
-  });
+
 })();

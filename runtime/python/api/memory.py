@@ -3,7 +3,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
-from python.core.memory import MAX_CONTENT, MemoryType
+from python.core.memory import MAX_CONTENT, MemoryType, SourceKind
 from python.storage import memories
 
 router = APIRouter(prefix="/memory")
@@ -13,6 +13,9 @@ class MemoryIn(BaseModel):
     scope: str = Field(min_length=1, max_length=300)
     type: MemoryType
     content: str = Field(min_length=1, max_length=MAX_CONTENT)
+    source_kind: SourceKind = "user_statement"
+    source_quote: str = Field(default="", max_length=2000)
+    source_revision: str | None = Field(default=None, max_length=128)
 
     @field_validator("content", "scope", mode="before")
     @classmethod
@@ -55,12 +58,19 @@ async def session_memory(session_id: str):
     """Whether memory is on for a chat session, and the scope it reads and writes."""
     from python.api.chat import _load_settings
     settings = await _load_settings(session_id)
-    return {"session_id": session_id, "enabled": await memories.session_enabled(session_id),
-            "scope": memories.chat_scope(settings.character_id, settings.persona_id, session_id)}
+    from python.storage.generations import Conflict
+    try:
+        scope = await memories.session_scope(settings.model_dump())
+    except Conflict as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    return {"session_id": session_id, "enabled": await memories.session_enabled(session_id), "scope": scope}
 
 
 @router.put("/session/{session_id}")
 async def set_session_memory(session_id: str, body: Toggle):
+    current = await session_memory(session_id)
+    if isinstance(current, JSONResponse):
+        return current
     await memories.set_session_enabled(session_id, body.enabled)
     return await session_memory(session_id)
 
@@ -72,7 +82,45 @@ async def list_memories(scope: str, include_deleted: bool = False):
 
 @router.post("")
 async def create_memory(body: MemoryIn):
-    return await memories.create(body.scope, body.type, " ".join(body.content.split()), origin="user")
+    return await memories.create(body.scope, body.type, " ".join(body.content.split()), origin="user",
+                                 source_kind=body.source_kind, source_quote=body.source_quote,
+                                 source_revision=body.source_revision)
+
+
+class ScopeMigration(BaseModel):
+    expected_revision: str
+    share: bool = False
+
+
+@router.get("/session/{session_id}/scope-preview")
+async def scope_preview(session_id: str):
+    from python.api.chat import _load_settings
+    return await memories.scope_preview((await _load_settings(session_id)).model_dump())
+
+
+@router.post("/session/{session_id}/scope-migrate")
+async def scope_migrate(session_id: str, body: ScopeMigration):
+    from python.api.chat import _load_settings
+    from python.storage.generations import Conflict
+    try:
+        return await memories.migrate_scope((await _load_settings(session_id)).model_dump(), body.expected_revision, body.share)
+    except Conflict as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+
+@router.delete("/session/{session_id}/data")
+async def clear_session_memories(session_id: str):
+    from python.api.chat import _load_settings
+    from python.storage.generations import transaction
+    scope = (await memories.scope_preview((await _load_settings(session_id)).model_dump()))["scope"]
+    async with transaction() as db:
+        active = await (await db.execute("SELECT 1 FROM generations g JOIN session_scopes s ON s.session_id=g.session_id "
+                                        "WHERE s.scope=? AND g.status='pending' LIMIT 1", (scope,))).fetchone()
+        if active:
+            return JSONResponse({"error": "stop generation before deleting memories"}, status_code=409)
+        await db.execute("DELETE FROM memory_events WHERE scope=?", (scope,))
+        await db.execute("DELETE FROM memories WHERE scope=?", (scope,))
+    return {"ok": True, "scope": scope, "affects_shared_sessions": True}
 
 
 @router.post("/search")

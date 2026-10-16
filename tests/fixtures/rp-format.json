@@ -1,0 +1,43 @@
+[
+  {
+    "name": "named actions and visible thoughts stay with the character",
+    "input": "@キャルル:\n*カップを置く*\n\n*（もう少し話していたい）*\n\nもう一杯、飲む？",
+    "display": [{"kind": "speech", "speaker": "キャルル", "text": "*カップを置く*\n\n*（もう少し話していたい）*\n\nもう一杯、飲む？"}],
+    "sourceKinds": ["action", "action", "dialogue"]
+  },
+  {
+    "name": "inline actions do not create a narrator",
+    "input": "@アキ: *手を振る*やあ",
+    "display": [{"kind": "speech", "speaker": "アキ", "text": "*手を振る*やあ"}],
+    "sourceKinds": ["action", "dialogue"]
+  },
+  {
+    "name": "only an explicit narrator block changes the display",
+    "input": "@アキ: こんばんは\n@:\n\n*雨が降り始めた。*\n\n@アキ:\n*（傘を持っていてよかった）*\n\n一緒に帰ろう？",
+    "display": [
+      {"kind": "speech", "speaker": "アキ", "text": "こんばんは"},
+      {"kind": "narration", "text": "雨が降り始めた。"},
+      {"kind": "speech", "speaker": "アキ", "text": "*（傘を持っていてよかった）*\n\n一緒に帰ろう？"}
+    ],
+    "sourceKinds": ["dialogue", "narration", "action", "dialogue"]
+  },
+  {
+    "name": "fullwidth header aliases preserve body characters",
+    "input": "＠アキ：\n*（ＡＢＣのままでいい）*\n＠： *風が吹く。*\n@イオ: こんにちは",
+    "display": [
+      {"kind": "speech", "speaker": "アキ", "text": "*（ＡＢＣのままでいい）*"},
+      {"kind": "narration", "text": "風が吹く。"},
+      {"kind": "speech", "speaker": "イオ", "text": "こんにちは"}
+    ],
+    "sourceKinds": ["action", "narration", "dialogue"]
+  },
+  {
+    "name": "legacy explicit narrator input remains readable",
+    "input": "NARRATOR: *夜の廊下。*\n\n@アキ: こっちだよ",
+    "display": [
+      {"kind": "narration", "text": "夜の廊下。"},
+      {"kind": "speech", "speaker": "アキ", "text": "こっちだよ"}
+    ],
+    "sourceKinds": ["narration", "dialogue"]
+  }
+]

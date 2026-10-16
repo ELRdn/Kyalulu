@@ -13,7 +13,7 @@ export const NARRATION_STYLES: { id: NarrationStyleId; label: string; instructio
   { id: "descriptive", label: "描写重視", instruction: "情景・仕草・表情の描写を*テキスト*で丁寧に添え、雰囲気を大切にする。" },
   { id: "dialogue_heavy", label: "会話中心", instruction: "地の文は最小限にとどめ、キャラクター同士の掛け合い・セリフを中心に展開する。" },
   { id: "light_novel", label: "ライトノベル風", instruction: "ライトノベル的な文体で、地の文とセリフのバランスを取りながら物語調に描写する。" },
-  { id: "first_person", label: "一人称視点", instruction: "キャラクター自身の一人称視点で、内心の感情も交えて描写する。" },
+  { id: "first_person", label: "一人称視点", instruction: "キャラクター自身の一人称視点で、*（内心の独白）*も交えて描写する。独白は読者に見えるが、他のキャラクターには聞こえない。" },
   { id: "third_person", label: "三人称視点", instruction: "三人称視点で、客観的にシーン全体を描写する。" },
   { id: "cinematic", label: "シネマティック", instruction: "映画のワンシーンのように、カメラワークを意識した情景描写を心がける。" },
 ];

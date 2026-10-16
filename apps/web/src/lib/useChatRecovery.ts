@@ -67,7 +67,7 @@ export function useChatRecovery(sessionId: string, onHistory: (messages: (ChatMe
     } finally { if (alive.current) setChecking(false); }
   });
   const rejected = (id: string) => {
-    // Only explicit HTTP rejection before reservation may resolve without GET.
+    // Only explicit HTTP rejection before generation admission may resolve without GET.
     try {
       if (store.read().pending?.id !== id) return;
       persistDirtyDraft();
@@ -84,6 +84,13 @@ export function useChatRecovery(sessionId: string, onHistory: (messages: (ChatMe
     } catch (e) {
       if (alive.current) setNotice(`停止を確認できません。送信結果の確認を続けます。${String(e)}`);
     }
+  };
+  const erase = () => {
+    const next: ChatDraft = { version: 1, draft: '', pending: null };
+    dirtyDraft.current = false; if (alive.current) apply(next);
+    window.localStorage.removeItem(store.key);
+    if (window.localStorage.getItem(store.key) !== null) throw Error('端末の送信下書きを消去できません。');
+    if (alive.current) { setStorageError(null); setNotice(null); }
   };
   const reconcileRef = useRef(reconcile);
   reconcileRef.current = reconcile;
@@ -115,6 +122,6 @@ export function useChatRecovery(sessionId: string, onHistory: (messages: (ChatMe
     };
   }, [store]);
   return { input: value.draft, change, pending: value.pending, storageError, notice, checking,
-    unresolved: !!value.pending || !!storageError, blocked, begin, reconcile, rejected, cancel,
+    unresolved: !!value.pending || !!storageError, blocked, begin, reconcile, rejected, cancel, erase,
     clearCommand: (text: string) => { if (inputRef.current.trim() === text) change(""); } };
 }

@@ -1,0 +1,1 @@
+{"provider":"system_http","base_url":"http://127.0.0.1:8767/kcb/v1","model":"mock-echo","label":"Kyalulu API Mock smoke with durable memory and state","track":"system","runtime_id":"kyalulu-api-system-v1","stream":false,"max_tokens":768}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Outlet, Link, useLocation } from "react-router-dom";
+import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import NavItem from "../components/ui/NavItem";
 import Avatar from "../components/ui/Avatar";
 import IconButton from "../components/ui/IconButton";
@@ -7,12 +7,15 @@ import Icon, { type IconName } from "../components/ui/Icon";
 import CommandPalette from "../components/CommandPalette";
 import { useTheme } from "../lib/theme";
 import { useDisplayName } from "../lib/profile";
+import { useAccountProfile } from '../lib/accountProfile';
 import "./shell.css";
-import { useAdministrative } from '../components/RuntimeGate';
+import { useAdministrative, useRuntimeAccess } from '../components/RuntimeGate';
+import { isCloudGuest, loginPath } from '../lib/cloudGuest';
 
 const LS_SIDEBAR_COMPACT = "kyalulu-sidebar-compact";
 
 const MOBILE_NAV: { to: string; icon: IconName; label: string }[] = [
+  { to: "/", icon: "home", label: "ホーム" },
   { to: "/chats", icon: "chat", label: "トーク" },
   { to: "/discover", icon: "compass", label: "キャラクター" },
   { to: "/create", icon: "pen", label: "つくる" },
@@ -41,10 +44,13 @@ const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigat
 
 export default function AppShell() {
   const administrative = useAdministrative();
+  const guest = isCloudGuest(useRuntimeAccess());
+  const navigate = useNavigate();
   const [compact, setCompact] = useState(() => localStorage.getItem(LS_SIDEBAR_COMPACT) === "1");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const { theme, toggle } = useTheme();
   const displayName = useDisplayName();
+  const accountSync = useAccountProfile();
   const location = useLocation();
   const mainRef = useRef<HTMLElement>(null);
   const dailyWord = DAILY_WORDS[Math.floor(Date.now() / 86_400_000) % DAILY_WORDS.length];
@@ -57,12 +63,13 @@ export default function AppShell() {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        setPaletteOpen((v) => !v);
+        if (guest) navigate('/discover');
+        else setPaletteOpen((v) => !v);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [guest, navigate]);
 
   // 画面遷移のたびに本文のスクロール位置を先頭へ戻す（前ページの位置を引き継がない）
   useEffect(() => {
@@ -79,26 +86,26 @@ export default function AppShell() {
     <div className={`k-shell ${inChat ? "k-shell--chat" : ""} ${location.pathname.startsWith("/characters/") ? "k-shell--immersive" : ""}`}>
       <header className="k-shell__header">
         <Link to="/" className="k-shell__logo" aria-label="Kyalulu ホーム">
-          <img className="k-shell__logo-mark" src={`${import.meta.env.BASE_URL}apple-touch-icon.png`} alt="" aria-hidden="true" />
+          <img className="k-shell__logo-mark" src={`${import.meta.env.BASE_URL}mascot/v1.2/face-default.png`} alt="" aria-hidden="true" width={34} height={34} />
           <span className="k-shell__wordmark">
             Kyalulu<span aria-hidden="true">✦</span>
           </span>
         </Link>
-        <button type="button" className="k-shell__search" onClick={() => setPaletteOpen(true)} aria-label="キャラクターやワールドを検索">
+        <button type="button" className="k-shell__search" onClick={() => guest ? navigate('/discover') : setPaletteOpen(true)} aria-label="キャラクターやワールドを検索">
           <Icon name="search" size={16} />
           <span className="k-shell__search-text">キャラクターやワールドを検索…</span>
           <kbd>{isMac ? "⌘" : "Ctrl"} K</kbd>
         </button>
         <div className="k-shell__header-actions">
-          <IconButton label="キャラクターやワールドを検索" className="k-shell__search-mobile" onClick={() => setPaletteOpen(true)} size="sm">
+          <IconButton label="キャラクターやワールドを検索" className="k-shell__search-mobile" onClick={() => guest ? navigate('/discover') : setPaletteOpen(true)} size="sm">
             <Icon name="search" size={16} />
           </IconButton>
           <IconButton label={theme === "dark" ? "ライトモードに切替" : "ダークモードに切替"} onClick={toggle} size="sm">
             <Icon name={theme === "dark" ? "sun" : "moon"} size={16} />
           </IconButton>
-          <Link to="/profile" className="k-shell__profile-chip">
-            <Avatar name={displayName} size="sm" />
-            <span className="k-shell__profile-name">{displayName}</span>
+          <Link to={guest ? loginPath(location.pathname + location.search) : '/profile'} className="k-shell__profile-chip">
+            <Avatar name={guest ? 'ゲスト' : displayName} size="sm" />
+            <span className="k-shell__profile-name">{guest ? 'ログイン / 新規登録' : displayName}</span>
           </Link>
         </div>
       </header>
@@ -117,7 +124,7 @@ export default function AppShell() {
 
           {!rail && (
             <div className="k-shell__companion">
-              <img src={`${import.meta.env.BASE_URL}mascot/nap.webp`} alt="" className="k-shell__companion-art" />
+              <img src={`${import.meta.env.BASE_URL}mascot/v1.2/nap.png`} alt="" className="k-shell__companion-art" width={160} height={160} decoding="async" />
               <div className="k-shell__daily">
                 <div className="k-shell__daily-title">✦ 今日のひとこと</div>
                 <p>{dailyWord}</p>
@@ -133,6 +140,7 @@ export default function AppShell() {
         </nav>
 
         <main className="k-shell__main" id="main" ref={mainRef}>
+          {accountSync.error && location.pathname!=='/profile' && <div className="k-shell__sync-alert" role="alert">{accountSync.error} <Link to="/profile">プロフィールで確認</Link></div>}
           <Outlet />
         </main>
       </div>
@@ -152,7 +160,7 @@ export default function AppShell() {
         </div>
       </nav>
 
-      <CommandPalette open={paletteOpen} onClose={closePalette} />
+      {guest ? null : <CommandPalette open={paletteOpen} onClose={closePalette} />}
     </div>
   );
 }

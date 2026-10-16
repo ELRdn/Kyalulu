@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta name="robots" content="noindex"><title>プライバシーポリシー（公開前ドラフト） — Kyalulu</title><style>body{max-width:780px;margin:3em auto;padding:0 1em;font:17px/1.8 system-ui;background:#faf6ff;color:#282032}a{color:#6038a7}.draft{padding:1em;border:2px solid #6038a7}</style><body>
+<h1>プライバシーポリシー（公開前ドラフト）</h1>
+<p class="draft">未承認の原稿です。現在は1所有者の私的テストで、一般登録・販売・広告・新規画像保存／同期・公開Communityは未提供です。運営者情報・保持条件・計測の実装確認を含む一般βの法務受け入れは未完了です。</p>
+<h2>端末と運営クラウド</h2>
+<p>ローカルCoreは会話・設定・記憶を端末内に保存します。ローカルモデルのみでは推論本文を運営クラウドへ送りません。BYOK・任意同期は有効にした経路へ必要なデータを送信します。Remoteは別の中継経路です。</p>
+<p>クラウド認証はSupabaseのGoogle／メールリンクを使い、確認済みメール・利用条件を含む規約と送信先説明への同意を要求します。アカウント、会話、キャラ、Persona、World、記憶、同期版、クレジット台帳を所有者ごとに管理します。クラウド保存は端末だけが読める暗号化ではなく、運営Runtimeは生成・保存のため本文を処理できます。認証トークンとBYOKキーはサーバーで暗号化して保管します。</p>
+<p>生成では必要な会話履歴、キャラクター・Persona・World設定、記憶等をOpenRouterと選択した提供元に送ります。現在、入力・出力・作品保存の外部SFW安全検査は行わず、別の検査APIへ本文を送りません。SFW宣言・構造検証は内容分類とは別です。新規画像保存／同期は無効です。</p>
+<h2>6つの提供元別経路</h2>
+<p>すべてOpenRouter経由で指定経路へ固定し、自動fallbackはありません。標準経路はDeepSeek V4.1 Flash／InferenceNetです。以下は現在の公開statusとリクエスト方針であり、全提供元の契約・実保持を独立に検証した保証ではありません。</p>
+<ul>
+<li>DeepSeek V4.1 Flash／Baidu（baidu/fp8）：入力・生成結果の保存、AI学習・改善への利用を許可。送信ごとに未チェックから始まる明示同意が必要です。取消・期限切れ・所有者変更後は引き継ぎません。保持期間、処理地域、OpenRouter経由の特約は未確認です。</li>
+<li>DeepSeek V4.1 Flash／Decart（decart/fp4）：学習目的のデータ収集を拒否するリクエスト方針。実保持期間・処理地域・契約条件は確認待ちです。</li>
+<li>DeepSeek V4.1 Flash／InferenceNet（inference-net/fp8）：学習目的のデータ収集を拒否するリクエスト方針。実保持期間・処理地域・契約条件は確認待ちです。</li>
+<li>GLM 5.3 Flash／InferenceNet（inference-net/fp4）：学習目的のデータ収集を拒否するリクエスト方針。実保持期間・処理地域・契約条件は確認待ちです。</li>
+<li>GPT-6 Luna Flex／OpenAI（openai/flex）：学習目的のデータ収集を拒否するリクエスト方針。公開statusの告知では入力・応答を含む監視ログを通常最大30日保持し、法令・安全上の延長があり得ます。OpenRouter経由の実適用条件・処理地域は確認待ちです。Flexの待ち時間・提供可否は変動します。</li>
+<li>Claude Haiku 5.5／Google Vertex（google-vertex/global）：学習目的のデータ収集を拒否し、ZDRを要求します。global経路の実処理地域・保持・契約条件は確認待ちで、ZDR設定だけで運営保存や経路全体の保持ゼロを保証しません。</li>
+</ul>
+<p>Baiduの学習同意はKyaluluの履歴保存、分析への同意と別です。学習を許可しない経路でも、運営保存と提供元保持を混同しないでください。国外に移転・保存される場合があります。OpenRouter、各提供元、Supabase、Google認証、別経路のBYOK・Remoteについて実適用条件を確定します。OpenCode Go／Muse Contributorは現在の初回提供に含めません。送信先変更には説明更新と必要な再同意を行います。</p>
+<h2>任意のアクセス解析</h2>
+<p>GA4を用いる場合の対象は公式サイト（kyalulu.com）と運営クラウド（cloud.kyalulu.com）のみです。既定オフで明示opt-in後に開始し、拒否・撤回時は解析送信を停止します。ローカルCore・Desktop・CLI・RemoteにはGA4を組み込みません。実際の有効化・同意導線・設定の受け入れ確認は保留です。</p>
+<p>計測するのは画面の分類・イベント種別・言語と、公式サイトの許可済み正規URLです。CloudのページURLはorigin（schemeとhost）のみにし、会話・キャラなどの個別パス、query・fragmentは送りません。参照元はoriginのみ、UTMは許可済みの固定値だけです。会話・記憶・キャラ本文、card／owner／session ID、メール、認証token・APIキー、自由入力は送りません。Direct流入をAI紹介と推定しません。</p>
+<p>Googleへの接続ではIP等の通信情報、同意後の解析Cookie／ブラウザー識別子を処理し得るため、匿名性を保証しません。GA4のプロパティ・保存期間・同意撤回導線・標準自動収集の抑止を確認して正式告知を確定します。会話送信・学習・必須認証への同意を解析同意の代わりにしません。広告配信は現在無効です。</p>
+<h2>規約とアクセス解析の設定</h2><p>解析は規約への同意後に標準で有効です。任意の解析設定を無効にすれば拒否でき、規約・プライバシー設定からいつでも撤回できます。同意前はGoogleタグを読み込みません。解析の無効化はログインや会話の利用条件を変えません。居住国の申告をGoogle Analyticsへ送りません。会話のSFW判定とは別の処理です。</p><h2>削除・保持・連絡先（確認待ち）</h2>
+<p>同期は既定オフで、APIキー、Remote鍵、端末設定、実験成果物、取込原本を同期しません。エクスポート・削除の機能と、運営側・提供元・バックアップからの削除完了は別です。運営者の正式名称・所在地・責任者・連絡先、開示／訂正／退会／削除の窓口と期限、会話・認証・台帳・運用ログ・backupの保持期間、国外移転と第三者提供の条件は未確定です。プラン上の復元期間を削除期限とみなさず、確認前に具体的な保持日数を約束しません。Stripe等の販売時条件も販売開始前に確定します。</p>
+<nav><a href="terms.html">terms</a> · <a href="privacy.html">privacy</a> · <a href="credits.html">credits</a> · <a href="sales.html">sales</a> · <a href="refunds.html">refunds</a> · <a href="en/privacy.html">English</a></nav>
+<p>2026-10-12 · <a href="/#/profile">Kyalulu</a></p>
+</body></html>

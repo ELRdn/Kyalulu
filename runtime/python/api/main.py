@@ -3,6 +3,7 @@ FastAPI エントリポイント
 Runtime Core は FastAPI に依存しない設計 (PROJECT_SPEC.md 8章)
 """
 
+from python.storage.context import get_db_path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,7 +20,7 @@ async def lifespan(app: FastAPI):
     from python.storage.runtime_lock import RuntimeLock
 
     # Acquire before recovery: a second process must never mark live work interrupted.
-    with RuntimeLock(db.DB_PATH.parent):
+    with RuntimeLock(get_db_path(db.DB_PATH).parent):
         # 起動時にDB初期化 + YAML→DB同期
         await init_db()
         from python.storage.generations import recover_interrupted
@@ -66,6 +67,8 @@ async def health_check():
 
 
 # ルーター登録
+from python.api.capabilities import router as capabilities_router
+app.include_router(capabilities_router, prefix="/api")
 from python.api.chat import router as chat_router
 from python.api.providers import router as providers_router
 from python.api.presets import router as presets_router
@@ -93,6 +96,8 @@ app.include_router(diagnostics_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
 app.include_router(creator_router, prefix="/api")
 app.include_router(benchmarks_router, prefix="/api")
+from python.api.cloud_sync import router as cloud_sync_router
+app.include_router(cloud_sync_router, prefix="/api")
 
 # Security wraps CORS and all routes, including future APIs and static responses.
 from python.api.mobile import Config, Devices, MobileSecurity, WebDist, router as mobile_router

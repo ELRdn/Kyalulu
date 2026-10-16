@@ -26,10 +26,11 @@ export default function Sheet({
     if (!open || !panel.current) return;
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const element = panel.current;
-    const focusable = () => Array.from(element.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]'))
+    const focusable = () => Array.from(element.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex="0"]'))
       .filter(node => node.getClientRects().length && !node.closest('[inert]'));
     (focusable()[0] ?? element).focus({ preventScroll: true });
     const key = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || document.querySelector('dialog:modal')) return;
       const panels = document.querySelectorAll('.k-sheet[aria-modal="true"]');
       if (panels[panels.length - 1] !== element) return;
       if (event.key === 'Escape') { event.preventDefault(); close.current(); }
