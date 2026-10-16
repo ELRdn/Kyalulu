@@ -19,9 +19,8 @@ CONSENT_VERSION = "2026-10-03-provider-routing-v2"
 def provider_consent_version(config):
     # Go remains compatible with its existing explanation. Each other backend
     # has a distinct agreement; switching cannot reuse an earlier Go consent.
-    return CONSENT_VERSION if config.operator_backend == "opencode-go" else (
-        CONSENT_VERSION + ("-openrouter-inferencenet-deepseek-v2" if config.operator_backend == "openrouter"
-                           else "-direct-deepseek"))
+    return CONSENT_VERSION + ("-openrouter-model-choices-v6-region" if config.operator_backend == "openrouter"
+                              else "-" + config.operator_backend + "-direct-generation")
 
 
 class SupabaseAuth:
@@ -54,11 +53,13 @@ class SupabaseAuth:
             raise CloudError("authentication_failed", 401)
         return data
 
-    async def begin(self, *, provider=None, email=None, adult=False, consent=False):
+    async def begin(self, *, provider=None, email=None, consent=False, country=None):
         if not self.config.legal_approved and not self.config.private_test:
             raise CloudError("legal_publication_pending", 503)
-        if not adult or not consent:
-            raise CloudError("adult_and_consent_required", 403)
+        if consent is not True:
+            raise CloudError("terms_consent_required", 403)
+        if not isinstance(country, str) or country not in {"JP", "US"}:
+            raise CloudError("cloud_residence_country_required", 403)
         if not self.config.supabase_url or not self.config.supabase_key:
             raise CloudError("authentication_not_configured", 503)
         if provider not in {None, "google"}:
@@ -81,7 +82,8 @@ class SupabaseAuth:
             db.execute(
                 "INSERT INTO flows VALUES(?,?,?)",
                 (digest(flow), self.store.encrypt(json.dumps({"verifier": verifier,
-                    "consent": provider_consent_version(self.config), "backend": self.config.operator_backend})),
+                    "consent": provider_consent_version(self.config), "backend": self.config.operator_backend,
+                    "country": country})),
                     time.time() + 600),
             )
         callback = self.config.origin + "/auth/callback"
@@ -124,7 +126,9 @@ class SupabaseAuth:
             try:
                 agreement = json.loads(self.store.decrypt(row["verifier"]))
                 if (agreement["consent"] != provider_consent_version(self.config)
-                        or agreement["backend"] != self.config.operator_backend):
+                        or agreement["backend"] != self.config.operator_backend
+                        or not isinstance(agreement["country"], str)
+                        or agreement["country"] not in {"JP", "US"}):
                     raise ValueError()
                 verifier = agreement["verifier"]
             except (ValueError, KeyError, TypeError) as exc:
@@ -137,12 +141,16 @@ class SupabaseAuth:
         )
         user = await self.call("user", token=session.get("access_token"))
         owner = self.verified_owner(user)
-        self.store.account(owner, consent=provider_consent_version(self.config))
+        if (not session.get("access_token") or not session.get("refresh_token")
+                or type(session.get("expires_in")) is not int or not 0 < session["expires_in"] <= 86400):
+            raise CloudError("authentication_failed", 401)
+        self.store.account(owner, consent=provider_consent_version(self.config), enroll=True)
+        self.store.secret(owner, "eligibility", json.dumps({"country": agreement["country"],
+            "consent_version": agreement["consent"], "self_declared": True}))
         metadata = user.get("user_metadata")
         name = metadata.get("full_name", "") if isinstance(metadata, dict) else ""
         self.store.secret(owner, "identity", json.dumps({"id": owner, "email": user["email"],
             "display_name": name[:200] if isinstance(name, str) else ""}))
-        self.store.trial(owner)
         token = secrets.token_urlsafe(32)
         self.save(token, owner, session)
         return token

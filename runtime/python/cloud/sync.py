@@ -15,6 +15,7 @@ from .store import CloudError, fingerprint
 TABLES = (
     "chat_history",
     "session_settings",
+    "session_scopes",
     "runtime_states",
     "session_memory",
     "memories",
@@ -22,13 +23,20 @@ TABLES = (
     "library_versions",
     "library_assets",
     "creator_versions",
+    "conversation_summaries",
+    "session_deletions",
 )
+NEW_TABLES = ("session_scopes", "conversation_summaries", "session_deletions")
+LEGACY_TABLES = tuple(t for t in TABLES if t not in NEW_TABLES)
 SESSION_TABLES = {
     "chat_history": "session_id",
     "session_settings": "session_id",
     "runtime_states": "session_id",
     "session_memory": "session_id",
     "memories": "source_session_id",
+    "session_scopes": "session_id",
+    "conversation_summaries": "session_id",
+    "session_deletions": "session_id",
 }
 MAX_BYTES = 16_000_000
 
@@ -47,11 +55,13 @@ def selected_settings(db, selected):
     return rows
 
 
-def selection_scopes(rows, selected):
+def selection_scopes(rows, selected, pinned=()):
     from python.storage.memories import chat_scope
 
     settings = {row.get("session_id"): row for row in rows}
+    scopes = {row["session_id"]: row["scope"] for row in pinned}
     return {
+        scopes.get(s) or
         chat_scope(
             settings.get(s, {}).get("character_id"), settings.get(s, {}).get("persona_id"), s
         )
@@ -74,7 +84,8 @@ def export_snapshot(path: Path, selected: list[str] | None = None):
             raise CloudError("stop_generation_before_sync", 409)
         tables = {}
         settings = selected_settings(db, selected) if selected is not None else []
-        scopes = selection_scopes(settings, selected) if selected is not None else set()
+        pinned = [dict(r) for r in db.execute("SELECT * FROM session_scopes")]
+        scopes = selection_scopes(settings, selected, pinned) if selected is not None else set()
         for table in TABLES:
             rows = [dict(r) for r in db.execute(f"SELECT * FROM {table} ORDER BY rowid")]
             if selected is not None and table in SESSION_TABLES:
@@ -146,8 +157,10 @@ def validate_snapshot(value, *, streamed=False):
         or value["version"] != 1
     ):
         raise CloudError("invalid_sync_snapshot")
-    if not isinstance(value["tables"], dict) or set(value["tables"]) != set(TABLES):
+    if not isinstance(value["tables"], dict) or not set(LEGACY_TABLES) <= set(value["tables"]) <= set(TABLES):
         raise CloudError("invalid_sync_tables")
+    for table in NEW_TABLES:
+        value["tables"].setdefault(table, [])
     if not isinstance(value["assets"], Mapping if streamed else dict) or (
         not streamed and len(json.dumps(value).encode()) > MAX_BYTES
     ):
@@ -160,7 +173,7 @@ def validate_snapshot(value, *, streamed=False):
     ):
         raise CloudError("invalid_sync_selection")
     scopes = (
-        selection_scopes(value["tables"]["session_settings"], selected)
+        selection_scopes(value["tables"]["session_settings"], selected, value["tables"]["session_scopes"])
         if selected is not None
         else set()
     )
@@ -260,15 +273,37 @@ class DecodedAssets(Mapping):
         return self.decode(key, self.encoded[key])
 
 
+def compatible_row(table, row):
+    # PageRows yields fresh dictionaries on each pass. Normalize a copy both
+    # when validating and inserting, without changing caller/wire fingerprints.
+    if table != "memories":
+        return row
+    row = dict(row)
+    for name, default in {
+        "source_kind": "user_statement", "source_quote": "", "source_revision": None,
+        "source_message_ids": "[]", "confirmation": "unverified",
+    }.items():
+        row.setdefault(name, default)
+    return row
+
+
 def apply_rows(db, value, *, validate_only=False):
     selected = value["selected_sessions"]
     scopes = (
-        selection_scopes(value["tables"]["session_settings"], selected)
+        selection_scopes(value["tables"]["session_settings"], selected, value["tables"]["session_scopes"])
         if selected is not None
         else set()
     )
     if db.execute("SELECT 1 FROM generations WHERE status='pending'").fetchone():
         raise CloudError("stop_generation_before_sync", 409)
+    erased = {r[0] for r in db.execute("SELECT session_id FROM session_deletions")}
+    erased.update(r.get("session_id") for r in value["tables"]["session_deletions"])
+    for table, rows in value["tables"].items():
+        if table != "session_deletions" and any(
+            r.get("session_id") in erased or r.get("source_session_id") in erased
+            or r.get("scope") in {f"session:{sid}" for sid in erased} for r in rows
+        ):
+            raise CloudError("erased_conversation_cannot_be_restored", 409)
     # Validate all schemas and ownership of primary keys BEFORE deleting anything.
     for table in TABLES:
         schema = [dict(r) for r in db.execute(f"PRAGMA table_info({table})")]
@@ -276,6 +311,8 @@ def apply_rows(db, value, *, validate_only=False):
         primary = [r["name"] for r in schema if r["pk"]]
         seen = set()
         for row in value["tables"][table]:
+            # Old snapshots gain only known additive defaults; unknown columns still fail closed.
+            row = compatible_row(table, row)
             if set(row) != columns or any(
                 type(v) not in (str, int, float, type(None)) for v in row.values()
             ):
@@ -294,8 +331,35 @@ def apply_rows(db, value, *, validate_only=False):
 
                     if not math.isfinite(field):
                         raise CloudError("sync_schema_mismatch", 409)
+            if table in {"memories", "conversation_summaries"}:
+                try:
+                    ids = json.loads(row["source_message_ids"])
+                except (ValueError, TypeError) as exc:
+                    raise CloudError("invalid_sync_message_sources", 409) from exc
+                if (not isinstance(ids, list) or any(type(i) is not int or i <= 0 for i in ids)
+                        or len(set(ids)) != len(ids)):
+                    raise CloudError("invalid_sync_message_sources", 409)
+            if table == "conversation_summaries":
+                from python.storage.conversation import SUMMARY_CHARS
+
+                if (row["kind"] not in {"chapter", "arc"} or row["method"] not in {"extractive", "user_edited"}
+                        or row["revision"] < 1 or row["ordinal"] < 0 or not ids
+                        or not row["text"].strip() or len(row["text"]) > SUMMARY_CHARS):
+                    raise CloudError("invalid_sync_summary", 409)
+            if table == "session_scopes":
+                try:
+                    scope_identity = json.loads(row["identity_json"])
+                except (ValueError, TypeError) as exc:
+                    raise CloudError("invalid_sync_scope", 409) from exc
+                if (row["mode"] not in {"legacy", "world", "shared", "branch"} or not row["scope"]
+                        or not isinstance(scope_identity, dict)
+                        or not isinstance(scope_identity.get("versions", {}), dict)
+                        or not isinstance(scope_identity.get("library_binding", {}), dict)):
+                    raise CloudError("invalid_sync_scope", 409)
             identity = tuple(row[k] for k in primary)
-            if identity in seen:
+            # Deletion markers form a monotonic set: repeats are harmless, but
+            # every repeated row must still pass the schema checks above.
+            if identity in seen and table != "session_deletions":
                 raise CloudError("duplicate_sync_identity", 409)
             seen.add(identity)
             if selected is not None and table in SESSION_TABLES and primary:
@@ -320,9 +384,17 @@ def apply_rows(db, value, *, validate_only=False):
         return
     if selected is None:
         for table in TABLES:
-            db.execute(f"DELETE FROM {table}")
+            if table != "session_deletions":
+                db.execute(f"DELETE FROM {table}")
         db.execute("DELETE FROM generations")
     else:
+        replaced_memory_ids = set()
+        for scope in scopes:
+            replaced_memory_ids.update(r[0] for r in db.execute(
+                "SELECT id FROM memories WHERE source_session_id IS NULL AND scope=?", (scope,)))
+        for session in selected:
+            replaced_memory_ids.update(r[0] for r in db.execute(
+                "SELECT id FROM memories WHERE source_session_id=?", (session,)))
         for scope in scopes:
             db.execute(
                 "DELETE FROM memory_events WHERE memory_id IN (SELECT id FROM memories WHERE source_session_id IS NULL AND scope=?)",
@@ -335,19 +407,36 @@ def apply_rows(db, value, *, validate_only=False):
                 (session,),
             )
         for table, column in SESSION_TABLES.items():
+            if table == "session_deletions":
+                continue
             for session in selected:
                 db.execute(f"DELETE FROM {table} WHERE {column}=?", (session,))
         for session in selected:
             db.execute("DELETE FROM generations WHERE session_id=?", (session,))
+        # Retained conversations can contain snapshots of memories replaced by
+        # selected sync. Remove those source quotes and prompts atomically while
+        # retaining their replies/state and unrelated retrieval candidates.
+        from python.storage.conversation import erase_memory_references
+
+        for generation in db.execute(
+            "SELECT generation_id,result_json FROM generations WHERE result_json IS NOT NULL"
+        ).fetchall():
+            original = json.loads(generation[1])
+            redacted = erase_memory_references(original, replaced_memory_ids, source_session_ids=selected)
+            if redacted is not original:
+                db.execute("UPDATE generations SET result_json=? WHERE generation_id=?",
+                           (json.dumps(redacted, ensure_ascii=False), generation[0]))
     for table in TABLES:
         for row in value["tables"][table]:
+            row = compatible_row(table, row)
             names = list(row)
             if selected is not None and table == "memory_events":
                 # Event sequence numbers are local to a database. Allocate anew
                 # rather than rejecting or replacing an unrelated session's log.
                 names.remove("id")
+            insert = "INSERT OR IGNORE" if table == "session_deletions" else "INSERT OR REPLACE"
             db.execute(
-                f"INSERT OR REPLACE INTO {table}("
+                f"{insert} INTO {table}("
                 + ",".join(names)
                 + ") VALUES("
                 + ",".join("?" for _ in names)
@@ -457,6 +546,18 @@ class SyncService:
 
     def push(self, owner, path, *, request_id, base_revision, snapshot, streamed_hash=None):
         assets = validate_snapshot(snapshot, streamed=streamed_hash is not None)
+        with self.store.transaction() as control:
+            control.execute("CREATE TABLE IF NOT EXISTS conversation_erasures(owner TEXT,hash TEXT,PRIMARY KEY(owner,hash))")
+            erased = {r[0] for r in control.execute("SELECT hash FROM conversation_erasures WHERE owner=?",(owner,))}
+        for table, rows in snapshot.get("tables",{}).items():
+            if table == "session_deletions":
+                continue
+            for row in rows:
+                sid = row.get("session_id") or row.get("source_session_id")
+                if not sid and str(row.get("scope", "")).startswith("session:"):
+                    sid = row["scope"][len("session:"):]
+                if sid and hashlib.sha256(sid.encode()).hexdigest() in erased:
+                    raise CloudError("erased_conversation_cannot_be_restored",409)
         mode = self.settings(owner)["mode"]
         if mode == "off" or (mode == "selected" and snapshot["selected_sessions"] is None):
             raise CloudError("sync_not_enabled", 403)
@@ -487,6 +588,9 @@ class SyncService:
             if head and head[1]:
                 raise CloudError("cloud_copy_deleted", 409)
             apply_rows(db, snapshot)
+            for row in snapshot["tables"]["session_deletions"]:
+                db.execute("INSERT OR IGNORE INTO control.conversation_erasures VALUES(?,?)",
+                           (owner, hashlib.sha256(row["session_id"].encode()).hexdigest()))
             created = save_assets(path.parent, assets)
             result = {"revision": base_revision + 1}
             db.execute(

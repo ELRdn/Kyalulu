@@ -67,6 +67,8 @@ async def health_check():
 
 
 # ルーター登録
+from python.api.capabilities import router as capabilities_router
+app.include_router(capabilities_router, prefix="/api")
 from python.api.chat import router as chat_router
 from python.api.providers import router as providers_router
 from python.api.presets import router as presets_router

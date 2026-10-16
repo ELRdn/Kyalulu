@@ -6,10 +6,52 @@ import sqlite3
 import tempfile
 import zipfile
 from pathlib import Path
+from contextlib import closing
+
+
+def erase_conversations(db, sessions):
+    """Apply durable erasures to a staged SQLite restore before promoting it."""
+    tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    db.execute("CREATE TABLE IF NOT EXISTS session_deletions(session_id TEXT PRIMARY KEY,deleted_at TEXT NOT NULL DEFAULT (datetime('now')))")
+    db.execute("PRAGMA secure_delete=ON")
+    for sid in sessions:
+        memory_ids = set()
+        if "memories" in tables:
+            memory_ids = {r[0] for r in db.execute("SELECT id FROM memories WHERE source_session_id=? OR scope=?", (sid,f"session:{sid}"))}
+        if "generations" in tables:
+            from python.storage.conversation import erase_memory_references
+            for gid, encoded in db.execute("SELECT generation_id,result_json FROM generations WHERE session_id<>? AND result_json IS NOT NULL",(sid,)).fetchall():
+                original = json.loads(encoded)
+                redacted = erase_memory_references(original,memory_ids,source_session_ids={sid})
+                if redacted is not original:
+                    db.execute("UPDATE generations SET result_json=? WHERE generation_id=?", (json.dumps(redacted,ensure_ascii=False),gid))
+        if "memories" in tables:
+            if "memory_events" in tables:
+                db.execute("DELETE FROM memory_events WHERE memory_id IN (SELECT id FROM memories WHERE source_session_id=? OR scope=?)",
+                           (sid,f"session:{sid}"))
+            db.execute("DELETE FROM memories WHERE source_session_id=? OR scope=?",(sid,f"session:{sid}"))
+        if {"memory_events","generations"} <= tables:
+            db.execute("DELETE FROM memory_events WHERE generation_id IN (SELECT generation_id FROM generations WHERE session_id=?)", (sid,))
+        if {"imported_history","chat_history"} <= tables:
+            db.execute("DELETE FROM imported_history WHERE message_id IN (SELECT id FROM chat_history WHERE session_id=?)", (sid,))
+        for table in ("chat_history","generations","runtime_states","session_settings","session_memory","conversation_summaries","session_scopes"):
+            if table in tables:
+                db.execute(f"DELETE FROM {table} WHERE session_id=?",(sid,))
+        db.execute("INSERT OR IGNORE INTO session_deletions(session_id) VALUES(?)",(sid,))
 
 
 def promote_core(restored, data, new_assets):
     """Caller holds the runtime/tenant lock. DB copying is SQLite-atomic."""
+    erased = set()
+    if (data / "data.db").exists():
+        with closing(sqlite3.connect(data / "data.db")) as current:
+            if current.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='session_deletions'").fetchone():
+                erased = {r[0] for r in current.execute("SELECT session_id FROM session_deletions")}
+    with closing(sqlite3.connect(restored)) as staged, staged:
+        if staged.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='session_deletions'").fetchone():
+            erased.update(r[0] for r in staged.execute("SELECT session_id FROM session_deletions"))
+        if erased:
+            erase_conversations(staged, erased)
     old_assets = data / "library_assets"
     previous = restored.parent / "previous-assets"
     moved_old, moved_new = False, False

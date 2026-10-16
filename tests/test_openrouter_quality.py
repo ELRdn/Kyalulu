@@ -112,7 +112,7 @@ async def test_production_transport_failures_do_not_retry(fault):
     # provider exceptions, including a stale assertion inside a mock callback.
     assert calls[0]["provider"]["only"] == ["inference-net"]
     assert calls[0]["provider"]["allow_fallbacks"] is False
-    assert calls[0]["provider"]["max_price"] == {"prompt": 0.02, "completion": 0.45}
+    assert calls[0]["provider"]["max_price"] == {"prompt": 0.077, "completion": 0.66}
     expected_error = {"timeout": "ReadTimeout", "disconnect": "ReadError"}.get(fault, "RuntimeError")
     assert result["error"].startswith(expected_error)
     assert "private-body" not in result["error"] and "mock-secret" not in result["error"]

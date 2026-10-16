@@ -15,6 +15,7 @@ DIRECTORIES = (
     "apps/web/public",
     "packages/schemas",
     "packages/ui",
+    "packages/analytics",
     "packages/launcher",
     "characters",
     "personas",

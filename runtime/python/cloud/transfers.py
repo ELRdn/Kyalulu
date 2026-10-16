@@ -13,6 +13,7 @@ import re
 import shutil
 import sqlite3
 import time
+from copy import deepcopy
 from collections.abc import Sequence, Mapping
 from contextlib import contextmanager
 from pathlib import Path
@@ -23,6 +24,7 @@ from .sync import (
     TABLES,
     SESSION_TABLES,
     apply_rows,
+    compatible_row,
     validate_snapshot,
     selected_settings,
     selection_scopes,
@@ -68,7 +70,8 @@ def snapshot_pages(path, selected=None, *, row_bytes=ROW_BYTES, include_assets=F
         if selected is not None:
             placeholders = ",".join("?" for _ in selected) or "NULL"
             settings = selected_settings(db, selected)
-            scopes = selection_scopes(settings, selected)
+            pinned = [dict(r) for r in db.execute("SELECT * FROM session_scopes")]
+            scopes = selection_scopes(settings, selected, pinned)
             for row in settings:
                 binding = json.loads(row["library_binding"] or "{}")
                 refs.update(
@@ -304,7 +307,8 @@ class Transfers:
         partial = dict(
             version=1, selected_sessions=meta["selected"], assets={}, tables={t: [] for t in TABLES}
         )
-        partial["tables"][page["table"]] = rows
+        # Compatibility defaults must not alter the wire page used for replay hashes.
+        partial["tables"][page["table"]] = deepcopy(rows)
         # Cross-document references are validated once all pages have arrived.
         if page["table"] == "library_assets":
             if not self.store.config.image_storage_enabled:
@@ -326,6 +330,8 @@ class Transfers:
             partial["tables"]["session_settings"] = PageRows(
                 self, self.file(owner, transfer), "session_settings"
             )
+        if page["table"] != "session_scopes":
+            partial["tables"]["session_scopes"] = PageRows(self, self.file(owner, transfer), "session_scopes")
         with connection(path) as db:
             db.row_factory = sqlite3.Row
             db.execute("BEGIN")
@@ -393,13 +399,18 @@ class Transfers:
         meta = self.inspect(owner, transfer)
         if meta["direction"] != "download" or not meta["ready"]:
             raise CloudError("transfer_not_ready", 409)
-        with connection(self.file(owner, transfer)) as db:
-            row = db.execute("SELECT payload FROM pages WHERE seq=?", (index,)).fetchone()
-            meta["expires"] = time.time() + TTL
-            self.update_meta(db, meta)
-        if not row:
-            raise CloudError("transfer_page_not_found", 404)
-        return json.loads(self.store.decrypt(row[0]))
+        # Hold the control lock through the read so an erasure cannot race a stale page.
+        with self.store.transaction() as control:
+            head = control.execute("SELECT revision,deleted FROM sync_heads WHERE owner=? AND id='workspace'", (owner,)).fetchone()
+            if (head[0] if head else 0) != meta["revision"] or (head and head[1]):
+                raise CloudError("transfer_source_changed_restart_download", 409)
+            with connection(self.file(owner, transfer)) as db:
+                row = db.execute("SELECT payload FROM pages WHERE seq=?", (index,)).fetchone()
+                meta["expires"] = time.time() + TTL
+                self.update_meta(db, meta)
+            if not row:
+                raise CloudError("transfer_page_not_found", 404)
+            return json.loads(self.store.decrypt(row[0]))
 
     def snapshot(self, owner, transfer):
         file = self.file(owner, transfer)
@@ -538,6 +549,14 @@ def apply_download(path, selected, pages):
                 version=1, selected_sessions=None, assets={}, tables={t: [] for t in TABLES}
             )
             apply_rows(dest, empty)
+            if selected is not None:
+                # Local-only deletion markers stay authoritative in source.
+                # Do not treat them as unselected rows in the downloaded stage.
+                if selected:
+                    placeholders = ",".join("?" for _ in selected)
+                    dest.execute(f"DELETE FROM session_deletions WHERE session_id NOT IN ({placeholders})", selected)
+                else:
+                    dest.execute("DELETE FROM session_deletions")
             for page in pages:
                 if (
                     not isinstance(page, dict)
@@ -549,18 +568,19 @@ def apply_download(path, selected, pages):
                     raise CloudError("invalid_transfer_page")
                 value = {**empty, "assets": page.get("assets", {}), "tables": {**empty["tables"], page["table"]: page["rows"]}}
                 decoded = validate_snapshot(value)
+                # Reuse sync schema/default validation, including every repeated
+                # tombstone, before an IGNORE could hide invalid incoming data.
+                apply_rows(dest, value, validate_only=True)
                 from .sync import save_assets
                 save_assets(stage.parent, decoded)
                 for row in page["rows"]:
-                    schema = {
-                        r["name"] for r in dest.execute(f"PRAGMA table_info({page['table']})")
-                    }
-                    if set(row) != schema:
-                        raise CloudError("sync_schema_mismatch", 409)
+                    row = compatible_row(page["table"], row)
                     # Abort on identity collisions; never overwrite another session.
+                    # Deletion markers alone form a monotonic, idempotent set.
                     columns = list(row)
+                    insert = "INSERT OR IGNORE" if page["table"] == "session_deletions" else "INSERT"
                     dest.execute(
-                        f"INSERT INTO {page['table']}({','.join(columns)}) VALUES({','.join('?' for _ in columns)})",
+                        f"{insert} INTO {page['table']}({','.join(columns)}) VALUES({','.join('?' for _ in columns)})",
                         tuple(row.values()),
                     )
             dest.commit()

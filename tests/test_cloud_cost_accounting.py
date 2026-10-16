@@ -19,6 +19,49 @@ from python.storage import db as storage
 from python.storage.context import CloudStorageContext, storage_context
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('fault', ['unknown', 'overrun', 'known-failure'])
+async def test_crash_before_settlement_recovers_failed_cost_and_review_gate(tmp_path, monkeypatch, fault):
+    import sqlite3
+    calls = []
+    def respond(request):
+        calls.append(request)
+        if fault == 'known-failure':
+            return httpx.Response(429,json={'error': {'code':429},'usage':{'prompt_tokens':10,'completion_tokens':0,'cost':0.000003}})
+        return generation_response('{"reply":"invalid"}', {'prompt_tokens':10,'completion_tokens':5,
+            **({'cost': 0.02 if fault == 'overrun' else 0.000003} if fault != 'unknown' else {})})
+    app = create_app(config(tmp_path), transport=httpx.MockTransport(respond))
+    owner = enroll(app)
+    def crash(*args, **kwargs):
+        raise RuntimeError('synthetic crash before settlement')
+    monkeypatch.setattr(app.state.store, 'settle', crash)
+    with pytest.raises(RuntimeError, match='synthetic crash'):
+        await run_job(app, owner)
+    assert len(calls) == 1
+    with sqlite3.connect(app.state.store.config.root / 'tenants' / owner / 'data.db') as db:
+        stored = json.loads(db.execute('SELECT result_json FROM generations').fetchone()[0])
+    accounting = stored['cloud_accounting']
+    assert accounting['review_required'] is (fault != 'known-failure')
+    if fault == 'overrun':
+        assert accounting['cost'] == 20_000_000
+    recovered = CloudStore(app.state.store.config)
+    recovered.recover()
+    recovered.recover()
+    with recovered.transaction() as db:
+        operation = db.execute('SELECT * FROM operations').fetchone()
+        assert operation['state'] == 'failed' and operation['charged_credits'] == 0
+        assert operation['actual_cost'] == (operation['max_cost'] if fault == 'unknown' else accounting['cost'])
+        assert operation['review_required'] == int(fault == 'overrun')
+        assert db.execute('SELECT COUNT(*) FROM fund_holds').fetchone()[0] == 0
+    quote = recovered.quote(owner, 'next', 0, 1, 'safety')
+    if fault == 'overrun':
+        with pytest.raises(CloudError, match='operator_budget_exhausted'):
+            recovered.reserve(owner, 'next', 'next', quote, 0)
+    else:
+        recovered.reserve(owner, 'next', 'next', quote, 0)
+    assert len(calls) == 1
+
+
 def config(tmp_path):
     return CloudConfig(root=tmp_path / "cloud", backup_root=tmp_path / "backups",
         origin="https://cloud.test", secret="s" * 32, private_test=True,
@@ -61,6 +104,37 @@ VALID_OUTPUT = json.dumps({"reply": "hello", "state_update": {
     "relationship_state": {"stage": "stranger", "tone": "neutral", "unresolved_conflict": False}}})
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('usage_kind', ['missing', 'known', 'invalid'])
+async def test_upstream_429_preserves_failure_reason_and_budget_stop(tmp_path, usage_kind):
+    calls = []
+    def respond(request):
+        payload = json.loads(request.content)
+        calls.append(payload)
+        if not payload["stream"]:
+            return screened_response(0.000003001, case="valid")
+        data = {"error": {"code": 429}}
+        if usage_kind != 'missing':
+            data['usage'] = {"prompt_tokens": 10, "completion_tokens": 5,
+                             "cost": 0.00001 if usage_kind == 'known' else -0.001}
+        return httpx.Response(429, json=data)
+    app = create_app(config(tmp_path), transport=httpx.MockTransport(respond))
+    owner = enroll(app)
+    _, result = await run_job(app, owner)
+    assert result["status"] == "failed" and result["error"] == "provider_rate_limited"
+    assert result["charged_credits"] == 0 and len(calls) == 1
+    with app.state.store.transaction() as db:
+        op = db.execute("SELECT * FROM operations").fetchone()
+        assert op["actual_cost"] > 0 and op["review_required"] == int(usage_kind == 'invalid')
+    context = CloudStorageContext.for_owner(app.state.store.config.root / "tenants", owner)
+    import sqlite3
+    with sqlite3.connect(context.directory / "data.db") as db:
+        accounting = json.loads(db.execute('SELECT result_json FROM generations').fetchone()[0])["cloud_accounting"]
+    assert accounting["review_reason"] == {'missing': 'missing_cost', 'known': None, 'invalid': 'invalid_cost'}[usage_kind]
+    assert accounting["provider_error"] == "provider_rate_limited"
+    assert (CloudStore(app.state.store.config).private_budget()["available_nano"] == 0) is (usage_kind == 'invalid')
+
+
 def screened_response(cost, *, case="refusal"):
     value = {"model": DEEPSEEK, "provider": "InferenceNet",
         "usage": {"prompt_tokens": 10, "completion_tokens": 5, "cost": cost},
@@ -87,69 +161,8 @@ def screened_response(cost, *, case="refusal"):
     return httpx.Response(503 if case == "http-error" else 200, json=value)
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("case,cost", [
-    ("refusal", 0.00001), ("refusal", 0.02), ("length", 0.02),
-    ("missing-content", 0.02), ("provider", 0.02), ("model", 0.02),
-    ("http-error", 0.02), ("bad-counters", 0.02), ("refusal", 0),
-    ("bad-counters", 0.00001), ("bad-cache", 0.00001),
-])
-async def test_rejected_save_keeps_known_bill_zero_credits_and_overrun_stop(tmp_path, case, cost):
-    cfg = config(tmp_path)
-    calls = []
-
-    def respond(request):
-        calls.append(request.url)
-        assert request.url == "https://openrouter.ai/api/v1/chat/completions"
-        return screened_response(cost, case=case)
-
-    app = create_app(cfg, transport=httpx.MockTransport(respond))
-    owner = enroll(app)
-    bill = 0 if cost == 0 else 10_000 if cost == 0.00001 else 20_000_000
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=cfg.origin,
-        headers={"Origin": cfg.origin}, cookies={SESSION_COOKIE: "browser"}) as client:
-        result = await client.post("/api/creator/world", json={"display_name": "Synthetic world"})
-        assert result.status_code == 503 and "synthetic private text" not in result.text
-        assert len(calls) == 1
-        with app.state.store.transaction() as db:
-            row = db.execute("SELECT * FROM operations").fetchone()
-            assert row["state"] == "failed" and row["charged_credits"] == 0
-            assert row["actual_cost"] == bill
-            assert db.execute("SELECT COUNT(*) FROM fund_holds").fetchone()[0] == 0
-            debt = db.execute("SELECT COALESCE(SUM(amount),0) FROM budget_debt").fetchone()[0]
-            assert debt == max(0, bill - row["max_cost"])
-        assert app.state.store.balance(owner) == 500
-        assert app.state.store.settle(owner, row["id"], 0, success=False)["actual_cost"] == bill
-        assert (await client.get("/api/creator/world")).json()["items"] == []
-        restarted = CloudStore(cfg)
-        assert restarted.private_budget()["available_nano"] == (
-            0 if row["review_required"] else 50_451_279 - bill)
-        if row["review_required"]:
-            denied = await client.post("/api/creator/world", json={"display_name": "Another world"})
-            assert denied.status_code == 503 and denied.json()["code"] == "operator_budget_exhausted"
-            assert len(calls) == 1
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("case,cost", [
-    ("missing-cost", None), ("refusal", None), ("refusal", True),
-    ("refusal", -0.001), ("refusal", "0.00001"), ("refusal", "NaN"),
-    ("refusal", float("inf")), ("refusal", 101), ("bad-json", None),
-])
-async def test_unverifiable_bill_is_unknown_and_retains_reserved_operator_cost(tmp_path, case, cost):
-    app = create_app(config(tmp_path), transport=httpx.MockTransport(
-        lambda _: screened_response(cost, case=case)))
-    owner = enroll(app)
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
-        base_url=app.state.store.config.origin, headers={"Origin": app.state.store.config.origin},
-        cookies={SESSION_COOKIE: "browser"}) as client:
-        assert (await client.post("/api/creator/world",
-            json={"display_name": "Synthetic world"})).status_code == 503
-    with app.state.store.transaction() as db:
-        row = db.execute("SELECT * FROM operations").fetchone()
-        assert row["state"] == "failed" and row["charged_credits"] == 0
-        assert row["actual_cost"] == row["max_cost"] > 0
-    assert app.state.store.balance(owner) == 500
 
 
 @pytest.mark.asyncio
@@ -220,19 +233,19 @@ async def test_failed_generation_retains_known_stream_bill_once_and_replay_is_fr
         assert result["status"] == ("cancelled" if case == "cancel-after-usage" else "failed")
         assert result["charged_credits"] == 0
         assert "synthetic private text" not in json.dumps(result)
-        assert len(calls) == 2
+        assert len(calls) == 1
         with app.state.store.transaction() as db:
             row = db.execute("SELECT * FROM operations WHERE route='cloud-standard'").fetchone()
-            assert row["actual_cost"] == 20_003_001
+            assert row["actual_cost"] == 20_000_000
             assert row["state"] == "failed" and row["charged_credits"] == 0
             assert db.execute("SELECT SUM(amount) FROM budget_debt").fetchone()[0] == (
-                20_003_001 - row["max_cost"])
+                20_000_000 - row["max_cost"])
             assert db.execute("SELECT COUNT(*) FROM credit_holds").fetchone()[0] == 0
             assert db.execute("SELECT COUNT(*) FROM fund_holds").fetchone()[0] == 0
         assert app.state.store.balance(owner) == 500
         assert CloudStore(cfg).private_budget()["available_nano"] == 0
         replay = await (await app.state.jobs.start(owner, req))
-        assert replay == result and len(calls) == 2
+        assert replay == result and len(calls) == 1
         next_quote = app.state.store.quote(owner, "next", 0, 1, "safety")
         with pytest.raises(CloudError, match="operator_budget_exhausted"):
             app.state.store.reserve(owner, "next", "next", next_quote, 0)
@@ -282,7 +295,7 @@ async def test_screen_client_exit_failure_retains_received_bill_and_stops_next_o
 
     def respond(request):
         calls.append(request.url)
-        return screened_response(0.02, case="valid")
+        return generation_response(VALID_OUTPUT, {"prompt_tokens":10,"completion_tokens":5,"cost":0.02})
 
     cfg = config(tmp_path)
     app = create_app(cfg, transport=FailingClose(respond))
@@ -336,20 +349,23 @@ async def test_uncertain_generation_stops_schema_repairs_and_output_safety(tmp_p
     owner = enroll(app)
     _, result = await run_job(app, owner)
     assert result["status"] == "failed" and result["charged_credits"] == 0
-    assert len(calls) == 2 and [payload["stream"] for payload in calls] == [False, True]
+    assert len(calls) == 1 and [payload["stream"] for payload in calls] == [True]
     with app.state.store.transaction() as db:
         row = db.execute("SELECT * FROM operations WHERE route='cloud-standard'").fetchone()
         assert row["state"] == "failed" and row["charged_credits"] == 0
-        assert row["review_required"] == 1
-        assert 3001 < row["actual_cost"] < row["max_cost"]
+        assert row["review_required"] == int(fault == "bad-counters")
+        assert row["actual_cost"] == (10_000 if fault == "bad-counters" else row["max_cost"])
         if fault == "bad-counters":
-            assert row["actual_cost"] == 13_001
+            assert row["actual_cost"] == 10_000
         assert db.execute("SELECT COUNT(*) FROM credit_holds").fetchone()[0] == 0
         assert db.execute("SELECT COUNT(*) FROM fund_holds").fetchone()[0] == 0
     assert app.state.store.balance(owner) == 500
     restarted = CloudStore(app.state.store.config)
     q = restarted.quote(owner, "next", 0, 1, "safety")
-    with pytest.raises(CloudError, match="operator_budget_exhausted"):
+    if fault == "bad-counters":
+        with pytest.raises(CloudError, match="operator_budget_exhausted"):
+            restarted.reserve(owner, "next", "next", q, 0)
+    else:
         restarted.reserve(owner, "next", "next", q, 0)
 
 
@@ -369,10 +385,10 @@ async def test_single_call_overrun_within_operation_reservation_persists_stop_wi
     app = create_app(cfg, transport=httpx.MockTransport(respond))
     owner = enroll(app)
     req, result = await run_job(app, owner)
-    assert result["status"] == "failed" and result["charged_credits"] == 0 and len(calls) == 2
+    assert result["status"] == "failed" and result["charged_credits"] == 0 and len(calls) == 1
     with app.state.store.transaction() as db:
         row = db.execute("SELECT * FROM operations WHERE route='cloud-standard'").fetchone()
-        assert row["actual_cost"] == 1_003_001 < row["max_cost"]
+        assert row["actual_cost"] == 1_000_000 < row["max_cost"]
         assert db.execute("SELECT COALESCE(SUM(amount),0) FROM budget_debt").fetchone()[0] == 0
         assert row["review_required"] == 1
         assert db.execute("SELECT COUNT(*) FROM budget_debt").fetchone()[0] == 0
@@ -380,12 +396,12 @@ async def test_single_call_overrun_within_operation_reservation_persists_stop_wi
     assert app.state.store.balance(owner) == 500
     restarted = CloudStore(cfg)
     assert restarted.private_budget()["available_nano"] == 0
-    assert restarted.settle(owner, req.generation_id, 0, success=False)["actual_cost"] == 1_003_001
+    assert restarted.settle(owner, req.generation_id, 0, success=False)["actual_cost"] == 1_000_000
     q = restarted.quote(owner, "next", 0, 1, "safety")
     with pytest.raises(CloudError, match="operator_budget_exhausted"):
         restarted.reserve(owner, "next", "next", q, 0)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=cfg.origin,
         headers={"Origin": cfg.origin}, cookies={SESSION_COOKIE: "browser"}) as client:
         denied = await client.post("/api/creator/world", json={"display_name": "Another world"})
-        assert denied.status_code == 503 and denied.json()["code"] == "operator_budget_exhausted"
-    assert len(calls) == 2
+        assert denied.status_code == 201
+    assert len(calls) == 1

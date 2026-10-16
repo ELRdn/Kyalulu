@@ -5,10 +5,10 @@ import json
 import uuid
 import asyncio
 from contextlib import aclosing
-from typing import List
+from typing import List, Literal
 
 import anyio
-from fastapi import APIRouter, Request, Query, Path as PathParam
+from fastapi import APIRouter, Request, Query, Path as PathParam, HTTPException
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel, Field
@@ -19,7 +19,7 @@ from python.storage.db import init_db
 import aiosqlite
 from python.storage.db import DB_PATH
 
-from python.storage import generations, memories
+from python.storage import generations, memories, conversation
 from python.core.generation import generate_events
 from python.core.prompt_compiler import compile_prompt
 from python.core.portable_schema import LibraryBinding
@@ -45,8 +45,12 @@ class ChatRequest(BaseModel):
     allow_nsfw: bool = False
     stream: bool = True
     temperature: float | None = None
+    max_tokens: int | None = Field(default=None, ge=1, le=32768)
+    top_p: float | None = Field(default=None, ge=0, le=1)
     session_id: str = "default"
     system_prompt: str | None = None
+    context_mode: Literal['client', 'stored'] = 'client'
+    history_revision: str | None = None
 
 
 class SessionSettings(BaseModel):
@@ -117,6 +121,13 @@ async def _save_settings(
     if sp is not None and len(sp) > 10000:
         sp = sp[:10000]
     async with aiosqlite.connect(get_db_path(DB_PATH)) as db:
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            await conversation._assert_idle(db, sid)
+            await memories.session_scope({"session_id": sid, "character_id": char_id, "persona_id": per_id,
+                                          "world_id": w_id, "library_binding": binding}, db=db)
+        except generations.Conflict as exc:
+            raise HTTPException(409, str(exc)) from exc
         # 既存レコードの有無で分岐せず、常に全列をupsert（存在しない列はマイグレーション後に作成済み）
         await db.execute(
             """
@@ -255,6 +266,7 @@ async def inject_intro(session_id: str = "default"):
     """イントロを chat_history に初回アシスタントメッセージとして注入（重複防止）"""
     await init_db()
     s = await _load_settings(session_id)
+    await memories.session_scope(s.model_dump())
     intro = s.intro or ""
     # キャラのデフォイントロをフォールバック
     if not intro and s.character_id:
@@ -300,6 +312,7 @@ async def prepare_generation(req: ChatRequest):
                 raise ValueError("only the latest assistant can be regenerated")
     provider = get_provider_for_model(cfg)
     settings = await _load_settings(req.session_id)
+    await memories.session_scope(settings.model_dump())
     from python.core.prompt_compiler import _load_yaml, CHAR_DIR
     if not (settings.character_id or '').startswith('lib_') and (_load_yaml(CHAR_DIR, settings.character_id) or {}).get("nsfw") and not req.allow_nsfw:
         raise ValueError("NSFW execution requires allow_nsfw")
@@ -313,8 +326,19 @@ async def prepare_generation(req: ChatRequest):
     requested["temperature"] = req.temperature if req.temperature is not None else settings.temperature
     if req.seed is not None:
         requested["seed"] = req.seed
+    for key in ("max_tokens", "top_p"):
+        if getattr(req, key) is not None:
+            requested[key] = getattr(req, key)
     replay = await generations.reserve(req.generation_id, req.session_id,
         req.model_dump(exclude={"stream", "generation_id"}))
+    if replay is None and req.context_mode == 'stored':
+        try:
+            resolved = await conversation.resolve_messages(req.session_id, [m.model_dump() for m in req.messages],
+                                                          req.regenerate_message_id, req.history_revision)
+            req.messages = [ChatMessage(**message) for message in resolved]
+        except (ValueError, generations.Conflict):
+            await generations.cancel_pending(req.generation_id)
+            raise
     return cfg, provider, settings, compiled, requested, replay
 
 
@@ -338,19 +362,20 @@ async def run_chat(req, prepared):
             state = await generations.state_before(req.session_id, req.regenerate_message_id, settings.model_dump())
         memory_ctx = scope = None
         if await memories.session_enabled(req.session_id):
-            scope = memories.chat_scope(settings.character_id, settings.persona_id, req.session_id)
+            scope = await memories.session_scope(settings.model_dump())
             recent = [m.content for m in req.messages if m.role in ("user", "assistant")][-2:]
-            memory_ctx = await memories.prepare(scope, "\n".join(recent))
+            memory_ctx = await memories.prepare(scope, "\n".join(recent),
+                                                exclude_after=(req.session_id, req.regenerate_message_id) if req.regenerate_message_id else None)
         runtime_source = generate_events(provider, model=cfg["provider"]["model"],
                 messages=[m.model_dump() for m in req.messages], compiled=compiled, state=state,
                 requested=requested, generation_id=req.generation_id, journal=journal, memory=memory_ctx)
         async for event in runtime_source:
             if event["type"] == "result":
                 event["result"]["replace_message_id"] = req.regenerate_message_id
-                conversation = "\n".join(m.content for m in req.messages) + "\n" + event["result"].get("reply", "")
+                evidence = "\n".join(m.content for m in req.messages if m.role == "user")
                 event["result"] = await generations.finish(
                     req.generation_id, event["result"], req.messages[-1].model_dump(), req.model_id,
-                    memory_scope=scope, memory_turn=state.turn + 1, evidence_text=conversation)
+                    memory_scope=scope, memory_turn=state.turn + 1, evidence_text=evidence)
                 finished = True
             yield event
     finally:
@@ -552,7 +577,20 @@ async def chat_history(limit: int = 50, session_id: str | None = None):
                 cur = await db.execute("SELECT id, role, content, model_id, created_at, session_id FROM chat_history ORDER BY id DESC LIMIT ?", (limit,))
             rows = await cur.fetchall()
             rows = list(reversed(rows))
-            return {"history": [dict(r) for r in rows]}
+            history = [dict(r) for r in rows]
+            if history:
+                ids = [r['id'] for r in history if r['role'] == 'assistant']
+                if ids:
+                    summaries = await (await db.execute(
+                        "SELECT assistant_id,result_json FROM generations WHERE valid=1 AND status='completed' "
+                        "AND assistant_id IN (" + ','.join('?' for _ in ids) + ") ORDER BY rowid", ids)).fetchall()
+                    by_id = {r['assistant_id']: json.loads(r['result_json']) for r in summaries if r['result_json']}
+                    for message in history:
+                        result = by_id.get(message['id'], {})
+                        for key in ('reasoning_summary', 'reasoning_summary_status'):
+                            if key in result:
+                                message[key] = result[key]
+            return {"history": history}
     except generations.Conflict as e:
         return JSONResponse(status_code=409, content={"error": str(e)})
     except Exception as e:
@@ -580,6 +618,9 @@ async def update_history_message(msg_id: int, body: HistoryUpdateIn):
                 return JSONResponse(status_code=404, content={"error": "message not found"})
             await generations.invalidate(db, row[0], msg_id)
             await db.execute("UPDATE chat_history SET content=? WHERE id=?", (content, msg_id))
+            await db.execute("DELETE FROM imported_history WHERE message_id IN (SELECT id FROM chat_history WHERE session_id=? AND id>?)", (row[0], msg_id))
+            await db.execute("DELETE FROM chat_history WHERE session_id=? AND id>?", (row[0], msg_id))
+            await conversation.refresh(db, row[0])
             await db.commit()
             return {"ok": True, "id": msg_id}
     except generations.Conflict as e:
@@ -599,7 +640,9 @@ async def delete_history_message(msg_id: int):
             if not row:
                 return JSONResponse(status_code=404, content={"error": "message not found"})
             await generations.invalidate(db, row[0], msg_id)
-            await db.execute("DELETE FROM chat_history WHERE id=?", (msg_id,))
+            await db.execute("DELETE FROM imported_history WHERE message_id IN (SELECT id FROM chat_history WHERE session_id=? AND id>=?)", (row[0], msg_id))
+            await db.execute("DELETE FROM chat_history WHERE session_id=? AND id>=?", (row[0], msg_id))
+            await conversation.refresh(db, row[0])
             await db.commit()
             return {"ok": True, "id": msg_id}
     except generations.Conflict as e:
@@ -666,9 +709,60 @@ async def chat_debug(session_id: str = "default"):
             "relationship": state.relationship, "state": state.model_dump(), "generation": last,
             "memory": (last or {}).get("memory"),
             "memory_session": {"enabled": await memories.session_enabled(session_id),
-                               "scope": memories.chat_scope(s.character_id, s.persona_id, session_id)}}
+                               "scope": await memories.session_scope(s.model_dump())}}
     except generations.Conflict as e:
         return JSONResponse(status_code=409, content={"error": str(e)})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.get("/chat/context/{session_id}")
+async def get_context(session_id: str):
+    settings = await _load_settings(session_id)
+    try:
+        scope = await memories.session_scope(settings.model_dump())
+    except generations.Conflict as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    return {**await conversation.context(session_id), "scope": scope}
+
+
+class SummaryUpdate(BaseModel):
+    text: str = Field(min_length=1, max_length=conversation.SUMMARY_CHARS)
+    expected_revision: str | int
+
+
+@router.put("/chat/context/{session_id}/summaries/{summary_id}")
+async def update_summary(session_id: str, summary_id: str, body: SummaryUpdate):
+    if not body.text.strip():
+        return JSONResponse({"error": "summary is empty"}, status_code=400)
+    try:
+        return await conversation.edit_summary(session_id, summary_id, body.text, body.expected_revision)
+    except LookupError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except generations.Conflict as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+
+class BranchRequest(BaseModel):
+    message_id: int = Field(ge=1)
+
+
+@router.post("/chat/sessions/{session_id}/branch")
+async def branch_session(session_id: str, body: BranchRequest):
+    try:
+        return await conversation.branch(session_id, body.message_id)
+    except LookupError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except generations.Conflict as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
+
+@router.delete("/chat/sessions/{session_id}/data")
+async def purge_session(session_id: str):
+    try:
+        return await conversation.purge(session_id)
+    except generations.Conflict as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 

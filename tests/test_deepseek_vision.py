@@ -76,7 +76,7 @@ async def test_invalid_image_inputs_never_send(case):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("decision,finish,usage,error", [
     (True, "stop", True, None), (False, "stop", True, "cloud_sfw_only"),
-    ("true", "stop", True, "cloud_sfw_only"), (True, "length", True, "safety_unavailable"),
+    ("true", "stop", True, "safety_unavailable"), (True, "length", True, "safety_unavailable"),
     (True, None, True, "safety_unavailable"), (True, "stop", False, "provider_usage_unavailable"),
 ])
 async def test_image_safety_gate_and_accounting(decision, finish, usage, error):

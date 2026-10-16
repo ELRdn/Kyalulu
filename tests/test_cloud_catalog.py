@@ -1,4 +1,4 @@
-"""Server plots survive restart and remain private without paid inference."""
+"""Guest native catalog and owner-only plots survive restart without paid inference."""
 
 from uuid import uuid4
 
@@ -36,7 +36,10 @@ async def test_cloud_catalog_serves_bundled_and_persisted_account_plots(tmp_path
     # Recreate the app: the catalog comes from deployment files and the tenant DB.
     app = create_app(config, transport=transport)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=config.origin) as client:
-        assert (await client.get("/api/characters")).status_code == 401
+        guest = await client.get("/api/characters")
+        assert guest.status_code == 200
+        assert saved.id not in {c["id"] for c in guest.json()["characters"]}
+        assert "Private cafe plot" not in guest.text
         for index in (0, 1):
             client.cookies.set(SESSION_COOKIE, f"session-{index}")
             response = await client.get("/api/characters?include_nsfw=false")

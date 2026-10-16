@@ -24,6 +24,29 @@ def config(tmp_path, **kwargs):
         test_prior_cost_nano=49_548_721), **kwargs)
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("country", [None, "", "GB", "jp", True, ["JP"]])
+async def test_country_missing_or_invalid_cannot_start_network(tmp_path, country):
+    auth = SupabaseAuth(config(tmp_path), CloudStore(config(tmp_path)))
+    with pytest.raises(CloudError, match="cloud_residence_country_required"):
+        await auth.begin(provider="google", consent=True, country=country)
+
+
+@pytest.mark.asyncio
+async def test_terms_consent_is_required_and_covers_eligibility_without_age_checkbox(tmp_path):
+    cfg = config(tmp_path)
+    store = CloudStore(cfg)
+    auth = SupabaseAuth(cfg, store)
+    with pytest.raises(CloudError, match="terms_consent_required"):
+        await auth.begin(provider="google", consent=False, country="JP")
+    flow, result = await auth.begin(provider="google", consent=True, country="US")
+    assert result["url"].startswith("https://supabase.test/")
+    with store.transaction() as db:
+        row = db.execute("SELECT verifier FROM flows WHERE hash=?", (digest(flow),)).fetchone()
+    receipt = json.loads(store.decrypt(row[0]))
+    assert receipt["country"] == "US" and receipt["consent"] == provider_consent_version(cfg)
+
+
 @pytest.mark.parametrize("suffix", ["/auth/v1", "/rest/v1", "/dashboard"])
 def test_supabase_requires_project_origin(tmp_path, suffix):
     with pytest.raises(ValueError, match="Supabase HTTPS endpoint"):
@@ -59,7 +82,7 @@ async def test_verified_login_pkce_account_identity_grant_and_logout(tmp_path, p
                                 headers={"Origin":cfg.origin},follow_redirects=False) as client:
         version = provider_consent_version(cfg)
         result = await client.post("/api/cloud/auth/login",json={"provider":provider,
-            "email":"owner@example.test","adult":True,"consent":True,"operator_backend":"openrouter",
+            "email":"owner@example.test","adult":True,"consent":True,"country":"JP","operator_backend":"openrouter",
             "provider_consent_version":version,"provider_disclosure_version":version})
         assert result.status_code == 200
         login = result.json()
@@ -103,7 +126,7 @@ async def test_invitation_and_unverified_identity_cannot_create_account(tmp_path
     store=CloudStore(cfg)
     auth=SupabaseAuth(cfg,store)
     with pytest.raises(CloudError,match="account_not_allowed"):
-        await auth.begin(email="other@example.test",adult=True,consent=True)
+        await auth.begin(email="other@example.test",consent=True,country="JP")
     for email,verified in [("other@example.test",True),("owner@example.test",False)]:
         with pytest.raises(CloudError):
             auth.verified_owner({"id":str(uuid4()),"email":email,"email_confirmed_at":"date" if verified else None})
@@ -134,8 +157,8 @@ def test_credits_settlement_restart_and_prior_cost_cannot_refill(tmp_path):
     store.admin_grant(owner,500,"once")
     quote=store.quote(owner,"hash",120,2_000_000,"cloud-standard")
     store.reserve(owner,"first","hash",quote,120)
-    assert store.balance(owner) == 380
-    assert store.public_wallet(owner)["reserved_credits"] == 120
+    assert store.balance(owner) == 500
+    assert store.public_wallet(owner)["reserved_credits"] == 0
     assert store.private_budget()["available_nano"] == 48_451_279
     store.settle(owner,"first",1_000_000,success=True)
     assert store.balance(owner) == 440
@@ -195,7 +218,7 @@ async def test_google_callback_denies_other_email_before_account_creation(tmp_pa
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url=cfg.origin,
                                 headers={"Origin":cfg.origin}) as client:
         version=provider_consent_version(cfg)
-        result=await client.post("/api/cloud/auth/login",json={"provider":"google","adult":True,"consent":True,
+        result=await client.post("/api/cloud/auth/login",json={"provider":"google","adult":True,"consent":True,"country":"JP",
             "operator_backend":"openrouter","provider_consent_version":version,"provider_disclosure_version":version})
         assert result.status_code == 200
         callback=await client.get("/auth/callback?code=other-code")

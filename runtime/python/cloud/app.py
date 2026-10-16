@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 import time
 from contextlib import asynccontextmanager
 from dataclasses import asdict
@@ -18,15 +19,15 @@ from .backups import Backups, storage_usage
 from .billing import StripeBilling
 from .config import CloudConfig
 from .account_profile import AccountProfile
-from .contracts import PLANS, ROUTES
+from .contracts import PLANS
 from .generation import CloudGenerations, CloudChat
-from .meter import CostMeter
 from .queue import GenerationQueue
-from .safety import SafetyGuard, POLICY, declared_sfw
+from .safety import declared_sfw
 from .store import CloudStore, CloudError, digest, fingerprint
 from .sync import SyncService, export_snapshot, validate_snapshot, TABLES
 from .transfers import Transfers, SYNC_IMAGE_BYTES
-from .router import backend_block, operator_provider, public_route, require_current_consent, safety_tariff
+from .router import backend_block, public_route, require_current_consent
+from .router import public_routes
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
@@ -40,6 +41,9 @@ def create_app(config=None, *, transport=None):
     jobs = CloudGenerations(store, GenerationQueue(), sync, locks, transport)
     billing = StripeBilling(store, backups, transport)
     transfers = Transfers(store, sync)
+    from .community import Community, public_document
+    community = Community(config.root / "community.db")
+    app_community_enabled = config.community_enabled and config.legal_approved and not config.private_test
 
     @asynccontextmanager
     async def lifespan(app):
@@ -94,32 +98,11 @@ def create_app(config=None, *, transport=None):
                 raise CloudError("stop_generation_before_editing", 409)
 
     async def screen(owner, value, images=(), *, allow_assets=False):
-        if not config.inference_enabled:
-            raise CloudError("safety_not_configured", 503)
-        require_current_consent(store, owner)
-        provider = operator_provider(config, session=owner + ":library", transport=transport)
         declared_sfw(value, allow_assets=allow_assets and config.image_storage_enabled)
-        if images and not config.image_storage_enabled:
+        if images:
             raise CloudError("cloud_image_screening_not_validated", 503)
-        size = len(json.dumps(value, ensure_ascii=False).encode()) + len(POLICY.encode()) + 128
-        if size > 60_000:
+        if len(json.dumps(value, ensure_ascii=False).encode()) > 60_000:
             raise CloudError("safety_input_too_large", 413)
-        tariff = safety_tariff(config)
-        cost = (size + 1024 * len(images)) * tariff.input_miss + 128 * tariff.output
-        operation = "safety:" + uuid4().hex
-        store.reserve_safety(owner, operation, cost)
-        meter = CostMeter(cost)
-        try:
-            await SafetyGuard(
-                provider,
-                image_screening_enabled=config.image_storage_enabled,
-                tariff=tariff,
-            ).check(value, images=images, meter=meter, allow_assets=allow_assets)
-            if meter.uncertain:
-                raise CloudError("provider_usage_unavailable", 503)
-        finally:
-            meter.close_pending()
-            store.settle(owner, operation, meter.total, success=False, review_required=meter.uncertain)
 
     class Boundary:
         def __init__(self, app):
@@ -129,6 +112,12 @@ def create_app(config=None, *, transport=None):
             if scope["type"] != "http":
                 return await self.app(scope, receive, send)
             request = Request(scope)
+            # Guests can only read the SFW native catalog and explicitly public
+            # snapshots. No anonymous account or tenant database is created.
+            public_read = request.method == "GET" and (
+                request.url.path in {"/api/capabilities", "/api/characters", "/api/worlds"}
+                or re.fullmatch(r"/api/community/(?:works(?:/[^/]+(?:/comments)?)?|authors/[^/]+)", request.url.path) is not None
+            )
             public = request.url.path in {
                 "/api/health",
                 "/api/mobile/status",
@@ -205,7 +194,11 @@ def create_app(config=None, *, transport=None):
                         if owner != device[0]:
                             raise CloudError("sync_device_invalid", 401)
                     else:
-                        owner = await auth.owner(request.cookies.get(SESSION_COOKIE))
+                        try:
+                            owner = await auth.owner(request.cookies.get(SESSION_COOKIE))
+                        except CloudError as exc:
+                            if not public_read or exc.status != 401:
+                                raise
                 if owner:
                     context = CloudStorageContext.for_owner(config.root / "tenants", owner)
                     context.directory.mkdir(parents=True, exist_ok=True)
@@ -224,6 +217,112 @@ def create_app(config=None, *, transport=None):
     @app.get("/api/health")
     async def health():
         return {"status": "ok", "version": "0.1.0", "runtime": "cloud-beta"}
+
+    @app.get("/api/capabilities")
+    async def hosted_capabilities():
+        from python.api.capabilities import capabilities
+        return {**capabilities(cloud=True, community=app_community_enabled, media=config.image_storage_enabled),
+                "safety_screening": False, "credit_reservation": False}
+
+    async def community_call(request, method, *args, **kwargs):
+        import anyio
+        from functools import partial
+        if not app_community_enabled:
+            raise CloudError("community_awaiting_acceptance", 503)
+        # An empty read-only viewer identity is never registered or persisted.
+        return await anyio.to_thread.run_sync(partial(method, getattr(request.state, "owner", ""), *args, **kwargs))
+
+    async def community_body(request):
+        try:
+            value = await request.json()
+        except ValueError as exc:
+            raise CloudError("invalid_community_request") from exc
+        if not isinstance(value, dict):
+            raise CloudError("invalid_community_request")
+        return value
+
+    @app.get("/api/community/works")
+    async def public_works(request: Request, q: str = "", tag: str = ""):
+        if len(q) > 200 or len(tag) > 100:
+            raise CloudError("invalid_search")
+        return await community_call(request, community.list, q, tag)
+
+    @app.get("/api/community/works/{work_id}")
+    async def public_work(work_id: str, request: Request):
+        return await community_call(request, community.detail, work_id)
+
+    @app.post("/api/community/works")
+    async def publish_work(request: Request):
+        import anyio
+        from python.storage.library import get_item
+        if not app_community_enabled:
+            raise CloudError("community_awaiting_acceptance",503)
+        body = await community_body(request)
+        if set(body) != {"item_id", "revision"} or not isinstance(body["item_id"],str) or type(body["revision"]) is not int:
+            raise CloudError("invalid_publication")
+        async with locks.setdefault(request.state.owner, asyncio.Lock()):
+            existing = await community_call(request, community.publication, body["item_id"], body["revision"])
+            if existing:
+                return existing
+            item = await anyio.to_thread.run_sync(get_item, body["item_id"], body["revision"])
+            if not item:
+                raise CloudError("library_item_not_found",404)
+            snapshot = public_document(item.document)
+            await screen(request.state.owner,snapshot)
+            name = profiles.read(request.state.owner).get("display_name") or "Creator"
+            return await community_call(request, community.publish, name, item.id, item.revision, snapshot)
+
+    @app.delete("/api/community/works/{work_id}")
+    async def withdraw_work(work_id: str, request: Request):
+        return await community_call(request,community.withdraw,work_id)
+
+    @app.put("/api/community/works/{work_id}/reaction")
+    async def public_reaction(work_id: str, request: Request):
+        body = await community_body(request)
+        return await community_call(request,community.reaction,work_id,body.get("kind"),body.get("active"))
+
+    @app.get("/api/community/works/{work_id}/comments")
+    async def public_comments(work_id: str, request: Request):
+        return await community_call(request,community.comment,work_id)
+
+    @app.post("/api/community/works/{work_id}/comments")
+    async def public_comment(work_id: str, request: Request):
+        if not app_community_enabled:
+            raise CloudError("community_awaiting_acceptance",503)
+        body = await community_body(request)
+        text = body.get("text")
+        if not isinstance(text,str) or not 1 <= len(text.strip()) <= 2000:
+            raise CloudError("invalid_comment")
+        from uuid import UUID
+        try:
+            request_id = str(UUID(body["request_id"])) if body.get("request_id") else None
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise CloudError("invalid_comment_request") from exc
+        async with locks.setdefault(request.state.owner,asyncio.Lock()):
+            await community_call(request,community.detail,work_id)
+            if request_id and await community_call(request,community.comment_replay,work_id,text,request_id):
+                return await community_call(request,community.comment,work_id)
+            await screen(request.state.owner,{"comment":text})
+            name = profiles.read(request.state.owner).get("display_name") or "Reader"
+            await community_call(request,community.register,name)
+            return await community_call(request,community.comment,work_id,text,request_id)
+
+    @app.get("/api/community/authors/{author_id}")
+    async def public_author(author_id: str, request: Request):
+        return await community_call(request,community.author,author_id)
+
+    @app.put("/api/community/authors/{author_id}/follow")
+    async def follow_author(author_id: str, request: Request):
+        return await community_call(request,community.relation,author_id,(await community_body(request)).get("active"))
+
+    @app.put("/api/community/authors/{author_id}/block")
+    async def block_author(author_id: str, request: Request):
+        return await community_call(request,community.relation,author_id,(await community_body(request)).get("active"),block=True)
+
+    @app.post("/api/community/reports")
+    async def report_work(request: Request):
+        body = await community_body(request)
+        return await community_call(request,community.report,body.get("work_id"),body.get("reason"))
 
     @app.get("/source.tar.gz")
     async def corresponding_source():
@@ -252,6 +351,8 @@ def create_app(config=None, *, transport=None):
             "owner_scope": owner,
             "administrative": False,
             "sfw": True,
+            "safety_screening": False,
+            "credit_reservation": False,
             "private_test": config.private_test,
             "login_available": bool(config.supabase_url and config.supabase_key
                                     and (config.legal_approved or config.private_test)),
@@ -276,8 +377,8 @@ def create_app(config=None, *, transport=None):
         flow, result = await auth.begin(
             provider=body.get("provider"),
             email=body.get("email"),
-            adult=body.get("adult") is True,
             consent=body.get("consent") is True,
+            country=body.get("country"),
         )
         response = JSONResponse(result)
         response.set_cookie(
@@ -320,7 +421,7 @@ def create_app(config=None, *, transport=None):
 
     @app.get("/api/models")
     async def models():
-        routes = [public_route(config), ROUTES["byok-deepseek"].public()]
+        routes = public_routes(config)
         return {
             "models": [
                 {
@@ -329,6 +430,9 @@ def create_app(config=None, *, transport=None):
                     "provider_type": r["provider"],
                     "provider_model": r["model"],
                     "context_length": 32768,
+                    **{key: r[key] for key in ("available", "unavailable_reason", "upstream", "reasoning_effort",
+                        "reasoning_summary_supported", "pricing", "privacy_note", "service_tier", "retains_prompts",
+                        "training", "training_consent_required") if key in r},
                 }
                 for r in routes
             ]
@@ -346,7 +450,7 @@ def create_app(config=None, *, transport=None):
             "wallet": store.public_wallet(owner),
             "entitlements": asdict(plan),
             "plans": [asdict(PLANS["free"])] if config.private_test else [asdict(p) for p in PLANS.values()],
-            "routes": [public_route(config), ROUTES["byok-deepseek"].public()],
+            "routes": public_routes(config),
             "storage_bytes": storage_usage(get_db_path(storage.DB_PATH).parent),
             "byok_configured": bool(store.secret(owner, "deepseek")),
             "sync": sync.settings(owner),
@@ -403,7 +507,17 @@ def create_app(config=None, *, transport=None):
                     {"generation_id": body.generation_id, "model_id": body.model_id}
                 ),
             }
+            last = None
+            while not task.done():
+                progress = jobs.progress.get((request.state.owner, body.generation_id))
+                if progress and progress["stage"] != last:
+                    last = progress["stage"]
+                    yield {"event": "progress", "data": json.dumps(progress)}
+                await asyncio.wait({task}, timeout=0.1)
             result = await asyncio.shield(task)
+            progress = jobs.progress.get((request.state.owner, body.generation_id))
+            if progress and progress["stage"] != last:
+                yield {"event": "progress", "data": json.dumps(progress)}
             if result.get("status") == "completed":
                 yield {"event": "done", "data": json.dumps(result, ensure_ascii=False)}
             else:
@@ -653,7 +767,10 @@ def create_app(config=None, *, transport=None):
     async def restore(backup_id: str, request: Request):
         async with locks.setdefault(request.state.owner, asyncio.Lock()):
             await pending()
+            initialized.discard(request.state.owner)
             backups.restore(request.state.owner, backup_id, get_db_path(storage.DB_PATH))
+            await storage.init_db()
+            initialized.add(request.state.owner)
             sync.bump(request.state.owner)
             return {"ok": True, **sync.revision(request.state.owner)}
 
@@ -680,6 +797,10 @@ def create_app(config=None, *, transport=None):
     from python.api import chat as core_chat, catalog, library, memory, creator
 
     chat_allowed = {
+        "/chat/context/{session_id}",
+        "/chat/context/{session_id}/summaries/{summary_id}",
+        "/chat/sessions/{session_id}/branch",
+        "/chat/sessions/{session_id}/data",
         "/chat/settings",
         "/chat/history",
         "/chat/history/{msg_id}",
@@ -710,7 +831,15 @@ def create_app(config=None, *, transport=None):
             handler = route.get_route_handler()
 
             async def wrapped(request, handler=handler, route_path=route.path):
-                owner = request.state.owner
+                owner = getattr(request.state, "owner", None)
+                if owner is None and request.method == "GET" and route_path in {"/characters", "/worlds"}:
+                    if request.query_params.get("include_nsfw", "false").lower() not in {"false", "0"}:
+                        raise CloudError("cloud_sfw_only", 403)
+                    # The core catalog also merges a private library. Guests
+                    # must read native files directly without invoking it.
+                    from python.core.prompt_compiler import list_available, CHAR_DIR, WORLD_DIR
+                    key, directory = ("characters", CHAR_DIR) if route_path == "/characters" else ("worlds", WORLD_DIR)
+                    return JSONResponse({key: [item for item in list_available(directory) if not item.get("nsfw")]})
                 if request.method in SAFE_METHODS:
                     if request.query_params.get("include_nsfw", "false").lower() not in {
                         "false",
@@ -813,9 +942,18 @@ def create_app(config=None, *, transport=None):
                             ):
                                 raise CloudError("cloud_storage_full", 413)
                             backups.create(owner, directory / "data.db")
-                        response = await handler(request)
+                        if route_path == "/chat/sessions/{session_id}/data" and request.method == "DELETE":
+                            from python.storage import conversation
+                            try:
+                                response = JSONResponse(await conversation.purge(
+                                    request.path_params["session_id"], cloud_revision=(store.path, owner)))
+                            except generations.Conflict as exc:
+                                raise CloudError("stop_generation_before_delete", 409) from exc
+                        else:
+                            response = await handler(request)
                         if response.status_code < 400:
-                            sync.bump(owner)
+                            if route_path != "/chat/sessions/{session_id}/data":
+                                sync.bump(owner)
                 if response.status_code >= 500:
                     return JSONResponse({"error": "cloud_unavailable"}, status_code=503)
                 return response

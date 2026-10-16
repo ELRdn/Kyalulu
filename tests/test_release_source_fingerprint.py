@@ -11,7 +11,7 @@ from python.cloud.release_readiness import evidence_status, source_fingerprint
     "characters/guide.yaml", "personas/default.yaml", "worlds/default.yaml", "prompts/base.md",
     "packages/schemas/src/index.ts", "packages/ui/src/index.ts", "apps/web/index.html",
     "apps/web/tsconfig.json", "packages/schemas/package.json", "pnpm-workspace.yaml",
-    "models/example-ollama.yaml", "scripts/collect_release_sources.py",
+    "models/example-ollama.yaml", "scripts/collect_release_sources.py", "packages/analytics/analytics.js", "packages/analytics/config.json",
 ])
 def test_delivered_input_change_rejects_previous_evidence(tmp_path, name):
     source = tmp_path / name

@@ -10,7 +10,7 @@ import yaml
 from typing import Any
 from .schemas import CompiledPrompt
 
-PROMPT_VERSION = "prompt:character-runtime@0.1.4"
+PROMPT_VERSION = "prompt:character-runtime@0.1.5"
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 CHAR_DIR = ROOT / "characters"
@@ -227,6 +227,8 @@ def compile_prompt(
     char = _load_yaml(CHAR_DIR, character_id) if character_id else None
     persona = _load_yaml(PERSONA_DIR, persona_id) if persona_id else None
     world = _load_yaml(WORLD_DIR, world_id) if world_id else None
+    if world:
+        sections["story"] = {"cast": world.get("cast", []), "rpg": world.get("rpg")}
 
     # テンプレがあればそちらを優先（全キャラ対応の {{char}}/{{user}} 関数）
     if TEMPLATE_PATH.exists() and (char or persona or world):

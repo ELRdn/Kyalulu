@@ -6,7 +6,8 @@ from uuid import uuid4
 import httpx
 import pytest
 from python.cloud.app import create_app
-from python.cloud.auth import CONSENT_VERSION
+from python.cloud.auth import CONSENT_VERSION, provider_consent_version
+import time
 from python.cloud.config import CloudConfig
 from python.cloud.contracts import TARIFF
 from python.cloud.generation import CloudChat
@@ -68,9 +69,9 @@ def test_provider_change_requires_renewed_consent(tmp_path):
     store.account(owner, consent="old-deepseek-only")
     with pytest.raises(CloudError, match="provider_consent_renewal_required"):
         require_current_consent(store, owner)
-    store.account(owner, consent=CONSENT_VERSION)
+    store.account(owner, consent=provider_consent_version(store.config))
     require_current_consent(store, owner)
-    assert store.account(owner)["consent_version"] == CONSENT_VERSION
+    assert store.account(owner)["consent_version"] == provider_consent_version(store.config)
 
 
 def test_decimal_cache_rate_and_per_call_tariffs():
@@ -186,12 +187,12 @@ async def test_old_login_page_cannot_consent_to_new_backend(tmp_path):
     cfg = config(tmp_path, legal_approved=True, supabase_url="https://auth.test", supabase_key="test")
     app = create_app(cfg, transport=httpx.MockTransport(lambda r: pytest.fail("no sends")))
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=cfg.origin) as client:
-        body = {"provider": "google", "adult": True, "consent": True}
+        body = {"provider": "google", "consent": True, "country": "JP"}
         headers = {"Origin": cfg.origin}
         result = await client.post("/api/cloud/auth/login", json=body, headers=headers)
         assert result.status_code == 403 and result.json()["error"] == "provider_consent_renewal_required"
-        body.update(operator_backend="opencode-go", provider_consent_version=CONSENT_VERSION,
-                    provider_disclosure_version=CONSENT_VERSION)
+        body.update(operator_backend="opencode-go", provider_consent_version=provider_consent_version(cfg),
+                    provider_disclosure_version=provider_consent_version(cfg))
         result = await client.post("/api/cloud/auth/login", json=body, headers=headers)
         assert result.status_code == 200 and result.json()["url"].startswith("https://auth.test/")
 
@@ -203,14 +204,15 @@ async def test_generation_prepare_pins_model_and_tariff_and_denies_missing_muse_
                  go_accounting_approved=True, go_muse_region_approved=True)
     app = create_app(cfg, transport=httpx.MockTransport(lambda r: pytest.fail("prepare must not send")))
     owner = str(uuid4())
-    app.state.store.account(owner, consent=CONSENT_VERSION)
+    app.state.store.account(owner, consent=provider_consent_version(cfg))
+    app.state.store.grant(owner, 1000, time.time() + 300, "test", "prepare")
     context = CloudStorageContext.for_owner(cfg.root / "tenants", owner)
     with storage_context(context):
         await storage.init_db()
         req = CloudChat(model_id="cloud-standard", messages=[{"role": "user", "content": "hi"}])
         prepared = await app.state.jobs.prepare(owner, req)
         assert prepared["model"] == MIMO
-        assert prepared["safety_provider"].model == DEEPSEEK
+        assert prepared["provider"].model == MIMO
         structured = await app.state.jobs.prepare(owner, req.model_copy(update={"route_profile": "structured"}))
         assert structured["model"] == DEEPSEEK
         assert structured["hash"] != prepared["hash"]
@@ -250,7 +252,7 @@ async def test_mock_generation_safety_and_final_settlement(tmp_path, profile):
                  go_hosting_permission_reference="MOCK_PERMISSION_NOT_REAL", go_muse_region_approved=True)
     app = create_app(cfg, transport=httpx.MockTransport(respond))
     owner = str(uuid4())
-    app.state.store.account(owner, consent=CONSENT_VERSION)
+    app.state.store.account(owner, consent=provider_consent_version(cfg))
     app.state.store.grant(owner, 10_000, time.time() + 300, "test", "test")
     context = CloudStorageContext.for_owner(cfg.root / "tenants", owner)
     with storage_context(context):
@@ -264,12 +266,11 @@ async def test_mock_generation_safety_and_final_settlement(tmp_path, profile):
         req = req.model_copy(update={"quote_id": quote["quote_id"], "max_credits": quote["max_credits"]})
         result = await (await app.state.jobs.start(owner, req))
         assert result["status"] == "completed", result
-        cost = 2 * TARIFF.cost({"prompt_tokens": 30, "completion_tokens": 5})
-        cost += GO_TARIFFS[model].cost({"prompt_tokens": 100, "completion_tokens": 80})
+        cost = GO_TARIFFS[model].cost({"prompt_tokens": 100, "completion_tokens": 80})
         assert result["charged_credits"] == TARIFF.credits(cost)
-        assert calls == [DEEPSEEK, model, DEEPSEEK]
+        assert calls == [model]
         replay = await (await app.state.jobs.start(owner, req))
-        assert replay["status"] == "completed" and len(calls) == 3
+        assert replay["status"] == "completed" and len(calls) == 1
 
 
 @pytest.mark.asyncio
@@ -280,7 +281,7 @@ async def test_login_flow_binds_provider_consent_before_redirect(tmp_path):
     cfg = config(tmp_path, legal_approved=True, supabase_url="https://auth.test", supabase_key="test")
     store = CloudStore(cfg)
     auth = SupabaseAuth(cfg, store, httpx.MockTransport(lambda r: pytest.fail("no sends")))
-    flow, _ = await auth.begin(provider="google", adult=True, consent=True)
+    flow, _ = await auth.begin(provider="google", consent=True, country="JP")
     changed = SupabaseAuth(replace(cfg, operator_backend="deepseek"), store,
                            httpx.MockTransport(lambda r: pytest.fail("no sends")))
     with pytest.raises(CloudError, match="provider_consent_renewal_required"):
@@ -288,7 +289,7 @@ async def test_login_flow_binds_provider_consent_before_redirect(tmp_path):
     with store.transaction() as db:
         row = db.execute("SELECT verifier FROM flows WHERE hash=?", (digest(flow),)).fetchone()
     agreement = json.loads(store.decrypt(row["verifier"]))
-    assert agreement["consent"] == CONSENT_VERSION and agreement["backend"] == "opencode-go"
+    assert agreement["consent"] == provider_consent_version(cfg) and agreement["backend"] == "opencode-go"
 
 
 def test_training_consent_requires_json_boolean():

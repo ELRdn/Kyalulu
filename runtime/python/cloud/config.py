@@ -29,6 +29,7 @@ class CloudConfig:
     legal_approved: bool = False
     inference_enabled: bool = False
     image_storage_enabled: bool = False
+    community_enabled: bool = False
     ads_enabled: bool = False
     ad_webhook_secret: str = ""
     monthly_subsidy_jpy: int = 3000
@@ -37,6 +38,7 @@ class CloudConfig:
     backup_root: Path | None = None
     private_test: bool = False
     allowed_emails: tuple[str, ...] = ()
+    allowed_model_routes: tuple[str, ...] = ("cloud-deepseek-inferencenet", "cloud-glm-inferencenet")
     trial_credits: int = 1000
     test_budget_nano: int = 0
     test_prior_cost_nano: int = 0
@@ -57,6 +59,11 @@ class CloudConfig:
             raise ValueError("cloud master secret must contain at least 32 characters")
         if self.operator_backend not in {"deepseek", "opencode-go", "openrouter"}:
             raise ValueError("invalid operator backend")
+        from .model_choices import CHOICES
+        if (not isinstance(self.allowed_model_routes, tuple) or not self.allowed_model_routes
+                or any(route not in CHOICES for route in self.allowed_model_routes)
+                or len(set(self.allowed_model_routes)) != len(self.allowed_model_routes)):
+            raise ValueError("invalid cloud model allowlist")
         operator_key = {"opencode-go": self.opencode_go_key, "openrouter": self.openrouter_key,
                         "deepseek": self.deepseek_key}[self.operator_backend]
         if type(self.signup_limit) is not int or not 0 <= self.signup_limit <= 10_000:
@@ -122,6 +129,7 @@ class CloudConfig:
             legal_approved=flag("KYALULU_LEGAL_APPROVED"),
             inference_enabled=flag("KYALULU_INFERENCE_APPROVED"),
             image_storage_enabled=flag("KYALULU_IMAGES_APPROVED"),
+            community_enabled=flag("KYALULU_COMMUNITY_APPROVED"),
             # The candidate's browser callback is insufficient. An independently verified
             # signed server integration must be configured before setting this flag.
             ads_enabled=flag("KYALULU_ADS_APPROVED"),
@@ -137,6 +145,8 @@ class CloudConfig:
             private_test=flag("KYALULU_PRIVATE_TEST"),
             allowed_emails=tuple(email.strip().casefold() for email in
                 os.getenv("KYALULU_CLOUD_ALLOWED_EMAILS", "").split(",") if email.strip()),
+            allowed_model_routes=tuple(os.getenv("KYALULU_CLOUD_ALLOWED_MODEL_ROUTES",
+                "cloud-deepseek-inferencenet,cloud-glm-inferencenet").split(",")),
             trial_credits=int(os.getenv("KYALULU_CLOUD_TRIAL_CREDITS", "1000")),
             test_budget_nano=int(os.getenv("KYALULU_TEST_BUDGET_NANO_USD", "0")),
             test_prior_cost_nano=int(os.getenv("KYALULU_TEST_PRIOR_COST_NANO_USD", "0")),

@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 SOURCE_DIRS = ("runtime/python", "apps/web/src", "apps/web/public", "packages/schemas/src",
-               "packages/ui/src", "packages/launcher/src", "packages/launcher/bin", "deploy/cloud",
+               "packages/ui/src", "packages/analytics", "packages/launcher/src", "packages/launcher/bin", "deploy/cloud",
                "characters", "personas", "worlds", "prompts")
 SOURCE_FILES = ("uv.lock", "pyproject.toml", "runtime/pyproject.toml", "pnpm-lock.yaml",
                 "LICENSE", "package.json", "pnpm-workspace.yaml", "tsconfig.json",
@@ -29,10 +29,10 @@ GATES = {
     "npm_permission": "npm package name and publisher permission confirmed",
     "authentication": "Real Supabase Google/email-link, own SMTP, expired/revoked sessions",
     "isolation_sync": "Real hosted account separation, conflicts, deletion, capacity and 250MB/1GB performance",
-    "models": "JA/EN 20 turns x3; personality, memory, JSON, SFW images, latency, real billing reconciliation",
+    "models": "Accepted text routes: each JA/EN 20 turns x3; personality, memory correction/reopen, JSON, latency and real billing; images remain disabled",
     "android": "Physical Android: IME, lock, network switch, reconnect",
     "operations": "24h on target VPS, Relay headroom and restore on another host from offsite backup",
-    "legal": "Seller facts, JA/EN privacy/terms, JP/US sales and credit conditions accepted",
+    "legal": "Operator facts, JA/EN free-beta privacy/terms, JP/US eligibility including minors policy, retention/deletion and credit conditions accepted; sales disabled",
     "go_permission": "Written permission covering public noncoding Character AI through Go",
     "go_accounting": "Fixed subscription cost allocation, personal use and 5h/week/month allowance reconciled",
     "stripe_test": "Visible Checkout/Portal Test return, signed replay/order/refund/dispute acceptance",

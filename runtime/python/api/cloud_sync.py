@@ -80,9 +80,14 @@ async def remote(config, path, *, method="GET", body=None):
     if len(response.content) > 16_000_000:
         raise ValueError("同期データが大きすぎます")
     if response.status_code == 409:
+        try:
+            stale = response.json().get("error") == "transfer_source_changed_restart_download"
+        except (ValueError, AttributeError):
+            stale = False
         return {
             "conflict": True,
-            "error": "クラウドが更新されています。クラウド版を採用するか、ローカル版を別コピーに保存してください。",
+            "error": ("会話データが更新・削除されたため、転送を停止しました。最新データの取得をやり直してください。" if stale else
+                      "クラウドが更新されています。クラウド版を採用するか、ローカル版を別コピーに保存してください。"),
         }
     if not response.is_success:
         raise ValueError("クラウドの同期に失敗しました（HTTP %s）" % response.status_code)
@@ -208,6 +213,8 @@ async def adopt():
             method="POST",
             body={"direction": "download", "selected_sessions": selected},
         )
+        if result.get("conflict"):
+            return JSONResponse(result, status_code=409)
         if result.get("deleted"):
             raise ValueError("クラウドコピーは削除されています")
         transfer = result["transfer_id"]
@@ -216,6 +223,8 @@ async def adopt():
                 tmp = Path(tmp)
                 for i in range(result["pages"]):
                     page = await remote(config, f"/transfers/{transfer}/pages/{i}")
+                    if page.get("conflict"):
+                        return JSONResponse(page, status_code=409)
                     (tmp / f"{i}.json").write_text(json.dumps(page), encoding="utf-8")
                 before = (
                     storage.DB_PATH.parent

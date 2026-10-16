@@ -12,11 +12,15 @@ from .deepseek_images import vision_messages
 from .openai_compat import OpenAICompatibleProvider
 
 DEEPSEEK = "deepseek/deepseek-v4.1-flash"
+GLM = "z-ai/glm-5.3-flash"
+HAIKU = "anthropic/claude-haiku-5.5"
+LUNA = "openai/gpt-6-luna"
 MIMO = "xiaomi/mimo-v2.6-flash"
 UPSTREAM = "InferenceNet"
 UPSTREAM_TAG = "inference-net"
-# Per-million USD ceilings, fixed to the selected endpoint catalog on 2026-10-04.
-PRICE_CAPS = {DEEPSEEK: ("0.02", "0.45")}
+# USD per million ceilings; DeepSeek refreshed on 2026-10-12, other models on 2026-10-11.
+PRICE_CAPS = {DEEPSEEK: ("0.077", "0.66"), GLM: ("0.07", "0.05"),
+              HAIKU: ("0.1", "0.5"), LUNA: ("0.05", "0.25")}
 
 
 def billed_nano(usage):
@@ -43,7 +47,9 @@ def billing_failure(exc, usage, minimum_cost=0):
 class OpenRouterProvider(OpenAICompatibleProvider):
     BASE_SUPPORTED = frozenset({"model", "temperature", "max_tokens", "response_schema"})
 
-    def __init__(self, *, api_key, model=DEEPSEEK, transport=None):
+    def __init__(self, *, api_key, model=DEEPSEEK, transport=None, upstream=UPSTREAM,
+                 upstream_tag=UPSTREAM_TAG, price_caps=None, reasoning_effort=None,
+                 reasoning_summary_supported=False, data_collection="deny"):
         if model not in PRICE_CAPS:
             raise ValueError("openrouter_model_not_allowed")
         if not isinstance(api_key, str) or not api_key.strip():
@@ -51,6 +57,18 @@ class OpenRouterProvider(OpenAICompatibleProvider):
         super().__init__(base_url="https://openrouter.ai/api/v1", api_key=api_key,
                          transport=transport, supports_structured_output=True)
         self.model = model
+        self.upstream, self.upstream_tag = upstream, upstream_tag
+        self.price_caps = price_caps or PRICE_CAPS[model]
+        self.reasoning_effort = reasoning_effort
+        if data_collection not in {"deny", "allow"}:
+            raise ValueError("invalid_openrouter_data_collection")
+        self.data_collection = data_collection
+        self.reasoning_summary_supported = reasoning_summary_supported
+        self.max_output = 4096 if reasoning_effort else 1024
+
+    @property
+    def _supported(self):
+        return self.BASE_SUPPORTED - {"temperature"} if self.model in {LUNA, HAIKU} else self.BASE_SUPPORTED
 
     def _client(self):
         return httpx.AsyncClient(timeout=self._timeout, transport=self._transport,
@@ -63,38 +81,51 @@ class OpenRouterProvider(OpenAICompatibleProvider):
         if schema is not None:
             messages = [{"role": "system", "content": "Return only a JSON object matching "
                          + json.dumps(schema, ensure_ascii=False)}, *messages]
-        prompt, completion = PRICE_CAPS[self.model]
+        prompt, completion = self.price_caps
         payload = {"model": self.model, "messages": messages, "stream": stream,
                    "max_tokens": output, "reasoning": {"enabled": False},
-                   "provider": {"only": [UPSTREAM_TAG], "allow_fallbacks": False,
-                                "require_parameters": True, "data_collection": "deny",
+                   "provider": {"only": [self.upstream_tag], "allow_fallbacks": False,
+                                "require_parameters": True, "data_collection": self.data_collection,
                                 "max_price": {"prompt": float(prompt), "completion": float(completion)}},
                    "usage": {"include": True}}
+        if self.model == HAIKU:
+            payload["provider"]["zdr"] = True
+        if self.reasoning_effort:
+            payload["reasoning"] = {"effort": self.reasoning_effort, "exclude": False}
+            if self.reasoning_summary_supported and self.model == LUNA:
+                payload["reasoning"]["summary"] = "auto"
         if stream:
             payload["stream_options"] = {"include_usage": True}
         if schema is not None:
             payload["response_format"] = {"type": "json_object"}
-        if temperature is not None:
+        if temperature is not None and self.model not in {LUNA, HAIKU}:
             payload["temperature"] = temperature
         return payload
 
     def normalize_usage(self, usage):
         if not isinstance(usage, dict):
             return {}
-        result = {k: usage[k] for k in ("prompt_tokens", "completion_tokens")
-                  if type(usage.get(k)) is int and usage[k] >= 0}
+        result = {k: usage[k] if type(usage[k]) is int and usage[k] >= 0 else None
+                  for k in ("prompt_tokens", "completion_tokens") if k in usage}
         details = usage.get("prompt_tokens_details")
         if isinstance(details, dict) and "cached_tokens" in details:
             cached = details["cached_tokens"]
             result["prompt_cache_hit_tokens"] = cached if type(cached) is int and cached >= 0 else None
+        completion = usage.get("completion_tokens_details")
+        if isinstance(completion, dict):
+            thinking = completion.get("reasoning_tokens")
+            if type(thinking) is int and type(result.get("completion_tokens")) is int and 0 <= thinking <= result["completion_tokens"]:
+                result["thinking_tokens"] = thinking
         # Preserve decimal digits from the upstream JSON before nanodollar rounding.
         value = usage.get("cost")
         if isinstance(value, (int, Decimal)) and not isinstance(value, bool):
             result["cost_usd"] = str(value)
+        elif "cost" in usage:
+            result["cost_usd"] = None
         return result
 
     def verify_route(self, data):
-        if data.get("provider") != UPSTREAM or data.get("model") != self.model:
+        if data.get("provider") != self.upstream or data.get("model") != self.model:
             raise RuntimeError("openrouter_unaccepted_upstream")
 
     async def screen_json(self, messages, schema, output):
@@ -178,8 +209,26 @@ class OpenRouterProvider(OpenAICompatibleProvider):
                             for choice in choices:
                                 delta = choice.get("delta") or {}
                                 if choice.get("finish_reason") == "content_filter" or any(delta.get(k) for k in (
-                                        "refusal", "reasoning", "reasoning_content", "reasoning_details", "tool_calls")):
+                                        "refusal", "tool_calls")):
                                     raise RuntimeError("openrouter_refused_or_unexpected_output")
+                                if not self.reasoning_effort and any(delta.get(k) for k in (
+                                        "reasoning", "reasoning_content", "reasoning_details")):
+                                    raise RuntimeError("openrouter_refused_or_unexpected_output")
+                                details = delta.get("reasoning_details") or []
+                                if not isinstance(details, list):
+                                    raise ValueError()
+                                for detail in details:
+                                    if not isinstance(detail, dict):
+                                        raise ValueError()
+                                    # Only the provider's explicit summary type may leave this transport.
+                                    if self.reasoning_summary_supported and detail.get("type") == "reasoning.summary":
+                                        summary = detail.get("summary")
+                                        if not isinstance(summary, str) or len(summary) > 8000:
+                                            raise ValueError()
+                                        if not route_verified:
+                                            raise RuntimeError("openrouter_unaccepted_upstream")
+                                        if summary:
+                                            yield {"type": "reasoning_summary", "text": summary}
                                 finish = choice.get("finish_reason") or finish
                                 text = delta.get("content")
                                 if text is not None and not isinstance(text, str):
@@ -203,6 +252,7 @@ class OpenRouterProvider(OpenAICompatibleProvider):
 
     def capabilities(self):
         return {"streaming": True, "vision": True, "tools": False,
-                "structured_format": "json_object_candidate", "thinking": "disabled_requested",
-                "usage": True, "model": self.model, "upstream": UPSTREAM,
+                "structured_format": "json_object_candidate", "thinking": self.reasoning_effort or "disabled_requested",
+                "reasoning_summary_supported": self.reasoning_summary_supported,
+                "usage": True, "model": self.model, "upstream": self.upstream,
                 "acceptance": "quality_verified_transport_requires_acceptance"}
