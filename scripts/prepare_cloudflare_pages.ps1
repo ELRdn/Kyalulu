@@ -35,7 +35,7 @@ try {
   Referrer-Policy: no-referrer
   Permissions-Policy: camera=(self), microphone=(), geolocation=()
   Strict-Transport-Security: max-age=31536000
-  Cache-Control: no-cache
+  Cache-Control: no-cache, no-transform
   X-Robots-Tag: noindex
 "@
     [IO.File]::WriteAllText((Join-Path $outputDir '_headers'), $headers + "`n", [Text.UTF8Encoding]::new($false))
