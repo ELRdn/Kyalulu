@@ -6,6 +6,10 @@ import {
   listMemories,
   setSessionMemory,
   updateMemory,
+  previewMemoryScope,
+  migrateMemoryScope,
+  clearSessionMemories,
+  type MemoryScopePreview,
   type MemoryItem,
   type MemoryType
 } from "../lib/api";
@@ -15,6 +19,11 @@ import IconButton from "./ui/IconButton";
 import Switch from "./ui/Switch";
 import { Textarea } from "./ui/Input";
 import "./memory.css";
+import MemorySource from './MemorySource';
+import { useCapabilities } from '../lib/capabilities';
+import { friendlyMessage } from '../lib/errors';
+import { useConfirm } from './ui/Dialog';
+import { connectionScope } from '../lib/remoteStore';
 
 export const MEMORY_TYPE_LABEL: Record<MemoryType, string> = {
   semantic: "好み・事実",
@@ -26,6 +35,9 @@ const TYPES = Object.keys(MEMORY_TYPE_LABEL) as MemoryType[];
 
 /** 会話パネルの「覚えていること」: 記憶の ON/OFF と、記憶の確認・訂正・削除・追加。 */
 export default function MemoryPanel({ sessionId, refreshKey, scopeOverride }: { sessionId: string; refreshKey: number; scopeOverride?: string }) {
+  const { capabilities } = useCapabilities();
+  const [confirmDialog, confirm] = useConfirm();
+  const [preview, setPreview] = useState<MemoryScopePreview | null>(null);
   const [enabled, setEnabled] = useState(false);
   const [scope, setScope] = useState<string | null>(null);
   const [items, setItems] = useState<MemoryItem[]>([]);
@@ -35,21 +47,30 @@ export default function MemoryPanel({ sessionId, refreshKey, scopeOverride }: { 
   const [newType, setNewType] = useState<MemoryType>("semantic");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
   const sequence = useRef(0);
+  const mounted = useRef(true);
+  const identity = useRef(connectionScope()).current;
+  const active = () => mounted.current && identity === connectionScope();
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   const load = useCallback(async () => {
     const id = ++sequence.current;
+    setLoading(true);
     try {
       const s = await fetchSessionMemory(sessionId);
+      if (!active()) return;
       s.scope = scopeOverride ?? s.scope;
       const loaded = await listMemories(s.scope);
-      if (id !== sequence.current) return;
+      if (id !== sequence.current || !active()) return;
       setEnabled(s.enabled);
       setScope(s.scope);
       setItems(loaded);
       setError(null);
-    } catch {
-      if (id === sequence.current) setError("記憶を読み込めませんでした");
+    } catch (error) {
+      if (id === sequence.current && active()) setError(friendlyMessage(error));
+    } finally {
+      if (id === sequence.current && active()) setLoading(false);
     }
   }, [sessionId, scopeOverride]);
 
@@ -59,15 +80,16 @@ export default function MemoryPanel({ sessionId, refreshKey, scopeOverride }: { 
   }, [load, refreshKey]);
 
   const run = async (fn: () => Promise<unknown>) => {
-    if (busy) return;
+    if (busy || !active()) return;
     setBusy(true);
     try {
       await fn();
+      if (!active()) return;
       await load();
-    } catch {
-      setError("記憶を更新できませんでした");
+    } catch (error) {
+      if (active()) setError(friendlyMessage(error));
     } finally {
-      setBusy(false);
+      if (active()) setBusy(false);
     }
   };
 
@@ -86,14 +108,31 @@ export default function MemoryPanel({ sessionId, refreshKey, scopeOverride }: { 
 
   return (
     <div className="k-context-section">
+      {confirmDialog}
       <div className="k-memory__head">
         <div className="k-context-section__title">✦ 覚えていること</div>
         <Switch checked={enabled} onChange={toggle} label="会話を覚える" disabled={busy || !scope} />
       </div>
       <div className="k-context-note">
-        {enabled ? (scope?.startsWith("char:") ? "同じ相手・人物像との会話で、好みや約束を覚えて次の会話でも思い出します。" : "この会話で、好みや約束を覚えて思い出します。") : "オフの間は覚えず、思い出しもしません。"}
+        {enabled ? (scope?.startsWith("work:") ? "同じキャラ・人物像・世界・設定版の範囲で覚えます。" : scope?.startsWith("char:") ? "同じ相手・人物像で世界をまたいで共有する記憶です。旧会話の共有範囲も保持しています。" : "この会話の範囲で覚えます。") : "オフの間は覚えず、思い出しもしません。"}
       </div>
-      {error && <div className="k-context-note k-memory__error" role="alert">{error}</div>}
+      <p className="k-context-note">語句の一致は事実の証明ではありません。出典を確認し、違っていたら訂正できます。</p>
+      {error && <div className="k-context-note k-memory__error" role="alert">{error}<Button size="sm" variant="ghost" onClick={() => void load()}>再読込</Button></div>}
+      {loading && <p role="status">記憶を読み込んでいます…</p>}
+      {capabilities?.features.world_memory && !scopeOverride && <details>
+        <summary>世界ごとの分離・共有範囲を変更</summary>
+        <p className="k-context-note">移行先へ記憶をコピーします。元の記憶は残り、他の会話は自動移行しません。</p>
+        <Button size="sm" variant="secondary" disabled={busy} onClick={() => void run(async () => setPreview(await previewMemoryScope(sessionId)))}>移行内容を確認</Button>
+        {preview && <div><p>対象：{preview.memories.length}件</p><ul>{preview.memories.map(memory => <li key={memory.id}>{memory.content}</li>)}</ul>
+          <Button size="sm" disabled={busy} onClick={() => void run(async () => { await migrateMemoryScope(sessionId, preview.preview_revision, false); setPreview(null); })}>この世界・設定版の範囲へ移行</Button>
+          <Button size="sm" variant="secondary" disabled={busy} onClick={() => void run(async () => {
+            if (await confirm({ title: '世界をまたいで記憶を共有しますか？', description: '同じキャラ・人物像の別世界にもこの記憶を使います。移行先へコピーし、元の記憶は残します。', confirmLabel: '共有へ移行' }) && active()) {
+              await migrateMemoryScope(sessionId, preview.preview_revision, true); setPreview(null);
+            }
+          })}>世界をまたぐ共有へ移行</Button>
+          <Button size="sm" variant="ghost" onClick={() => setPreview(null)}>やめる</Button>
+        </div>}
+      </details>}
       {items.length > 0 && (
         <ul className="k-memory__list">
           {items.map((m) => (
@@ -109,7 +148,7 @@ export default function MemoryPanel({ sessionId, refreshKey, scopeOverride }: { 
                 </form>
               ) : (
                 <>
-                  <span className="k-memory__content">{m.content}{m.supported === false && m.origin === "model" && <small>（確認待ち・会話には未使用）</small>}</span>
+                  <span className="k-memory__content">{m.content}{m.supported === false && m.origin === "model" && <small>（確認待ち・会話には未使用）</small>}<MemorySource memory={m} /></span>
                   <span className="k-memory__tools">
                     <IconButton label="訂正" size="sm" disabled={busy} onClick={() => { setEditing(m.id); setDraft(m.content); }}>
                       <Icon name="edit" size={13} />
@@ -124,7 +163,7 @@ export default function MemoryPanel({ sessionId, refreshKey, scopeOverride }: { 
           ))}
         </ul>
       )}
-      {items.length === 0 && enabled && <div className="k-context-note">まだ覚えていることはありません。</div>}
+      {items.length === 0 && enabled && !error && !loading && <div className="k-context-note">まだ覚えていることはありません。</div>}
       {adding ? (
         <form className="k-memory__form" onSubmit={(e) => { e.preventDefault(); void save(null); }}>
           <div className="k-narration-style-grid" role="radiogroup" aria-label="記憶の種類">
@@ -146,6 +185,9 @@ export default function MemoryPanel({ sessionId, refreshKey, scopeOverride }: { 
           <Icon name="plus" size={12} /> 覚えてほしいことを追加
         </Button>
       )}
+      {!scopeOverride && <Button variant="danger" size="sm" disabled={busy || !scope || !capabilities?.features.permanent_delete} onClick={() => void run(async () => {
+        if (await confirm({ title: 'この範囲の記憶をすべて消去しますか？', description: '共有範囲にある記憶を削除します。他の会話にも影響し、元に戻せません。会話本文の削除とは別です。', confirmLabel: '記憶を消去', danger: true }) && active()) await clearSessionMemories(sessionId);
+      })}>この範囲の記憶を消去</Button>}
     </div>
   );
 }

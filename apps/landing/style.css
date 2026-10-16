@@ -1,11 +1,11 @@
 /* Kyalulu LP — static, no build. Night-sky storybook pop on top of the Soft Mystic Portal palette. */
 :root {
-  --void: #15121D; --ink: #1E1B24; --ink-2: #4B4758; --muted: #7D7790; --paper: #FFFFFF;
+  --void: #15121D; --ink: #1E1B24; --ink-2: #3E3A4A; --muted: #655F7A; --paper: #FFFFFF;
   --purple: #6C5CE7; --violet: #BFA7FF; --lav: #ECE6FF; --pink: #FFB8D8; --mint: #B8F2E6;
   --sky: #CFE3FF; --butter: #FFE59A; --peach: #FFCFB5;
-  --head: "Zen Maru Gothic", "Noto Sans JP", sans-serif;
+  --head: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", "Hiragino Sans", "Yu Gothic", sans-serif;
   --display: "Bricolage Grotesque", "Zen Maru Gothic", sans-serif;
-  --sans: "Noto Sans JP", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --sans: system-ui, -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo", "Segoe UI", sans-serif;
   --spring: cubic-bezier(.2, .9, .25, 1.15);
   --wrap: 1180px;
   color-scheme: light;
@@ -19,7 +19,6 @@ h1, h2, h3 { font-family: var(--head); font-weight: 900; line-height: 1.25; marg
 p { margin: 0; }
 .wrap { width: min(var(--wrap), 100% - 40px); margin-inline: auto; }
 .tag { font: 700 11px/1 var(--sans); letter-spacing: .06em; padding: 4px 10px; border-radius: 999px; background: var(--pink); color: var(--ink); vertical-align: middle; }
-[data-phase="alpha"] .p-launch, [data-phase="launch"] .p-alpha { display: none !important; }
 
 /* buttons */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px; padding: 0 26px; border-radius: 999px; border: 2px solid var(--ink); font: 700 15px/1.2 var(--sans); text-decoration: none; cursor: pointer; transition: transform .3s var(--spring), box-shadow .3s var(--spring), background .2s; }
@@ -56,17 +55,19 @@ p { margin: 0; }
 
 /* hero */
 .hero { margin-top: 8px; padding: 168px 0 clamp(64px, 8vw, 104px); background: #F7F3FF; text-align: center; isolation: isolate; }
-.aurora { position: absolute; inset: 0; z-index: -1; overflow: hidden; }
-.aurora i { position: absolute; width: 46vw; aspect-ratio: 1; border-radius: 50%; filter: blur(70px); opacity: .7; animation: drift 18s ease-in-out infinite alternate; }
-.aurora i:nth-child(1) { background: #D9CCFF; left: -10%; top: -12%; }
-.aurora i:nth-child(2) { background: #FFD3E8; right: -8%; top: 4%; animation-delay: -6s; }
-.aurora i:nth-child(3) { background: #CDE6FF; left: 24%; top: 38%; animation-delay: -11s; }
-.aurora i:nth-child(4) { background: #C9F5EA; right: 10%; bottom: -16%; width: 34vw; animation-delay: -3s; }
+.aurora { position: absolute; inset: 0 0 auto; height: 1200px; z-index: -1; overflow: hidden; } /* fixed height: a late web-font swap changing the hero height must not move the blobs (CLS) */
+.aurora i { position: absolute; width: 46vw; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(closest-side, var(--c), transparent); opacity: .85; animation: drift 18s ease-in-out infinite alternate; }
+.aurora i:nth-child(1) { --c: #D9CCFF; left: -10%; top: -12%; }
+.aurora i:nth-child(2) { --c: #FFD3E8; right: -8%; top: 4%; animation-delay: -6s; }
+.aurora i:nth-child(3) { --c: #CDE6FF; left: 24%; top: 38%; animation-delay: -11s; }
+.aurora i:nth-child(4) { --c: #C9F5EA; right: 10%; bottom: -16%; width: 34vw; animation-delay: -3s; }
 @keyframes drift { 50% { transform: translate(6vw, 4vw) scale(1.12); } 100% { transform: translate(-4vw, 6vw) scale(.94); } }
 .hero-copy { position: relative; z-index: 2; width: min(980px, 100% - 32px); margin-inline: auto; display: grid; gap: 26px; justify-items: center; }
 .hero h1 { font-size: clamp(36px, 7.4vw, 104px); line-height: 1.12; letter-spacing: -.03em; }
 .hero h1 em { font-style: normal; color: var(--purple); white-space: nowrap; background: linear-gradient(transparent 64%, var(--butter) 64% 92%, transparent 92%) no-repeat 0 0 / 0% 100%; transition: background-size 1s cubic-bezier(.6, 0, .2, 1) .9s; }
 .hero h1.in em, .no-js .hero h1 em { background-size: 100% 100%; }
+.br-sm { display: none; }
+@media (max-width: 640px) { .br-sm { display: inline; } } /* fixed mobile line breaks, so the late web-font swap can't rewrap the headline (CLS) */
 .lead { max-width: 34em; font-size: clamp(15px, 1.7vw, 18px); color: var(--ink-2); }
 .note { font-size: 13px; color: var(--muted); max-width: 40em; }
 
@@ -220,8 +221,6 @@ tr:last-child > * { border-bottom: 0; }
 .status { font-size: 14px; min-height: 1.6em; color: var(--purple); font-weight: 700; }
 .wl-fallback { display: none; gap: 16px; justify-items: start; }
 .wl-fallback p { font-size: 14px; }
-#waitlist-form[data-endpoint=""] > :not(.wl-fallback) { display: none; }
-#waitlist-form[data-endpoint=""] .wl-fallback { display: grid; }
 .wait-art { position: relative; justify-self: center; width: min(360px, 80%); }
 .wait-moon { position: absolute; width: 58%; right: -6%; top: -14%; fill: var(--butter); stroke: var(--ink); stroke-width: 3; rotate: -16deg; animation: bob 8s ease-in-out infinite; }
 .wait-art img { position: relative; animation: bob 6s ease-in-out infinite; }
@@ -255,8 +254,11 @@ details p { padding: 0 0 22px; color: var(--ink-2); font-size: 15px; }
 /* reveals */
 .rv { opacity: 0; transform: translateY(28px); transition: opacity .8s, transform .9s var(--spring); }
 .rv.in { opacity: 1; transform: none; }
-.split .ch { display: inline-block; opacity: 0; transform: translateY(.6em) rotate(8deg) scale(.9); filter: blur(4px); transition: opacity .5s, transform .8s var(--spring), filter .5s; transition-delay: calc(var(--i) * 28ms); }
-.split.in .ch { opacity: 1; transform: none; filter: none; }
+/* Above the fold: reveal on first paint with CSS, not after JS/IntersectionObserver, so LCP isn't delayed. */
+.hero .rv { opacity: 1; transform: none; animation: rise .8s var(--spring) backwards; }
+@keyframes rise { from { opacity: 0; transform: translateY(28px); } }
+.split .ch { display: inline-block; opacity: 0; transform: translateY(.6em) rotate(8deg) scale(.9); transition: opacity .5s, transform .8s var(--spring); transition-delay: calc(var(--i) * 28ms); }
+.split.in .ch { opacity: 1; transform: none; }
 .split .wd { display: inline-block; white-space: nowrap; }
 .no-js .rv, .no-js .chat > * { opacity: 1; transform: none; }
 

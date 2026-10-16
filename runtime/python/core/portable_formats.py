@@ -855,8 +855,10 @@ def _parse_backup(filename, raw, assets):
             raise ValueError("Invalid backup asset name: %s" % arc_name)
         if hashlib.sha256(blob).hexdigest() != asset_id:
             raise ValueError("Backup asset checksum mismatch: %s" % arc_name)
-        mime = sniff_mime(blob) or "application/octet-stream"
-        _checked, mime = validate_image(blob)
+        from .portable_assets import accept_media
+        _checked, mime = accept_media(blob)
+        if not mime.startswith('image/') and not any(a.asset_id == asset_id and getattr(a,'rights_confirmed',False) is True for a in doc.assets):
+            raise ValueError("Backup media requires rights confirmation")
         assets[asset_id] = (bytes(blob), mime)
     for asset in doc.assets:
         if asset.asset_id and asset.asset_id not in assets:

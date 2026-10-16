@@ -1,0 +1,11 @@
+let hosted = false;
+let owner = '';
+let epoch = 0;
+const listeners = new Set<() => void>();
+export const subscribeCloudIdentity = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
+const changed = () => { ++epoch; listeners.forEach(listener => listener()); };
+export const isCloud = () => hosted;
+export const cloudOwner = () => owner;
+export const cloudEpoch = () => epoch;
+export const setCloud = (value: boolean) => { const different = hosted !== value; hosted = value; if(!value) owner=''; if(different) changed(); };
+export const setCloudOwner = (value: string) => { const different = owner !== value; owner = value; if(different) changed(); };

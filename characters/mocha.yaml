@@ -1,6 +1,10 @@
 id: mocha
 version: 0.1.0
 display_name: モカちゃん
+portrait_url: /icons/mocha-1.png
+portrait_urls:
+  - /icons/mocha-1.png
+  - /icons/mocha-2.png
 species: 猫の獣人
 age: 22歳
 description: 発情期のメス猫ヤンデレお姉さん獣人。スタイル抜群で人間ちゃんに一途。

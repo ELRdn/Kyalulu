@@ -92,9 +92,10 @@ LP本文では成人向け・「制限なし」に触れない。詳細は FAQ�
 - 画像: `assets/mascot/`（`apps/web/public/mascot/v1.2/` のWebP）、`assets/screens/`（分離した空データのアプリで、Mockモデルの会話の返事を編集して撮影した実画面。2x／3x。EN版にも日本語UIのまま使用）、`assets/og.png`（1200×630）
 - 会話例は創作のイメージ（ヒーロー・Memory Labとも「会話はイメージです」と明記済み）
 - デザイン（2026-10-05改訂、参考: slush.app／bevel.health の動き）: 暗い地に角丸パネルを重ねる構成。ティッカー、浮遊ピル型ナビ、見出しの1文字ずつの出現、マスコットのステッカー（ポインタ追従）、スクロールでせり上がる実画面、スクロール速度で傾くマーキー帯、特長3枚のスティッキー重ね（高さ700px以上・幅960px以上のみ）、形式カードの横流し。外部JSライブラリなし（`main.js` のみ）。`prefers-reduced-motion` で全停止
-- フォント: 見出し Zen Maru Gothic、帯・数字 Bricolage Grotesque（Google Fonts）
+- フォント: 見出し Zen Maru Gothic、帯・数字 Bricolage Grotesque（Google Fonts。初回描画の後に `main.js` が読み込む）。本文はシステムフォント
+- 性能（2026-10-08, Lighthouse）: 画像は `-160`/`-320`/縮小版を `srcset` で出し分け、CSS/JS は `?v=N` を上げて配信。モバイル版の見出しはフォント差し替えで折り返しが変わらないよう改行を固定（`.br-sm`）
 - `og:image`／`og:url`／`canonical`／`hreflang` は `https://kyalulu.com` の絶対URL
-- 公開: Cloudflare Pages プロジェクト `kyalulu-landing` に `apps/landing` をDirect Upload（`npx wrangler pages deploy apps/landing --project-name kyalulu-landing --branch main`）。カスタムドメイン `kyalulu.com`
+- 公開: `node scripts/build_docs.mjs` で `.artifacts/landing-site`（LP＋docs）を作り、その中から Cloudflare Pages プロジェクト `kyalulu-landing` にDirect Upload（`npx wrangler pages deploy . --project-name kyalulu-landing --branch main`）。カスタムドメイン `kyalulu.com`
 
 ## 7. ローンチ前提条件（LP範囲外、別途対応）
 

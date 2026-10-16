@@ -1,6 +1,202 @@
+## 2026-10-12 追記：SEO・AEOと任意GA4の公開完了
+
+日英LP・既存ガイド改善、Cloudガイド追加、17ガイド／36 Docs／38 sitemap URL、
+実操作Mock画像、同意付きGA4（専用property、成功／再開イベント、広告機能OFF）を公開。
+Cloud `20261012-seo-aeo` へ反映し、本人限定・受付1・既存データと台帳を保持した。
+次はGA4の集計・GSCの処理結果を週次で確認し、予算／運営者情報／最終ソース対応の
+実検証を揃えて無料10人βへ。一般受付・100人・販売・72時間観測は未完了。
+[実装・公開・β準備の記録](validation/2026-10-12-seo-aeo-beta.md)。
+
+## 2026-10-12 最新仕様：送信ボタンから直接会話を開始
+
+通常Cloud送信の見積確認Dialogを撤去し、送信先・消費上限はチャット内の表示に変更。
+Baiduの保存・学習利用だけ送信別に画面内で確認する。見積検証・owner分離・abort・予算上限を維持。
+`20261012-one-click-chat`を本番反映。関連90試験・Mock48条件・本番HTTPS6条件、GLMの実生成・保存・無料再取得を確認。
+[本番反映と検証結果](validation/2026-10-12-cloud-production.md)。過去の毎送信Dialog仕様は更新された。新版の本人Pixel/Chromeは未確認。
+
+## 2026-10-12 最新仕様：Cloud予約と外部検査の廃止
+
+ユーザー要求により、クレジット予約と追加の入力・出力・作品保存SFW API検査を廃止する。
+残高内の生成量・成功後実費精算・費用欠落時の上限保持・同時送信分離・二重課金防止を実装。
+送信先・料金上限確認、Baidu学習同意、運営累計API上限$0.10は維持。
+過去の安全検査維持・予約方式の記述は旧仕様。公開安全運用の同等到達は再判定が必要。
+本番の更新・復帰・新実生成結果はdocs/validation/2026-10-12-cloud-production.mdを参照。
+
 # Kyalulu ロードマップ
 
-更新: 2026-09-26（Desktop API監督・Memory Lab・長ターン比較・Persona/World Creatorを追加）。
+## 2026-10-12 追記：無料β受け入れ準備とSEO観測を継続
+
+[最新検証記録](validation/2026-10-12-cloud-beta-followup.md)。Cloud`20261012-beta-settings`へ設定ボタンの移動を反映。
+2経路制限・月次補助0・単回資金管理・登録と試用の同時処理・JP/USと同意版を実装。
+解析は規約同意後に標準ON、任意OFFと即時撤回。独立18歳確認を撤去し、未成年条件は調査継続。
+一般10人受付は本人限定のまま。運営者/法務・実認証分離・実機・240ターンの資金/実証・24h・ライセンス待ち。
+検索は新Cloud2URLを一度だけ申請、通常検索の英語Q1で公式URLを確認。索引完了・AI推薦・72hは未確認。
+会話/425 Credits/既存費用を保持、新規有料推論0。以下は各旧時点の記録。
+
+## 2026-10-12 追記：料金不明による停止を復旧、Cloud実生成成功
+
+[本番検証記録](validation/2026-10-12-cloud-production.md)。`20261012-cost-recovery-v2`を反映。
+固定SFW検査のInferenceNet出力価格$0.40→$0.66/Mを更新。旧見積は無効とし、送信先・検査・同意を維持。
+オフラインの証跡照合・全予約保持・監査付き復帰を追加。Baidu429とSFW404の保守原価を増額して停止解除。
+GLM/InferenceNetでSFW入力・生成・SFW出力・保存・再取得が成功。実費$0.000173499／11 K-Credits。
+関連Python165試験、Web19試験・build・Mock50条件、本番HTTPS6条件、backup隔離復元と監査保持を確認。
+463 K-Credits、保守累計$0.060027066、残余$0.039972934、pending/holds/debt/review0。既存費用の減額・上限resetなし。
+本人スマホの今回の返信確認、Baidu429解消、他モデルの実生成・公式要約・競合品質同等は未確認。
+以下は各旧時点の記録。
+
+## 2026-10-12 追記：要約位置を反映、Baidu429後の請求照合を優先
+
+[本番検証記録](validation/2026-10-12-cloud-production.md)。当時のreleaseは`20261012-summary-order`。
+通常チャット・VNの公式推論要約を本文上へ移動し、費用確認待ちの停止説明を改善。
+対象Web43試験・build・Mock50条件、本番HTTPS6条件、backup隔離復元・台帳保持を確認。有料生成0。
+本人画像でBaidu429を確認したが請求額は未確認。usage未取得のreview1を維持し、返信再開は未達。
+474 K-Credits、保守的累計$0.052006108、残余$0.047993892。明細照合後の監査可能な復帰操作が次の課題。
+この版のAndroid実機表示・公式要約の実生成、他モデルの実routing、競合品質比較は未確認。
+以下は各旧時点の記録。
+
+## 2026-10-12 追記：会話UI改善を追加反映、Pixelの会話受け入れ成功
+
+[本番検証記録](validation/2026-10-12-cloud-production.md)。`20261012-chat-ui`を暗号化backup・隔離復元後に反映。
+プリセット情報を整理し、Kyaluluマスコットの待機アニメーション・reduced-motion・明示ホームを追加。
+Web248件・build・Mock50画面条件、本番assets／対応source一致・認証境界・healthを確認。
+本人Pixel／Chromeで実返信、日本語IME、再読込後保存、画面ロック復帰は成功（前のquote-ui版）。
+Baidu実費$0.000430696／26 K-Credits、累計$0.050780025、残余$0.049219975。今回UI検証の有料推論0。
+新しいホームとプリセットの折り畳みは本人Pixel／Chromeで確認済み。待機アニメーションの実機表示、他モデルの実生成／公式summary・競合品質同等、回線切替と長時間運用は未判定。
+以下は旧時点の候補・検証記録。
+
+## 2026-10-12 追記：本人限定Cloudへ反映、実機受け入れへ
+
+[本番反映・検証記録](validation/2026-10-12-cloud-production.md)。ユーザー承認後、暗号化backup・隔離復元・台帳照合を経て
+`20261012-quote-ui`を本番反映。旧backup復元時のmigration／失敗後再初期化も修正し、関連24試験を確認。
+本番Web／対応source／health／ゲスト・認証境界と実HTTPSブラウザー4画面条件が通過。Relay／Caddyは維持。
+累計API上限$0.10、保守計上$0.050014281、残余$0.049985719を維持。反映に有料生成は使っていない。
+次は本人スマホ操作でのv4再ログイン・日本語入力・短い実生成1件・保存再開と、サーバー台帳の精算照合。
+実機・実生成は案内中で未判定。以下の未反映記録は旧時点の状態。
+
+## 2026-10-12 追記：Cloud送信確認UIを改善
+
+[実装・検証記録](validation/2026-10-12-cloud-quote-ui.md)。モデル・料金・保存／学習同意を既存Dialogへ整理し、
+詳細を折り畳み、操作ボタンを固定。送信範囲は常時表示し、同意・期限・取消・下書き保持を維持。
+重複復旧案内と通常画面の待ち時間内訳を整理、320pxのComposer横幅超過も修正した。
+Web227件、型検査・Web build、Mock Chromium28画面条件成功。独立再レビューに追加P1／P2なし。
+最新Cloud候補は`.artifacts/cloud-quote-ui-20261012/cloud-release`。対応ソース・Web・manifest照合済み。
+本番未反映・実機未確認、有料推論0。本人承認後の台帳・backup・rollback照合と私的受け入れが次の段階。
+
+## 2026-10-12 追記：Cloudモデル選択・公式要約・学習同意
+
+[実装・検証記録](validation/2026-10-11-cloud-models.md)。指定6経路を追加し、Flexは`openai/flex`で確認済み。
+Baiduはユーザー方針に沿って学習可能な選択肢とし、送信ごとの同意と保存条件の開示を実装。
+公式summaryはSFW検査後に保存・折り畳み表示。取消／再起動の同意・費用復旧も修正。
+Python259件・Web226件、型検査・build、Mock Chromium16画面条件通過。
+この時点のCloud候補は`.artifacts/cloud-models-20261011/cloud-release`（今回UI修正前）。本番未反映・実routing／品質は未判定。
+次は本人承認後の台帳・backup・rollback照合と私的受け入れ。累計API実費$0.10・未知費用を維持。
+
+## 2026-10-11 追記：ゲスト閲覧・初トーク案内・Cloud開始障害への対応
+
+[実装・検証記録](validation/2026-10-11-cloud-onboarding.md)。ゲスト閲覧とトーク時認証、選択作品へのログイン復帰、
+4段階案内を追加。InferenceNetの単価変更と旧価格capの不一致を修正し、提供元とCreditの料金版を分離して照合する。
+Cloud255件・Web188件、型検査・build、Mock Chromium12画面条件が通過。新候補は`.artifacts/cloud-onboarding-20261011/cloud-release`。
+本番・Provider変更は未実施。失敗5件は実費未確定のため予約額を保持し、累計上限$0.10を維持する。
+前回parityのWindows/npm候補はこの追加変更前。次のCloud反映では新候補・現台帳・暗号化バックアップ・rollbackを使う。
+
+## 2026-10-11 追記：比較・改善基盤を実装、同等判定は未完了
+
+詳細は [競合比較の検証記録](validation/2026-10-11-competitor-parity.md)。20比較領域について、
+競合の公開観測・REA静的partial証拠とKyaluluのソース実装を分離した。
+記憶4分類／world固定scope、抽出式chapter・arc、Cloud再生成・inline quote・段階計測、
+保存文脈・分岐・完全消去、cast／完全一致triggerのRPG、Community（承認条件付き、既定無効）、
+ローカルWAV／MP4、Portable／Inspector、本体KCB adapterと比較bootstrapの基盤を追加。
+native同一version内容変更の固定保証はなく、媒体生成=falseを維持する。
+
+統合レビュー後のPython＋同梱KCB845件、Web147件、CLI17件、型検査・build、最新候補の対応ソース監査が通過。
+Mock30／50／100ターンの保存・chapter／arc・再取得、最終RuntimeのMock送信・記憶出典・reloadと2幅2themeを確認。
+最新候補は`.artifacts/parity-20261011/{cloud,windows,npm}-release`。NodeだけのPATHで実npm CLIを隔離確認した。
+次の到達点は検証記録の段階別未完了条件。抽出式要約、native同version内容固定、媒体生成・world公開catalog等の不足も明記。
+PWA更新は内蔵ブラウザーで旧資産が残り未確認。**今回ソースは本番未配布**。
+競合の実会話・有料利用、実Cloud品質／速度、本番運用、実機、クリーンOS、外部アプリ往復は未確認。
+API累計実費上限$0.10、今回有料API0を維持する。機能・性能・運用の全面同等は判定待ち。
+以下の過去履歴と旧候補は保持し、改修後ソースの成功や新しい配布状態として読み替えない。
+
+更新: **2026-10-11**。一般公開・販売は未受け入れ。以下の本番状態は過去スナップショットを含む。
+次スレッドは [引き継ぎ](HANDOFF.md) から開始する。
+
+## 次の作業（優先順）
+
+| 順序 | 作業 | 完了条件 |
+|---|---|---|
+| 1 | 10月11日候補のCloud受け入れと配布 | 現在の本番状態・未知費用と台帳を再照合。新候補で認証・会話・見積・再生成・同期・削除・復元を私的に受け入れ、暗号化バックアップとrollback先を用意して配布。health・ゲスト公開カタログ200・匿名私的API401・本人ログインを確認 |
+| 2 | 本人のクラウド実操作 | 配布後の本番でGoogleログイン→作成→保存→再読込→編集→会話。表示名・保存キャラ・ピン留めを別の本人端末で確認 |
+| 3 | 台帳と人手品質 | 送信前上限・予約・成功精算・失敗0消費・二重課金なし・実請求の照合。返答原文の人手評価。累計API実費上限$0.10を維持 |
+| 4 | 実機・運用 | Android実機とクリーンWindowsを[実施手順](validation/2026-10-06-device-acceptance.md)で受け入れ（Macは未提供）。24時間VPS、別ホスト復旧、Relay負荷 |
+| 5 | npm・一般公開準備 | 10月11日Windows候補をクリーンOSのNodeだけで導入・初回download・再起動・更新失敗・復元。Mac候補と実機・license gate、SMTP実配信、日英法務/処理先条件、公開前チェックの証拠登録 |
+| 6 | 公開範囲の拡張 | 10人受付→72時間観測→100人。販売・広告・Remote正式提供は各条件の受け入れ後 |
+
+24時間/72時間の観測や未提供の実機を、モック・開発PC確認で完了としない。
+画像保存/同期は判定精度の受け入れまで無効。
+KCS/Tool/Proactive/音声/Expo/自前GPUと研究用の長期学習は、初回公開の後続順を維持する。
+
+## 現在地
+
+| 項目 | 実装・確認済み | 残る確認 |
+|---|---|---|
+| ローンチ前の修正（10/6） | 実装担当と独立レビュー6回でP1〜P3を修正（logout/refresh競合、再送の重複、所有者切替、費用の取りこぼし、配布物のリンク収集、更新/rollback停止順）。Python618/Web119/費用47試験、CharacterBench136、Electron9項目。final4のWindows/npm/Cloud候補を生成・監査し、実npm CLIをNode22/26で隔離確認 | 本番未配布。詳細は[ローンチ前検証](validation/2026-10-06-launch-hardening.md) |
+| クラウド認証 | VPS/HTTPS/Supabase Google設定、本人ログイン、500 K-Credits単回付与、ログイン画面のレスポンシブ化 | メールリンクの独自SMTP・実配信、公開用認証/法務条件 |
+| アカウント同期 | 表示名・保存キャラ・ピン留めのサーバー保存、409競合、所有者分離 | 本人の実端末間確認。ローカルCoreの任意転送とは別 |
+| キャラ・プロット | サーバーの4体SFWキャラと公式画像、利用者プロットの永続保存、Cloudの403誤表示を修正 | 本人ログインで作成→保存→再読込→会話の確認 |
+| 作成UI | zeta参考の6タブ、イントロプレビュー、固定保存操作、所有者別一時下書き。PC/スマホ×明暗4条件合格 | 実Googleセッションでの保存、Android実機。UI試験はAPIモック |
+| クラウド推論・台帳 | DeepSeek V4.1 Flash / OpenRouter / InferenceNet固定、整数予約/精算、本人限定で有効 | 本番会話・使用量・実請求・人手品質確認。累計実費上限$0.10 |
+| 配布・運用 | npm CLI候補、暗号化バックアップ、PC退避と隔離復元の確認 | クリーンWindows/Mac、24時間運転・別ホスト復元・Relay負荷 |
+| 公開サイト・SEO | `kyalulu.com` 日英LP、`/docs/` 公式資料（36 URL sitemap、構造化データ）を公開。Search Consoleへsitemap送信、主要6 URLの登録リクエスト受理 | Googleのsitemap取得成功（初回は読込失敗表示）と登録の確認。[公開記録](validation/2026-10-05-docs-seo-publication.md)、[SEO記録](validation/2026-10-06-seo-search-console.md) |
+| PWA・Remote | `app.kyalulu.com` のPWAと暗号化中継で自宅Hostへ接続（[記録](validation/2026-09-29-published-pwa.md)） | Android実機の受け入れ。Remote正式提供は外部セキュリティレビュー後 |
+| 販売・広告 | 将来プランと実装候補を保持 | サブスク・購入・広告は停止。個人テスト中は有効化しない |
+
+公開面は `kyalulu.com`（LP/Docs）、`app.kyalulu.com`（PWA/Remote）、
+`cloud.kyalulu.com`（SFWクラウド）の3つ。関連記録は
+[作成UI](validation/2026-10-05-plot-creator-ui.md)、
+[プロフィール同期](validation/2026-10-05-cloud-profile-sync.md)、
+[キャラ表示修正](validation/2026-10-05-cloud-catalog.md) を参照。
+
+## モデル選定とローンチ方針
+
+選定時の評価候補：Ling 3.0 Flash VL / Muse Spark 1.3 Contributor / DeepSeek V4.1 Flash /
+GLM 5.3 Flash。現在の採用はDeepSeek V4.1 Flashで確定済み。
+[4モデルの提供先比較と残る条件](validation/2026-10-04-openrouter-model-candidates.md)。
+4候補の短期実APIと既存Adapterは16リクエスト通過。実費合計$0.0008195002。
+[少量実APIの結果と検証範囲](validation/2026-10-04-openrouter-live-smoke.md)。
+段階検証ではDeepSeek/InferenceNetが完全スキーマで日英20ターン×3を120/120初回通過。
+馴れ馴れしいRP3種類24ターンと境界指示の対照2ターンも確認。全検証の実費は$0.0446467502、
+未確定予約込み$0.0495487202（当時の上限$0.05、現在の累計上限$0.10）。Ling/GLMの実429、Museの約束記憶の不足、
+RPでの未発言の過去の付加を記録。人間レビュー・本番経路の受け入れは未完了。
+[会話・記憶・SFW・RPの原文と検証範囲](validation/2026-10-04-openrouter-quality.md)。
+
+2026-10-04確定：DeepSeek V4.1 FlashをOpenRouter → InferenceNetへ固定。
+Google/メールリンクのログイン画面・PKCE・本人メール許可リスト・管理者による
+500 K-Creditsの単回付与・使用履歴を実装。個人テストはサブスク/購入を停止し、
+過去検証の未確定予約を含む累計API上限$0.10を維持。Supabase/Google/HTTPSと本人ログインは完了。
+[Webログインの設定と個人テスト](WEB_AUTH.md)。
+Go契約を前提にせず、10人/72時間の観測は最初の10人の受付後、100人への拡張前に置く。
+新規10人の受付上限、別経路への再同意、請求超過の負債記録、バックアップ容量の全体予約を追加。
+Windows配布候補と合成250MB/1GB枠の保存処理を確認。クリーンOSでの導入・実VPS大容量同期・
+Android実機・本番推論の受け入れは残る。[選定当時の設定履歴](validation/2026-10-04-openrouter-initial.md)
+と [現在の接続設定・公開条件](HANDOFF.md)を参照。
+
+## 初回ローンチの優先順（2026-10-03）
+
+無料OSS Core＋任意SFWクラウドを採用。初回はブラウザ/PWAクラウドと
+Windows 11 x64 / macOS Apple Siliconのnpmローカルベータ。
+人格・記憶アルゴリズムは共通。有料はクラウド容量/復元/優先処理/API資源を増やす。
+ローカル/BYOKは無料でK-Credits不要。詳細は [ローンチ仕様](LAUNCH.md)。
+
+CLI・独立クラウドRuntime・同意付きモデル経路・SFW検査・同期CAS・
+整数予約台帳・Stripe・暗号化バックアップを実装候補として追加。
+外部設定/実機/実モデル/販売条件/24時間/72時間の受け入れ完了を意味しない。
+署名済みDesktopインストーラーの初回配布は見送り。GPU版はComing soon。
+
+後続順：KCS/Character Compiler → Tool/MCPとイベント → Proactive/通知 →
+音声/画像/Expo → 自前GPU。Remote正式提供は外部レビュー後。
+
+
+以下は2026-09-26までの実装・検証履歴（Desktop API監督・Memory Lab・長ターン比較・Persona/World Creator）。
 Phase 0 M1〜M7のMock受け入れは維持。LE・互換実装の完了と、Phase 0全体の実モデル受け入れ完了は区別する。
 
 ## 今回の追加実装と確認（2026-09-26）
@@ -70,7 +266,7 @@ Webは `http://127.0.0.1:5174/`、APIは8000番。モデル検証後は専用の
 - 型チェック: 全共有パッケージ/Web合格。schemasビルド/Web本番ビルド合格。
 - Gemma 4: 指定GGUFをLM Studio Vulkan / RX7600専用で読み込み、SFW構造化1ターンが初回検証で合格。最終測定の表示開始87.11秒、全体97.97秒。通常利用の速度は要改善。
 
-## 優先順位
+## ローカル研究・Desktopの継続課題（2026-09-26時点）
 
 正式なフェーズ定義は [PROJECT_SPEC.md 91章](../PROJECT_SPEC.md#91-phase-roadmap) を維持する。
 Phase 3の互換／Creator機能を先行実装し、残作業を次の順に進める。
@@ -87,8 +283,8 @@ Phase 3の互換／Creator機能を先行実装し、残作業を次の順に進
 
 Phase 0の正式受け入れには、[仕様94章](../PROJECT_SPEC.md#94-initial-acceptance-test) の**3ローカルモデル比較**が残る。
 Gemma 4の過去の短期確認に加えて、Qwen3.5 9Bの直結・短期比較を確認した。正式な3モデルの組み合わせと共通条件、20ターン×3回の実測は未完了。モデル登録だけでは比較完了にならない。
-Muse Spark 1.3 Contributor APIは、ローカル性能が実用条件に届かない場合の代替候補として保持する。
-製品からのAPI接続・速度・品質は未検証であり、API比較を3ローカルモデルの条件に数えない。
+Muse Spark 1.3 Contributorは評価履歴を保持するが、初期クラウド経路には採用しない。
+少量API評価は実施済みであり、製品受け入れや3ローカルモデル比較の条件には数えない。
 受け入れ前にM8の独立した作業を進める場合も、Phase 0の未完了項目は残して管理する。
 
 M8は開発用checkoutのPython環境を起動・監督できる状態まで進めた。

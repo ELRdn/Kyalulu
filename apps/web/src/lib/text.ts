@@ -1,6 +1,5 @@
 /** Display helpers that keep raw generation markup out of consumer surfaces. */
 
-const NARRATOR_PREFIX = /^\s*NARRATOR\s*[:：]\s*/i;
 const TECH_PREFIX = /^\s*\[(?:Mock Echo|mock|debug)[^\]]*\]\s*/i;
 
 /** One-line preview for session lists: strips narrator labels, markdown emphasis and extra whitespace. */
@@ -9,43 +8,62 @@ export function cleanPreview(text: string | null | undefined, max = 120): string
   const s = text
     .replace(TECH_PREFIX, "")
     .replace(/^\s*NARRATOR\s*[:：]\s*/gim, "")
+    .replace(/^\s*[@＠][^:：\r\n]*[:：][ \t]*/gm, "")
     .replace(/[*_~`#>]+/g, "")
     .replace(/\s+/g, " ")
     .trim();
   return s.length > max ? s.slice(0, max) + "…" : s;
 }
 
-export type Segment = { kind: "narration" | "speech"; text: string };
+export type Segment = { kind: "narration" | "speech"; text: string; speaker?: string };
 
 /**
  * Splits a character reply into narration and speech blocks.
- * Structured roles are not available from the backend yet, so a paragraph counts as narration only when
- * it is explicitly marked (NARRATOR: prefix, or wrapped entirely in *...*). Everything else stays speech.
+ * Only explicit @: blocks are narration. Actions and fictional inner monologues stay with their speaker.
+ * Legacy NARRATOR: paragraphs are accepted as an input alias.
  */
 export function splitSegments(content: string): Segment[] {
   const out: Segment[] = [];
-  const push = (kind: Segment["kind"], text: string) => {
-    const t = text.trim();
-    if (!t) return;
-    const last = out[out.length - 1];
-    if (last && last.kind === kind) last.text += "\n\n" + t;
-    else out.push({ kind, text: t });
+  let kind: Segment["kind"] = "speech";
+  let speaker: string | undefined;
+  let lines: string[] = [];
+  let legacyNarration = false;
+  let fence = "";
+  const flush = () => {
+    const text = lines.join("\n").trim();
+    if (text) out.push({ kind, text: kind === "narration" ? unwrapEmphasis(text) : text, ...(speaker ? { speaker } : {}) });
+    lines = [];
   };
-  for (const para of content.split(/\n{2,}/)) {
-    const p = para.trim();
-    if (!p) continue;
-    if (NARRATOR_PREFIX.test(p)) {
-      push("narration", unwrapEmphasis(p.replace(NARRATOR_PREFIX, "")));
+  for (const line of content.split(/\r?\n/)) {
+    const marker = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+    if (marker && !fence) {
+      fence = marker[1];
+      lines.push(line);
       continue;
     }
-    // A line may mix *action* and dialogue: split by lines, then classify each line.
-    for (const line of p.split("\n")) {
-      const l = line.trim();
-      if (!l) continue;
-      if (/^\*[^*].*[^*]\*$|^\*[^*]\*$/.test(l) && !l.slice(1, -1).includes("*")) push("narration", l.slice(1, -1));
-      else push("speech", l);
+    if (fence) {
+      lines.push(line);
+      if (marker && marker[1][0] === fence[0] && marker[1].length >= fence.length && !marker[2].trim()) fence = "";
+      continue;
+    }
+    const header = line.match(/^\s*[@＠]([^:：\r\n]*)[:：][ \t]*(.*)$/);
+    const legacy = line.match(/^\s*NARRATOR\s*[:：][ \t]*(.*)$/i);
+    if (header || legacy) {
+      flush();
+      const name = header?.[1].trim();
+      legacyNarration = !!legacy || name?.toUpperCase() === "NARRATOR";
+      kind = !name || legacyNarration ? "narration" : "speech";
+      speaker = kind === "speech" ? name : undefined;
+      lines.push(header ? header[2] : legacy![1]);
+    } else if (legacyNarration && !line.trim()) {
+      flush();
+      kind = "speech";
+      legacyNarration = false;
+    } else {
+      lines.push(line);
     }
   }
+  flush();
   return out;
 }
 

@@ -1,6 +1,7 @@
 """Two-phase local imports and versioned library editing/export."""
 from urllib.parse import quote
-from fastapi import APIRouter, UploadFile, File, Form, Request
+from uuid import UUID
+from fastapi import APIRouter, UploadFile, File, Form, Request, Header
 from fastapi.routing import APIRoute
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
@@ -74,8 +75,8 @@ async def list_library(include_nsfw: bool = False):
 
 
 @router.post('/library')
-async def create_document(body: PortableDocument):
-    return library.save_item(body).model_dump()
+async def create_document(body: PortableDocument, request_id: UUID | None = Header(None, alias='Idempotency-Key')):
+    return library.save_item(body, request_id=str(request_id) if request_id else None).model_dump()
 
 
 def require_item(item_id, revision=None):
@@ -88,19 +89,23 @@ def require_item(item_id, revision=None):
 @router.get('/library/assets/{asset_id}')
 async def asset(asset_id: str):
     raw, mime = library.read_asset(asset_id)
-    # Import adapters accept only inert image types; never serve HTML/SVG/scripts inline.
-    if mime not in {'image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/apng'}:
+    from python.core.portable_assets import PLAYABLE_TYPES
+    if mime not in PLAYABLE_TYPES:
         mime = 'application/octet-stream'
     return Response(raw, media_type=mime, headers={'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, max-age=31536000, immutable'})
 
 
 @router.post('/library/assets')
-async def upload_asset(file: UploadFile = File(...)):
-    from python.core.portable_assets import accept_image
-    raw = await file.read(16 * 1024 * 1024 + 1)
-    asset_id, mime = accept_image(raw)
+async def upload_asset(file: UploadFile = File(...), rights_confirmed: bool = Form(False)):
+    from python.core.portable_assets import accept_media
+    raw = await file.read(32 * 1024 * 1024 + 1)
+    asset_id, mime = accept_media(raw)
+    if not mime.startswith('image/') and not rights_confirmed:
+        raise ValueError('Confirm your right to use this media before uploading')
     library.store_assets({asset_id: (raw, mime)})
-    return {'asset_id': asset_id, 'media_type': mime, 'uri': '', 'name': file.filename or 'image', 'type': 'icon'}
+    return {'asset_id': asset_id, 'media_type': mime, 'uri': '', 'name': file.filename or 'media',
+            'type': 'icon' if mime.startswith('image/') else 'video' if mime.startswith('video/') else 'audio',
+            'rights_confirmed': rights_confirmed}
 
 
 @router.get('/library/{item_id}')
@@ -114,8 +119,9 @@ class EditDocument(BaseModel):
 
 
 @router.put('/library/{item_id}')
-async def edit_document(item_id: str, body: EditDocument):
-    return library.save_item(body.document, item_id, body.expected_revision).model_dump()
+async def edit_document(item_id: str, body: EditDocument, request_id: UUID | None = Header(None, alias='Idempotency-Key')):
+    return library.save_item(body.document, item_id, body.expected_revision,
+                             request_id=str(request_id) if request_id else None).model_dump()
 
 
 @router.get('/library/{item_id}/export')

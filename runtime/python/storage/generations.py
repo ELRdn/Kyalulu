@@ -1,6 +1,8 @@
 """Atomic generation reservations, durable state and backward-compatible history."""
+from python.storage.context import get_db_path
 import hashlib
 import json
+import time
 from contextlib import asynccontextmanager
 import aiosqlite
 import anyio
@@ -21,7 +23,7 @@ def fingerprint(body: dict) -> str:
 async def transaction():
     """Serialize finish/cancel and protect SQLite commit/rollback/close from SSE cancellation."""
     with anyio.CancelScope(shield=True):
-        async with aiosqlite.connect(storage.DB_PATH) as db:
+        async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
             await db.execute("BEGIN IMMEDIATE")
             try:
                 yield db
@@ -31,11 +33,27 @@ async def transaction():
                 raise
 
 
-async def reserve(generation_id: str, session_id: str, body: dict):
+async def _erasure_revision(db):
+    rows = await (await db.execute("SELECT session_id FROM session_deletions ORDER BY session_id")).fetchall()
+    return fingerprint({"deleted_sessions": [row[0] for row in rows]})
+
+
+async def erasure_revision():
+    await storage.init_db()
+    async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
+        return await _erasure_revision(db)
+
+
+async def reserve(generation_id: str, session_id: str, body: dict, *, expected_erasure_revision=None):
     await storage.init_db()
     digest = fingerprint(body)
     async with transaction() as db:
+        # Cloud prepares memory before reserving; fence deletion across that gap.
+        if expected_erasure_revision is not None and expected_erasure_revision != await _erasure_revision(db):
+            raise Conflict("conversation data was deleted during preparation; reload and request a new quote")
         db.row_factory = aiosqlite.Row
+        if await (await db.execute("SELECT 1 FROM session_deletions WHERE session_id=?", (session_id,))).fetchone():
+            raise Conflict("session was deleted; start a new session")
         row = await (await db.execute("SELECT * FROM generations WHERE generation_id=?", (generation_id,))).fetchone()
         if row:
             if row["session_id"] != session_id or row["fingerprint"] != digest or not row["valid"]:
@@ -43,6 +61,10 @@ async def reserve(generation_id: str, session_id: str, body: dict):
             if row["status"] == "pending":
                 raise Conflict("generation is already running")
             return json.loads(row["result_json"] or "{}")
+        if body.get("context_mode") == "stored":
+            from .conversation import _revision
+            if body.get("history_revision") != await _revision(db, session_id):
+                raise Conflict("history changed; reload conversation context before generation")
         try:
             await db.execute("INSERT INTO generations(generation_id,session_id,fingerprint,status) VALUES(?,?,?,'pending')",
                              (generation_id, session_id, digest))
@@ -52,12 +74,14 @@ async def reserve(generation_id: str, session_id: str, body: dict):
 
 
 async def load_state(session_id: str, settings: dict) -> RuntimeState:
-    async with aiosqlite.connect(storage.DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
         row = await (await db.execute("SELECT state_json FROM runtime_states WHERE session_id=?", (session_id,))).fetchone()
         if row:
             state = RuntimeState.model_validate_json(row[0])
         else:
             state = RuntimeState(session_id=session_id)
+        if state.world_id != settings.get("world_id"):
+            state.rpg = {}
         for key in ("character_id", "persona_id", "world_id"):
             setattr(state, key, settings.get(key))
         # Reading/preparing a turn must not change durable state. Only finish may
@@ -67,28 +91,41 @@ async def load_state(session_id: str, settings: dict) -> RuntimeState:
 
 async def finish(generation_id: str, result: dict, user: dict | None, model_id: str,
                  *, memory_scope: str | None = None, memory_turn: int | None = None,
-                 evidence_text: str = ""):
+                 evidence_text: str = "", cloud_revision: tuple | None = None):
     async with transaction() as db:
+        save_started = time.perf_counter()
+        if cloud_revision:
+            await db.execute("ATTACH DATABASE ? AS control", (str(cloud_revision[0]),))
         row = await (await db.execute("SELECT session_id,status,result_json FROM generations WHERE generation_id=?", (generation_id,))).fetchone()
         if not row:
             raise Conflict("generation not reserved")
         if row[1] != "pending":
             # Cancellation or a prior finish already won. Never overwrite it or
             # return an uncommitted provider reply as a successful SSE result.
-            return json.loads(row[2] or "{}")
+            terminal = json.loads(row[2] or "{}")
+            if row[1] == "cancelled" and "cloud_accounting" in result:
+                # Stop blocks conversation commits, not the provider's already incurred bill.
+                terminal["cloud_accounting"] = result["cloud_accounting"]
+                await db.execute("UPDATE generations SET result_json=? WHERE generation_id=?",
+                                 (json.dumps(terminal), generation_id))
+            return terminal
         sid = row[0]
-        if memory_scope is not None:
-            from . import memories
-            await memories.commit(memory_scope, result, session_id=sid, turn=memory_turn,
-                                  evidence_text=evidence_text, db=db)
+        from . import conversation, memories
         user_id = assistant_id = None
         save_reply = result["status"] == "completed" or (result["status"] == "invalid" and result.get("reply") and result.get("mode") == "immersion")
         if save_reply:
             replacement = result.get("replace_message_id")
             if replacement:
+                await memories.invalidate(db, sid, replacement)
+                await conversation.invalidate(db, sid, replacement)
                 await db.execute("UPDATE generations SET valid=0 WHERE session_id=? AND assistant_id>=?", (sid, replacement))
+                await db.execute("UPDATE generations SET result_json=? WHERE session_id=? AND valid=0",
+                                 (json.dumps({"status": "invalidated", "reply": "", "error": "reply regenerated"}), sid))
                 await db.execute("UPDATE chat_history SET content=?,model_id=? WHERE id=? AND session_id=?", (result["reply"], model_id, replacement, sid))
                 assistant_id = replacement
+                user_row = await (await db.execute("SELECT id FROM chat_history WHERE session_id=? AND role='user' AND id<? ORDER BY id DESC LIMIT 1",
+                                                   (sid, replacement))).fetchone()
+                user_id = user_row[0] if user_row else None
                 if result["status"] != "completed":
                     await db.execute("UPDATE runtime_states SET state_json=? WHERE session_id=?", (json.dumps(result["state_before"]), sid))
             elif user:
@@ -103,8 +140,20 @@ async def finish(generation_id: str, result: dict, user: dict | None, model_id: 
             await db.execute("INSERT INTO runtime_states VALUES(?,?) ON CONFLICT(session_id) DO UPDATE SET state_json=excluded.state_json",
                              (sid, json.dumps(result["state"], ensure_ascii=False)))
         result.update(generation_id=generation_id, session_id=sid, user_id=user_id, assistant_id=assistant_id)
+        if memory_scope is not None:
+            # Only user evidence can support biography/preferences; provider replies are never user facts.
+            user_evidence = user.get("content", "") if user else evidence_text
+            await memories.commit(memory_scope, result, session_id=sid, turn=memory_turn,
+                                  evidence_text=user_evidence, db=db,
+                                  source_message_ids=[i for i in (user_id, assistant_id) if i is not None],
+                                  source_revision=await conversation._revision(db, sid))
+        if save_reply:
+            await conversation.refresh(db, sid)
+        result.setdefault("telemetry", {})["save_processing_ms"] = round((time.perf_counter() - save_started) * 1000, 2)
         await db.execute("UPDATE generations SET status=?,result_json=?,user_id=?,assistant_id=? WHERE generation_id=?",
                          (result["status"], json.dumps(result, ensure_ascii=False), user_id, assistant_id, generation_id))
+        if cloud_revision and result["status"] == "completed":
+            await db.execute("INSERT INTO control.sync_heads VALUES(?,'workspace',1,0,'{}') ON CONFLICT(owner,id) DO UPDATE SET revision=revision+1,deleted=0", (cloud_revision[1],))
     return result
 
 
@@ -112,6 +161,9 @@ async def invalidate(db, session_id: str, message_id: int = 0):
     active = await (await db.execute("SELECT 1 FROM generations WHERE session_id=? AND status='pending'", (session_id,))).fetchone()
     if active:
         raise Conflict("stop generation before editing history")
+    from . import conversation, memories
+    await memories.invalidate(db, session_id, message_id)
+    await conversation.invalidate(db, session_id, message_id)
     await db.execute("UPDATE generations SET valid=0 WHERE session_id=? AND (assistant_id>=? OR user_id>=?)",
                      (session_id, message_id, message_id))
     row = await (await db.execute("SELECT result_json FROM generations WHERE session_id=? AND valid=1 AND status='completed' AND assistant_id<? ORDER BY assistant_id DESC LIMIT 1",
@@ -119,10 +171,12 @@ async def invalidate(db, session_id: str, message_id: int = 0):
     state = json.loads(row[0])["state"] if row else RuntimeState(session_id=session_id).model_dump()
     await db.execute("INSERT INTO runtime_states VALUES(?,?) ON CONFLICT(session_id) DO UPDATE SET state_json=excluded.state_json",
                      (session_id, json.dumps(state, ensure_ascii=False)))
+    await db.execute("UPDATE generations SET result_json=? WHERE session_id=? AND valid=0",
+                     (json.dumps({"status": "invalidated", "reply": "", "error": "history edited or deleted"}), session_id))
 
 
 async def latest(session_id: str):
-    async with aiosqlite.connect(storage.DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
         row = await (await db.execute("SELECT result_json,valid FROM generations WHERE session_id=? AND status!='pending' ORDER BY rowid DESC LIMIT 1", (session_id,))).fetchone()
         if not row:
             return None
@@ -130,9 +184,11 @@ async def latest(session_id: str):
 
 
 async def state_before(session_id: str, message_id: int, settings: dict):
-    async with aiosqlite.connect(storage.DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
         row = await (await db.execute("SELECT result_json FROM generations WHERE session_id=? AND assistant_id=? AND valid=1 ORDER BY rowid DESC LIMIT 1", (session_id, message_id))).fetchone()
     state = RuntimeState.model_validate(json.loads(row[0])["state_before"]) if row else RuntimeState(session_id=session_id)
+    if state.world_id != settings.get("world_id"):
+        state.rpg = {}
     for key in ("character_id", "persona_id", "world_id"):
         setattr(state, key, settings.get(key))
     return state
@@ -140,8 +196,8 @@ async def state_before(session_id: str, message_id: int, settings: dict):
 
 async def recover_interrupted():
     """Called once at application startup, never on each request."""
-    async with aiosqlite.connect(storage.DB_PATH) as db:
-        await db.execute("UPDATE generations SET status='cancelled',result_json=? WHERE status='pending'",
+    async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
+        await db.execute("UPDATE generations SET status='cancelled',result_json=json_patch(COALESCE(result_json,'{}'),?) WHERE status='pending'",
                          (json.dumps({"status": "cancelled", "error": "runtime restarted", "reply": ""}),))
         await db.commit()
 
@@ -149,7 +205,7 @@ async def recover_interrupted():
 async def cancel_pending(generation_id: str, *, attempts: list | None = None):
     """Response cleanup only: never create a reservation or overwrite a terminal result."""
     async with transaction() as db:
-        await db.execute("UPDATE generations SET status='cancelled',result_json=? WHERE generation_id=? AND status='pending'",
+        await db.execute("UPDATE generations SET status='cancelled',result_json=json_patch(COALESCE(result_json,'{}'),?) WHERE generation_id=? AND status='pending'",
                          (json.dumps({"generation_id": generation_id, "status": "cancelled", "reply": "",
                                       "error": "generation interrupted", "attempts": attempts or []}), generation_id))
 
@@ -167,7 +223,7 @@ async def _status(db, generation_id: str, session_id: str):
 async def status(generation_id: str, session_id: str):
     """Public recovery snapshot; never expose prompts, memory traces or provider details."""
     await storage.init_db()
-    async with aiosqlite.connect(storage.DB_PATH) as db:
+    async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
         return await _status(db, generation_id, session_id)
 
 
@@ -187,6 +243,6 @@ async def cancel(generation_id: str, session_id: str):
                 "INSERT INTO generations(generation_id,session_id,fingerprint,status,result_json,valid) "
                 "VALUES(?,?,'','cancelled',?,0)", (generation_id, session_id, result))
         elif current["status"] == "pending":
-            await db.execute("UPDATE generations SET status='cancelled',result_json=? WHERE generation_id=?",
+            await db.execute("UPDATE generations SET status='cancelled',result_json=json_patch(COALESCE(result_json,'{}'),?) WHERE generation_id=?",
                              (result, generation_id))
         return await _status(db, generation_id, session_id)

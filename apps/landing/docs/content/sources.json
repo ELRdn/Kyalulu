@@ -1,0 +1,85 @@
+{
+  "repository": "ELRdn/Kyalulu",
+  "commit": "eea271beb3eef9211f8b588db331daf2761ba3e2",
+  "reviewed": "2026-10-05",
+  "files": {
+    "README.md": {
+      "sha256": "8d620b0d96ab8cbd6adfc43126cf794a3f204045e6a5f2760138f76fc642c29a"
+    },
+    "PRODUCT_SPEC.md": {
+      "sha256": "9e90056f77198812e89227e985d91c2b57c02d520295830b0a41afe09a291de1"
+    },
+    "PROJECT_SPEC.md": {
+      "sha256": "b73aba95780d1041c0b3403d68fb0f533766e5ef2198bb25ce64b2c0c39965ba"
+    },
+    "LE_ARCHITECTURE.md": {
+      "sha256": "3a9dc79a9ffb484e400b03c420c9567af3718df647092f00d46545fc3cdce23b"
+    },
+    "docs/COMPATIBILITY.md": {
+      "sha256": "bcdc1b709e0227538bd380d03b773bf46b1e0d3333a458e69ccdeea11b5b5c09"
+    },
+    "docs/COMPATIBILITY_ACCEPTANCE.md": {
+      "sha256": "3ed1d0b952db89582c92c201712fa4b7eebaf9b94ba2bf04a03ca3ae147c44ca"
+    },
+    "docs/HUB_ACCEPTANCE.md": {
+      "sha256": "5664b4b35e6b87dd417d39810da79ef6293265e01f300918be3212f26069bbf3"
+    },
+    "docs/PHASE0_ACCEPTANCE.md": {
+      "sha256": "49779e1a91cb76c9e95ba74809ac91b5980f82697dde847f5a43dca417f53094"
+    },
+    "docs/ANDROID_PWA.md": {
+      "sha256": "0472cec86a40170e9b2a5ab5a089f90e048470811b76f03dde55161d8ababef5"
+    },
+    "docs/REMOTE.md": {
+      "sha256": "d94fa8f64a4c98266934738a8c3d73313cf7e51f2230713b8d2eea4c871dbdfa"
+    },
+    "docs/ROADMAP.md": {
+      "sha256": "67a40273c06ec93dcb5ba098380fc0a706720d1caab438a3b1e367c9e75404d2"
+    },
+    "docs/research/README.md": {
+      "sha256": "aa85f3a2be7a3443ec6c2de2fbd38b5c754f3e919557b3fa70faedb33da72f90"
+    },
+    "benchmarks/characterbench/README.md": {
+      "sha256": "15d8461fcfe631b05008936b81957243bc2fde2cedb01a79e31c5f1962b2c01f"
+    },
+    "benchmarks/characterbench/README_JA.md": {
+      "sha256": "6c91d4827327c93a1ab46cfd9912fa673499a65b3eb5e95d4688cb3ac69d1ee2"
+    },
+    "benchmarks/characterbench/data/README.md": {
+      "sha256": "cdbb28599ec8cf61a27c7aa92b73c5beddc4744772cdc6fd89e88340b59a8ec6"
+    },
+    "benchmarks/official/README.md": {
+      "sha256": "89f44a2cb8b0345bebdf14f65385fcefa7498ed13bb626ed11451dcbdf2b5af2"
+    },
+    "scripts/README.md": {
+      "sha256": "6e78c21692b3bae8ac9522880bcf79282a07f02666ddcfca1c7f645716b5b2f6"
+    },
+    "scripts/HOME_SERVER.md": {
+      "sha256": "1ef964891f3c881a1d407d93f461d9322f2df32e0c09e1f607b2a2161844993e"
+    },
+    "deploy/remote/README.md": {
+      "sha256": "b4dcea65a429b3f0984b55383f908e8212bb0a72858fd78d725a2dfa69e4d385"
+    },
+    "pyproject.toml": {
+      "sha256": "8ea12a5a45ecdf05e73d249942c1422b627c5bf34ccc84afb8465fbfe66af701"
+    },
+    "runtime/pyproject.toml": {
+      "sha256": "402467e5b3700c0bd55d1018a3d6a12246c4662eb69f9cef498556c90a611709"
+    },
+    ".env.example": {
+      "sha256": "a1982f6ae76110c7c2c5e0291a5e07894dc0ecf45ad0e9864a76207a96ad834f"
+    },
+    "models/example-lmstudio.yaml": {
+      "sha256": "430bfa65f064470be6192bdd99ddde81e0417a093c0fbe81e9ac917ac9233525"
+    },
+    "models/example-ollama.yaml": {
+      "sha256": "e8e6e9fdc13175bc4a0a632f8d6f7ad0e42a2510c4899d81662362507bb7e7eb"
+    },
+    "models/example-openai.yaml": {
+      "sha256": "9d7284a89a5ec5f6903cd57e26d688544a88b578b262048242f186741fa70d43"
+    },
+    "models/example-le.yaml": {
+      "sha256": "ce00c6aa003cfcd4c186f4ea363b31c74c8ae7a4fdba0916f30bf6d7559406f3"
+    }
+  }
+}

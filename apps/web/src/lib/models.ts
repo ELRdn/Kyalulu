@@ -2,7 +2,7 @@ import { scopedKey } from './remoteStore';
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchModels, fetchProvidersHealth, type ModelInfo, type ProviderHealth } from "./api";
 
-import { useAdministrative } from "../components/RuntimeGate";
+import { useAdministrative, useRuntimeAccess } from "../components/RuntimeGate";
 
 const LS_EXPLICIT_MODEL = "kyalulu-explicit-model";
 const LS_MODEL = "my-zeta-model";
@@ -27,7 +27,7 @@ function writeStored(id: string) {
 }
 
 export function isModelAvailable(model: ModelInfo | undefined, health: ProviderHealth[] | null): boolean {
-  if (!model) return false;
+  if (!model || model.available === false) return false;
   if (!health) return true;
   return health.some((h) => h.id === model.provider_type && h.status === "ok"
     && (!h.models || h.models.includes(model.provider_model)));
@@ -39,8 +39,9 @@ export function isModelAvailable(model: ModelInfo | undefined, health: ProviderH
  */
 export function pickModel(models: ModelInfo[], health: ProviderHealth[] | null, current: string): string {
   const stored = models.find((m) => m.id === current);
+  if (stored?.available === false) return stored.id;
   if (stored && isModelAvailable(stored, health)) return stored.id;
-  if (!health) return stored?.id ?? models[0]?.id ?? "";
+  if (!health) return stored?.id ?? models.find(m => isModelAvailable(m, health))?.id ?? "";
   const usable = models.filter((m) => isModelAvailable(m, health));
   return (usable.find((m) => m.provider_type !== "mock") ?? usable[0] ?? stored ?? models[0])?.id ?? "";
 }
@@ -69,6 +70,7 @@ export async function loadModelCatalog(administrative: boolean) {
 
 export function useChatModel(options: { conversationModel?: string | null } = {}) {
   const administrative = useAdministrative();
+  const {cloud_mode} = useRuntimeAccess();
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [health, setHealth] = useState<ProviderHealth[] | null>(null);
   const [explicit, setExplicit] = useState("");
@@ -101,7 +103,7 @@ export function useChatModel(options: { conversationModel?: string | null } = {}
       window.removeEventListener("storage", sync);
     };
   }, []);
-  const modelId = pickConversationModel(models, health, {
+  const modelId = cloud_mode && !options.conversationModel && !explicit && !stored.explicit ? 'cloud-standard' : pickConversationModel(models, health, {
     administrative, baseline: options.conversationModel, explicit,
     storedExplicit: stored.explicit, stored: stored.legacy,
   });

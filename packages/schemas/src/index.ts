@@ -5,6 +5,8 @@
 
 import { z } from "zod";
 export * from './portable';
+export * from './capabilities';
+export * from './story';
 
 export const VersionSchema = z.string().regex(/^\d+\.\d+\.\d+$/);
 export const DifficultySchema = z.enum(["easy", "medium", "hard"]);
@@ -78,6 +80,7 @@ export const RuntimeStateSchema = z.object({
   state_version: z.string().default("0.1.0"),
   location: z.string().default(""), time: z.string().default(""),
   mood: z.string().default(""), active_scene: z.string().default(""),
+  rpg: z.record(z.unknown()).default({}),
   relationship_state: RelationshipStateSchema.default({ stage: "stranger", tone: "neutral", unresolved_conflict: false }),
 });
 export type RuntimeState = z.infer<typeof RuntimeStateSchema>;
@@ -180,6 +183,8 @@ export const GenerationRecordSchema = z.object({
   attempts: z.array(z.object({number: z.number().int(), raw: z.string(), errors: z.array(z.string()),
     messages: z.array(z.object({role: z.string(), content: z.string()})), elapsed_ms: z.number(), usage: z.record(z.unknown())})),
   compiled: CompiledPromptSchema, raw_prompt: z.string(), error: z.string().nullable(), mode: z.enum(['immersion', 'research']),
+  reasoning_summary: z.string().nullable().default(null),
+  reasoning_summary_status: z.enum(['available', 'not_provided', 'unsupported']).default('unsupported'),
 });
 export type GenerationRecord = z.infer<typeof GenerationRecordSchema>;
 export * from './hub';

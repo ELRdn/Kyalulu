@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { fetchSessions, fetchWorlds, fetchCharacters, sessionTitle, type SessionInfo, type WorldInfo, type CharacterInfo } from "../lib/api";
+import { sessionTitle, type SessionInfo, type WorldInfo, type CharacterInfo } from "../lib/api";
 import WorldCard from "../components/ui/WorldCard";
 import CharacterCard from "../components/ui/CharacterCard";
 import Avatar from "../components/ui/Avatar";
@@ -13,6 +13,10 @@ import { useDisplayName } from "../lib/profile";
 import { useAdultContent } from "../lib/adult";
 import { useDocumentTitle } from "../lib/title";
 import "./pages.css";
+import { friendlyMessage } from '../lib/errors';
+import { useRuntimeAccess } from '../components/RuntimeGate';
+import { fetchBrowseCatalog, isCloudGuest, loginPath } from '../lib/cloudGuest';
+import CommunityWorks from '../components/CommunityWorks';
 
 function greeting() {
   const h = new Date().getHours();
@@ -23,24 +27,31 @@ function greeting() {
 }
 
 export default function Home() {
+  const guest = isCloudGuest(useRuntimeAccess());
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [worlds, setWorlds] = useState<WorldInfo[]>([]);
   const [characters, setCharacters] = useState<CharacterInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [retry, setRetry] = useState(0);
   const navigate = useNavigate();
   const displayName = useDisplayName();
   const [adult] = useAdultContent();
   useDocumentTitle(null);
 
   useEffect(() => {
-    Promise.all([fetchSessions().catch(() => []), fetchWorlds().catch(() => []), fetchCharacters(adult).catch(() => [])])
-      .then(([s, w, c]) => {
+    let active = true; setLoading(true); setLoadError('');
+    fetchBrowseCatalog(guest, adult)
+      .then(([c, w, s]) => {
+        if (!active) return;
         setSessions(s);
         setWorlds(w);
         setCharacters(c);
       })
-      .finally(() => setLoading(false));
-  }, [adult]);
+      .catch(error => { if (active) setLoadError(friendlyMessage(error)); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [adult, guest, retry]);
 
   const recentSessions = sessions.filter((s) => s.count > 0).slice(0, 4);
   const moods = collectMoods(characters.map((c) => c.tags ?? []));
@@ -53,6 +64,7 @@ export default function Home() {
 
   return (
     <div className="k-page k-page--home">
+      {loadError && <p role="alert">{loadError}<Button size="sm" variant="secondary" onClick={() => setRetry(value => value + 1)}>再読込</Button></p>}
       <section className="k-hero" aria-labelledby="k-hero-title">
         <div className="k-hero__sky" aria-hidden="true">
           <span className="k-hero__star k-hero__star--1">✦</span>
@@ -71,10 +83,12 @@ export default function Home() {
             <span>物語になる世界へ。</span>
           </h1>
           <p className="k-hero__desc">Kyaluluは、キャラクターと出会い、つながり、あなただけのAIパートナーと物語を紡ぐプラットフォームです。</p>
+          {guest && <p>ログインせずにキャラクターや公開作品を探せます。Cloudで会話を始めるときにログインしてください。</p>}
           <div className="k-hero__actions">
             <Button variant="primary" size="lg" className="k-btn--glow" onClick={() => navigate("/discover")}>
               世界をのぞく <Icon name="sparkle" size={16} />
             </Button>
+            {guest && <Button variant="secondary" size="lg" onClick={() => navigate(loginPath('/'))}>ログイン / 新規登録</Button>}
             {latest && (
               <Button variant="secondary" size="lg" className="k-hero__resume" onClick={() => navigate(`/chats/${encodeURIComponent(latest.session_id)}`)}>
                 {latest.character_name ? `${latest.character_name}とのつづき` : "会話のつづき"} <Icon name="arrow" size={16} />
@@ -86,7 +100,7 @@ export default function Home() {
           <div className="k-hero__arch">
             <div className="k-hero__arch-glow" />
           </div>
-          <img className="k-hero__mascot" src="/mascot/sit.webp" alt="" />
+          <img className="k-hero__mascot" src={`${import.meta.env.BASE_URL}mascot/v1.2/sit.png`} alt="" width={280} height={280} />
           <span className="k-hero__bubble">ねえねえ、今日は何する？</span>
         </div>
       </section>
@@ -181,14 +195,14 @@ export default function Home() {
               <div key={i} className="k-skeleton-card" />
             ))}
           </div>
-        ) : characters.length === 0 ? (
+        ) : loadError ? <p>キャラクター一覧を取得できませんでした。上の再読込から確認してください。</p> : characters.length === 0 ? (
           <EmptyState
             mascot="sleep"
             title="まだキャラクターがいません"
-            description="クリエイトからキャラクターを取り込むと、ここに並びます。"
+            description={guest ? '公開作品はディスカバーから探せます。' : 'クリエイトからキャラクターを取り込むと、ここに並びます。'}
             action={
-              <Button variant="secondary" onClick={() => navigate("/create")}>
-                キャラクターを取り込む
+              <Button variant="secondary" onClick={() => navigate(guest ? '/discover' : '/create')}>
+                {guest ? '公開作品を探す' : 'キャラクターを取り込む'}
               </Button>
             }
           />
@@ -200,6 +214,7 @@ export default function Home() {
           </div>
         )}
       </section>
+      {guest && <CommunityWorks />}
     </div>
   );
 }

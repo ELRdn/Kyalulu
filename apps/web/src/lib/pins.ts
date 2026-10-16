@@ -1,14 +1,17 @@
 import { scopedKey } from './remoteStore';
 import { useEffect, useState } from "react";
+import { accountProfile, changeAccountProfile } from './accountProfile';
+import { isCloud } from './cloudMode';
 
 /**
  * Chats landing の pin (PRODUCT_SPEC §7.2 で許可されている範囲)。
- * バックエンドに概念が無いため localStorage のみで完結させる。
+ * クラウドではアカウントに保存し、ローカルでは端末に保存する。
  * 「saved / favorite キャラクター」のような別概念はここに追加しない。
  */
 const LS_PINS = "kyalulu-pinned-sessions";
 
 function read(): string[] {
+  if(isCloud()) return accountProfile()?.pinned_sessions || [];
   try {
     const raw = localStorage.getItem(scopedKey(LS_PINS));
     return raw ? (JSON.parse(raw) as string[]) : [];
@@ -27,6 +30,7 @@ export function isPinned(sessionId: string): boolean {
 }
 
 export function togglePin(sessionId: string) {
+  if(isCloud()){void changeAccountProfile({toggle_pin:sessionId}).catch(()=>{});return;}
   const cur = read();
   write(cur.includes(sessionId) ? cur.filter((x) => x !== sessionId) : [...cur, sessionId]);
 }

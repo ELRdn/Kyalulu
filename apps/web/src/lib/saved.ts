@@ -1,11 +1,14 @@
 import { scopedKey } from './remoteStore';
 import { useEffect, useState } from "react";
+import { accountProfile, changeAccountProfile } from './accountProfile';
+import { isCloud } from './cloudMode';
 
-/** 保存（お気に入り）したキャラクター。アカウント同期が無いため、このデバイスのlocalStorageだけで管理する。 */
+/** Hosted favorites are account preferences; local favorites stay on device. */
 const LS_SAVED = "kyalulu-saved-characters";
 const EVENT = "kyalulu-saved-change";
 
 function read(): string[] {
+  if(isCloud()) return accountProfile()?.saved_characters || [];
   try {
     const raw = localStorage.getItem(scopedKey(LS_SAVED));
     const v = raw ? JSON.parse(raw) : [];
@@ -16,6 +19,7 @@ function read(): string[] {
 }
 
 export function toggleSaved(characterId: string) {
+  if(isCloud()){void changeAccountProfile({toggle_saved:characterId}).catch(()=>{});return;}
   const cur = read();
   const next = cur.includes(characterId) ? cur.filter((x) => x !== characterId) : [characterId, ...cur];
   try {

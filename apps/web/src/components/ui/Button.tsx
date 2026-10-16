@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, ReactNode, Ref } from "react";
 import "./ui.css";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger" | "danger-solid";
@@ -10,7 +10,7 @@ export default function Button({
   children,
   className = "",
   ...rest
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size; children: ReactNode }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size; children: ReactNode; ref?: Ref<HTMLButtonElement> }) {
   return (
     <button className={`k-btn k-btn--${variant} k-btn--${size} ${className}`} {...rest}>
       {children}

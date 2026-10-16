@@ -3,10 +3,11 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from python.storage import creator
 from python.storage.db import init_db
+from python.core.story import CastMember, RPGOptions
 
 router = APIRouter(prefix="/creator")
 Kind = Literal["persona", "world"]
@@ -18,11 +19,19 @@ class Document(BaseModel):
     description: str = Field(default="", max_length=4000)
     traits: str = Field(default="", max_length=6000)
     rules: str = Field(default="", max_length=6000)
+    cast: list[CastMember] = Field(default_factory=list, max_length=12)
+    rpg: RPGOptions | None = None
 
     @field_validator("display_name", "description", "traits", "rules", mode="before")
     @classmethod
     def trim(cls, value):
         return value.strip() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def distinct_cast(self):
+        if len({member.id for member in self.cast}) != len(self.cast):
+            raise ValueError("cast IDs must be unique")
+        return self
 
 
 @router.get("/{kind}")
@@ -56,6 +65,6 @@ async def asset_detail(kind: Kind, reference: str):
 async def export_asset(kind: Kind, reference: str):
     detail = await asset_detail(kind, reference)
     item = detail["item"]
-    document = {key: item[key] for key in Document.model_fields}
+    document = Document.model_validate({key: item[key] for key in Document.model_fields if key in item}).model_dump()
     return JSONResponse({"format": "kyalulu-creator", "version": 1, "kind": kind, "document": document},
                         headers={"Content-Disposition": f'attachment; filename="{kind}.json"'})

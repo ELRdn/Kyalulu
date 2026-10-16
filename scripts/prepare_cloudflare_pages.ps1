@@ -36,6 +36,7 @@ try {
   Permissions-Policy: camera=(self), microphone=(), geolocation=()
   Strict-Transport-Security: max-age=31536000
   Cache-Control: no-cache
+  X-Robots-Tag: noindex
 "@
     [IO.File]::WriteAllText((Join-Path $outputDir '_headers'), $headers + "`n", [Text.UTF8Encoding]::new($false))
     # Hash routing needs no SPA fallback. Missing /api paths must never become HTML.

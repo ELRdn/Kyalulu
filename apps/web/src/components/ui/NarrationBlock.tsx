@@ -4,8 +4,7 @@ import "./ui.css";
 /**
  * narration の視覚的強調ブロック。
  * バックエンドに構造化された NARRATION ロールは存在しないため、
- * これは speaking_style 規約上の *斜体テキスト* を MarkdownView 側で
- * 強調表示する際に使う共有スタイルとして提供する（メッセージ分割はしない）。
+ * 明示的な @: の描写に使う。*動作* や *（内心）* だけでは使用しない。
  */
 export default function NarrationBlock({ children }: { children: ReactNode }) {
   return (

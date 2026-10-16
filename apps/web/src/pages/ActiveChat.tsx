@@ -1,4 +1,5 @@
 import { connectionScope } from '../lib/remoteStore';
+import { chatCompletedAnalytics, chatReopenedAnalytics } from '../lib/analytics';
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
@@ -40,6 +41,8 @@ import ModelSelector from "../components/ModelSelector";
 import PortableSessionControls from '../components/PortableSessionControls';
 import { fetchLibraryItem, assetUrl, type LibraryItem, type LibraryBinding } from '../lib/library';
 import MessageContent from "../components/MessageContent";
+import ReasoningSummary from '../components/ReasoningSummary';
+import KyaluluWaiting, { REPLY_WAIT_LABEL } from '../components/KyaluluWaiting';
 import Icon from "../components/ui/Icon";
 import Avatar from "../components/ui/Avatar";
 import IconButton from "../components/ui/IconButton";
@@ -61,12 +64,24 @@ import StoryControls from "../components/StoryControls";
 import MemoryInspector from "../components/MemoryInspector";
 import { useDocumentTitle } from "../lib/title";
 import Dialog, { useConfirm } from "../components/ui/Dialog";
-import { getReplyVersions, recordReplyVersion, selectReplyVersion } from "../lib/replyVersions";
+import { getReplyVersions, recordReplyVersion, selectReplyVersion, eraseReplyVersions } from "../lib/replyVersions";
 import { cleanPreview } from "../lib/text";
 import { useMediaQuery } from "../lib/useMediaQuery";
 import { NARRATION_STYLES, extractNarrationStyle, applyNarrationStyle } from "../lib/narrationStyle";
 import { useChatRecovery } from "../lib/useChatRecovery";
-import { useAdministrative } from "../components/RuntimeGate";
+import { useAdministrative, useRuntimeAccess } from "../components/RuntimeGate";
+import CloudRouteControls, {defaultCloudRoute,type CloudRouteChoice} from '../components/CloudRouteControls';
+import { useCapabilities } from '../lib/capabilities';
+import { branchSession, deleteSessionData } from '../lib/api';
+import CloudQuoteConfirmation, { useQuoteConfirmation } from '../components/CloudQuoteConfirmation';
+import type { CloudQuote } from '../lib/quoteConsent';
+import ConversationContext from '../components/ConversationContext';
+import PortableMedia from '../components/PortableMedia';
+import StoryRuntime from '../components/StoryRuntime';
+import VisualNovelScene from '../components/VisualNovelScene';
+import FirstChatTutorial, { useFirstChatTutorial, type TutorialReceipt } from '../components/FirstChatTutorial';
+import type { GenerationProgress } from '../../../../packages/schemas/src';
+import type { ClientTimings } from '../lib/clientTimings';
 import "./activeChat.css";
 
 type DebugData = {
@@ -80,6 +95,12 @@ type DebugData = {
   generation: GenerationResult | null;
   memory?: MemoryTrace | null;
 };
+
+function settingsSnapshot(settings: SessionSettings) {
+  return JSON.stringify([settings.session_id, settings.system_prompt, settings.temperature,
+    settings.character_id ?? null, settings.persona_id ?? null, settings.world_id ?? null,
+    settings.intro ?? "", settings.library_binding ?? null]);
+}
 
 function DebugSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -120,6 +141,15 @@ export default function ActiveChat() {
 }
 
 function ActiveChatSession() {
+  const { capabilities, error: capabilitiesError, reload: reloadCapabilities } = useCapabilities();
+  const { quote, consent } = useQuoteConfirmation();
+  const [lastQuote, setLastQuote] = useState<CloudQuote | null>(null);
+  const [progress, setProgress] = useState<GenerationProgress | null>(null);
+  const [clientTimings, setClientTimings] = useState<ClientTimings | null>(null);
+  const [visualNovel, setVisualNovel] = useState(false);
+  const [sessionsError, setSessionsError] = useState('');
+  const [sessionAction, setSessionAction] = useState(false);
+  const sessionActionRef = useRef(false);
   const params = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const sessionId = params.sessionId ?? "default";
@@ -131,15 +161,18 @@ function ActiveChatSession() {
 
   const [baselineModel, setBaselineModel] = useState<string | null>(null);
   const { models, modelId, setModelId, reload: reloadModels, loadFailed: modelsFailed,
-    loading: modelsLoading, available: modelAvailable } = useChatModel({ conversationModel: baselineModel });
+    loading: modelsLoading, available: modelAvailable, current: currentModel } = useChatModel({ conversationModel: baselineModel });
   const modelChoices = models.some(m => m.id === modelId) ? models : [
-    { id: modelId, display_name: modelId ? `${modelId}（利用できません）` : "会話エンジンを選んでください", provider_type: "", provider_model: "", quantization: "" }, ...models,
+    { id: modelId, display_name: modelId ? `${modelId}（利用できません）` : "会話エンジンを選んでください", provider_type: "", provider_model: "", quantization: "", available: false }, ...models,
   ];
   const [adult] = useAdultContent();
   const [confirmDialog, confirm] = useConfirm();
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [messages, setMessages] = useState<(ChatMessage & { id?: number })[]>([]);
   const [streaming, setStreaming] = useState(false);
+  const {cloud_mode} = useRuntimeAccess();
+  const [cloudRoute,setCloudRoute] = useState<CloudRouteChoice>(defaultCloudRoute);
+  useEffect(()=>setCloudRoute(defaultCloudRoute),[sessionId,cloud_mode]);
   const [online, setOnline] = useState(() => navigator.onLine !== false);
   const [error, setError] = useState<string | null>(null);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
@@ -178,13 +211,44 @@ function ActiveChatSession() {
   const [debugError, setDebugError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const settingsLoadedRef = useRef(false);
+  const savedSettingsRef = useRef<string | null>(null);
   const autoSaveTimer = useRef<number | null>(null);
   const requestEpochRef = useRef(0);
   const sendingRef = useRef(false);
   const mountedRef = useRef(true);
   const [settingsReady, setSettingsReady] = useState(false);
   const [historyReady, setHistoryReady] = useState(false);
+  const tutorial = useFirstChatTutorial(settingsReady && historyReady && !messages.some(message => message.role === 'user'));
+  const tutorialRef = useRef<HTMLElement>(null);
+  const tutorialButtonRef = useRef<HTMLButtonElement>(null);
+  const composerRef = useRef<HTMLDivElement>(null);
+  const memoryRef = useRef<HTMLDivElement>(null);
+  const [tutorialFocusRequest, setTutorialFocusRequest] = useState(0);
+  const [memoryFocusRequest, setMemoryFocusRequest] = useState(0);
+  useEffect(() => {
+    if (!tutorialFocusRequest) return;
+    const frame = requestAnimationFrame(() => {
+      tutorialRef.current?.focus({ preventScroll: true });
+      tutorialRef.current?.scrollIntoView({ block: 'nearest' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [tutorialFocusRequest]);
+  useEffect(() => {
+    if (!memoryFocusRequest) return;
+    const frame = requestAnimationFrame(() => {
+      memoryRef.current?.focus({ preventScroll: true });
+      memoryRef.current?.scrollIntoView({ block: 'nearest' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [memoryFocusRequest]);
+  const dismissTutorial = (receipt: TutorialReceipt) => {
+    tutorial.dismiss(receipt);
+    tutorialButtonRef.current?.focus({ preventScroll: true });
+  };
   const stopRef = useRef<(() => void) | null>(null);
+  const dispatchedRef = useRef(false);
+  const generationIdRef = useRef<string | null>(null);
+  const analyticsLoadedSession = useRef<string | null>(null);
   const sessionGenRef = useRef(0);
   const activeSessionRef = useRef(sessionId);
   activeSessionRef.current = sessionId;
@@ -201,8 +265,8 @@ function ActiveChatSession() {
   });
   const input = recovery.input;
   const setInput = recovery.change;
-  const mutationLocked = streaming || recovery.unresolved;
-  const mutationBlocked = () => !mountedRef.current || sendingRef.current || recovery.blocked();
+  const mutationLocked = streaming || recovery.unresolved || sessionAction;
+  const mutationBlocked = () => !mountedRef.current || sendingRef.current || sessionActionRef.current || recovery.blocked();
 
 
   const activeCharacter = characters.find((c: any) => c.id === characterId) as any;
@@ -229,8 +293,9 @@ function ActiveChatSession() {
   const loadSessions = async () => {
     try {
       setSessions(await fetchSessions());
-    } catch {
-      // ignore
+      setSessionsError('');
+    } catch (error) {
+      setSessionsError(friendlyError(error).message);
     }
   };
 
@@ -240,7 +305,8 @@ function ActiveChatSession() {
     try {
       const h = await fetchHistory(sid);
       if (gen !== sessionGenRef.current || epoch !== requestEpochRef.current || sid !== activeSessionRef.current) return;
-      const filtered = h.filter((x) => x.role !== "system").map((x) => ({ id: (x as any).id as number | undefined, role: x.role, content: x.content }));
+      const filtered = h.filter((x) => x.role !== "system");
+      chatReopenedAnalytics(analyticsLoadedSession, sid, filtered.some(message => message.content.trim().length > 0));
       setMessages(filtered);
       setBaselineModel(conversationModel(h));
       setHistoryReady(true);
@@ -308,6 +374,7 @@ function ActiveChatSession() {
   const loadSettings = async (sid: string) => {
     const gen = sessionGenRef.current;
     settingsLoadedRef.current = false;
+    savedSettingsRef.current = null;
     setSettingsReady(false);
     if (autoSaveTimer.current) {
       window.clearTimeout(autoSaveTimer.current);
@@ -333,6 +400,7 @@ function ActiveChatSession() {
       setWorldId(s.world_id ?? null);
       setIntro(s.intro ?? "");
       setLibraryBinding(s.library_binding ?? null);
+      savedSettingsRef.current = settingsSnapshot(s);
       settingsLoadedRef.current = true;
       setSettingsReady(true);
     } catch {
@@ -429,6 +497,7 @@ function ActiveChatSession() {
     try {
       const s: SessionSettings = { session_id: sessionId, system_prompt: systemPrompt, temperature, character_id: characterId, persona_id: personaId, world_id: worldId, intro, library_binding: libraryBinding };
       await saveSettings(s);
+      savedSettingsRef.current = settingsSnapshot(s);
       setSettingsStatus("保存しました ✓");
       setTimeout(() => setSettingsStatus(null), 2000);
     } catch (e) {
@@ -463,6 +532,7 @@ function ActiveChatSession() {
   };
 
   const handleStop = () => {
+    if (quote) { consent.cancel(); return; }
     requestEpochRef.current += 1;
     sendingRef.current = false;
     if (stopRef.current) {
@@ -470,7 +540,10 @@ function ActiveChatSession() {
       stopRef.current = null;
     }
     setStreaming(false);
-    if (recovery.pending) void recovery.cancel();
+    if (!dispatchedRef.current && generationIdRef.current) {
+      recovery.rejected(generationIdRef.current);
+      void loadHistory(sessionId);
+    } else if (recovery.pending) void recovery.cancel();
     else void loadHistory(sessionId);
   };
 
@@ -521,12 +594,16 @@ function ActiveChatSession() {
   useEffect(() => {
     if (!settingsLoadedRef.current || mutationLocked) return;
     if (autoSaveTimer.current) window.clearTimeout(autoSaveTimer.current);
+    const settings: SessionSettings = { session_id: sessionId, system_prompt: systemPrompt, temperature, character_id: characterId, persona_id: personaId, world_id: worldId, intro, library_binding: libraryBinding };
+    const snapshot = settingsSnapshot(settings);
+    if (snapshot === savedSettingsRef.current) return;
     const gen = sessionGenRef.current;
     autoSaveTimer.current = window.setTimeout(async () => {
       if (gen !== sessionGenRef.current || mutationBlocked()) return;
       try {
-        await saveSettings({ session_id: sessionId, system_prompt: systemPrompt, temperature, character_id: characterId, persona_id: personaId, world_id: worldId, intro, library_binding: libraryBinding });
+        await saveSettings(settings);
         if (gen !== sessionGenRef.current) return;
+        savedSettingsRef.current = snapshot;
         setSettingsStatus("自動保存 ✓");
         setTimeout(() => setSettingsStatus((prev) => (prev === "自動保存 ✓" ? null : prev)), 1800);
       } catch (e) {
@@ -600,7 +677,7 @@ function ActiveChatSession() {
 
   const handleClearSession = async () => {
     if (mutationBlocked()) return;
-    if (!(await confirm({ title: `${headerName}との会話を削除しますか？`, description: "メッセージはすべて消え、元に戻せません。", confirmLabel: "削除する", danger: true }))) return;
+    if (!(await confirm({ title: `${headerName}との履歴を削除しますか？`, description: "表示される履歴を削除します。生成結果や記憶の完全消去は別の操作です。", confirmLabel: "履歴を削除", danger: true }))) return;
     if (mutationBlocked()) return;
     try {
       await clearHistory(sessionId);
@@ -611,6 +688,32 @@ function ActiveChatSession() {
     if (!mountedRef.current) return;
     ctxPanel.setOpen(false);
     navigate("/chats");
+  };
+
+  const createBranch = async (messageId: number) => {
+    if (mutationBlocked() || !capabilities?.features.branch) return;
+    if (!(await confirm({ title: 'ここまでの会話から分岐しますか？', description: '元の会話を保持し、この時点の設定・状態で新しい会話を作ります。', confirmLabel: '分岐を作る' })) || mutationBlocked()) return;
+    sessionActionRef.current = true; setSessionAction(true);
+    try { const result = await branchSession(sessionId, messageId); if (mountedRef.current) navigate(`/chats/${encodeURIComponent(result.session_id)}`); }
+    catch (error) { if (mountedRef.current) setError(String(error)); }
+    finally { sessionActionRef.current = false; if (mountedRef.current) setSessionAction(false); }
+  };
+  const permanentlyDelete = async () => {
+    if (mutationBlocked() || !capabilities?.features.permanent_delete) return;
+    if (!(await confirm({ title: '会話データを完全消去しますか？',
+      description: '会話本文・生成結果・関連記憶を削除し、元に戻せません。共有範囲の記憶にも影響します。費用台帳の金額記録は残ります。バックアップの保持期間は接続先の方針に従います。',
+      confirmLabel: '完全消去する', danger: true })) || mutationBlocked()) return;
+    const scope = connectionScope(); sessionActionRef.current = true; setSessionAction(true);
+    try {
+      await deleteSessionData(sessionId);
+      if (scope !== connectionScope()) return;
+      if (mountedRef.current) { setMessages([]); setDebugData(null); setVersionTick(value => value + 1); }
+      try { recovery.erase(); eraseReplyVersions(sessionId); }
+      catch (error) { if (mountedRef.current) setError(`サーバーの会話データは消去しましたが、この端末の下書き・返信履歴の消去を確認できません。${String(error)}`); return; }
+      if (mountedRef.current) navigate('/chats');
+    }
+    catch (error) { if (mountedRef.current) setError(String(error)); }
+    finally { sessionActionRef.current = false; if (mountedRef.current) setSessionAction(false); }
   };
 
   // 同じキャラクター（・ワールド）で、はじまりのシーンから新しく話す
@@ -663,13 +766,15 @@ function ActiveChatSession() {
       if (!commandRunning) void runSlash(text);
       return;
     }
-    if ((!text && !regenerateId) || sendingRef.current || !modelAvailable || !settingsReady || !historyReady) return;
+    if ((!text && !regenerateId) || sendingRef.current || !modelAvailable || !settingsReady || !historyReady || !capabilities) return;
+    if (regenerateId && !capabilities.features.regenerate) return;
     const previous = messages;
     const next: ChatMessage[] = regenerateId
       ? messages.slice(0, -1)
       : [...messages, { role: "user", content: text }];
     if (next.at(-1)?.role !== "user") return;
     sendingRef.current = true;
+    dispatchedRef.current = false; generationIdRef.current = null;
     const epoch = ++requestEpochRef.current;
     const gen = sessionGenRef.current;
     const current = () => epoch === requestEpochRef.current && gen === sessionGenRef.current;
@@ -677,7 +782,10 @@ function ActiveChatSession() {
     setError(null);
     setSuggestions(null);
     setStreaming(true);
-    setMessages([...next, { role: "assistant", content: "" }]);
+    setProgress(null);
+    setClientTimings(null);
+    setLastQuote(null);
+    if (!regenerateId) setMessages([...next, { role: "assistant", content: "" }]);
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     try {
       await saveSettings({ session_id: sessionId, system_prompt: systemPrompt, temperature,
@@ -691,6 +799,7 @@ function ActiveChatSession() {
     }
     if (!current()) return;
     const generationId = crypto.randomUUID();
+    generationIdRef.current = generationId;
     try {
       recovery.begin(generationId, !!regenerateId, submittedDraft);
     } catch (e) {
@@ -704,16 +813,29 @@ function ActiveChatSession() {
       reply = full;
       setMessages([...next, { role: "assistant", content: full }]);
     };
+    const submittedCloudRoute = cloudRoute;
+    if (cloud_mode) setCloudRoute({...cloudRoute,contributor_training_consent:false});
     stopRef.current = streamChat(modelId, next,
       { session_id: sessionId, generation_id: generationId, temperature, regenerate_message_id: regenerateId, allow_nsfw: showNsfw,
+        ...(cloud_mode && capabilities.features.stored_context ? { context_mode: 'stored' as const } : {}),
+        ...(cloud_mode && modelId==='cloud-standard' ? submittedCloudRoute : {}),
         // 「注文して作り直す」はこの1回の生成だけに指示を足す（保存される設定は変えない）
         system_prompt: request ? `${systemPrompt.trim()}\n\n# この返事だけの注文\n${request}`.trim() : systemPrompt }, {
         onToken: token => display(reply + token),
+        confirmQuote: consent.request,
+        onQuote: value => { if (current()) setLastQuote(value); },
+        onDispatch: () => { dispatchedRef.current = true; },
+        onProgress: value => { if (current()) setProgress(value); },
+        onTiming: value => { if (current()) setClientTimings(value); },
         onReset: full => display(full),
         onRejected: () => recovery.rejected(generationId),
-        onDone: full => {
+        onDone: (full, result) => {
           if (!current()) return;
-          display(full); sendingRef.current = false; setStreaming(false); stopRef.current = null;
+          chatCompletedAnalytics(result?.status === 'completed' && result.generation_id === generationId && full.trim().length > 0,
+            !regenerateId && dispatchedRef.current);
+          setMessages([...next, { role: 'assistant', content: full, model_id: modelId,
+            reasoning_summary: result?.reasoning_summary, reasoning_summary_status: result?.reasoning_summary_status }]);
+          sendingRef.current = false; setStreaming(false); setProgress(null); stopRef.current = null;
           if (regenerateId && replaced && full) {
             recordReplyVersion(sessionId, regenerateId, replaced, full);
             setVersionTick((v) => v + 1);
@@ -723,7 +845,7 @@ function ActiveChatSession() {
         },
         onError: (e, details) => {
           if (!current()) return;
-          sendingRef.current = false; setStreaming(false); stopRef.current = null;
+          sendingRef.current = false; setStreaming(false); setProgress(null); stopRef.current = null;
           setError(e);
           if (details?.rejected) setMessages(previous);
           else void recovery.reconcile();
@@ -763,7 +885,7 @@ function ActiveChatSession() {
   };
   const handleSuggest = async () => {
     if (suggestions) return setSuggestions(null);
-    if (!modelId || suggesting) return;
+    if (!modelId || suggesting || !capabilities?.features.suggestions || mutationBlocked()) return;
     setSuggesting(true);
     setError(null);
     const sid = sessionId;
@@ -786,8 +908,8 @@ function ActiveChatSession() {
   const railPinned = railSessions.filter((s) => pinned.includes(s.session_id));
   const railRecent = railSessions.filter((s) => !pinned.includes(s.session_id));
   const worldNameOf = (id?: string | null) => worlds.find((w) => w.id === id)?.display_name;
-  const canRegenerate = !mutationLocked && messages.at(-1)?.role === "assistant" && !!messages.at(-1)?.id && messages.at(-2)?.role === "user";
-  const chatStatus = !online ? "接続待ち" : streaming ? "返事を生成中…" : recovery.unresolved ? "送信結果を確認中…"
+  const canRegenerate = !!capabilities?.features.regenerate && !mutationLocked && messages.at(-1)?.role === "assistant" && !!messages.at(-1)?.id && messages.at(-2)?.role === "user";
+  const chatStatus = !online ? "接続待ち" : quote ? '保存・学習利用への同意待ち' : streaming ? REPLY_WAIT_LABEL : recovery.unresolved ? "送信結果を確認中…"
     : settingsReady && historyReady && modelAvailable ? "会話の準備完了" : "会話を準備中…";
   const starters = hasCharacter
     ? ["こんにちは！はじめまして", "今日はどんな一日だった？", "きみのこと、もっと教えて", "*そっと隣に座る*"]
@@ -812,7 +934,15 @@ function ActiveChatSession() {
       onInjectIntro={handleInjectIntro}
       sessionId={sessionId}
       memoryRefresh={messages.length * 2 + (streaming ? 1 : 0)}
+      memoryRef={memoryRef}
       settings={{ personaId, personas, worldId, worlds, systemPrompt, setPersonaId, setWorldId, setSystemPrompt, settingsReady, streaming: mutationLocked }}
+      extras={<>
+        {capabilities?.features.summaries && <ConversationContext sessionId={sessionId} refreshKey={messages.length + (streaming ? 1 : 0)} disabled={mutationLocked} />}
+        {capabilities?.features.story_rules && <StoryRuntime sessionId={sessionId} refreshKey={messages.length + (streaming ? 1 : 0)} />}
+        {portableCharacter && capabilities?.features.media_playback && <PortableMedia assets={portableCharacter.document.assets} />}
+        <div className="k-context-section"><Button size="sm" variant="danger" disabled={mutationLocked || !capabilities?.features.permanent_delete} onClick={() => void permanentlyDelete()}>会話データを完全消去</Button>
+          <p className="k-context-note">{capabilities?.features.permanent_delete ? '本文・生成結果・関連記憶を消去します。履歴のみの削除とは別の操作です。' : 'この接続先では完全消去に対応していません。'}</p></div>
+      </>}
     />
   );
 
@@ -866,7 +996,7 @@ function ActiveChatSession() {
           </div>
         </div>
         <div className="k-chat-rail__list">
-          {railSessions.length === 0 && <EmptyState motif="✧" title={railNeedle ? "見つかりませんでした" : "チャットがありません"} />}
+          {sessionsError ? <p role="alert">{sessionsError}<Button size="sm" variant="ghost" onClick={() => void loadSessions()}>再読込</Button></p> : railSessions.length === 0 && <EmptyState motif="✧" title={railNeedle ? "見つかりませんでした" : "チャットがありません"} />}
           {railGroup("ピン留め", railPinned)}
           {railGroup("最近のチャット", railRecent)}
         </div>
@@ -889,6 +1019,10 @@ function ActiveChatSession() {
             </span>
           </button>
           <div className="k-chat-header__actions">
+            <button ref={tutorialButtonRef} type="button" aria-label="初トークの案内" title="初トークの案内"
+              className={`k-icon-btn ${tutorial.open ? 'k-icon-btn--active' : ''}`} aria-expanded={tutorial.open}
+              onClick={() => { tutorial.reopen(); setTutorialFocusRequest(value => value + 1); }}>?</button>
+            <Button size="sm" variant="ghost" aria-pressed={visualNovel} onClick={() => setVisualNovel(value => !value)}>{visualNovel ? '会話履歴を表示' : 'VN表示'}</Button>
             <IconButton label="キャラ・プリセット" active={portableOpen} onClick={() => setPortableOpen((v) => !v)}>
               <Icon name="book" size={17} />
             </IconButton>
@@ -911,7 +1045,15 @@ function ActiveChatSession() {
         </div>
 
         <div ref={listRef} className="k-chat-messages">
-          <div className="k-chat-messages__inner">
+          {tutorial.open && <FirstChatTutorial step={tutorial.step} cloud={!!cloud_mode} inspectorAvailable={administrative}
+            storageFailed={tutorial.storageFailed} panelRef={tutorialRef} onNext={tutorial.next} onBack={tutorial.back}
+            onSkip={() => dismissTutorial('skipped')} onComplete={() => dismissTutorial('completed')}
+            onFocusComposer={() => composerRef.current?.querySelector<HTMLTextAreaElement>('textarea')?.focus()}
+            onOpenModels={() => setPortableOpen(true)}
+            onOpenMemory={() => { ctxPanel.setOpen(true); setMemoryFocusRequest(value => value + 1); }}
+            onOpenInspector={() => { if (administrative) { setResearcher(true); setDebugOpen(true); } }} />}
+          {visualNovel && <VisualNovelScene name={headerName} messages={messages} streaming={streaming} cloud={cloud_mode} assets={capabilities?.features.media_playback ? portableCharacter?.document.assets ?? [] : []} />}
+          <div className="k-chat-messages__inner" hidden={visualNovel}>
             {messages.length === 0 && settingsReady && (
               <div className="k-chat-welcome">
                 <div className="k-chat-welcome__art">
@@ -953,6 +1095,7 @@ function ActiveChatSession() {
                         <span className="k-msg__name">{headerName}</span>
                       </div>
                     )}
+                    {isAssistant && !isEditing && !isStreaming && <ReasoningSummary message={m} cloud={cloud_mode || m.model_id?.startsWith('cloud-')} />}
                     {isEditing ? (
                       <div className="k-msg__editor">
                         <Textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={Math.max(3, editText.split("\n").length)} autoFocus />
@@ -991,6 +1134,7 @@ function ActiveChatSession() {
                             </button>
                           </>
                         )}
+                        {m.id && <button type="button" className="k-msg__action" disabled={!capabilities?.features.branch} title={capabilities?.features.branch ? 'ここまでの状態で別の会話を作る' : 'この接続先は分岐に対応していません'} onClick={() => void createBranch(m.id!)}>ここから分岐</button>}
                         <button type="button" className="k-msg__action" onClick={() => startEdit(i)} aria-label="編集">
                           <Icon name="edit" size={14} /> 編集
                         </button>
@@ -1003,24 +1147,6 @@ function ActiveChatSession() {
                 </div>
               );
             })}
-            {isStreamingTyping(streaming, messages) && (
-              <div className="k-msg k-msg--character" aria-live="polite">
-                <span className="k-msg__avatar">
-                  <Avatar name={headerName} seed={characterId ?? sessionId} size="md" src={portrait} mascot={!hasCharacter} />
-                </span>
-                <div className="k-msg__col">
-                  <div className="k-msg__meta">
-                    <span className="k-msg__name">{headerName}</span>
-                    <span className="k-msg__time">が入力中…</span>
-                  </div>
-                  <div className="k-typing" aria-label="入力中">
-                    <span />
-                    <span />
-                    <span />
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
@@ -1057,7 +1183,7 @@ function ActiveChatSession() {
             <button type="button" onClick={reloadModels}>再読込</button>
           </div>
         )}
-        {(recovery.unresolved || recovery.notice) && (
+        {(recovery.unresolved || recovery.notice) && (!streaming || recovery.storageError) && (
           <div className="k-chat-recovery" role="status" aria-live="polite">
             <span>{recovery.storageError ?? recovery.notice ?? "送信結果を確認しています。確認中は新しい送信・会話の変更を待ってね。"}</span>
             {recovery.pending && <button type="button" disabled={recovery.checking} onClick={() => void recovery.reconcile()}>
@@ -1066,7 +1192,21 @@ function ActiveChatSession() {
             {recovery.pending && !streaming && <button type="button" onClick={() => void recovery.cancel()}>停止して確認</button>}
           </div>
         )}
-        <div className="k-chat-composer-wrap">
+        <div ref={composerRef} className="k-chat-composer-wrap">
+          {tutorial.storageFailed && !tutorial.open && <p role="status" className="k-context-note">案内の完了・スキップをこのブラウザーに記録できませんでした。次回また案内が出る場合があります。</p>}
+          {capabilitiesError && <div className="k-chat-error" role="alert">{capabilitiesError}<Button variant="ghost" size="sm" onClick={reloadCapabilities}>機能情報を再読込</Button></div>}
+          {capabilities && !capabilities.features.regenerate && <p className="k-context-note">この接続先では返事の再生成に対応していません。</p>}
+          {quote && <CloudQuoteConfirmation quote={quote} onAccept={() => consent.accept()} onCancel={() => consent.cancel()}
+            onProviderTrainingConsentChange={checked => consent.acknowledgeProviderTraining(quote.quote_id, checked)} />}
+          {lastQuote && !quote && <p className="k-context-note" aria-label="今回の送信先と消費上限">
+            今回：{lastQuote.route.display_name} · {lastQuote.route.upstream || lastQuote.route.provider}
+            {lastQuote.route.upstream && `（${lastQuote.route.provider}経由）`} · 上限 {lastQuote.max_credits.toLocaleString()} K-Credits（予約なし・完了後に実費精算）
+          </p>}
+          {streaming && !quote && <KyaluluWaiting progress={progress} researcher={researcher} />}
+          {clientTimings && debugOpen && <details className="k-context-section"><summary>今回の待ち時間</summary>
+            <dl>{([['文脈取得', clientTimings.context_fetch_ms], ['見積取得', clientTimings.quote_fetch_ms], ['同意待ち', clientTimings.quote_consent_ms], ['送信から最初の本文通知', clientTimings.post_to_first_body_ms], ['送信から全文完了通知', clientTimings.post_to_full_ms]] as const).map(([label, value]) => value !== null && <div key={label}><dt>{label}</dt><dd>{(value / 1000).toFixed(2)}秒</dd></div>)}</dl>
+            <p className="k-context-note">本文通知は画面への引き渡し時刻です。Cloudで保存後に一括表示する場合は、最初の本文と全文完了が同時になります。</p>
+          </details>}
           {suggestions && (
             <div className="k-suggest" role="group" aria-label="返事の候補">
               {suggestions.map((t) => (
@@ -1092,9 +1232,9 @@ function ActiveChatSession() {
                 type="button"
                 className={`k-composer__tool ${suggestions ? "is-active" : ""}`}
                 onClick={() => void handleSuggest()}
-                disabled={!modelId || !settingsReady || mutationLocked || suggesting || !messages.some((m) => m.role === "assistant")}
+                disabled={!capabilities?.features.suggestions || !modelId || !settingsReady || mutationLocked || suggesting || !messages.some((m) => m.role === "assistant")}
                 aria-pressed={!!suggestions}
-                title="次に送る返事の候補を出す"
+                title={capabilities?.features.suggestions ? '次に送る返事の候補を出す' : 'この接続先では返事の候補に対応していません'}
               >
                 <Icon name="sparkle" size={13} className={suggesting ? "k-spin" : undefined} /> {suggesting ? "考え中…" : "返事の候補"}
               </button>
@@ -1104,7 +1244,7 @@ function ActiveChatSession() {
             onSend={() => void send()}
             onStop={handleStop}
             streaming={streaming}
-            sendBlocked={recovery.unresolved || commandRunning || !online || (!modelAvailable && !input.trim().startsWith("/"))}
+            sendBlocked={!capabilities || sessionAction || recovery.unresolved || commandRunning || !online || (!modelAvailable && !input.trim().startsWith("/"))}
             disabled={!settingsReady || !historyReady}
             disabledText={!modelId ? (modelsFailed ? "サーバーに接続できません。アプリの起動状態を確認してね" : "会話エンジンを準備中…") : "会話を準備中…"}
             placeholder={hasCharacter ? `${headerName}への言葉を入力してね…` : "きみの言葉を入力してね…"}
@@ -1121,19 +1261,21 @@ function ActiveChatSession() {
         </Sheet>
       )}
 
-      <Sheet open={portableOpen} onClose={() => setPortableOpen(false)} side="right" topOffset={64}>
+      <Sheet open={portableOpen} onClose={() => setPortableOpen(false)} side="right" topOffset={64} label="キャラ・プリセット">
         <div className="k-sheet-head">
           <div className="k-sheet-head__title">キャラ・プリセット</div>
           <IconButton label="閉じる" size="sm" onClick={() => setPortableOpen(false)}>
             <Icon name="close" size={15} />
           </IconButton>
         </div>
-        <div style={{ padding: 18, overflowY: "auto" }}>
-          <fieldset disabled={mutationLocked || !settingsReady} style={{ border: 0, padding: 0 }}>
-            <div className="k-chat-model-choice">会話エンジン
-              <ModelSelector models={modelChoices} value={modelId} onChange={setModelId} />
+        <div style={{ flex: 1, minHeight: 0, padding: 18, overflowY: "auto", overscrollBehavior: "contain" }}>
+          <fieldset className="k-chat-mutation-group" disabled={mutationLocked || !settingsReady} style={{ display: "grid", gap: 18 }}>
+            <div className="k-chat-model-choice" style={{ display: "grid", gap: 8 }}>会話エンジン
+              <ModelSelector models={modelChoices} value={modelId} onChange={setModelId} disabled={!capabilities}
+                loading={modelsLoading} error={modelsFailed ? '会話エンジン一覧の取得に失敗しました。再読込してください。' : ''} />
               <Button variant="ghost" onClick={reloadModels}>モデルを再読込</Button>
             </div>
+            {capabilities?.model_selection==='cloud-routes'&&<CloudRouteControls key={sessionId} currentModel={currentModel} value={cloudRoute} onChange={setCloudRoute} disabled={mutationLocked || !settingsReady}/>}
             <PortableSessionControls value={libraryBinding} characterId={characterId} character={portableCharacter} allowNsfw={showNsfw} onChange={setLibraryBinding} onTemperature={setTemperature} />
           </fieldset>
           <p role="status" className="k-sheet-status">{settingsStatus}</p>
@@ -1155,7 +1297,8 @@ function ActiveChatSession() {
 
           <div style={{ display: "grid", gap: 8 }}>
             <label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)" }}>モデル</label>
-            <ModelSelector models={modelChoices} value={modelId} onChange={setModelId} />
+            <ModelSelector models={modelChoices} value={modelId} onChange={setModelId} disabled={!capabilities}
+              loading={modelsLoading} error={modelsFailed ? '会話エンジン一覧の取得に失敗しました。再読込してください。' : ''} />
             <Button variant="secondary" size="sm" onClick={reloadModels} style={{ width: "fit-content" }}>↻ 再読込</Button>
           </div>
 
@@ -1302,12 +1445,6 @@ function ActiveChatSession() {
   );
 }
 
-function isStreamingTyping(streaming: boolean, messages: (ChatMessage & { id?: number })[]) {
-  if (!streaming) return false;
-  const last = messages[messages.length - 1];
-  return last?.role === "assistant" && !last.content;
-}
-
 function ChatContextPanel({
   name,
   seed,
@@ -1326,7 +1463,9 @@ function ChatContextPanel({
   onInjectIntro,
   sessionId,
   memoryRefresh,
+  memoryRef,
   settings,
+  extras,
 }: {
   name: string;
   seed: string;
@@ -1345,6 +1484,8 @@ function ChatContextPanel({
   onInjectIntro: () => void;
   sessionId: string;
   memoryRefresh: number;
+  memoryRef: React.Ref<HTMLDivElement>;
+  extras: React.ReactNode;
   settings: {
     personaId: string | null; personas: PersonaInfo[]; worldId: string | null; worlds: WorldInfo[];
     systemPrompt: string; setPersonaId: (value: string | null) => void; setWorldId: (value: string | null) => void;
@@ -1398,10 +1539,13 @@ function ChatContextPanel({
         </div>
       </details>
       <StoryControls key={sessionId} value={systemPrompt} onChange={setSystemPrompt} disabled={!settingsReady || streaming} />
+      <div ref={memoryRef} tabIndex={-1} aria-label="覚えていること">
       <fieldset className="k-chat-mutation-group" disabled={streaming}>
       <MemoryPanel key={`${sessionId}:${characterId}:${personaId}`} sessionId={sessionId} refreshKey={memoryRefresh}
-        scopeOverride={characterId ? `char:${characterId}|persona:${personaId || 'default'}` : `session:${sessionId}`} />
+      />
       </fieldset>
+      </div>
+      {extras}
 
       <div className="k-context-section">
         <div className="k-context-section__title">✦ ナレーションスタイル</div>

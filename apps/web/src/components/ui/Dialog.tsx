@@ -2,29 +2,27 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import Button from "./Button";
 import "./ui.css";
 
-export default function Dialog({ open, onClose, children, labelledBy, wide = false }: { open: boolean; onClose: () => void; children: ReactNode; labelledBy?: string; wide?: boolean }) {
-  const ref = useRef<HTMLDivElement>(null);
+export default function Dialog({ open, onClose, children, labelledBy, label, wide = false, contentClassName, overlayClassName }: { open: boolean; onClose: () => void; children: ReactNode; labelledBy?: string; label?: string; wide?: boolean; contentClassName?: string; overlayClassName?: string }) {
+  const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
-    if (!open) return;
+    const dialog = ref.current;
+    if (!open || !dialog) return;
     const previous = document.activeElement as HTMLElement | null;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    const focusable = ref.current?.querySelector<HTMLElement>("[data-autofocus], button, [href], input, select, textarea");
+    dialog.showModal();
+    const focusable = dialog.querySelector<HTMLElement>("[data-autofocus]") ?? dialog.querySelector<HTMLElement>("button, [href], input, select, textarea");
     focusable?.focus();
     return () => {
-      window.removeEventListener("keydown", onKey);
+      dialog.close();
       previous?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
   if (!open) return null;
   return (
-    <div className="k-dialog-overlay" onClick={onClose}>
-      <div ref={ref} className={`k-dialog ${wide ? "k-dialog--wide" : ""}`} role="dialog" aria-modal="true" aria-labelledby={labelledBy} onClick={(e) => e.stopPropagation()}>
+    <dialog ref={ref} className={overlayClassName ?? "k-dialog-overlay"} aria-modal="true" aria-labelledby={labelledBy} aria-label={label} onCancel={(e) => { e.preventDefault(); onClose(); }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className={contentClassName ?? `k-dialog ${wide ? "k-dialog--wide" : ""}`}>
         {children}
       </div>
-    </div>
+    </dialog>
   );
 }
 

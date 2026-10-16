@@ -1,13 +1,18 @@
 import { apiFetch as fetch } from './transport';
 import { SSEDecoder } from "./sse";
+import { cloudJson, isCloud } from './cloud';
 import type { GenerationRecord } from "../../../../packages/schemas/src";
 import type { LibraryBinding } from '../../../../packages/schemas/src/portable';
+import { ChatContextSchema, GenerationProgressSchema, type GenerationProgress } from '../../../../packages/schemas/src';
+import { cloudEpoch } from './cloudMode';
+import { validCloudQuote, type CloudQuote, type QuoteConfirmation } from './quoteConsent';
+import { recordClientTimings, readClientTimings, type ClientTimings } from './clientTimings';
 /** Preserve server diagnostics while rejecting every failed HTTP response. */
 async function checkedJson(r: Response) {
   if (!r.ok) {
     const body = await r.json().catch(() => null);
     const detail = body?.error ?? body?.detail ?? body?.output;
-    throw new Error(typeof detail === "string" ? detail : detail ? JSON.stringify(detail) : `HTTP ${r.status}`);
+    throw Object.assign(new Error(typeof detail === "string" ? detail : detail ? JSON.stringify(detail) : `HTTP ${r.status}`), { status: r.status });
   }
   return r.json();
 }
@@ -20,6 +25,18 @@ export type ModelInfo = {
   provider_model: string;
   quantization: string;
   context_length?: number;
+  available?: boolean;
+  unavailable_reason?: string | null;
+  upstream?: string | null;
+  reasoning_summary_supported?: boolean;
+  reasoning_effort?: string | null;
+  pricing?: { input_per_million?: string | number; output_per_million?: string | number;
+    currency?: string; observed_at?: string; cache_savings_assumed?: boolean };
+  privacy_note?: string | null;
+  retains_prompts?: boolean;
+  training?: boolean;
+  training_consent_required?: boolean;
+  service_tier?: string | null;
 };
 
 export type ProviderHealth = {
@@ -58,8 +75,13 @@ export async function fetchDiagnostics(): Promise<{ ready: boolean; checks: Diag
 }
 
 export type MemoryType = "semantic" | "episodic" | "relationship";
+export type MemoryProvenance = {
+  source_kind?: 'user_statement' | 'user_correction' | 'work_setting' | 'story_event';
+  source_quote?: string; source_revision?: string | null; source_message_ids?: number[];
+  confirmation?: string;
+};
 
-export type MemoryItem = {
+export type MemoryItem = MemoryProvenance & {
   id: string;
   scope: string;
   type: MemoryType;
@@ -76,7 +98,7 @@ export type MemoryItem = {
   updated_at: string;
 };
 
-export type MemoryCandidate = { id: string; type: MemoryType; content: string; score: number; decision: string;
+export type MemoryCandidate = MemoryProvenance & { id: string; type: MemoryType; content: string; score: number; decision: string;
   version?: number; origin?: string; source_session_id?: string | null; source_turn?: number | null;
   created_at?: string | null; updated_at?: string | null };
 
@@ -91,12 +113,25 @@ export type MemoryTrace = {
   stored_count: number;
   evidenced?: string[];
   proposals?: { type: MemoryType; content: string }[];
-  decisions?: { type: MemoryType; content: string; action: "store" | "skip"; reason?: string; supported?: boolean; memory_id?: string }[];
+  decisions?: (MemoryProvenance & { type: MemoryType; content: string; action: "store" | "skip"; reason?: string; supported?: boolean; memory_id?: string })[];
 };
 
 async function memoryJson<T>(r: Response): Promise<T> {
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
+  return checkedJson(r);
+}
+
+export type MemoryScopePreview = { scope: string; target_scope: string; preview_revision: string; memories: MemoryItem[]; identity: Record<string, unknown> };
+export async function previewMemoryScope(sessionId: string): Promise<MemoryScopePreview> {
+  return memoryJson(await fetch(`/api/memory/session/${encodeURIComponent(sessionId)}/scope-preview`));
+}
+export async function migrateMemoryScope(sessionId: string, expected_revision: string, share: boolean): Promise<{ scope: string; copied: number }> {
+  return memoryJson(await fetch(`/api/memory/session/${encodeURIComponent(sessionId)}/scope-migrate`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expected_revision, share }),
+  }));
+}
+export async function clearSessionMemories(sessionId: string): Promise<void> {
+  const response = await fetch(`/api/memory/session/${encodeURIComponent(sessionId)}/data`, { method: 'DELETE' });
+  if (!response.ok) await checkedJson(response);
 }
 
 export async function fetchSessionMemory(sessionId: string): Promise<{ enabled: boolean; scope: string }> {
@@ -155,7 +190,11 @@ export async function fetchHealth(): Promise<{ status: string; version: string }
   return checkedJson(r);
 }
 
-export type ChatMessage = { role: string; content: string };
+export type ChatMessage = {
+  role: string; content: string; model_id?: string;
+  reasoning_summary?: string | null;
+  reasoning_summary_status?: 'available' | 'not_provided' | 'unsupported';
+};
 
 export type SessionInfo = {
   session_id: string;
@@ -261,7 +300,7 @@ export type PersonaInfo = { id: string; display_name: string; version: string; d
 export type WorldInfo = { id: string; display_name: string; version: string; description: string };
 
 export async function fetchCharacters(include_nsfw = false): Promise<(CharacterInfo & { nsfw?: boolean })[]> {
-  const r = await fetch(`/api/characters?include_nsfw=${include_nsfw}`, { cache: "no-store" });
+  const r = await fetch(`/api/characters?include_nsfw=${include_nsfw && !isCloud()}`, { cache: "no-store" });
   const j = await checkedJson(r);
   return j.characters ?? [];
 }
@@ -297,8 +336,13 @@ export async function compilePrompt(p: { character_id?: string | null; persona_i
 }
 
 export async function fetchChatDebug(sessionId: string): Promise<{ session_id: string; settings: SessionSettings; compiled: CompiledPrompt; history_count: number; approx_turn: number; relationship: string; state: Record<string, unknown>; generation: GenerationResult | null }> {
+  const identity = cloudEpoch();
   const r = await fetch(`/api/chat/debug?session_id=${encodeURIComponent(sessionId)}`, { cache: "no-store" });
   const j = await checkedJson(r);
+  if (identity === cloudEpoch() && j.generation?.generation_id) {
+    const timings = readClientTimings(j.generation.generation_id);
+    if (timings) j.generation.telemetry = { ...j.generation.telemetry, client_timings_ms: timings };
+  }
   return j;
 }
 
@@ -465,10 +509,15 @@ export async function cancelGeneration(generationId: string, sessionId: string):
 export function streamChat(
   model_id: string,
   messages: ChatMessage[],
-  opts: { temperature?: number | null; system_prompt?: string | null; session_id?: string; generation_id?: string; regenerate_message_id?: number; allow_nsfw?: boolean } = {},
+  opts: { temperature?: number | null; system_prompt?: string | null; session_id?: string; generation_id?: string; regenerate_message_id?: number; allow_nsfw?: boolean; route_profile?:'auto'|'structured'|'contributor';contributor_training_consent?:boolean; provider_training_consent?:boolean; context_mode?: 'stored'; history_revision?: string } = {},
   handlers: {
     onToken: (t: string) => void;
     onMeta?: (m: unknown) => void;
+    onProgress?: (progress: GenerationProgress) => void;
+    confirmQuote?: QuoteConfirmation;
+    onQuote?: (quote: CloudQuote) => void;
+    onDispatch?: () => void;
+    onTiming?: (timings: ClientTimings) => void;
     onReset?: (full: string) => void;
     onDone?: (full: string, result?: GenerationResult) => void;
     onError?: (e: string, details?: { rejected: boolean }) => void;
@@ -478,11 +527,60 @@ export function streamChat(
 ): () => void {
   const controller = new AbortController();
   let rejected = false;
+  const cloud = isCloud();
+  const identity = cloudEpoch();
+  const stillCurrent = () => !controller.signal.aborted && (!cloud || cloudEpoch() === identity);
+  const timings: ClientTimings = { context_fetch_ms: null, quote_fetch_ms: null, quote_consent_ms: null, post_to_first_body_ms: null, post_to_full_ms: null };
+  let postAt = 0;
+  const firstBody = (body: string) => { if (body && timings.post_to_first_body_ms === null) timings.post_to_first_body_ms = performance.now() - postAt; };
   (async () => {
+    const request = { model_id, messages: messages.map(({ role, content }) => ({ role, content })), ...opts, generation_id: opts.generation_id ?? crypto.randomUUID(), stream: true };
+    const reportTiming = () => {
+      if (cloudEpoch() !== identity) return;
+      recordClientTimings(request.generation_id, timings);
+      if (stillCurrent()) handlers.onTiming?.({ ...timings });
+    };
+    let quote: {quote_id?: string; max_credits?: number} = {};
+    if (cloud) {
+      // Provider training consent comes only from this send's confirmed quote.
+      delete request.provider_training_consent;
+      try {
+        if (opts.context_mode === 'stored') {
+          const start = performance.now();
+          const context = await fetchChatContext(opts.session_id ?? 'default', controller.signal);
+          timings.context_fetch_ms = performance.now() - start;
+          reportTiming();
+          if (!stillCurrent()) throw Error('送信を取り消しました。');
+          const latest = messages.at(-1);
+          if (!latest || latest.role !== 'user') throw Error('送信する発言を確認できません。');
+          request.messages = [{ role: latest.role, content: latest.content }]; request.history_revision = context.history_revision;
+        }
+        const quoteStart = performance.now();
+        const preview = await cloudJson('quotes', {method:'POST',body:JSON.stringify(request),signal:controller.signal});
+        timings.quote_fetch_ms = performance.now() - quoteStart;
+        reportTiming();
+        if (!validCloudQuote(preview)) throw Error('見積もりを確認できません。');
+        if (!stillCurrent()) throw Error('送信を取り消しました。');
+        const expiresAt = Date.now() + (preview.expires_in ?? 120) * 1000;
+        handlers.onQuote?.(preview);
+        if (preview.route.training_consent_required === true) {
+          const consentStart = performance.now();
+          const accepted = await handlers.confirmQuote?.(preview, controller.signal, opts.route_profile === 'contributor' && opts.contributor_training_consent === true);
+          timings.quote_consent_ms = performance.now() - consentStart;
+          reportTiming();
+          if (!accepted) throw Error('送信を取り消しました。');
+        }
+        if (!stillCurrent()) throw Error('送信を取り消しました。');
+        if (Date.now() >= expiresAt) throw Error('見積もりの期限が切れました。内容を確認して、もう一度送信してください。');
+        request.provider_training_consent = preview.route.training_consent_required === true;
+        quote = {quote_id:preview.quote_id,max_credits:preview.max_credits};
+      } catch(error) {rejected=true;handlers.onRejected?.();throw error;}
+    }
+    postAt = performance.now(); handlers.onDispatch?.();
     const response = await fetch(`${API_BASE_STREAM}/api/chat/stream`, {
       method: "POST", headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
       signal: controller.signal,
-      body: JSON.stringify({ model_id, messages, ...opts, generation_id: opts.generation_id ?? crypto.randomUUID(), stream: true }),
+      body: JSON.stringify({...request,...quote}),
     });
     if (!response.ok || !response.body) {
       rejected = [400, 401, 403, 422].includes(response.status);
@@ -498,13 +596,19 @@ export function streamChat(
       while (!terminal) {
         const { done, value } = await reader.read();
         for (const event of parser.feed(text.decode(value, { stream: !done }), done)) {
-          if (terminal || controller.signal.aborted) break;
+          if (terminal || !stillCurrent()) break;
           const data = JSON.parse(event.data);
-          if (event.event === "token") handlers.onToken(data.token ?? "");
-          else if (event.event === "reset") handlers.onReset?.(data.full ?? "");
+          if (event.event === "token" && !cloud) { firstBody(data.token ?? ''); handlers.onToken(data.token ?? ""); }
+          else if (event.event === "reset" && !cloud) { firstBody(data.full ?? ''); handlers.onReset?.(data.full ?? ""); }
           else if (event.event === "meta") handlers.onMeta?.(data);
+          else if (event.event === 'progress') handlers.onProgress?.(GenerationProgressSchema.parse(data));
           else if (event.event === "done") {
             terminal = true;
+            const completedAt = performance.now() - postAt;
+            if (data.full && timings.post_to_first_body_ms === null) timings.post_to_first_body_ms = completedAt;
+            timings.post_to_full_ms = completedAt;
+            data.telemetry = { ...data.telemetry, client_timings_ms: { ...timings } };
+            reportTiming();
             handlers.onDone?.(data.full ?? "", data);
           } else if (event.event === "error") {
             terminal = true;
@@ -515,12 +619,32 @@ export function streamChat(
       }
       if (!terminal) throw new Error("応答の途中で接続が終了しました。再送は自動実行しません。");
     } finally { await reader.cancel().catch(() => {}); }
-  })().catch(e => { if (!controller.signal.aborted) handlers.onError?.(String(e), { rejected }); });
+  })().catch(e => { if (stillCurrent()) handlers.onError?.(String(e), { rejected }); });
   return () => controller.abort();
+}
+
+export async function fetchChatContext(sessionId: string, signal?: AbortSignal) {
+  return ChatContextSchema.parse(await checkedJson(await fetch(`/api/chat/context/${encodeURIComponent(sessionId)}`, { signal, cache: 'no-store' })));
+}
+export async function updateChatSummary(sessionId: string, id: string, text: string, expected_revision: string | number) {
+  return checkedJson(await fetch(`/api/chat/context/${encodeURIComponent(sessionId)}/summaries/${encodeURIComponent(id)}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, expected_revision }),
+  }));
+}
+export async function branchSession(sessionId: string, message_id: number): Promise<{ session_id: string }> {
+  return checkedJson(await fetch(`/api/chat/sessions/${encodeURIComponent(sessionId)}/branch`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message_id }),
+  }));
+}
+export async function deleteSessionData(sessionId: string): Promise<void> {
+  const response = await fetch(`/api/chat/sessions/${encodeURIComponent(sessionId)}/data`, { method: 'DELETE' });
+  if (!response.ok) await checkedJson(response);
 }
 
 export type GenerationResult = {
   generation_id: string; status: string; reply: string; full: string;
+  reasoning_summary?: ChatMessage['reasoning_summary'];
+  reasoning_summary_status?: ChatMessage['reasoning_summary_status'];
   state: Record<string, unknown>; telemetry: Record<string, unknown>;
   generation_config: GenerationRecord['generation_config'];
   validation: GenerationRecord['validation'];

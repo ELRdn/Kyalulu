@@ -1,0 +1,7 @@
+.k-quote { padding: 16px; margin-bottom: 12px; border: 1px solid var(--border-subtle); border-radius: 16px; background: var(--bg-surface); color: var(--text-primary); overflow-wrap: anywhere; max-height: 50dvh; overflow-y: auto; }
+.k-quote h2 { margin: 0 0 8px; font-size: 15px; }
+.k-quote p { margin: 8px 0; font-size: 12px; line-height: 1.6; color: var(--text-secondary); }
+.k-quote__consent { display: flex; align-items: flex-start; gap: 10px; padding: 12px 0; cursor: pointer; font-size: 13px; line-height: 1.6; }
+.k-quote__consent input { width: 18px; height: 18px; margin: 2px 0 0; flex-shrink: 0; }
+.k-quote__actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.k-quote__actions .k-btn { min-height: 44px; white-space: normal; }

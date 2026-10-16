@@ -8,6 +8,13 @@
 **Primary audience:** Local LLM enthusiasts / AI developers / Character AI researchers  
 **Internal North Star:** Build a local Character AI experience that can outperform leading closed Character AI systems on immersion and character quality.
 
+**Implementation/launch status (2026-10-05):** This file retains the original
+research and Runtime specification. The later free OSS + optional SFW cloud scope,
+private deployment, distribution choices and remaining release gates are maintained
+in [LAUNCH](docs/LAUNCH.md), [ROADMAP](docs/ROADMAP.md) and
+[the current handoff](docs/HANDOFF.md). Those documents govern the launch scope;
+historical v0.1 exclusions here must not be interpreted as current implementation status.
+
 ---
 
 # 0. Executive Summary
@@ -1674,7 +1681,10 @@ Data includes:
 - timing
 - errors
 
-Cloud sync is not part of v0.1.
+Experiment artifacts remain local and are excluded from the optional hosted sync.
+The original v0.1 scope excluded cloud sync; the later launch implementation adds
+opt-in conversation/character/persona/world/memory sync. See
+[current sync scope](docs/LAUNCH.md#同期と復元).
 
 ---
 
