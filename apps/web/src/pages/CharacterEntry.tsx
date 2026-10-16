@@ -1,7 +1,7 @@
 import { RuntimeImage } from '../components/RuntimeMedia';
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
-import { fetchCharacters, fetchSessions, fetchWorlds, type CharacterInfo, type SessionInfo, type WorldInfo } from "../lib/api";
+import { type CharacterInfo, type SessionInfo, type WorldInfo } from "../lib/api";
 import Button from "../components/ui/Button";
 import EmptyState from "../components/ui/EmptyState";
 import Icon from "../components/ui/Icon";
@@ -18,6 +18,8 @@ import { friendlyMessage } from "../lib/errors";
 import { useDocumentTitle } from "../lib/title";
 import "./pages.css";
 import "./characterEntry.css";
+import { useRuntimeAccess } from '../components/RuntimeGate';
+import { fetchBrowseCatalog, isCloudGuest, loginPath } from '../lib/cloudGuest';
 
 type Character = CharacterInfo & { nsfw?: boolean; species?: string; age?: string; personality?: string; speaking_style?: string; portrait_urls?: string[] };
 
@@ -29,6 +31,7 @@ function splitDescription(text: string): [string, string] {
 }
 
 export default function CharacterEntry() {
+  const guest = isCloudGuest(useRuntimeAccess());
   const { characterId } = useParams<{ characterId: string }>();
   const navigate = useNavigate();
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -51,7 +54,7 @@ export default function CharacterEntry() {
     let active = true;
     setLoading(true);
     setLoadError(null);
-    Promise.all([fetchCharacters(true), fetchWorlds().catch(() => []), fetchSessions().catch(() => [])])
+    fetchBrowseCatalog(guest, true)
       .then(([c, w, s]) => {
         if (!active) return;
         setCharacters(c);
@@ -61,7 +64,7 @@ export default function CharacterEntry() {
       .catch((cause) => { if (active) setLoadError(friendlyMessage(cause)); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [reload]);
+  }, [reload, guest]);
 
   useEffect(() => {
     setGreetingIndex(0);
@@ -179,6 +182,7 @@ export default function CharacterEntry() {
   const creator = character.official ? "Kyalulu Official" : "マイライブラリ";
 
   const handleStart = async () => {
+    if (guest) { navigate(loginPath(`/characters/${encodeURIComponent(character.id)}`)); return; }
     setStarting(true);
     setError(null);
     try {
@@ -191,6 +195,7 @@ export default function CharacterEntry() {
     }
   };
   const resume = () => pastSessions[0] && navigate(`/chats/${encodeURIComponent(pastSessions[0].session_id)}`);
+  const save = () => guest ? navigate(loginPath(`/characters/${encodeURIComponent(character.id)}`)) : toggleSaved(character.id);
   const back = () => (window.history.length > 1 ? navigate(-1) : navigate("/discover"));
 
   const art = portrait ? (
@@ -212,7 +217,7 @@ export default function CharacterEntry() {
         <span className="k-plot-bar__title" aria-hidden={!scrolled}>
           {name}
         </span>
-        <button type="button" className={`k-plot-bar__btn ${isSaved ? "is-on" : ""}`} onClick={() => toggleSaved(character.id)} aria-pressed={isSaved} aria-label={isSaved ? "保存を解除" : "保存する"}>
+        <button type="button" className={`k-plot-bar__btn ${isSaved ? "is-on" : ""}`} onClick={save} aria-pressed={isSaved} aria-label={guest ? "ログインして保存する" : isSaved ? "保存を解除" : "保存する"}>
           <Icon name="heart" size={19} />
         </button>
       </header>
@@ -232,7 +237,7 @@ export default function CharacterEntry() {
             ))}
           </div>
         )}
-        <button type="button" className={`k-plot-hero__save ${isSaved ? "is-on" : ""}`} onClick={() => toggleSaved(character.id)} aria-pressed={isSaved}>
+        <button type="button" className={`k-plot-hero__save ${isSaved ? "is-on" : ""}`} onClick={save} aria-pressed={isSaved}>
           <Icon name="heart" size={15} /> {isSaved ? "保存済み" : "保存"}
         </button>
       </div>
@@ -415,7 +420,7 @@ export default function CharacterEntry() {
           </Button>
         )}
         <Button variant="primary" size="lg" className="k-plot-cta__main k-btn--glow" onClick={handleStart} disabled={starting}>
-          {starting ? "準備中…" : pastSessions[0] ? "新しくはじめる" : "会話をはじめる"} <Icon name="sparkle" size={16} />
+          {starting ? "準備中…" : guest ? "ログインして会話をはじめる" : pastSessions[0] ? "新しくはじめる" : "会話をはじめる"} <Icon name="sparkle" size={16} />
         </Button>
       </div>
     </div>

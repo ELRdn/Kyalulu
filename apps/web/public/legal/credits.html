@@ -1,6 +1,17 @@
 <!doctype html>
-<html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta name="robots" content="noindex"><title>K-Credits条件（公開前ドラフト） — Kyalulu</title><style>body{max-width:780px;margin:3em auto;padding:0 1em;font:17px/1.8 system-ui;background:#faf6ff;color:#282032}a{color:#6038a7}.draft{padding:1em;border:2px solid #6038a7}</style><body><h1>K-Credits条件（公開前ドラフト）</h1><p class="draft">未公開・未確認の原稿です。運営者情報と適用法の確認が終わるまで、クラウド登録・販売は開始しません。</p><p>10,000 K-Credits＝$1が販売基準です。追加は$5＝50,000、$10＝100,000。Plusは$5/月で12,500、Proは$10/月で25,000を月次付与。Freeは本人確認と全体予算の条件を満たす場合に初回1,000を単回付与します。</p>
-<p>消費は生成ごとの整数です。入力・出力・安全検査・再試行のAPI原価×6を合算し、最後に切り上げます。成功の最低消費は1、失敗の利用者負担は0。送信前に最大消費を表示・予約し、完了後に精算して未消費分を返します。キャッシュ未命中と最大3試行を予約に含みます。</p>
-<p>初期運営経路の精算はOpenRouterが報告するusage.costに基づきます。掲載トークン単価の上限は送信前の最大予約にだけ使い、実請求が欠けた場合に利用者の消費を推定して確定しません。その生成は失敗として利用者0消費、不確定費用は運営予算へ計上します。実API・実請求・販売条件の検証が終わるまで有料生成・新規販売は停止します。</p>
-<p>月次付与は契約期間末、購入分は180日、試用・広告報酬は30日で失効し、近い期限から消費します。譲渡・換金はできません。BYOK、同期、保存、通常の編集・削除・エクスポートの消費は0です。運営予算が不足する間は新しい生成を停止します。</p>
-<p>返金・チャージバックでは関連残高を無効化し、調査中は利用を止める場合があります。サービス終了時の未使用分の処理、各地域の前払式支払手段等への該当性は公開前に確定します。</p><nav><a href="terms.html">terms</a> · <a href="privacy.html">privacy</a> · <a href="credits.html">credits</a> · <a href="sales.html">sales</a> · <a href="refunds.html">refunds</a> · <a href="en/credits.html">English</a></nav><p>2026-10-03 · <a href="/#/profile">Kyalulu</a></p></body></html>
+<html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta name="robots" content="noindex"><title>K-Credits条件（公開前ドラフト） — Kyalulu</title><style>body{max-width:780px;margin:3em auto;padding:0 1em;font:17px/1.8 system-ui;background:#faf6ff;color:#282032}a{color:#6038a7}.draft{padding:1em;border:2px solid #6038a7}</style><body>
+<h1>K-Credits条件（公開前ドラフト）</h1>
+<p class="draft">未承認の原稿です。現在は1所有者の私的テストで、販売・広告報酬・一般登録は無効です。予定する10人の無料βと試用付与は、法務・実運用・資金の受け入れが終わるまで開始しません。</p>
+<h2>試用と料金基準</h2>
+<p>名目の販売基準は10,000 K-Credits＝$1です。予定する無料βの初回試用は1人1,000 Credits（名目$0.10）を1回、30日有効とする設計です。確認済み認証・付与済み判定・全体資金条件を満たす場合に限り付与します。現在の私的テストでは自動試用付与は0です。CreditはAPI原価そのものではなく、一定の会話回数も保証しません。</p>
+<p>未提供の販売候補は追加$5＝50,000／$10＝100,000、Plus $5/月で12,500、Pro $10/月で25,000です。これらは販売開始や月次給付の約束ではなく、販売地域・返金・前払式支払手段等の確認待ちです。</p>
+<h2>成功時の精算</h2>
+<p>消費は生成ごとの整数で、API原価（入力・出力・生成内の試行）×6を合算後にCreditへ換算して切り上げます。成功は最低1、失敗の利用者負担は0です。現在、外部SFW検査の呼出・費用はありません。選択経路と最大消費をチャット内に表示し、利用者Creditを予約せず、成功後に表示上限内で精算します。見積はキャッシュ未命中と上限内の最大3試行を保守的に考慮しますが、失敗した送信の自動再送・別経路へのfallbackは行いません。</p>
+<p>OpenRouter経路は報告されたusage.costで精算します。掲載トークン単価は送信可否・上限計算に使い、実請求欠落の代用で利用者消費を確定しません。費用不明・不正・上限超過では生成を停止し、利用者0消費でも保守的な費用を運営予算と監査へ保持します。利用者Credit予約の廃止と、運営原価の資金確保は別です。同じ完了済み生成の再取得は追加Creditを消費しません。</p>
+<h2>失効・停止・未確定事項</h2>
+<p>試用・広告報酬の設計上の有効期限は30日、購入分は180日、月次付与は契約期間末で、近い期限から消費します。購入・広告・月次付与は現在提供していません。譲渡・換金はできません。BYOK、同期、保存、通常の編集・削除・エクスポートは0 Creditsですが、BYOK提供元の費用は別です。</p>
+<p>残高だけでは生成を保証せず、運営資金不足・請求確認待ち・提供元障害で停止する場合があります。無料βの原価予算とVPS・バックアップ等の運営費は別に確保します。月次補助の自動開始、私的テスト予算や未知費用のresetを行いません。</p>
+<p>運営者・問い合わせ先、販売地域、返金／チャージバック、終了時の未使用残高、法定保持と削除期間、各地域の前払式支払手段等の扱いは確認待ちです。正式な販売条件・法務フラグの承認には別の受け入れが必要です。</p>
+<nav><a href="terms.html">terms</a> · <a href="privacy.html">privacy</a> · <a href="credits.html">credits</a> · <a href="sales.html">sales</a> · <a href="refunds.html">refunds</a> · <a href="en/credits.html">English</a></nav>
+<p>2026-10-12 · <a href="/#/profile">Kyalulu</a></p>
+</body></html>

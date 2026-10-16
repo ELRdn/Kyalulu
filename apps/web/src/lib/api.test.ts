@@ -4,6 +4,21 @@ import { streamChat, fetchGeneration, cancelGeneration, fetchSessions, fetchMode
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe("chat stream lifecycle", () => {
+  it('keeps official summaries from history and done events without resending display metadata', async () => {
+    const history = [{ id: 1, role: 'assistant', content: 'saved', model_id: 'cloud-gpt-luna-flex',
+      reasoning_summary: 'Official persisted summary', reasoning_summary_status: 'available' as const }];
+    const result = { full: 'new reply', reasoning_summary: 'Official new summary', reasoning_summary_status: 'available' };
+    const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ history })))
+      .mockResolvedValueOnce(new Response(`event: done\ndata: ${JSON.stringify(result)}\n\n`));
+    vi.stubGlobal('fetch', fetch);
+    expect(await fetchHistory('s')).toEqual(history);
+    const done = vi.fn();
+    await new Promise<void>((resolve, reject) => streamChat('mock', history, {}, {
+      onToken: vi.fn(), onDone: (...args) => { done(...args); resolve(); }, onError: reject,
+    }));
+    expect(done).toHaveBeenCalledWith('new reply', expect.objectContaining(result));
+    expect(JSON.parse(fetch.mock.calls[1][1].body).messages).toEqual([{ role: 'assistant', content: 'saved' }]);
+  });
   it("submits the exact durable ID once and ignores frames after a terminal event", async () => {
     const fetch = vi.fn().mockResolvedValue(new Response('event: done\ndata: {"full":"saved"}\n\nevent: token\ndata: {"token":"late"}\n\nevent: done\ndata: {"full":"duplicate"}\n\n'));
     vi.stubGlobal("fetch", fetch);
@@ -45,7 +60,7 @@ describe("chat stream lifecycle", () => {
     expect(done).not.toHaveBeenCalled();
     controller.enqueue(new TextEncoder().encode('event: done\ndata: {"full":"hello"}\n\n'));
     await vi.advanceTimersByTimeAsync(1);
-    expect(done).toHaveBeenCalledWith("hello", { full: "hello" });
+    expect(done).toHaveBeenCalledWith("hello", expect.objectContaining({ full: "hello" }));
   });
 
   it("processes reset then final replacement, without leaking JSON", async () => {

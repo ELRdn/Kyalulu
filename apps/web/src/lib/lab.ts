@@ -1,15 +1,16 @@
 import { apiFetch as fetch } from './transport';
+import type { CastMember, RPGOptions } from '../../../../packages/schemas/src';
 export async function labRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api/${path}`, {
     ...init, headers: { ...(init?.body ? { "Content-Type": "application/json" } : {}), ...init?.headers }
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : data.error ?? `保存・取得に失敗しました (${response.status})`);
+  if (!response.ok) throw Object.assign(new Error(typeof data.detail === "string" ? data.detail : data.error ?? `保存・取得に失敗しました (${response.status})`), { status: response.status });
   return data;
 }
 
 export type CreatorKind = "persona" | "world";
-export type CreatorDocument = { display_name: string; description: string; traits: string; rules: string };
+export type CreatorDocument = { display_name: string; description: string; traits: string; rules: string; cast?: CastMember[]; rpg?: RPGOptions | null };
 export type CreatorItem = CreatorDocument & { id: string; revision: number; kind: CreatorKind; created_at: string };
 export type BenchmarkJob = {
   id: string; status: string; created_at: string; planned_runs: number; planned_turns: number; error?: string;

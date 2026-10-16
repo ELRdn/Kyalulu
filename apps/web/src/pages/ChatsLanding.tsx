@@ -15,12 +15,14 @@ import { newSessionId } from "../lib/session";
 import { cleanPreview } from "../lib/text";
 import { useDocumentTitle } from "../lib/title";
 import "./pages.css";
+import { friendlyMessage } from '../lib/errors';
 
 export default function ChatsLanding() {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [worlds, setWorlds] = useState<WorldInfo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [catalogError, setCatalogError] = useState('');
   const [retry, setRetry] = useState(0);
   const [query, setQuery] = useState("");
   const [oldestFirst, setOldestFirst] = useState(false);
@@ -34,14 +36,14 @@ export default function ChatsLanding() {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    setLoadError(false);
-    Promise.all([fetchSessions(), fetchWorlds().catch(() => [])])
+    setLoadError('');
+    Promise.all([fetchSessions(), fetchWorlds()])
       .then(([s, w]) => {
         if (!active) return;
         setSessions(s);
         setWorlds(w);
       })
-      .catch(() => { if (active) setLoadError(true); })
+      .catch(error => { if (active) setLoadError(friendlyMessage(error)); })
       .finally(() => { if (active) setLoading(false); });
     const refresh = () => { if (document.visibilityState === 'visible') setRetry(n => n + 1); };
     document.addEventListener('visibilitychange', refresh);
@@ -50,8 +52,10 @@ export default function ChatsLanding() {
   }, [retry]);
 
   useEffect(() => {
-    fetchCharacters(adult).then(setCharacters).catch(() => setCharacters([]));
-  }, [adult]);
+    let active = true; setCatalogError('');
+    fetchCharacters(adult).then(value => { if (active) setCharacters(value); }).catch(error => { if (active) setCatalogError(friendlyMessage(error)); });
+    return () => { active = false; };
+  }, [adult, retry]);
 
   const saved = useMemo(() => {
     const byId = new Map(characters.map((c) => [c.id, c]));
@@ -96,6 +100,7 @@ export default function ChatsLanding() {
         </Button>
       </div>
 
+      {catalogError && <p role="alert">{catalogError}<Button size="sm" variant="ghost" onClick={() => setRetry(value => value + 1)}>保存キャラを再読込</Button></p>}
       {saved.length > 0 && !query && (
         <section className="k-section k-saved-strip" aria-labelledby="k-saved-title">
           <div className="k-section__head">
@@ -136,7 +141,7 @@ export default function ChatsLanding() {
           ))}
         </div>
       ) : loadError ? (
-        <div role="alert"><EmptyState title="会話を読み込めませんでした" description="サーバーとネットワークの接続を確認してください。保存済みの会話は削除されていません。" action={<Button variant="secondary" onClick={() => setRetry(n => n + 1)}>もう一度読み込む</Button>} /></div>
+        <div role="alert"><EmptyState title="会話を読み込めませんでした" description={loadError} action={<Button variant="secondary" onClick={() => setRetry(n => n + 1)}>もう一度読み込む</Button>} /></div>
       ) : empty ? (
         <EmptyState
           mascot={query ? "shy" : "default"}

@@ -58,3 +58,14 @@ describe("local model availability", () => {
     expect(pickModel(models, [{ ...health[0], models: [] }, health[1]], "installed")).toBe("mock");
   });
 });
+
+it('honors published route gates even with healthy providers and never replaces the selected gated route', () => {
+  const gated: ModelInfo = { id: 'cloud-deepseek-decart', display_name: 'Decart', provider_type: 'openrouter',
+    provider_model: 'deepseek', quantization: '', available: false, unavailable_reason: 'provider_endpoint_unavailable' };
+  const enabled = { ...gated, id: 'cloud-deepseek-inferencenet', available: true };
+  expect(isModelAvailable(gated, null)).toBe(false);
+  expect(isModelAvailable(gated, [{ id: 'openrouter', provider: 'openrouter', status: 'ok' }])).toBe(false);
+  expect(pickModel([gated, enabled], null, gated.id)).toBe(gated.id);
+  expect(pickModel([gated, enabled], null, '')).toBe(enabled.id);
+  expect(pickConversationModel([gated, enabled], null, { administrative: false, baseline: gated.id })).toBe(gated.id);
+});

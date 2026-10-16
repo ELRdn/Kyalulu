@@ -5,13 +5,15 @@ import { useRuntimeAccess } from './RuntimeGate';
 import { useConfirm } from './ui/Dialog';
 import Button from './ui/Button';
 import Icon from './ui/Icon';
+import AnalyticsConsent from './AnalyticsConsent';
+import { analyticsLanguage, syncAppAnalytics } from '../lib/analytics';
 import './cloudSettings.css';
 
 type Plan = {id:string;monthly_usd:number;monthly_credits:number;storage_bytes:number};
 type Account = {
   identity?:{id:string;email?:string};private_test?:boolean;
   private_budget?:{limit_nano:number;prior_accounted_nano:number;available_nano:number};
-  wallet:{credits:number;plan:string;used_credits?:number;reserved_credits?:number;
+  wallet:{credits:number;plan:string;used_credits?:number;
     usage?:{state:string;created:number;charged_credits:number;max_credits:number}[];
     lots:{remaining:number;expires:number;kind:string}[]};
   entitlements:Plan;plans:Plan[];storage_bytes:number;byok_configured:boolean;
@@ -23,6 +25,7 @@ const number = (value:number) => value.toLocaleString();
 
 export default function CloudSettings() {
   const {cloud_mode} = useRuntimeAccess();
+  const [analyticsReady,setAnalyticsReady] = useState(false);
   const accountSync = useAccountProfile();
   const [account,setAccount]=useState<Account|null>(null),[error,setError]=useState('');
   const [key,setKey]=useState(''),[consent,setConsent]=useState(false),[busy,setBusy]=useState(false);
@@ -33,7 +36,7 @@ export default function CloudSettings() {
     const [value,history]=await Promise.all([cloudJson('account'),cloudJson('backups')]);
     setAccount(value);setBackups(history.backups);
   }
-  useEffect(()=>{if(cloud_mode) void refresh().catch(e=>setError(e.message));},[cloud_mode]);
+  useEffect(()=>{setAnalyticsReady(syncAppAnalytics());if(cloud_mode) void refresh().catch(e=>setError(e.message));},[cloud_mode]);
   async function act(action:()=>Promise<unknown>,success='保存しました。') {
     setBusy(true);setError('');setMessage('');
     try {await action();await refresh();setMessage(success);}
@@ -50,13 +53,14 @@ export default function CloudSettings() {
       {account?.private_test&&<span className="k-cloud__badge">個人テスト</span>}</div>
     {error&&<div className="k-cloud__notice is-error" role="alert">{error}<Button size="sm" variant="ghost" onClick={()=>void act(refresh,'更新しました。')}>再読み込み</Button></div>}
     {message&&<p className="k-cloud__notice" role="status">{message}</p>}
+    <AnalyticsConsent enabled={analyticsReady} language={analyticsLanguage()} />
     {!account ? <div className="k-cloud__card" role="status">アカウントの状態を確認しています…</div> : <>
       <div className="k-cloud__overview">
         <div className="k-cloud__card k-cloud__wallet">
           <span className="k-cloud__eyebrow">使用できるクレジット</span>
           <div className="k-cloud__balance">{number(account.wallet.credits)}<span>K-Credits</span></div>
           <p>{expiry?`次の有効期限 ${date(expiry)}`:'会話の生成に使用します。'}</p>
-          <div className="k-cloud__numbers"><span>消費済み <strong>{number(account.wallet.used_credits||0)}</strong></span><span>予約中 <strong>{number(account.wallet.reserved_credits||0)}</strong></span></div>
+          <div className="k-cloud__numbers"><span>消費済み <strong>{number(account.wallet.used_credits||0)}</strong></span></div>
         </div>
         <div className="k-cloud__card k-cloud__storage">
           <span className="k-cloud__eyebrow">クラウド保存</span>
@@ -72,21 +76,21 @@ export default function CloudSettings() {
         <Button size="sm" variant="secondary" disabled={busy||accountSync.pending>0} onClick={()=>void refreshAccountProfile()}>最新の内容を読み込む</Button>
       </div>
       <div className="k-cloud__card k-cloud__model"><div className="k-cloud__row"><div><span className="k-cloud__eyebrow">会話モデル</span><h3>{route?.display_name || route?.model || '接続先を確認中'}</h3><p>{route ? [route.provider,route.upstream,route.model].filter(Boolean).join(' · ') : '接続先を確認できません'}</p></div><span className="k-cloud__status">{route?.available===true && !route.unavailable_reason?'利用可能':'準備中'}</span></div>
-        <p>クラウドはSFWのみ。会話・設定・記憶を上記の提供先に送信します。</p>
+        <p>クラウドはSFWのみ。会話・設定・記憶を上記の提供先に送信します。入力・出力の外部安全検査は行いません。</p>
       </div>
       <div className="k-cloud__details">
         <details><summary>クレジット使用履歴と料金</summary><div className="k-cloud__detail-body">
-          <p>10,000 K-Credits＝$1。生成ごとのAPI実費の6倍相当を整数で精算します。失敗した生成の消費は0です。</p>
+          <p>10,000 K-Credits＝$1。クレジットは予約せず、生成ごとのAPI実費の6倍相当を整数で、同意した消費上限内で精算します。失敗した生成の消費は0です。</p>
           <div className="k-cloud__list">{account.wallet.lots.map((lot,i)=><div className="k-cloud__row" key={i}><span>{lot.kind==='admin'?'管理者からの付与':lot.kind==='purchase'?'購入分':'付与クレジット'}</span><span>{number(lot.remaining)} · {date(lot.expires)}まで</span></div>)}</div>
-          {account.wallet.usage?.length ? <ul className="k-cloud__usage">{account.wallet.usage.map((entry,i)=><li key={i}><span>{new Date(entry.created*1000).toLocaleString()}</span><strong>{entry.state==='pending'?`${entry.max_credits} 予約中`:entry.state==='completed'?`${entry.charged_credits} 消費`:'失敗 · 消費0'}</strong></li>)}</ul> : <p>まだクレジットの使用履歴はありません。</p>}
-          {account.private_budget&&<p className="k-cloud__muted">個人テストの累計API上限 ${(account.private_budget.limit_nano/1e9).toFixed(2)} · 残り ${(account.private_budget.available_nano/1e9).toFixed(6)}（過去の検証・予約を含む）</p>}
+          {account.wallet.usage?.length ? <ul className="k-cloud__usage">{account.wallet.usage.map((entry,i)=><li key={i}><span>{new Date(entry.created*1000).toLocaleString()}</span><strong>{entry.state==='pending'?`生成中 · 消費上限 ${entry.max_credits}`:entry.state==='completed'?`${entry.charged_credits} 消費`:'失敗 · 消費0'}</strong></li>)}</ul> : <p>まだクレジットの使用履歴はありません。</p>}
+          {account.private_budget&&<p className="k-cloud__muted">個人テストの累計API上限 ${(account.private_budget.limit_nano/1e9).toFixed(2)} · 残り ${(account.private_budget.available_nano/1e9).toFixed(6)}（過去の検証と運営側の確保額を含む）</p>}
           {account.billing_available&&<div className="k-cloud__actions">{account.plans.filter(p=>p.id!=='free').map(plan=><Button key={plan.id} disabled={busy} onClick={()=>void act(async()=>{const result=await cloudJson('billing/checkout',{method:'POST',body:JSON.stringify({sku:plan.id,request_id:crypto.randomUUID()})});location.assign(result.url);})}>{plan.id} ${plan.monthly_usd}/月</Button>)}
             {[['credits_5','$5 · 50,000'],['credits_10','$10 · 100,000']].map(([sku,label])=><Button key={sku} disabled={busy} onClick={()=>void act(async()=>{const result=await cloudJson('billing/checkout',{method:'POST',body:JSON.stringify({sku,request_id:crypto.randomUUID()})});location.assign(result.url);})}>{label} K-Creditsを追加</Button>)}</div>}
           {account.billing_portal_available&&<Button variant="secondary" disabled={busy} onClick={()=>void act(async()=>{location.assign((await cloudJson('billing/portal',{method:'POST'})).url);})}>契約・請求を管理</Button>}
         </div></details>
         <details><summary>ローカル端末とのデータ同期</summary><div className="k-cloud__detail-body">
           <p>PCのローカル版と会話・キャラ・記憶をやりとりする設定です。アカウント同期とは別に、初期状態ではオフ。画像は検証待ちです。</p>
-          <label>同期する範囲<select aria-label="同期する範囲" value={account.sync.mode} disabled={busy} onChange={e=>void act(()=>cloudJson('sync',{method:'PUT',body:JSON.stringify({mode:e.target.value})}))}><option value="off">オフ</option><option value="selected">選択した会話</option><option value="all">すべて（SFW検査あり）</option></select></label>
+          <label>同期する範囲<select aria-label="同期する範囲" value={account.sync.mode} disabled={busy} onChange={e=>void act(()=>cloudJson('sync',{method:'PUT',body:JSON.stringify({mode:e.target.value})}))}><option value="off">オフ</option><option value="selected">選択した会話</option><option value="all">すべて</option></select></label>
           <div className="k-cloud__actions"><Button variant="secondary" disabled={busy||account.sync.mode==='off'} onClick={()=>void act(async()=>{setDevice((await cloudJson('sync/device',{method:'POST'})).token);},'同期用トークンを発行しました。')}>同期用トークンを発行</Button>
             <Button variant="ghost" disabled={busy} onClick={()=>void (async()=>{if(await confirm({title:'同期端末のアクセスを解除しますか？',description:'すべてのローカル端末で再接続が必要になります。',confirmLabel:'解除する'})) await act(async()=>{await cloudJson('sync/devices',{method:'DELETE'});setDevice('');},'同期アクセスを解除しました。');})()}>全端末のアクセスを解除</Button></div>
           {device&&<label>同期用トークン（30日有効）<input readOnly type="password" value={device} onFocus={e=>e.target.select()}/><Button size="sm" variant="secondary" onClick={()=>void navigator.clipboard.writeText(device).then(()=>setMessage('トークンをコピーしました。')).catch(()=>setError('コピーできませんでした。入力欄からコピーしてください。'))}>コピー</Button></label>}
