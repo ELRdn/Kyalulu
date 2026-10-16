@@ -1,6 +1,7 @@
 """Chunk-authenticated encrypted SQLite backups; originals remain on rollback."""
 
 import json
+import hashlib
 import os
 import shutil
 import sqlite3
@@ -18,6 +19,28 @@ CHUNK = 1024 * 1024
 class Backups:
     def __init__(self, store):
         self.store = store
+
+    def record_erasure(self, owner, session_id):
+        with self.store.transaction() as db:
+            db.execute("CREATE TABLE IF NOT EXISTS conversation_erasures(owner TEXT,hash TEXT,PRIMARY KEY(owner,hash))")
+            db.execute("INSERT OR IGNORE INTO conversation_erasures VALUES(?,?)",(owner,hashlib.sha256(session_id.encode()).hexdigest()))
+
+    def erase_restored(self, owner, db):
+        with self.store.transaction() as control:
+            control.execute("CREATE TABLE IF NOT EXISTS conversation_erasures(owner TEXT,hash TEXT,PRIMARY KEY(owner,hash))")
+            erased = {r[0] for r in control.execute("SELECT hash FROM conversation_erasures WHERE owner=?",(owner,))}
+        db.execute("CREATE TABLE IF NOT EXISTS session_deletions(session_id TEXT PRIMARY KEY,deleted_at TEXT NOT NULL DEFAULT (datetime('now')))")
+        sessions = {r[0] for r in db.execute("SELECT session_id FROM session_deletions")}
+        for table in ("chat_history", "session_settings", "generations", "runtime_states", "session_memory", "session_scopes", "conversation_summaries"):
+            if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
+                sessions.update(r[0] for r in db.execute(f"SELECT session_id FROM {table}")
+                                if hashlib.sha256(r[0].encode()).hexdigest() in erased)
+        sessions.update(r[0] for r in db.execute("SELECT source_session_id FROM memories WHERE source_session_id IS NOT NULL")
+                        if hashlib.sha256(r[0].encode()).hexdigest() in erased)
+        sessions.update(r[0][len("session:"):] for r in db.execute("SELECT DISTINCT scope FROM memories WHERE scope LIKE 'session:%'")
+                        if hashlib.sha256(r[0][len("session:"):].encode()).hexdigest() in erased)
+        from python.local_backup import erase_conversations
+        erase_conversations(db, sessions)
 
     def directory(self, owner):
         from uuid import UUID
@@ -190,6 +213,7 @@ class Backups:
                 con.execute(
                     "UPDATE generations SET status='cancelled',result_json='{}' WHERE status='pending'"
                 )
+                self.erase_restored(owner, con)
                 con.commit()
             finally:
                 con.close()

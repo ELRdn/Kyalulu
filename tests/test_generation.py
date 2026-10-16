@@ -33,6 +33,28 @@ async def collect(provider):
         compiled=CompiledPrompt(system_prompt="character"), state=RuntimeState(), requested={"seed": 1})]
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('portable', [False, True])
+async def test_rp_thought_contract_and_visible_reply_for_both_prompt_paths(portable):
+    from python.core.portable_prompt import compile_portable
+    from python.core.portable_schema import PortableDocument
+    compiled = (compile_portable({'document': PortableDocument(name='アキ').model_dump()})
+                if portable else CompiledPrompt(system_prompt='character'))
+    reply = '*（もう少し話していたい）*\n\nもう一杯、飲む？'
+    provider = Fake([json.dumps({**VALID, 'reply': reply}, ensure_ascii=False)])
+    events = [e async for e in generate_events(provider, model='test',
+        messages=[{'role': 'user', 'content': '*（まだ帰りたくない）*'}],
+        compiled=compiled, state=RuntimeState(), requested={})]
+    result = events[-1]['result']
+    assert result['status'] == 'completed' and result['reply'] == reply
+    contract = result['attempts'][0]['messages'][0]['content']
+    assert 'visible to the user in reply' in contract
+    assert 'Thoughts are not audible to other characters' in contract
+    assert 'record them as spoken/shared facts' in contract
+    assert 'Only a line-start @:' in contract
+    assert result['attempts'][0]['messages'][-1]['content'] == '*（まだ帰りたくない）*'
+
+
 @pytest.mark.parametrize("ascii_only", [True, False])
 def test_reply_prefix_all_chunk_boundaries(ascii_only):
     raw = json.dumps(VALID, ensure_ascii=ascii_only)

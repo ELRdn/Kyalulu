@@ -149,6 +149,19 @@ CREATE TABLE IF NOT EXISTS session_memory (
     enabled INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS session_scopes (
+    session_id TEXT PRIMARY KEY, scope TEXT NOT NULL, mode TEXT NOT NULL,
+    identity_json TEXT NOT NULL DEFAULT '{}'
+);
+CREATE TABLE IF NOT EXISTS conversation_summaries (
+    id TEXT PRIMARY KEY, session_id TEXT NOT NULL, kind TEXT NOT NULL,
+    text TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1,
+    source_message_ids TEXT NOT NULL, method TEXT NOT NULL,
+    ordinal INTEGER NOT NULL, UNIQUE(session_id,kind,ordinal)
+);
+CREATE TABLE IF NOT EXISTS session_deletions (
+    session_id TEXT PRIMARY KEY, deleted_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 
@@ -161,6 +174,11 @@ MIGRATIONS = [
     "ALTER TABLE prompt_presets ADD COLUMN nsfw_level TEXT",
     "ALTER TABLE session_settings ADD COLUMN intro TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE session_settings ADD COLUMN library_binding TEXT",
+    "ALTER TABLE memories ADD COLUMN source_kind TEXT NOT NULL DEFAULT 'user_statement'",
+    "ALTER TABLE memories ADD COLUMN source_quote TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE memories ADD COLUMN source_revision TEXT",
+    "ALTER TABLE memories ADD COLUMN source_message_ids TEXT NOT NULL DEFAULT '[]'",
+    "ALTER TABLE memories ADD COLUMN confirmation TEXT NOT NULL DEFAULT 'unverified'",
 ]
 
 

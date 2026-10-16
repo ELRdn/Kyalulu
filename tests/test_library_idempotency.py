@@ -113,7 +113,8 @@ async def test_cloud_replay_has_no_screen_backup_or_sync_effect_and_is_owner_sco
         client.cookies.set(SESSION_COOKIE, 'retry-1')
         other = await client.post('/api/library', json=payload)
         assert other.status_code == 200 and other.json()['id'] != item['id']
-        assert len(effects) == len(recorded[0]) + 2 and len(bumps) == len(recorded[1]) + 1
+        assert effects == recorded[0] + ['backup'] and len(bumps) == len(recorded[1]) + 1
+        assert 'screen' not in effects
     restored = create_app(cfg, transport=httpx.MockTransport(lambda _: pytest.fail('replay cannot send')))
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=restored), base_url=cfg.origin,
                                 headers=headers, cookies={SESSION_COOKIE: 'retry-0'}) as client:

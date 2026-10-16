@@ -86,14 +86,17 @@ async def test_chat_stores_restores_across_sessions_and_evidences(isolated):
             assert (await c.put("/api/chat/settings", json={"session_id": sid, "character_id": "mocha_sfw"})).status_code == 200
         for sid in ("day1", "day2"):
             s = (await c.put(f"/api/memory/session/{sid}", json={"enabled": True})).json()
-            assert s["enabled"] and s["scope"] == "char:mocha_sfw|persona:default"
+            assert s["enabled"] and s["scope"].startswith("work:")
+            if sid == "day1":
+                scope = s["scope"]
+            assert s["scope"] == scope
 
         body = {"model_id": "mock-echo", "session_id": "day1",
                 "messages": [{"role": "user", "content": "サーモンのお寿司が好きなんだ、覚えてて"}]}
         r = (await c.post("/api/chat", json=body)).json()
         assert r["memory"]["enabled"] and r["memory"]["injected"] == []
         assert r["memory"]["decisions"][0]["action"] == "store" and r["memory"]["decisions"][0]["supported"]
-        stored = (await c.get("/api/memory", params={"scope": "char:mocha_sfw|persona:default"})).json()["memories"]
+        stored = (await c.get("/api/memory", params={"scope": scope})).json()["memories"]
         assert len(stored) == 1 and stored[0]["source_session_id"] == "day1" and stored[0]["origin"] == "model"
 
         # A new session with the same character: nothing in its history, the memory comes back.
@@ -107,14 +110,14 @@ async def test_chat_stores_restores_across_sessions_and_evidences(isolated):
         assert debug["memory"]["injected"] == [stored[0]["id"]]
         after = (await c.get(f"/api/memory/{stored[0]['id']}")).json()
         assert after["access_count"] == 1 and {"retrieve", "inject"} <= {e["op"] for e in (await c.get(
-            "/api/memory/events", params={"scope": "char:mocha_sfw|persona:default"})).json()["events"]}
+            "/api/memory/events", params={"scope": scope})).json()["events"]}
 
         # Memory off: same character, no retrieval and no proposals.
         body["session_id"] = "off"
         r = (await c.post("/api/chat", json=body)).json()
         assert r.get("memory") is None and "覚えてるよ" not in r["reply"]
 
-        preview = (await c.post("/api/memory/search", json={"scope": "char:mocha_sfw|persona:default",
+        preview = (await c.post("/api/memory/search", json={"scope": scope,
                                                             "query": "サーモン"})).json()
         assert preview["injected"] == [stored[0]["id"]] and "サーモン" in preview["block"]
 

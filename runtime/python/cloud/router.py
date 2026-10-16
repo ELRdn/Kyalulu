@@ -11,6 +11,7 @@ from python.providers.opencode_go import OpenCodeGoProvider, DEEPSEEK, MIMO, MUS
 from python.providers import openrouter as or_provider
 from .contracts import ROUTES, Tariff
 from .store import CloudError
+from .model_choices import CHOICES
 
 GO_TARIFFS = {
     DEEPSEEK: Tariff(version="go-deepseek-v4.1-flash-peak-2026-10-03"),
@@ -32,9 +33,25 @@ class OpenRouterTariff(Tariff):
 
 
 OPENROUTER_TARIFFS = {
-    or_provider.DEEPSEEK: OpenRouterTariff(version="or-inferencenet-ds-v4.1-flash-2026-10-04",
-        input_miss=20, input_hit=20, output=450),
+    or_provider.DEEPSEEK: OpenRouterTariff(version="or-inferencenet-ds-v4.1-flash-2026-10-12",
+        input_miss=77, input_hit=77, output=660),
 }
+OPENROUTER_ROUTE_TARIFFS = {key: OpenRouterTariff(
+    version=f"or-{key}-{choice.get('observed_at', '2026-10-11')}",
+    input_miss=int((Decimal(choice.get("input_cost_ceiling", choice["prices"][0])) * 1000).to_integral_value(rounding="ROUND_CEILING")),
+    input_hit=int((Decimal(choice["prices"][0]) * 1000).to_integral_value(rounding="ROUND_CEILING")),
+    output=int((Decimal(choice["prices"][1]) * 1000).to_integral_value(rounding="ROUND_CEILING")),
+) for key, choice in CHOICES.items() if choice.get("prices")}
+
+
+def choice_block(config, choice, route_id):
+    if config.operator_backend != "openrouter":
+        return "cloud_route_not_available"
+    if route_id not in config.allowed_model_routes:
+        return "cloud_route_not_available"
+    if choice.get("blocked"):
+        return choice["blocked"]
+    return backend_block(config)
 
 
 def safety_tariff(config):
@@ -76,13 +93,24 @@ def select_model(profile="auto", *, context_bytes=0, training_consent=False,
 
 
 def operator_provider(config, *, session, model=DEEPSEEK, transport=None,
-                      training_consent=False):
+                      training_consent=False, route_id="cloud-standard"):
     error = backend_block(config)
     if error:
         raise CloudError(error, 503)
     if config.operator_backend == "deepseek":
         return DeepSeekProvider(api_key=config.deepseek_key, transport=transport)
     if config.operator_backend == "openrouter":
+        if route_id in CHOICES:
+            choice = CHOICES[route_id]
+            error = choice_block(config, choice, route_id)
+            if error:
+                raise CloudError(error, 503)
+            return or_provider.OpenRouterProvider(api_key=config.openrouter_key,
+                model=choice["model"], transport=transport, upstream=choice["upstream"],
+                upstream_tag=choice["upstream_tag"], price_caps=choice["prices"],
+                reasoning_effort=choice["reasoning_effort"],
+                reasoning_summary_supported=choice["reasoning_summary_supported"],
+                data_collection="allow" if choice.get("retains_prompts") else "deny")
         # The shared default is the safety model; never accidentally send a Go ID.
         if model == DEEPSEEK:
             model = or_provider.DEEPSEEK
@@ -100,19 +128,38 @@ def require_current_consent(store, owner):
         raise CloudError("provider_consent_renewal_required", 403)
 
 
-def public_route(config, model=None):
-    route = ROUTES["cloud-standard"]
+def public_route(config, model=None, *, route_id="cloud-standard"):
+    route = ROUTES[route_id]
+    if route_id in CHOICES:
+        choice = CHOICES[route_id]
+        reason = choice_block(config, choice, route_id)
+        result = route.public()
+        result.update(available=reason is None, unavailable_reason=reason,
+            transport="OpenRouter", upstream=choice["upstream"], upstream_tag=choice["upstream_tag"],
+            pricing={"input_per_million": choice["prices"][0], "output_per_million": choice["prices"][1],
+                     "currency": "USD", "observed_at": choice.get("observed_at", "2026-10-11"), "cache_savings_assumed": False},
+            reasoning_effort=choice["reasoning_effort"],
+            reasoning_summary_supported=choice["reasoning_summary_supported"],
+            privacy_note=choice["privacy_note"], service_tier=choice.get("service_tier", "standard"),
+            retains_prompts=choice.get("retains_prompts", False),
+            training=choice.get("training", False), training_consent_required=choice.get("training", False),
+            safety={"enabled": False}, acceptance="mock_verified_live_pending")
+        result["capabilities"].update(thinking_disabled=False,
+            supports_vision=False, reasoning_summary=choice["reasoning_summary_supported"])
+        return result
     if config.operator_backend == "deepseek":
         return {**route.public(), "available": backend_block(config) is None,
-                "unavailable_reason": backend_block(config)}
+                "unavailable_reason": backend_block(config), "safety": {"enabled": False}}
     if config.operator_backend == "openrouter":
         result = replace(route, provider="openrouter", model=model or or_provider.DEEPSEEK).public()
         result.update(available=backend_block(config) is None,
             unavailable_reason=backend_block(config), transport="OpenRouter",
             upstream=or_provider.UPSTREAM, upstream_tag=or_provider.UPSTREAM_TAG,
             cost_basis="reported_billed_cost", acceptance="pending",
-            routing={"conversation": or_provider.DEEPSEEK, "structured_or_large_context": or_provider.DEEPSEEK,
-                     "safety": or_provider.DEEPSEEK}, contributor_available=False)
+            routing={"conversation": or_provider.DEEPSEEK, "structured_or_large_context": or_provider.DEEPSEEK}, contributor_available=False)
+        result.update(reasoning_effort="none", reasoning_summary_supported=False,
+            safety={"enabled": False},
+            models=[public_route(config, route_id=key) for key in CHOICES])
         return result
     result = replace(route, provider="opencode-go", model=model or "auto").public()
     result["capabilities"].update(thinking_disabled=model != MUSE, supports_cache_usage=True)
@@ -120,7 +167,8 @@ def public_route(config, model=None):
         available=backend_block(config) is None, unavailable_reason=backend_block(config),
         transport="OpenCode Go", cost_basis="subscription_allowance_reference",
         routing={"conversation": MIMO, "structured_or_large_context": DEEPSEEK,
-                 "safety": DEEPSEEK, "creative_with_training_consent": MUSE},
+                 "creative_with_training_consent": MUSE},
+        safety={"enabled": False},
         models=[{"id": candidate, "vision": True, "training": candidate == MUSE,
                  "endpoint": "responses" if candidate == MUSE else "chat/completions",
                  "acceptance": "pending"} for candidate in GO_TARIFFS],
@@ -128,3 +176,8 @@ def public_route(config, model=None):
         contributor_available=backend_block(config) is None and config.go_muse_region_approved,
     )
     return result
+
+
+def public_routes(config):
+    return [public_route(config), *([public_route(config, route_id=key) for key in CHOICES]
+        if config.operator_backend == "openrouter" else []), {**ROUTES["byok-deepseek"].public(), "safety": {"enabled": False}}]

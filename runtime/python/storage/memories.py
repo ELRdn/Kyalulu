@@ -8,6 +8,7 @@ is appended to `memory_events` so the inspector can replay what happened.
 from python.storage.context import get_db_path
 import json
 import uuid
+import hashlib
 
 import aiosqlite
 import anyio
@@ -15,7 +16,8 @@ import anyio
 from . import db as storage
 
 COLUMNS = ("id, scope, type, content, importance, origin, supported, source_session_id, source_turn, "
-           "source_generation_id, version, status, access_count, last_accessed, created_at, updated_at")
+           "source_generation_id, version, status, access_count, last_accessed, created_at, updated_at, "
+           "source_kind, source_quote, source_revision, source_message_ids, confirmation")
 
 
 class NotFound(Exception):
@@ -32,10 +34,70 @@ def chat_scope(character_id: str | None, persona_id: str | None, session_id: str
     return f"char:{character_id}|persona:{persona_id or 'default'}"
 
 
+async def session_scope(settings: dict, *, db=None) -> str:
+    """Pin new scope identities once; existing saved sessions retain their legacy scope."""
+    if db is None:
+        await init()
+        async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as own:
+            await own.execute("BEGIN IMMEDIATE")
+            scope = await session_scope(settings, db=own)
+            await own.commit()
+            return scope
+    sid = settings.get("session_id", "default")
+    row = await (await db.execute("SELECT scope,mode,identity_json FROM session_scopes WHERE session_id=?", (sid,))).fetchone()
+    identity = _identity(settings)
+    identity["versions"] = _asset_versions(settings)
+    if row:
+        before = json.loads(row[2])
+        changed_versions = [k for k, value in identity["versions"].items()
+                            if k in before.get("versions", {}) and before.get(k) == identity.get(k)
+                            and before["versions"][k] != value
+                            and (k != "character_id" or (before.get("library_binding") or {}).get("character") == identity["library_binding"].get("character"))]
+        if changed_versions:
+            from .generations import Conflict
+            raise Conflict("asset version changed; preview and explicitly migrate memory scope before continuing")
+        if all(before.get(k) == v for k, v in identity.items()):
+            return row[0]
+        if row[1] != "world":
+            await db.execute("UPDATE session_scopes SET identity_json=? WHERE session_id=?", (json.dumps(identity), sid))
+            return row[0]
+    existing = await (await db.execute("SELECT 1 FROM session_settings WHERE session_id=?", (sid,))).fetchone()
+    if not existing:
+        existing = await (await db.execute("SELECT 1 FROM chat_history WHERE session_id=? LIMIT 1", (sid,))).fetchone()
+    legacy = bool(existing) and row is None
+    encoded = json.dumps(identity, ensure_ascii=False, sort_keys=True)
+    scope = chat_scope(settings.get("character_id"), settings.get("persona_id"), sid) if legacy else (
+        "work:" + hashlib.sha256(encoded.encode()).hexdigest() if settings.get("character_id") else f"session:{sid}")
+    await db.execute("INSERT INTO session_scopes VALUES(?,?,?,?) ON CONFLICT(session_id) DO UPDATE SET "
+                     "scope=excluded.scope,mode=excluded.mode,identity_json=excluded.identity_json",
+                     (sid, scope, "legacy" if legacy else "world", encoded))
+    return scope
+
+
+def _identity(settings):
+    from python.core.portable_schema import LibraryBinding
+    return {**{k: settings.get(k) for k in ("character_id", "persona_id", "world_id")},
+            "library_binding": LibraryBinding.model_validate(settings.get("library_binding") or {}).model_dump(exclude={"expression_asset_id"})}
+
+
+def _asset_versions(settings):
+    from python.core.prompt_compiler import _load_yaml, CHAR_DIR, PERSONA_DIR, WORLD_DIR
+    binding = _identity(settings)["library_binding"]
+    versions = {}
+    for key, directory in (("character_id", CHAR_DIR), ("persona_id", PERSONA_DIR), ("world_id", WORLD_DIR)):
+        ref = binding.get("character") if key == "character_id" else None
+        if ref and ref["id"] == settings.get(key):
+            versions[key] = f"1.0.{ref['revision']}"
+        else:
+            versions[key] = (_load_yaml(directory, settings.get(key)) or {}).get("version")
+    return versions
+
+
 def _row(row) -> dict:
     d = dict(row)
     if d.get("supported") is not None:
         d["supported"] = bool(d["supported"])
+    d["source_message_ids"] = json.loads(d.get("source_message_ids") or "[]")
     return d
 
 
@@ -71,23 +133,29 @@ async def get(memory_id: str) -> dict:
 
 async def create(scope: str, type_: str, content: str, *, origin: str = "user", supported: bool | None = None,
                  source_session_id: str | None = None, source_turn: int | None = None,
-                 source_generation_id: str | None = None) -> dict:
+                 source_generation_id: str | None = None, source_kind: str = "user_statement",
+                 source_quote: str = "", source_revision: str | None = None) -> dict:
     await init()
     async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
         memory_id = await _create(db, scope, type_, content, origin, supported,
-                                  source_session_id, source_turn, source_generation_id)
+                                  source_session_id, source_turn, source_generation_id,
+                                  source_kind=source_kind, source_quote=source_quote or (content if origin == "user" else ""),
+                                  source_revision=source_revision or ("manual:1" if origin == "user" else None),
+                                  confirmation="user_confirmed" if origin == "user" else "unverified")
         await db.commit()
     return await get(memory_id)
 
 
 async def _create(db, scope, type_, content, origin, supported,
-                  source_session_id, source_turn, source_generation_id):
+                  source_session_id, source_turn, source_generation_id, *, source_kind="user_statement",
+                  source_quote="", source_revision=None, source_message_ids=None, confirmation="unverified"):
     memory_id = "mem_" + uuid.uuid4().hex[:12]
     await db.execute(
-        "INSERT INTO memories(id,scope,type,content,origin,supported,source_session_id,source_turn,source_generation_id) "
-        "VALUES(?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO memories(id,scope,type,content,origin,supported,source_session_id,source_turn,source_generation_id,"
+        "source_kind,source_quote,source_revision,source_message_ids,confirmation) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (memory_id, scope, type_, content, origin, None if supported is None else int(supported),
-         source_session_id, source_turn, source_generation_id))
+         source_session_id, source_turn, source_generation_id, source_kind, source_quote[:2000], source_revision,
+         json.dumps(source_message_ids or []), confirmation))
     await _log(db, scope, "create", memory_id, source_generation_id,
                {"type": type_, "content": content, "origin": origin})
     return memory_id
@@ -103,8 +171,9 @@ async def update(memory_id: str, *, content: str | None = None, type_: str | Non
         return before
     async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
         await db.execute("UPDATE memories SET content=?, type=?, version=version+1, origin=CASE WHEN origin='model' "
-                         "THEN 'model_edited' ELSE origin END, updated_at=datetime('now') WHERE id=?",
-                         (after["content"], after["type"], memory_id))
+                         "THEN 'model_edited' ELSE origin END, source_kind='user_correction',confirmation='user_confirmed', "
+                         "supported=NULL,source_quote=?,source_revision=?, updated_at=datetime('now') WHERE id=?",
+                         (after["content"], after["type"], after["content"], f"manual:{before['version'] + 1}", memory_id))
         await _log(db, before["scope"], "update", memory_id, None,
                    {"before": {"content": before["content"], "type": before["type"], "version": before["version"]},
                     "after": after})
@@ -178,13 +247,19 @@ async def scopes() -> list[dict]:
 
 # ── turn helpers used by chat and experiments ────────────────────────────
 
-async def prepare(scope: str, query: str, **options) -> dict:
+async def prepare(scope: str, query: str, *, exclude_after: tuple[str, int] | None = None, **options) -> dict:
     """Retrieve for one turn: the prompt block plus the full ranking trace."""
     import time
 
     from python.core import memory as logic
     start = time.perf_counter()
     items = await list_memories(scope)
+    if exclude_after:
+        async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
+            ids = {r[0] for r in await (await db.execute(
+                "SELECT generation_id FROM generations WHERE session_id=? AND (assistant_id>=? OR user_id>=?)",
+                (exclude_after[0], exclude_after[1], exclude_after[1]))).fetchall()}
+        items = [m for m in items if m.get("source_generation_id") not in ids]
     trace = logic.retrieve(items, query, **options)
     trace["retrieval_ms"] = round((time.perf_counter() - start) * 1000, 2)
     trace["scope"] = scope
@@ -194,7 +269,8 @@ async def prepare(scope: str, query: str, **options) -> dict:
 
 
 async def commit(scope: str, result: dict, *, session_id: str | None, turn: int | None,
-                 evidence_text: str, db: aiosqlite.Connection | None = None) -> None:
+                 evidence_text: str, db: aiosqlite.Connection | None = None,
+                 source_message_ids: list[int] | None = None, source_revision: str | None = None) -> None:
     """After a turn: log retrieval, mark evidenced memories, validate and store proposals.
 
     Mutates ``result["memory"]`` so the persisted generation record carries every decision.
@@ -210,7 +286,8 @@ async def commit(scope: str, result: dict, *, session_id: str | None, turn: int 
             async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as own:
                 await own.execute("BEGIN IMMEDIATE")
                 await commit(scope, result, session_id=session_id, turn=turn,
-                             evidence_text=evidence_text, db=own)
+                             evidence_text=evidence_text, db=own, source_message_ids=source_message_ids,
+                             source_revision=source_revision)
                 await own.commit()
         return
     generation_id = result.get("generation_id")
@@ -223,6 +300,81 @@ async def commit(scope: str, result: dict, *, session_id: str | None, turn: int 
         decisions = logic.validate_proposals(proposals, await _list_memories(db, scope), evidence_text)
         for d in decisions:
             if d["action"] == "store":
+                kind = d.get("source_kind", "user_statement")
+                quote = evidence_text
+                supported = d["supported"]
+                if kind == "story_event":
+                    quote = result.get("reply", "")
+                    supported = logic.evidenced(d["content"], quote)
+                # Work canon is not verified by model text; only an explicit editor can confirm it.
+                if kind == "work_setting":
+                    supported = False
+                d.update(source_kind=kind, supported=supported, confirmation="unverified", source_quote=quote[:2000],
+                         source_revision=source_revision)
                 d["memory_id"] = await _create(db, scope, d["type"], d["content"], "model", d["supported"],
-                                                session_id, turn, generation_id)
+                                                session_id, turn, generation_id, source_kind=kind, source_quote=quote,
+                                                source_revision=source_revision,
+                                                source_message_ids=(source_message_ids[-1:] if kind == "story_event" else source_message_ids[:1]) if source_message_ids else [])
     trace["decisions"] = decisions
+
+
+async def invalidate(db, session_id, message_id=0):
+    """Invalidate memories and traces from edited turns before replacement memory commit."""
+    ids = [r[0] for r in await (await db.execute(
+        "SELECT generation_id FROM generations WHERE session_id=? AND (assistant_id>=? OR user_id>=?)",
+        (session_id, message_id, message_id))).fetchall()]
+    for generation_id in ids:
+        affected = await (await db.execute("SELECT id,scope FROM memories WHERE source_generation_id=? AND status='active'", (generation_id,))).fetchall()
+        await db.execute("UPDATE memories SET status='deleted' WHERE source_generation_id=?", (generation_id,))
+        await db.execute("DELETE FROM memory_events WHERE generation_id=?", (generation_id,))
+        for memory_id, scope in affected:
+            await _log(db, scope, "invalidate", memory_id, None, {"session_id": session_id, "message_id": message_id})
+
+
+async def scope_preview(settings):
+    await init()
+    async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
+        row = await (await db.execute("SELECT scope,identity_json FROM session_scopes WHERE session_id=?", (settings["session_id"],))).fetchone()
+    current = row[0] if row else await session_scope(settings)
+    identity = _identity(settings)
+    identity["versions"] = _asset_versions(settings)
+    target = "work:" + hashlib.sha256(json.dumps(identity, ensure_ascii=False, sort_keys=True).encode()).hexdigest() if settings.get("character_id") else f"session:{settings['session_id']}"
+    items = await list_memories(current)
+    return {"scope": current, "target_scope": target, "memories": items,
+            "preview_revision": _preview_digest(current, items, identity), "identity": identity,
+            "previous_identity": json.loads(row[1]) if row else identity}
+
+
+def _preview_digest(scope, items, identity):
+    return hashlib.sha256(json.dumps([scope, items, identity], sort_keys=True).encode()).hexdigest()
+
+
+async def migrate_scope(settings, expected_revision, share=False):
+    preview = await scope_preview(settings)
+    from .generations import transaction, Conflict
+    sid = settings["session_id"]
+    async with transaction() as db:
+        current = await _list_memories(db, preview["scope"])
+        digest = _preview_digest(preview["scope"], current, preview["identity"])
+        if digest != expected_revision:
+            raise Conflict("memory changed; preview migration again")
+        if await (await db.execute("SELECT 1 FROM generations WHERE session_id=? AND status='pending'", (sid,))).fetchone():
+            raise Conflict("stop generation before migrating memory")
+        target = chat_scope(settings.get("character_id"), settings.get("persona_id"), sid) if share else preview["target_scope"]
+        if target != preview["scope"]:
+            existing = {(m["content"], m["type"], m["source_kind"], m["source_generation_id"]) for m in await _list_memories(db, target)}
+            copied = 0
+            for memory in current:
+                key = (memory["content"], memory["type"], memory["source_kind"], memory["source_generation_id"])
+                if key in existing:
+                    continue
+                await _create(db, target, memory["type"], memory["content"], memory["origin"], memory["supported"],
+                              memory["source_session_id"], memory["source_turn"], memory["source_generation_id"],
+                              source_kind=memory["source_kind"], source_quote=memory["source_quote"],
+                              source_revision=memory["source_revision"], source_message_ids=memory["source_message_ids"],
+                              confirmation=memory["confirmation"])
+                existing.add(key)
+                copied += 1
+        await db.execute("UPDATE session_scopes SET scope=?,mode=?,identity_json=? WHERE session_id=?",
+                         (target, "shared" if share else "world", json.dumps(preview["identity"]), sid))
+    return {"scope": target, "copied": copied if target != preview["scope"] else 0}

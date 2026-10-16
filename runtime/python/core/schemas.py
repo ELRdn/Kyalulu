@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Literal
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 from .memory import MAX_PROPOSALS, MemoryProposal
+from .story import CastMember, RPGOptions
 
 RelationshipLevel = Literal["stranger", "acquaintance", "friend", "intimate", "partner"]
 Difficulty = Literal["easy", "medium", "hard"]
@@ -42,6 +43,8 @@ class WorldCard(BaseModel):
     display_name: str
     description: str = ""
     rules: str = ""  # 世界ルール
+    cast: list[CastMember] = Field(default_factory=list, max_length=12)
+    rpg: RPGOptions | None = None
 
 class RelationshipState(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
@@ -85,6 +88,7 @@ class RuntimeState(BaseModel):
     time: str = ""
     mood: str = ""
     active_scene: str = ""
+    rpg: dict = Field(default_factory=dict)
     relationship_state: RelationshipState = Field(default_factory=lambda: RelationshipState(
         stage="stranger", tone="neutral", unresolved_conflict=False))
 
@@ -219,3 +223,5 @@ class GenerationRecord(BaseModel):
     error: str | None
     mode: Literal['immersion', 'research']
     memory: dict | None = None
+    reasoning_summary: str | None = None
+    reasoning_summary_status: Literal['available', 'not_provided', 'unsupported'] = 'unsupported'

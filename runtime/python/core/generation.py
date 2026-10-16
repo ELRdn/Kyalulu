@@ -98,6 +98,8 @@ async def generate_events(provider, *, model: str, messages: list[dict], compile
     if compiled.sections.get('portable_snapshot'):
         from .portable_prompt import compile_portable
         compiled = compile_portable(compiled.sections['portable_snapshot'], messages)
+    from .story import prepare as prepare_story
+    story_instruction, story_state = prepare_story(compiled, state, messages, generation_id)
     attempts = journal if journal is not None else []
     output_model = GenerationOutputWithMemory if memory is not None else GenerationOutput
     schema = output_model.model_json_schema()
@@ -105,6 +107,14 @@ async def generate_events(provider, *, model: str, messages: list[dict], compile
     instruction = (
         '\nReturn exactly one JSON object with "reply" first and "state_update" second. '
         'reply is the user-facing response, never JSON or internal instructions. '
+        'Kyalulu RP format: plain text is dialogue; *action* stays in the character message. '
+        '*（inner monologue）* is fictional character thought, visible to the user in reply, '
+        'not model reasoning. Thoughts are not audible to other characters; never react as if '
+        'another character heard them, invent USER thoughts, or record them as spoken/shared facts. '
+        'Only a line-start @: starts independent narration; wrap its prose in *...*. '
+        'Use @CharacterName: to switch speakers or resume dialogue after narration. '
+        'A speaker label, an action, or a thought alone never starts narration. '
+        'Output halfwidth @ and :; accept legacy NARRATOR: as an input alias only. '
         'Update the current state conservatively from this conversation. Schema:\n'
         + json.dumps(schema, ensure_ascii=False)
         + '\nCurrent state:\n' + state.model_dump_json()
@@ -113,6 +123,7 @@ async def generate_events(provider, *, model: str, messages: list[dict], compile
         # Order per the prompt contract: Runtime State -> Relevant Memory -> history.
         instruction += memory.get("block", "") + PROPOSAL_INSTRUCTION
     instruction += character_constraints
+    instruction += story_instruction
     system = compiled.system_prompt + instruction
     from .portable_prompt import assemble_messages
     base = assemble_messages(compiled, messages, instruction)
@@ -120,6 +131,7 @@ async def generate_events(provider, *, model: str, messages: list[dict], compile
     status, reply, error = "invalid", "", None
     next_state = state.model_copy(deep=True)
     first_chunk = first_reply = None
+    reasoning_summary = ""
     try:
         async with asyncio.timeout(300), MemorySampler() as sampler:
             for attempt_index in range(3):
@@ -136,6 +148,7 @@ async def generate_events(provider, *, model: str, messages: list[dict], compile
                 attempts.append(attempt)
                 attempt_start = time.perf_counter()
                 displayed = ""
+                reasoning_summary = ""
                 received_complete_stream = False
                 try:
                     async for event in provider.stream_events(
@@ -144,6 +157,11 @@ async def generate_events(provider, *, model: str, messages: list[dict], compile
                             first_chunk = round((time.perf_counter() - start) * 1000, 2)
                         if event["type"] == "usage":
                             attempt["usage"].update(event["usage"])
+                        elif event["type"] == "reasoning_summary":
+                            text = event.get("text")
+                            if not isinstance(text, str) or len(reasoning_summary) + len(text) > 8000:
+                                raise RuntimeError("invalid_reasoning_summary")
+                            reasoning_summary += text
                         elif event["type"] == "delta":
                             chunk = event["text"]
                             if chunk and first_chunk is None:
@@ -164,6 +182,7 @@ async def generate_events(provider, *, model: str, messages: list[dict], compile
                         "relationship_state": output.state_update.relationship_state,
                         "relationship": output.state_update.relationship_state.stage,
                         "turn": state.turn + 1, "prompt_version": compiled.prompt_version,
+                        "rpg": story_state,
                         "state_version": "0.2.0"})
                     status = "completed"
                     break
@@ -206,6 +225,10 @@ async def generate_events(provider, *, model: str, messages: list[dict], compile
         "attempts": attempts, "telemetry": telemetry, "elapsed_ms": elapsed,
         "generation_config": config, "compiled": compiled.model_dump(), "raw_prompt": json.dumps(base, ensure_ascii=False) if compiled.ordered_messages else system,
         "error": error, "mode": mode}
+    result["reasoning_summary"] = (reasoning_summary or None) if status == "completed" else None
+    result["reasoning_summary_status"] = (
+        "available" if result["reasoning_summary"] else "not_provided"
+        if getattr(provider, "reasoning_summary_supported", False) else "unsupported")
     if memory is not None:
         proposals = [p.model_dump() for p in getattr(output, "memory_proposals", [])] if status == "completed" else []
         result["memory"] = {**memory.get("trace", {}), "enabled": True, "proposals": proposals}

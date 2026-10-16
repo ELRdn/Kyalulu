@@ -28,7 +28,7 @@ from python.providers.openrouter import OpenRouterProvider
 BASE = "https://openrouter.ai/api/v1"
 PROFILES = (
     ("ling", "inclusionai/ling-3.0-flash-vl", "deepinfra/fp16", "DeepInfra", "0.06", "0.18", None),
-    ("deepseek", "deepseek/deepseek-v4.1-flash", "inference-net", "InferenceNet", "0.02", "0.45", None),
+    ("deepseek", "deepseek/deepseek-v4.1-flash", "inference-net", "InferenceNet", "0.077", "0.4", None),
     ("glm", "z-ai/glm-5.3-flash", "deepinfra/fp4", "DeepInfra", "0.075", "0.25", "low"),
     ("muse", "meta/muse-spark-1.3-contributor", "meta", "Meta", "0.10", "0.20", "minimal"),
 )

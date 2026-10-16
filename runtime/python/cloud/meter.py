@@ -22,6 +22,8 @@ class CostMeter:
     def __init__(self, maximum):
         self.maximum, self.total, self.pending = maximum, 0, None
         self.uncertain = False
+        self.review_reason = None
+        self.provider_error = None
 
     def begin(self, bound, tariff=TARIFF):
         self.close_pending()
@@ -39,18 +41,30 @@ class CostMeter:
             actual = self.pending_tariff.cost(usage)
         except ValueError:
             self.uncertain = True
+            self.review_reason = "invalid_usage"
+            invalid_counters = any(k in usage and (type(usage[k]) is not int or usage[k] < 0)
+                                   for k in ("prompt_tokens", "completion_tokens", "prompt_cache_hit_tokens",
+                                             "prompt_cache_miss_tokens")) if isinstance(usage, dict) else True
+            if isinstance(usage, dict) and not invalid_counters and type(usage.get("prompt_tokens")) is int:
+                total, hit = usage["prompt_tokens"], usage.get("prompt_cache_hit_tokens", 0)
+                invalid_counters = hit > total or ("prompt_cache_miss_tokens" in usage
+                                                   and usage["prompt_cache_miss_tokens"] + hit != total)
             try:
                 actual = self.pending_tariff.known_cost(usage)
             except (AttributeError, ValueError):
                 # Unknown final cost retains the reservation and any earlier known bill.
                 actual = self.pending
+                self.review_reason = ("invalid_usage" if invalid_counters else
+                    "invalid_cost" if isinstance(usage, dict) and "cost_usd" in usage else "missing_cost")
         if actual < minimum_cost:
             self.uncertain = True
+            self.review_reason = "decreasing_cost"
             actual = minimum_cost
         if actual > self.pending:
             # Stop subsequent calls, but retain the known bill even above the
             # estimate. Settlement must record excess as an operator liability.
             self.uncertain = True
+            self.review_reason = "per_call_overrun"
             self.total += actual
             self.pending = None
             raise CloudError("provider_usage_exceeded_bound", 503)
@@ -62,25 +76,30 @@ class CostMeter:
             self.total += self.pending
             self.pending = None
             self.uncertain = True
+            self.review_reason = self.review_reason or "missing_usage"
 
 
 class MeteredProvider:
     def __init__(self, provider, meter, billable=True, tariff=TARIFF):
         self.provider, self.meter, self.billable = provider, meter, billable
         self.tariff = tariff
+        self.reasoning_summary_supported = getattr(provider, "reasoning_summary_supported", False)
+        self.max_output = getattr(provider, "max_output", MAX_OUTPUT)
 
     def generation_config(self, requested):
-        return self.provider.generation_config({**requested, "max_tokens": MAX_OUTPUT})
+        return self.provider.generation_config({**requested, "max_tokens": self.max_output})
 
     async def stream_events(self, prompt="", **kwargs):
         if self.billable:
-            self.meter.begin(call_bound(kwargs["messages"], tariff=self.tariff), self.tariff)
+            self.meter.begin(call_bound(kwargs["messages"], output=self.max_output, tariff=self.tariff), self.tariff)
         try:
             async for event in self.provider.stream_events(prompt, **kwargs):
                 if self.billable and event["type"] == "usage":
                     self.meter.finish(event["usage"], minimum_cost=event.get("minimum_cost", 0))
                 yield event
         except (RuntimeError, httpx.HTTPError, asyncio.CancelledError) as exc:
+            if str(exc) == "openrouter_http_429":
+                self.meter.provider_error = "provider_rate_limited"
             usage = getattr(exc, "openrouter_usage", None)
             if self.billable and self.meter.pending is not None and usage is not None:
                 try:

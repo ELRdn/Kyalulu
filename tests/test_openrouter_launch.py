@@ -68,7 +68,7 @@ async def test_pinned_route_and_actual_decimal_cost(tmp_path, model):
         assert payload["provider"]["allow_fallbacks"] is False
         assert payload["provider"]["data_collection"] == "deny"
         assert payload["provider"]["require_parameters"] is True
-        assert payload["provider"]["max_price"] == {"prompt": 0.02, "completion": 0.45}
+        assert payload["provider"]["max_price"] == {"prompt": 0.077, "completion": 0.66}
         assert payload["reasoning"] == {"enabled": False}
         assert payload["response_format"] == {"type": "json_object"}
         assert "models" not in payload and "tools" not in payload
@@ -151,15 +151,15 @@ async def test_selected_model_generation_settlement_and_replay(tmp_path, cost):
         result = await (await app.state.jobs.start(owner, req))
         if cost:
             assert result["status"] == "completed", result
-            assert result["charged_credits"] == TARIFF.credits(3 * 3001)
-            assert calls == [DEEPSEEK, DEEPSEEK, DEEPSEEK]
+            assert result["charged_credits"] == TARIFF.credits(3001)
+            assert calls == [DEEPSEEK]
         else:
             assert result["status"] == "failed" and result["charged_credits"] == 0
             assert calls == [DEEPSEEK]
         replay = await (await app.state.jobs.start(owner, req))
         assert replay["status"] == result["status"]
         assert replay["charged_credits"] == result["charged_credits"]
-        assert len(calls) == (3 if cost else 1)
+        assert len(calls) == 1
 
 
 def test_acceptance_gates_and_distinct_consent(tmp_path):
@@ -195,7 +195,7 @@ async def test_old_ui_cannot_authorize_new_provider_by_echoing_status(tmp_path):
         rejected=await client.post("/api/cloud/auth/login",json=stale,headers={"Origin":cfg.origin})
         assert rejected.status_code==403
         accepted=await client.post("/api/cloud/auth/login",json={**stale,
-            "provider_disclosure_version":provider_consent_version(cfg)},headers={"Origin":cfg.origin})
+            "provider_disclosure_version":provider_consent_version(cfg),"country":"JP"},headers={"Origin":cfg.origin})
         assert accepted.status_code==200
 
 

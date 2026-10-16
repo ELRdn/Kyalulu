@@ -3,6 +3,7 @@
 from dataclasses import asdict, dataclass
 from decimal import Decimal, ROUND_CEILING
 from typing import Literal
+from .model_choices import CHOICES
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,9 @@ ROUTES = {
     "cloud-standard": ExecutionRoute("cloud-standard", "Kyalulu Cloud Standard", "operator"),
     "byok-deepseek": ExecutionRoute("byok-deepseek", "DeepSeek · BYOK", "byok"),
 }
+ROUTES.update({key: ExecutionRoute(key, choice["display_name"], "operator",
+    provider="openrouter", model=choice["model"], version="2026-10-11")
+    for key, choice in CHOICES.items()})
 
 
 @dataclass(frozen=True)

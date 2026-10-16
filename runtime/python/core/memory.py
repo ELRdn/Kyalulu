@@ -23,6 +23,7 @@ from functools import lru_cache
 from pydantic import BaseModel, ConfigDict, Field
 
 MemoryType = Literal["semantic", "episodic", "relationship"]
+SourceKind = Literal["user_statement", "user_correction", "work_setting", "story_event"]
 MEMORY_TYPES = ("semantic", "episodic", "relationship")
 MAX_CONTENT = 200
 MAX_PROPOSALS = 3
@@ -42,6 +43,7 @@ class MemoryProposal(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     type: MemoryType
     content: str = Field(min_length=1, max_length=MAX_CONTENT)
+    source_kind: SourceKind = "user_statement"
 
 
 def normalize(text: str) -> str:
@@ -97,7 +99,9 @@ def retrieve(memories: list[dict], query: str, *, top_k: int = DEFAULT_TOP_K,
                       "recency": i, "version": m.get("version"), "supported": m.get("supported"),
                       "source_session_id": m.get("source_session_id"), "source_turn": m.get("source_turn"),
                       "created_at": m.get("created_at"), "updated_at": m.get("updated_at"),
-                      "origin": m.get("origin")} for i, m in enumerate(memories)), key=lambda c: (-c["score"], c["recency"]))
+                      "origin": m.get("origin"), **{k: m.get(k) for k in
+                          ("source_kind", "source_quote", "source_revision", "confirmation")}}
+                     for i, m in enumerate(memories)), key=lambda c: (-c["score"], c["recency"]))
     used = 0
     injected: list[dict] = []
     for c in ranked:
@@ -130,7 +134,9 @@ def retrieve(memories: list[dict], query: str, *, top_k: int = DEFAULT_TOP_K,
 def render_block(memories: list[dict]) -> str:
     if not memories:
         return ""
-    lines = [f"- [{m['type']}] {m['content']}" for m in memories]
+    lines = [f"- [{m['type']}] {m['content']}" +
+             (f" (source: {m['source_kind']}; story events are fictional, not user biography)" if m.get("source_kind") else "")
+             for m in memories]
     return ("\nRelevant memory (remembered from earlier conversation; use it naturally when it fits, "
             "do not recite it, and never invent memories that are not listed):\n" + "\n".join(lines))
 
@@ -141,6 +147,9 @@ PROPOSAL_INSTRUCTION = (
     "semantic = stable facts or preferences the user stated; episodic = something that happened or was "
     "promised; relationship = a change in how the two relate. Only propose what was actually said in "
     "this conversation, written in the conversation's language. Use [] when nothing new is worth keeping."
+    " Include source_kind: user_statement/user_correction for what the USER explicitly said; "
+    "story_event only for fictional narrative events; work_setting only for explicit canon. "
+    "Never promote the character's invented past, preferences or events into facts about the user."
 )
 
 
@@ -152,22 +161,24 @@ def validate_proposals(proposals: list[MemoryProposal], existing: list[dict], ev
     the Incorrectly Stored failure.
     """
     out = []
-    seen = [bigrams(m["content"]) for m in existing]
+    seen = [(bigrams(m["content"]), m.get("source_kind", "user_statement")) for m in existing
+            if m.get("supported") is not False or m.get("confirmation") == "user_confirmed"]
     evidence = bigrams(evidence_text)
     for p in proposals[:MAX_PROPOSALS]:
         content = " ".join(p.content.split())
         grams = bigrams(content)
-        decision = {"type": p.type, "content": content}
+        decision = {"type": p.type, "content": content, "source_kind": p.source_kind}
         if len(normalize(content)) < 2:
             decision["action"] = "skip"
             decision["reason"] = "too_short"
-        elif any(overlap(s, grams) >= DUPLICATE_OVERLAP and overlap(grams, s) >= DUPLICATE_OVERLAP for s in seen):
+        elif any(kind == p.source_kind and overlap(s, grams) >= DUPLICATE_OVERLAP and overlap(grams, s) >= DUPLICATE_OVERLAP
+                 for s, kind in seen):
             decision["action"] = "skip"
             decision["reason"] = "duplicate"
         else:
             decision["action"] = "store"
             decision["supported"] = overlap(evidence, grams) >= EVIDENCE_OVERLAP
-            seen.append(grams)
+            seen.append((grams, p.source_kind))
         out.append(decision)
     return out
 

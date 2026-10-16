@@ -13,7 +13,7 @@ import sqlite3
 import time
 from uuid import UUID
 
-from .contracts import PLANS, TARIFF
+from .contracts import PLANS, TARIFF, ROUTES
 
 
 class CloudError(ValueError):
@@ -49,6 +49,8 @@ CREATE INDEX IF NOT EXISTS credit_owner ON credit_lots(owner,expires);
 CREATE TABLE IF NOT EXISTS funds(id TEXT PRIMARY KEY, remaining INTEGER CHECK(remaining>=0), expires REAL, kind TEXT);
 CREATE TABLE IF NOT EXISTS quotes(id TEXT PRIMARY KEY, owner TEXT, fingerprint TEXT, max_credits INTEGER,
  max_cost INTEGER, expires REAL, route TEXT, tariff TEXT);
+CREATE TABLE IF NOT EXISTS quote_provider_tariffs(id TEXT PRIMARY KEY, version TEXT NOT NULL,
+ FOREIGN KEY(id) REFERENCES quotes(id) ON DELETE CASCADE);
 CREATE TABLE IF NOT EXISTS operations(owner TEXT, id TEXT, fingerprint TEXT, state TEXT, route TEXT,
  max_credits INTEGER, max_cost INTEGER, charged_credits INTEGER NOT NULL DEFAULT 0,
  actual_cost INTEGER NOT NULL DEFAULT 0, created REAL, PRIMARY KEY(owner,id));
@@ -70,6 +72,12 @@ CREATE TABLE IF NOT EXISTS billing_jobs(id TEXT PRIMARY KEY, hash TEXT, payload 
 CREATE TABLE IF NOT EXISTS backup_capacity(owner TEXT PRIMARY KEY, storage_bytes INTEGER, restore_days INTEGER, expires REAL);
 CREATE TABLE IF NOT EXISTS admin_grants(source TEXT PRIMARY KEY, owner TEXT, amount INTEGER, expires REAL);
 CREATE TABLE IF NOT EXISTS private_budgets(id TEXT PRIMARY KEY, prior_cost INTEGER);
+CREATE TABLE IF NOT EXISTS operator_fundings(source TEXT PRIMARY KEY, amount INTEGER NOT NULL,
+ days INTEGER NOT NULL, expires REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS credit_debts(owner TEXT, operation TEXT, amount INTEGER CHECK(amount>=0),
+ PRIMARY KEY(owner,operation));
+CREATE TABLE IF NOT EXISTS bounded_cost_retentions(owner TEXT, operation TEXT, reason TEXT,
+ observed_cost INTEGER, retained_cost INTEGER, created REAL, PRIMARY KEY(owner,operation));
 """
 
 
@@ -114,23 +122,46 @@ class CloudStore:
     def decrypt(self, value):
         return self.cipher.decrypt(value.encode()).decode()
 
-    def account(self, owner, *, consent=None):
+    def account(self, owner, *, consent=None, enroll=False):
         owner = str(UUID(owner))
         with self.transaction() as db:
             if consent:
-                if not db.execute("SELECT 1 FROM accounts WHERE id=?", (owner,)).fetchone():
+                is_new = not db.execute("SELECT 1 FROM accounts WHERE id=?", (owner,)).fetchone()
+                if is_new:
                     if db.execute("SELECT COUNT(*) FROM accounts").fetchone()[0] >= self.config.signup_limit:
                         raise CloudError("cloud_registration_capacity_reached", 503)
                 db.execute(
                     "INSERT INTO accounts(id,consent_version) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET consent_version=excluded.consent_version",
                     (owner, consent),
                 )
+                if is_new and enroll and self.config.trial_credits:
+                    self._trial(owner, db, required=True)
             row = db.execute("SELECT * FROM accounts WHERE id=?", (owner,)).fetchone()
             if not row:
                 raise CloudError("consent_required", 403)
             account = dict(row)
         account["plan"] = account["plan"] if account["plan_until"] > time.time() else "free"
         return account
+
+    def add_funds(self, amount, source, *, days=45):
+        """Offline single contributions; spent funds cannot be replenished by replay."""
+        if (type(amount) is not int or not 0 < amount <= 700_000_000
+                or not isinstance(source, str) or not source or len(source) > 128
+                or type(days) is not int or not 30 <= days <= 180):
+            raise CloudError("invalid_operator_funding")
+        with self.transaction() as db:
+            previous = db.execute("SELECT * FROM operator_fundings WHERE source=?", (source,)).fetchone()
+            if previous:
+                if previous["amount"] != amount or previous["days"] != days:
+                    raise CloudError("operator_funding_conflict", 409)
+                return {"funded": False, "amount_nano_usd": amount}
+            total = db.execute("SELECT COALESCE(SUM(amount),0) FROM operator_fundings").fetchone()[0]
+            if total + amount > 700_000_000:
+                raise CloudError("operator_funding_limit", 409)
+            expires = time.time() + days * 86400
+            db.execute("INSERT INTO operator_fundings VALUES(?,?,?,?)", (source, amount, days, expires))
+            db.execute("INSERT INTO funds VALUES(?,?,?,'operator')", ("operator:" + source, amount, expires))
+            return {"funded": True, "amount_nano_usd": amount}
 
     def entitlements(self, owner):
         return PLANS[self.account(owner)["plan"]]
@@ -154,10 +185,12 @@ class CloudStore:
         if db is None:
             with self.transaction() as con:
                 return self.balance(owner, con)
-        return db.execute(
+        credits = db.execute(
             "SELECT COALESCE(SUM(remaining),0) FROM credit_lots WHERE owner=? AND expires>?",
             (owner, time.time()),
         ).fetchone()[0]
+        debt = db.execute("SELECT COALESCE(SUM(amount),0) FROM credit_debts WHERE owner=?", (owner,)).fetchone()[0]
+        return max(0, credits - debt)
 
     def _subsidy(self, db):
         if self.config.private_test:
@@ -190,8 +223,9 @@ class CloudStore:
             # Unexpected charges require reconciliation before any more sends.
             return 0
         available = db.execute(
-            "SELECT COALESCE(SUM(remaining),0) FROM funds WHERE expires>? AND (?=0 OR id='private-test-budget')",
-            (time.time(), int(self.config.private_test))
+            "SELECT COALESCE(SUM(remaining),0) FROM funds WHERE expires>? "
+            "AND ((?=1 AND id='private-test-budget') OR (?=0 AND kind!='private'))",
+            (time.time(), int(self.config.private_test), int(self.config.private_test))
         ).fetchone()[0]
         debt = db.execute("SELECT COALESCE(SUM(amount),0) FROM budget_debt").fetchone()[0]
         return max(0, available - debt)
@@ -249,25 +283,33 @@ class CloudStore:
         if not self.config.trial_credits:
             return False
         with self.transaction() as db:
-            row = db.execute(
-                "SELECT trial_granted,suspended FROM accounts WHERE id=?", (owner,)
-            ).fetchone()
-            if not row or row[1]:
-                raise CloudError("account_unavailable", 403)
-            if row[0]:
-                return False
-            # Trial registration itself cannot create an unbounded unfunded liability.
-            liability = db.execute(
-                "SELECT COALESCE(SUM(remaining),0) FROM credit_lots WHERE kind IN ('trial','ad') AND expires>?",
-                (time.time(),),
-            ).fetchone()[0]
-            if self._available_funds(db) < (liability + self.config.trial_credits) * 100_000 // TARIFF.markup:
-                return False
-            self.grant(owner, self.config.trial_credits, time.time() + 30 * 86400, "trial", "trial:" + owner, db)
-            db.execute("UPDATE accounts SET trial_granted=1 WHERE id=?", (owner,))
-            return True
+            return self._trial(owner, db)
 
-    def quote(self, owner, request_hash, credits, cost, route):
+    def _trial(self, owner, db, *, required=False):
+        row = db.execute("SELECT trial_granted,suspended FROM accounts WHERE id=?", (owner,)).fetchone()
+        if not row or row[1]:
+            raise CloudError("account_unavailable", 403)
+        if row[0]:
+            return False
+        liability = db.execute("SELECT COALESCE(SUM(remaining),0) FROM credit_lots WHERE expires>?",
+                               (time.time(),)).fetchone()[0]
+        liability += db.execute("SELECT COALESCE(SUM(amount),0) FROM credit_holds").fetchone()[0]
+        needed = ((liability + self.config.trial_credits) * 100_000 + TARIFF.markup - 1) // TARIFF.markup
+        available = self._available_funds(db)
+        expires = time.time() + 30 * 86400
+        if not self.config.private_test and self.config.monthly_subsidy_jpy == 0:
+            durable = db.execute("SELECT COALESCE(SUM(remaining),0) FROM funds WHERE kind='operator' AND expires>=?",
+                                 (expires,)).fetchone()[0]
+            available = min(available, durable)
+        if available < needed:
+            if required:
+                raise CloudError("operator_budget_exhausted", 503)
+            return False
+        self.grant(owner, self.config.trial_credits, expires, "trial", "trial:" + owner, db)
+        db.execute("UPDATE accounts SET trial_granted=1 WHERE id=?", (owner,))
+        return True
+
+    def quote(self, owner, request_hash, credits, cost, route, *, provider_tariff=""):
         if type(credits) is not int or credits < 0 or type(cost) is not int or cost < 0:
             raise CloudError("invalid_quote")
         quote = secrets.token_urlsafe(24)
@@ -291,9 +333,10 @@ class CloudStore:
                     TARIFF.version,
                 ),
             )
+            db.execute("INSERT INTO quote_provider_tariffs VALUES(?,?)", (quote, provider_tariff))
         return quote
 
-    def reserve(self, owner, operation, request_hash, quote_id, maximum):
+    def reserve(self, owner, operation, request_hash, quote_id, maximum, *, provider_tariff=""):
         with self.transaction() as db:
             account = db.execute("SELECT suspended FROM accounts WHERE id=?", (owner,)).fetchone()
             if not account or account[0]:
@@ -308,19 +351,25 @@ class CloudStore:
                     raise CloudError("generation_pending", 409)
                 return dict(previous)
             q = db.execute(
-                "SELECT * FROM quotes WHERE id=? AND owner=?", (quote_id, owner)
+                "SELECT q.*, COALESCE(p.version,'') AS provider_tariff FROM quotes q "
+                "LEFT JOIN quote_provider_tariffs p ON q.id=p.id WHERE q.id=? AND q.owner=?", (quote_id, owner)
             ).fetchone()
             if (
                 not q
                 or q["expires"] <= time.time()
                 or q["fingerprint"] != request_hash
                 or q["tariff"] != TARIFF.version
+                or q["provider_tariff"] != provider_tariff
             ):
                 raise CloudError("quote_expired", 409)
             if type(maximum) is not int or maximum < q["max_credits"]:
                 raise CloudError("quote_not_accepted", 409)
-            if q["max_credits"] > self.balance(owner, db):
+            if q["max_credits"] and self.balance(owner, db) < 1:
                 raise CloudError("insufficient_credits", 402)
+            if db.execute("SELECT 1 FROM operations WHERE owner=? AND state='pending' LIMIT 1", (owner,)).fetchone():
+                raise CloudError("generation_pending", 409)
+            if q["max_credits"] > self.balance(owner, db):
+                raise CloudError("quote_expired", 409)
             if q["max_cost"] > self._available_funds(db):
                 raise CloudError("operator_budget_exhausted", 503)
             # Failed generations still incur provider cost: cap abuse independently of wallet.
@@ -343,12 +392,13 @@ class CloudStore:
                     TARIFF.markup,
                 ),
             )
-            self._hold(db, "credit_lots", "credit_holds", "lot", owner, operation, q["max_credits"])
             self._hold(db, "funds", "fund_holds", "fund", owner, operation, q["max_cost"])
             db.execute("DELETE FROM quotes WHERE id=?", (quote_id,))
             return None
 
     def _hold(self, db, table, holds, column, owner, operation, amount):
+        if amount == 0:
+            return
         query = f"SELECT id,remaining FROM {table} WHERE expires>? AND remaining>0"
         args = [time.time()]
         if table == "credit_lots":
@@ -369,7 +419,7 @@ class CloudStore:
         if amount:
             raise CloudError("funding_conflict", 409)
 
-    def settle(self, owner, operation, cost, *, success, uncertain=False, review_required=False):
+    def settle(self, owner, operation, cost, *, success, uncertain=False, review_required=False, review_reason=None):
         with self.transaction() as db:
             op = db.execute(
                 "SELECT * FROM operations WHERE owner=? AND id=?", (owner, operation)
@@ -382,6 +432,13 @@ class CloudStore:
                 raise CloudError("invalid_provider_cost", 503)
             if uncertain:
                 cost = max(cost, op["max_cost"])
+            if review_required and review_reason in {"missing_cost", "missing_usage"} and cost <= op["max_cost"]:
+                # Retain the entire bound instead of treating a missing invoice as zero.
+                db.execute("INSERT INTO bounded_cost_retentions VALUES(?,?,?,?,?,?)",
+                           (owner, operation, review_reason, cost, op["max_cost"], time.time()))
+                cost = op["max_cost"]
+                success = False
+                review_required = False
             if review_required:
                 success = False
             overrun = max(0, cost - op["max_cost"])
@@ -391,12 +448,26 @@ class CloudStore:
                     "provider-overrun:" + fingerprint({"owner": owner, "operation": operation}), overrun))
             charged = (
                 max(1, (cost * op["markup"] + 99_999) // 100_000)
-                if success and op["route"] == "cloud-standard"
+                if success and op["route"] in ROUTES and ROUTES[op["route"]].payer == "operator"
                 else 0
             )
             if charged > op["max_credits"]:
                 raise CloudError("credit_bound_exceeded", 503)
-            self._release(db, "credit_lots", "credit_holds", "lot", owner, operation, charged)
+            if db.execute("SELECT 1 FROM credit_holds WHERE owner=? AND operation=?", (owner, operation)).fetchone():
+                # Finish pre-upgrade reservations using their original held lots.
+                self._release(db, "credit_lots", "credit_holds", "lot", owner, operation, charged)
+            elif charged:
+                remaining = charged
+                for lot in db.execute("SELECT id,remaining FROM credit_lots WHERE owner=? AND expires>? "
+                                      "AND remaining>0 ORDER BY expires,id", (owner, time.time())).fetchall():
+                    used = min(remaining, lot["remaining"])
+                    db.execute("UPDATE credit_lots SET remaining=remaining-? WHERE id=?", (used, lot["id"]))
+                    remaining -= used
+                    if not remaining:
+                        break
+                if remaining:
+                    # Expiry/revocation during generation must not lose the settled charge.
+                    db.execute("INSERT INTO credit_debts VALUES(?,?,?)", (owner, operation, remaining))
             self._release(db, "funds", "fund_holds", "fund", owner, operation, min(cost, op["max_cost"]))
             db.execute(
                 "UPDATE operations SET state=?,charged_credits=?,actual_cost=?,review_required=? WHERE owner=? AND id=?",
@@ -440,19 +511,24 @@ class CloudStore:
         for op in pending:
             path = self.config.root / "tenants" / op["owner"] / "data.db"
             result = None
+            completed = False
             if path.is_file():
                 with sqlite3.connect(path) as db:
                     row = db.execute(
                         "SELECT status,result_json FROM generations WHERE generation_id=?",
                         (op["id"],),
                     ).fetchone()
-                    if row and row[0] == "completed":
+                    if row and row[0] in {"completed", "failed", "cancelled"}:
                         result = json.loads(row[1] or "{}").get("cloud_accounting")
-            if isinstance(result, dict):
-                self.settle(op["owner"], op["id"], result["cost"], success=True)
+                        completed = row[0] == "completed"
+            if (isinstance(result, dict) and type(result.get("cost")) is int and result["cost"] >= 0
+                    and type(result.get("review_required", False)) is bool):
+                self.settle(op["owner"], op["id"], result["cost"], success=completed,
+                            review_required=result.get("review_required", False), review_reason=result.get("review_reason"))
             else:
                 # A crash is not proof the provider did no work.
-                self.settle(op["owner"], op["id"], op["max_cost"], success=False, uncertain=True)
+                self.settle(op["owner"], op["id"], op["max_cost"], success=False,
+                            uncertain=True, review_required=True)
 
     def public_wallet(self, owner):
         account = self.account(owner)
@@ -466,12 +542,16 @@ class CloudStore:
             ]
             used = db.execute("SELECT COALESCE(SUM(charged_credits),0) FROM operations WHERE owner=?", (owner,)).fetchone()[0]
             reserved = db.execute("SELECT COALESCE(SUM(amount),0) FROM credit_holds WHERE owner=?", (owner,)).fetchone()[0]
+            balance = self.balance(owner, db)
+            debt = db.execute("SELECT COALESCE(SUM(amount),0) FROM credit_debts WHERE owner=?", (owner,)).fetchone()[0]
             history = [dict(row) for row in db.execute(
                 "SELECT state,created,charged_credits,max_credits FROM operations WHERE owner=? "
                 "AND route!='safety' ORDER BY created DESC LIMIT 20", (owner,))]
         return {
             "plan": account["plan"],
-            "credits": sum(r["remaining"] for r in lots),
+            "credits": balance,
+            "uncovered_credits": debt,
+            "credit_reservation": False,
             "lots": lots,
             "credits_per_usd": 10_000,
             "tariff_version": TARIFF.version,
@@ -558,6 +638,8 @@ class CloudStore:
 
     def reserve_safety(self, owner, operation, cost):
         """Free CRUD screening uses operator funds, never the user's wallet."""
+        from .router import safety_tariff
+        version = safety_tariff(self.config).version
         request_hash = digest(operation)
-        q = self.quote(owner, request_hash, 0, cost, "safety")
-        self.reserve(owner, operation, request_hash, q, 0)
+        q = self.quote(owner, request_hash, 0, cost, "safety", provider_tariff=version)
+        self.reserve(owner, operation, request_hash, q, 0, provider_tariff=version)
