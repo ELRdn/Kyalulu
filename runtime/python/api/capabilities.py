@@ -1,5 +1,5 @@
 """Execution capabilities describe implemented operations, not release acceptance."""
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 router = APIRouter()
 
@@ -17,5 +17,10 @@ def capabilities(*, cloud=False, community=False, media=False):
 
 
 @router.get("/capabilities")
-async def local_capabilities():
-    return capabilities()
+async def local_capabilities(request: Request):
+    from .mobile import local_admin
+    result = capabilities()
+    if not local_admin(request):
+        # Paired devices must not advertise operations outside the remote allowlist.
+        result["features"].update(branch=False, permanent_delete=False, summaries=False)
+    return result
