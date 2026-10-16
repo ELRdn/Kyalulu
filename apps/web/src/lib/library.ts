@@ -6,7 +6,7 @@ export * from '../../../../packages/schemas/src/portable';
 
 export async function libraryRequest(url: string, init?: RequestInit) {
   const epoch = isCloud() ? cloudEpoch() : null;
-  // Cloud writes include SFW screening; a client deadline cannot undo a save.
+  // A client deadline cannot undo a save.
   const timeout = !init?.method || init.method.toUpperCase() === 'GET' ? AbortSignal.timeout(30000) : null;
   const signal = timeout ? init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout : init?.signal;
   const r = await fetch(url, { cache: 'no-store', ...init, signal });
@@ -32,8 +32,15 @@ export async function saveLibraryItem(document: PortableDocument, item?: Library
   if (requestId) init.headers = { ...init.headers, 'Idempotency-Key': requestId };
   return LibraryItemSchema.parse(await libraryRequest(item ? `/api/library/${item.id}` : '/api/library', init));
 }
-export async function uploadAsset(file: File) {
+export async function uploadAsset(file: File, options?: { rights_confirmed: boolean }) {
+  if (options) {
+    if (isCloud()) throw Error('クラウドへの音声・動画追加は現在利用できません。');
+    if (!options.rights_confirmed) throw Error('この媒体を使用する権利を確認してください。');
+    if (!['audio/wav', 'video/mp4'].includes(file.type)) throw Error('WAV音声・MP4動画を選んでください。');
+    if (!file.size || file.size > 32 * 1024 * 1024) throw Error('32MiB以下の媒体を選んでください。');
+  }
   const body = new FormData(); body.set('file', file);
+  if (options) body.set('rights_confirmed', String(options.rights_confirmed));
   return PortableAssetSchema.parse(await libraryRequest('/api/library/assets', { method: 'POST', body }));
 }
 export const assetUrl = (id?: string | null) => id ? `/api/library/assets/${id}` : undefined;

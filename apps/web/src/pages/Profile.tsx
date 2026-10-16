@@ -24,6 +24,7 @@ import CloudSettings from '../components/CloudSettings';
 import LocalCloudSync from '../components/LocalCloudSync';
 import Button from '../components/ui/Button';
 import { useAccountProfile, refreshAccountProfile } from '../lib/accountProfile';
+import { friendlyMessage } from '../lib/errors';
 
 export default function Profile() {
   const administrative = useAdministrative();
@@ -38,6 +39,9 @@ export default function Profile() {
   const [adult, setAdult] = useAdultContent();
   const savedIds = useSavedCharacters();
   const [characters, setCharacters] = useState<CharacterInfo[]>([]);
+  const [loadError, setLoadError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [retry, setRetry] = useState(0);
   const [confirmDialog, confirm] = useConfirm();
   const location = useLocation();
   useDocumentTitle("プロフィール");
@@ -69,16 +73,13 @@ export default function Profile() {
   }, [displayName]);
 
   useEffect(() => {
-    fetchSessions()
-      .then(setSessions)
-      .catch(() => setSessions([]));
-  }, []);
-
-  useEffect(() => {
-    fetchCharacters(adult)
-      .then(setCharacters)
-      .catch(() => setCharacters([]));
-  }, [adult]);
+    let active = true; setLoadError(''); setLoading(true);
+    Promise.all([fetchSessions(), fetchCharacters(adult)]).then(([sessions, characters]) => {
+      if (active) { setSessions(sessions); setCharacters(characters); }
+    }).catch(error => { if (active) setLoadError(friendlyMessage(error)); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [adult, retry]);
 
   const savedCharacters = savedIds.map((id) => characters.find((c) => c.id === id)).filter((c): c is CharacterInfo => !!c);
   const pinnedSessions = sessions.filter((s) => pinned.includes(s.session_id));
@@ -89,6 +90,7 @@ export default function Profile() {
   return (
     <div className="k-page" style={{ maxWidth: 780 }}>
       {confirmDialog}
+      {loadError && <p role="alert">{loadError}<Button size="sm" variant="secondary" onClick={() => setRetry(value => value + 1)}>再読込</Button></p>}
       {!cloud_mode && <ConnectionSettings />}
       {administrative && <RemoteHostSettings />}
       <DeviceRegistration />
@@ -117,11 +119,11 @@ export default function Profile() {
           {cloud_mode && accountSync.error && <div className="k-profile-card__note" role="alert">{accountSync.error}
             <Button size="sm" variant="ghost" onClick={()=>void refreshAccountProfile()}>再読み込み</Button></div>}
         </div>
-        <div className="k-profile-stats">
+        {loading ? <p role="status">会話の集計を読み込んでいます…</p> : !loadError && <div className="k-profile-stats">
           <Stat value={talked.length} label="会話" />
           <Stat value={characterCount} label="出会ったキャラ" />
           <Stat value={messageCount} label="メッセージ" />
-        </div>
+        </div>}
       </section>
 
       <CloudSettings />

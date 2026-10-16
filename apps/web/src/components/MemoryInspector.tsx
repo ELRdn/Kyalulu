@@ -1,6 +1,7 @@
 import type { MemoryTrace } from "../lib/api";
 import { MEMORY_TYPE_LABEL } from "./MemoryPanel";
 import "./memory.css";
+import MemorySource from './MemorySource';
 
 const DECISION: Record<string, string> = {
   injected: "注入",
@@ -21,6 +22,7 @@ export default function MemoryInspector({ trace }: { trace: MemoryTrace | null |
   const evidenced = new Set(trace.evidenced ?? []);
   return (
     <div className="k-meminspect">
+      <p>語句の一致・返答への反映は参考情報です。supportedは事実性や出典の正しさの証明ではありません。</p>
       <div className="k-meminspect__stats">
         <span>scope: {trace.scope}</span>
         <span>保存 {trace.stored_count}</span>
@@ -35,6 +37,7 @@ export default function MemoryInspector({ trace }: { trace: MemoryTrace | null |
           <span>{c.score.toFixed(2)}</span>
           <span className="k-meminspect__content">
             [{MEMORY_TYPE_LABEL[c.type]}] {c.content}
+            <MemorySource memory={c} />
             {evidenced.has(c.id) && <span className="k-meminspect__flag" title="返答が記憶の言葉を含む（推定であり因果の証明ではない）">反映</span>}
             {c.version != null && <small style={{ display: "block", overflowWrap: "anywhere", color: "var(--text-muted)" }}>
               版{c.version} · {c.origin === "model" ? "会話からの提案" : "手動保存"}
@@ -51,8 +54,8 @@ export default function MemoryInspector({ trace }: { trace: MemoryTrace | null |
           {trace.decisions!.map((d, i) => (
             <div key={i} className="k-meminspect__row">
               <span className="k-meminspect__decision">{d.action === "store" ? "保存" : `見送り(${SKIP[d.reason ?? ""] ?? d.reason})`}</span>
-              <span>{d.action === "store" ? (d.supported ? "根拠◯" : "根拠?") : ""}</span>
-              <span className="k-meminspect__content">[{MEMORY_TYPE_LABEL[d.type]}] {d.content}</span>
+              <span title="事実性の証明ではありません">{d.action === "store" ? (d.supported ? "語句一致あり" : "語句一致未確認") : ""}</span>
+              <span className="k-meminspect__content">[{MEMORY_TYPE_LABEL[d.type]}] {d.content}<MemorySource memory={d} /></span>
             </div>
           ))}
         </>

@@ -1,0 +1,7 @@
+.k-model-selector { display: grid; gap: 8px; min-width: 0; }
+.k-model-selector .k-input { min-width: 0; }
+.k-model-selector p { margin: 0; }
+.k-model-selector__info { display: grid; gap: 8px; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.k-model-selector__details summary { cursor: pointer; color: var(--text-secondary); }
+.k-model-selector__details[open] summary { margin-bottom: 8px; }
+.k-model-selector__details > div + div { margin-top: 6px; }

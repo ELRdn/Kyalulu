@@ -1,0 +1,51 @@
+.k-reply-wait {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.k-reply-wait__art {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.k-reply-wait__art img {
+  display: block;
+  object-fit: contain;
+  transform-origin: 50% 85%;
+  animation: k-reply-wait-sway 3s ease-in-out infinite;
+}
+
+.k-reply-wait__dots { display: flex; gap: 4px; }
+.k-reply-wait__dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent-secondary);
+  animation: k-reply-wait-dot 1.8s ease-in-out infinite;
+}
+.k-reply-wait__dots i:nth-child(2) { animation-delay: 0.2s; }
+.k-reply-wait__dots i:nth-child(3) { animation-delay: 0.4s; }
+.k-reply-wait__text { display: grid; gap: 2px; min-width: 0; }
+.k-reply-wait__diagnostic { color: var(--text-muted); overflow-wrap: anywhere; }
+
+@keyframes k-reply-wait-sway {
+  0%, 100% { transform: rotate(-2deg); }
+  50% { transform: rotate(2deg); }
+}
+
+@keyframes k-reply-wait-dot {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .k-reply-wait__art img,
+  .k-reply-wait__dots i { animation: none; }
+}

@@ -3,6 +3,8 @@ import {fetchCharacters,streamChat} from './api';
 import {setCloud,setCloudOwner} from './cloudMode';
 import {scopedKey} from './remoteStore';
 import {cloudJson} from './cloud';
+import type { CloudQuote } from './quoteConsent';
+import { QuoteConsent } from './quoteConsent';
 afterEach(()=>{setCloud(false);vi.unstubAllGlobals();vi.restoreAllMocks();});
 it.each([200,409])('rejects cloud HTTP %s after an owner change during JSON body reading',async status=>{
   setCloud(true);setCloudOwner('a');
@@ -61,46 +63,118 @@ it('preserves the local catalog adult-content request',async()=>{
   await fetchCharacters(true);
   expect(fetch.mock.calls[0][0]).toBe('/api/characters?include_nsfw=true');
 });
-it('reserves only after explicit maximum confirmation and keeps the durable ID',async()=>{
+it('automatically sends ordinary quotes, reports their cap and keeps the durable ID',async()=>{
   setCloud(true);
   const fetch=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({quote_id:'q',max_credits:91,route:{display_name:'Cloud Standard',provider:'deepseek',model:'deepseek-flash'}})))
     .mockResolvedValueOnce(new Response('event: done\ndata: {"full":"safe"}\n\n'));
-  vi.stubGlobal('fetch',fetch);const confirm=vi.fn((_message:string)=>true);vi.stubGlobal('window',{confirm});
+  vi.stubGlobal('fetch',fetch);const confirm=vi.fn(async (_quote:CloudQuote)=>false);const shown=vi.fn();
   await new Promise<void>((resolve,reject)=>streamChat('cloud-standard',[{role:'user',content:'hi'}],{generation_id:'g'},
-    {onToken:vi.fn(),onDone:()=>resolve(),onError:error=>reject(Error(error))}));
-  expect(confirm.mock.calls[0][0]).toContain('91 K-Credits');
+    {confirmQuote:confirm,onQuote:shown,onToken:vi.fn(),onDone:()=>resolve(),onError:error=>reject(Error(error))}));
+  expect(confirm).not.toHaveBeenCalled();
+  expect(shown).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({max_credits:91}));
+  expect(fetch).toHaveBeenCalledTimes(2);
   expect(JSON.parse(fetch.mock.calls[1][1].body)).toMatchObject({generation_id:'g',quote_id:'q',max_credits:91});
 });
-it('declined quotes never POST a generation',async()=>{
-  setCloud(true);const fetch=vi.fn().mockResolvedValue(new Response(JSON.stringify({quote_id:'q',max_credits:1,route:{display_name:'Cloud',provider:'deepseek',model:'deepseek-flash'}})));
-  vi.stubGlobal('fetch',fetch);vi.stubGlobal('window',{confirm:()=>false});const rejected=vi.fn();
-  await new Promise<void>(resolve=>streamChat('cloud-standard',[],{}, {onToken:vi.fn(),onRejected:rejected,onError:()=>resolve()}));
+it('declined training-required quotes never POST a generation',async()=>{
+  setCloud(true);const fetch=vi.fn().mockResolvedValue(new Response(JSON.stringify({quote_id:'q',max_credits:1,route:{display_name:'Baidu',provider:'openrouter',model:'deepseek-flash',training_consent_required:true}})));
+  vi.stubGlobal('fetch',fetch);const rejected=vi.fn();
+  await new Promise<void>(resolve=>streamChat('cloud-standard',[],{}, {confirmQuote:async()=>false,onToken:vi.fn(),onRejected:rejected,onError:()=>resolve()}));
   expect(rejected).toHaveBeenCalledOnce();expect(fetch).toHaveBeenCalledOnce();
+});
+it('sends an ordinary quote without either optional quote callback', async () => {
+  setCloud(true);
+  const fetch = vi.fn().mockResolvedValueOnce(Response.json({ quote_id: 'ordinary', max_credits: 5,
+    route: { display_name: 'Cloud', provider: 'openrouter', model: 'fixture', training_consent_required: false } }))
+    .mockResolvedValueOnce(new Response('event: done\ndata: {"full":"safe"}\n\n'));
+  vi.stubGlobal('fetch', fetch);
+  await new Promise<void>((resolve, reject) => streamChat('cloud', [], {}, {
+    onToken: vi.fn(), onDone: () => resolve(), onError: error => reject(Error(error)),
+  }));
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(JSON.parse(fetch.mock.calls[1][1].body)).toMatchObject({ quote_id: 'ordinary', max_credits: 5, provider_training_consent: false });
+});
+it.each(['expiry', 'identity', 'abort', 'invalid'] as const)('rejects an ordinary quote on %s without dispatch or retry', async reason => {
+  setCloud(true); setCloudOwner('a');
+  const fetch = vi.fn().mockResolvedValue(Response.json({ quote_id: 'ordinary', max_credits: reason === 'invalid' ? -1 : 5,
+    expires_in: 1, route: { display_name: 'Cloud', provider: 'openrouter', model: 'fixture' } }));
+  vi.stubGlobal('fetch', fetch);
+  const now = Date.now(); vi.spyOn(Date, 'now').mockReturnValue(now);
+  const rejected = vi.fn(); const dispatch = vi.fn(); const shown = vi.fn(() => {
+    if (reason === 'expiry') vi.mocked(Date.now).mockReturnValue(now + 1000);
+    if (reason === 'identity') setCloudOwner('b');
+    if (reason === 'abort') stop();
+  });
+  const stop = streamChat('cloud', [], {}, { onToken: vi.fn(), onQuote: shown, onDispatch: dispatch, onRejected: rejected });
+  await vi.waitFor(() => expect(rejected).toHaveBeenCalledOnce());
+  expect(shown).toHaveBeenCalledTimes(reason === 'invalid' ? 0 : 1);
+  expect(dispatch).not.toHaveBeenCalled(); expect(fetch).toHaveBeenCalledOnce();
+});
+it.each([true, false])('Baidu consent sends only after confirmation (accept=%s)', async accepted => {
+  setCloud(true);
+  const preview = { quote_id: 'baidu-q', max_credits: 12, route: { display_name: 'Baidu', provider: 'openrouter',
+    upstream: 'Baidu', model: 'deepseek', training: true, retains_prompts: true, training_consent_required: true } };
+  const fetch = vi.fn().mockResolvedValueOnce(Response.json(preview))
+    .mockResolvedValueOnce(new Response('event: done\ndata: {"full":"safe"}\n\n'));
+  vi.stubGlobal('fetch', fetch);
+  const shown = vi.fn(); const consent = new QuoteConsent(shown); const rejected = vi.fn();
+  const completed = new Promise<void>((resolve, reject) => streamChat('cloud-deepseek-baidu', [], { provider_training_consent: true }, {
+    confirmQuote: consent.request, onToken: vi.fn(), onDone: () => resolve(), onRejected: rejected,
+    onError: error => accepted ? reject(Error(error)) : resolve(),
+  }));
+  await vi.waitFor(() => expect(shown).toHaveBeenCalledOnce());
+  expect(JSON.parse(fetch.mock.calls[0][1].body)).not.toHaveProperty('provider_training_consent');
+  consent.accept(); // Even prefilled caller options cannot bypass the unchecked quote.
+  expect(fetch).toHaveBeenCalledOnce();
+  consent.acknowledgeProviderTraining('baidu-q', true);
+  expect(fetch).toHaveBeenCalledOnce(); // The checkbox alone does not send.
+  if (accepted) consent.accept(); else consent.cancel();
+  await completed;
+  if (accepted) {
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetch.mock.calls[1][1].body)).toMatchObject({ quote_id: 'baidu-q', provider_training_consent: true });
+    expect(rejected).not.toHaveBeenCalled();
+  } else {
+    expect(fetch).toHaveBeenCalledOnce(); expect(rejected).toHaveBeenCalledOnce();
+  }
+});
+it('does not grant provider training on a nontraining quote even with stale caller consent', async () => {
+  setCloud(true);
+  const fetch = vi.fn().mockResolvedValueOnce(Response.json({ quote_id: 'flex-q', max_credits: 12,
+    route: { display_name: 'Flex', provider: 'openrouter', upstream: 'OpenAI', model: 'GPT', training: false, training_consent_required: false, retains_prompts: true } }))
+    .mockResolvedValueOnce(new Response('event: done\ndata: {"full":"safe"}\n\n'));
+  vi.stubGlobal('fetch', fetch);
+  await new Promise<void>((resolve, reject) => streamChat('cloud-gpt-luna-flex', [], { provider_training_consent: true }, {
+    confirmQuote: async () => true, onToken: vi.fn(), onDone: () => resolve(), onError: error => reject(Error(error)),
+  }));
+  expect(JSON.parse(fetch.mock.calls[1][1].body).provider_training_consent).toBe(false);
 });
 it('browser recovery/model caches use distinct account scopes',()=>{
   vi.stubGlobal('window',{location:{origin:'https://cloud.test'}});setCloud(true);setCloudOwner('a');const a=scopedKey('model');
   setCloudOwner('b');expect(scopedKey('model')).not.toBe(a);
 });
-it('shows the pinned upstream and keeps training consent in the quoted request',async()=>{
+it('reports the pinned upstream without confirmation and preserves contributor options',async()=>{
   setCloud(true);
   const fetch=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({quote_id:'q',max_credits:1,route:{display_name:'Cloud',provider:'openrouter',upstream:'InferenceNet',model:'deepseek/deepseek-v4.1-flash'}})))
     .mockResolvedValueOnce(new Response('event: done\ndata: {"full":"safe"}\n\n'));
-  vi.stubGlobal('fetch',fetch);const confirm=vi.fn((_message:string)=>true);vi.stubGlobal('window',{confirm});
+  vi.stubGlobal('fetch',fetch);const confirm=vi.fn(async (_quote:CloudQuote)=>true);const shown=vi.fn();
   await new Promise<void>((resolve,reject)=>streamChat('cloud-standard',[{role:'user',content:'hi'}],{route_profile:'auto',contributor_training_consent:false},
-    {onToken:vi.fn(),onDone:()=>resolve(),onError:error=>reject(Error(error))}));
-  expect(confirm.mock.calls[0][0]).toContain('openrouter / InferenceNet');
+    {confirmQuote:confirm,onQuote:shown,onToken:vi.fn(),onDone:()=>resolve(),onError:error=>reject(Error(error))}));
+  expect(confirm).not.toHaveBeenCalled();
+  expect(shown.mock.calls[0][0].route).toMatchObject({provider:'openrouter',upstream:'InferenceNet'});
   expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({route_profile:'auto',contributor_training_consent:false});
   expect(JSON.parse(fetch.mock.calls[1][1].body).contributor_training_consent).toBe(false);
 });
-it('keeps the integer credit reservation for a funded private account',async()=>{
+it('preserves the quoted spend cap while settling a lower actual charge without a hold',async()=>{
   setCloud(true);
-  const fetch=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({quote_id:'private-q',max_credits:120,
+  const fetch=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({quote_id:'private-q',max_credits:120,credit_reservation:false,safety_screening:false,
     route:{display_name:'Cloud',provider:'openrouter',upstream:'InferenceNet',model:'deepseek/deepseek-v4.1-flash'}})))
     .mockResolvedValueOnce(new Response('event: done\ndata: {"full":"safe","charged_credits":3}\n\n'));
-  vi.stubGlobal('fetch',fetch);const confirm=vi.fn((_message:string)=>true);vi.stubGlobal('window',{confirm});
+  vi.stubGlobal('fetch',fetch);const shown=vi.fn();
+  const done=vi.fn();
   await new Promise<void>((resolve,reject)=>streamChat('cloud-standard',[{role:'user',content:'hi'}],{},
-    {onToken:vi.fn(),onDone:()=>resolve(),onError:error=>reject(Error(error))}));
-  expect(confirm.mock.calls[0][0]).toContain('120 K-Credits');
-  expect(confirm.mock.calls[0][0]).not.toContain('BYOKの提供元');
+    {onQuote:shown,onToken:vi.fn(),onDone:(full,meta)=>{done(full,meta);resolve();},onError:error=>reject(Error(error))}));
+  expect(shown.mock.calls[0][0].max_credits).toBe(120);
+  expect(shown.mock.calls[0][0]).toMatchObject({credit_reservation:false,safety_screening:false});
   expect(JSON.parse(fetch.mock.calls[1][1].body)).toMatchObject({quote_id:'private-q',max_credits:120});
+  expect(done).toHaveBeenCalledWith('safe',expect.objectContaining({charged_credits:3}));
 });

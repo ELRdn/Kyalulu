@@ -1,5 +1,5 @@
-import { lazy, Suspense, type ReactNode } from "react";
-import { Routes, Route } from "react-router-dom";
+import { lazy, Suspense, useEffect, type ReactNode } from "react";
+import { Routes, Route, useLocation } from "react-router-dom";
 import AppShell from "./layout/AppShell";
 import Home from "./pages/Home";
 import Discover from "./pages/Discover";
@@ -8,7 +8,8 @@ import ActiveChat from "./pages/ActiveChat";
 import CharacterEntry from "./pages/CharacterEntry";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
-import { useAdministrative } from './components/RuntimeGate';
+import { useAdministrative, useRuntimeAccess } from './components/RuntimeGate';
+import { subscribeAppAnalyticsPageView, syncAppAnalytics } from './lib/analytics';
 
 // 制作・検証向けの画面は初回表示に不要なので分割して遅延読み込みする
 const Create = lazy(() => import("./pages/Create"));
@@ -17,6 +18,8 @@ const ResearchPage = lazy(() => import("./pages/Research"));
 const Status = lazy(() => import("./pages/Status"));
 const CreatorSettings = lazy(() => import("./pages/CreatorSettings"));
 const BenchmarkLab = lazy(() => import("./pages/BenchmarkLab"));
+const PublicWork = lazy(() => import('./pages/PublicWork'));
+const PublicAuthor = lazy(() => import('./pages/PublicAuthor'));
 
 const deferred = (node: ReactNode) => <Suspense fallback={<div className="k-page" aria-busy="true" />}>{node}</Suspense>;
 function AdminPage({ children }: { children: ReactNode }) {
@@ -24,11 +27,18 @@ function AdminPage({ children }: { children: ReactNode }) {
 }
 
 export default function App() {
+  const location = useLocation();
+  const { cloud_mode } = useRuntimeAccess();
+  useEffect(() => { syncAppAnalytics(); }, [cloud_mode]);
+  useEffect(() => subscribeAppAnalyticsPageView(location.key, location.pathname), [location.key, location.pathname, cloud_mode]);
   return (
+    <>
     <Routes>
       <Route element={<AppShell />}>
         <Route path="/" element={<Home />} />
         <Route path="/discover" element={<Discover />} />
+        <Route path="/works/:workId" element={deferred(<PublicWork />)} />
+        <Route path="/authors/:authorId" element={deferred(<PublicAuthor />)} />
         <Route path="/chats" element={<ChatsLanding />} />
         <Route path="/chats/:sessionId" element={<ActiveChat />} />
         <Route path="/characters/:characterId" element={<CharacterEntry />} />
@@ -42,5 +52,6 @@ export default function App() {
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
+    </>
   );
 }

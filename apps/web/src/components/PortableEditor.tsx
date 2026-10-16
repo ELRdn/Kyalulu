@@ -7,6 +7,10 @@ import { isCloud } from '../lib/cloudMode';
 import { useRuntimeAccess } from './RuntimeGate';
 import ScenePreview from './ScenePreview';
 import './portableEditor.css';
+import PortableMedia from './PortableMedia';
+import { playableAsset } from '../lib/media';
+import { useCapabilities } from '../lib/capabilities';
+import { connectionScope } from '../lib/remoteStore';
 
 const tabs = [
   { key: 'plot', label: 'プロット' },
@@ -50,6 +54,11 @@ function JsonField({ label, value, onChange, onValidity }: { label: string; valu
 export default function PortableEditor({ document: doc, onChange, onValidity, library = [] }: { document: PortableDocument; onChange: (d: PortableDocument) => void; onValidity: (valid: boolean) => void; library?: LibraryItem[] }) {
   const { cloud_mode } = useRuntimeAccess();
   const cloud = !!cloud_mode || isCloud();
+  const { capabilities } = useCapabilities();
+  const mediaEnabled = !cloud && capabilities?.mode === 'local' && capabilities.features.media_playback;
+  const [mediaRights, setMediaRights] = useState(false);
+  const [music, setMusic] = useState(false);
+  const uploadBusy = useRef(false);
   const id = useId();
   const [activeTab, setActiveTab] = useState<Tab>('plot');
   const tabRefs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({});
@@ -89,7 +98,7 @@ export default function PortableEditor({ document: doc, onChange, onValidity, li
   const tags: unknown[] = Array.isArray(doc.data.tags) ? doc.data.tags : [];
   const invalid = (key: string) => (ok: boolean) => setErrors(x => x[key] === !ok ? x : ({ ...x, [key]: !ok }));
   const addTag = () => { const tag = tagDraft.trim(); if (!tag) return; if (!tags.includes(tag)) data('tags', [...tags, tag]); setTagDraft(''); };
-  const portrait = assetUrl(doc.assets.find(a => a.type === 'icon')?.asset_id ?? doc.assets[0]?.asset_id);
+  const portrait = assetUrl(doc.assets.find(a => a.type === 'icon' && !/^(audio|video)\//.test(a.media_type))?.asset_id ?? doc.assets.find(a => a.media_type.startsWith('image/'))?.asset_id);
   const previewGreeting = previewIndex >= 0 && typeof greetings[previewIndex] === 'string' ? greetings[previewIndex] as string : text('first_mes');
   const panelHidden = (tab: Tab) => doc.kind === 'character' ? activeTab !== tab : tab === 'plot' ? false : tab === 'lore' ? doc.kind !== 'lorebook' : tab === 'details' ? false : true;
   const tabCounts: Partial<Record<Tab, string>> = { lore: `${entries.length}`, intro: `${1 + greetings.length}`, about: `${doc.assets.length}` };
@@ -171,22 +180,55 @@ export default function PortableEditor({ document: doc, onChange, onValidity, li
         <div className="k-plot-editor__tags">{tags.map((tag, index) => typeof tag === 'string' && <span className="k-plot-editor__tag" key={index}>{tag}<button type="button" aria-label={`タグ「${tag}」を外す`} onClick={() => data('tags', tags.filter((_, i) => i !== index))}>×</button></span>)}</div>
         <div className="k-plot-editor__tag-input"><Input aria-label="追加するタグ" value={tagDraft} placeholder="例：ファンタジー" onChange={e => setTagDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) { e.preventDefault(); addTag(); } }} /><Button type="button" variant="secondary" disabled={!tagDraft.trim()} onClick={addTag}>追加</Button></div>
       </Panel>
-      <Panel title="画像・表情・背景" hint="画像の名前と、会話での用途を設定します。" count={`${doc.assets.length}件`}>
-        <div className="k-create-assets">{doc.assets.map((asset, index) => <figure key={index}>{asset.asset_id ? <RuntimeImage src={assetUrl(asset.asset_id)} alt={asset.name} loading="lazy" /> : <p className="k-plot-editor__external">外部参照（自動取得しません）<br />{asset.uri}</p>}<figcaption><Input aria-label={`画像名 ${index + 1}`} value={asset.name} onChange={e => set({ assets: doc.assets.map((v, i) => i === index ? { ...v, name: e.target.value } : v) })} /><div className="k-plot-editor__asset-types" role="group" aria-label={`画像の用途 ${index + 1}`}>{(['icon', 'emotion', 'background'] as const).map(type => <button type="button" key={type} aria-pressed={asset.type === type} onClick={() => set({ assets: doc.assets.map((v, i) => i === index ? { ...v, type } : v) })}>{type === 'icon' ? 'アイコン' : type === 'emotion' ? '表情' : '背景'}</button>)}{!['icon', 'emotion', 'background'].includes(asset.type) && <span className="k-plot-editor__tag">{asset.type}</span>}</div><Button type="button" variant="ghost" size="sm" aria-label={`画像 ${index + 1}を外す`} onClick={() => set({ assets: doc.assets.filter((_, i) => i !== index) })}>画像を外す</Button></figcaption></figure>)}</div>
+      <Panel title="画像・表情・背景・音声・動画" hint="持ち込み媒体の名前と、会話での用途を設定します。" count={`${doc.assets.length}件`}>
+        <div className="k-create-assets">{doc.assets.map((asset, index) => {
+          const kind = playableAsset(asset)?.kind;
+          const image = kind === 'image' || !/^(audio|video)\//.test(asset.media_type) && ['icon', 'emotion', 'background'].includes(asset.type);
+          const types = image ? ['icon', 'emotion', 'background'] : kind === 'audio' ? ['audio', 'music'] : [];
+          return <figure key={index}>{asset.asset_id ? image ? <RuntimeImage src={assetUrl(asset.asset_id)} alt={asset.name} loading="lazy" /> : capabilities?.features.media_playback ? <PortableMedia assets={[asset]} /> : <p>この接続先では媒体を再生できません。</p> : <p className="k-plot-editor__external">外部参照（自動取得しません）<br />{asset.uri}</p>}
+            <figcaption><Input aria-label={`${image ? '画像名' : '媒体名'} ${index + 1}`} value={asset.name} onChange={e => set({ assets: doc.assets.map((v, i) => i === index ? { ...v, name: e.target.value } : v) })} />
+              <div className="k-plot-editor__asset-types" role="group" aria-label={`媒体の用途 ${index + 1}`}>{types.map(type => <button type="button" key={type} aria-pressed={asset.type === type} onClick={() => set({ assets: doc.assets.map((v, i) => i === index ? { ...v, type } : v) })}>{({ icon: 'アイコン', emotion: '表情', background: '背景', audio: '音声', music: '音楽' } as Record<string, string>)[type]}</button>)}{!types.includes(asset.type) && <span className="k-plot-editor__tag">{asset.type}</span>}</div>
+              <Button type="button" variant="ghost" size="sm" aria-label={`${image ? '画像' : '媒体'} ${index + 1}を外す`} onClick={() => set({ assets: doc.assets.filter((_, i) => i !== index) })}>{image ? '画像' : '媒体'}を外す</Button>
+            </figcaption></figure>;
+        })}</div>
         <label className={`k-create-field k-plot-editor__upload ${cloud ? 'is-disabled' : ''}`}><span>画像を追加</span><input aria-label="画像を追加" aria-describedby={`${id}-upload-status`} type="file" accept="image/png,image/jpeg,image/webp,image/gif" disabled={cloud || uploading} onChange={async e => {
           const input = e.target;
           const file = input.files?.[0];
-          if (!file || latest.current.cloud || isCloud() || uploading) return;
-          setUploading(true); setAssetError('');
+          if (!file || latest.current.cloud || isCloud() || uploading || uploadBusy.current) return;
+          const scope = connectionScope(); uploadBusy.current = true; setUploading(true); setAssetError('');
           try {
             const asset = await uploadAsset(file);
-            if (mounted.current && !latest.current.cloud && !isCloud()) {
+            if (mounted.current && scope === connectionScope() && !latest.current.cloud && !isCloud()) {
               const current = latest.current;
               current.onChange({ ...current.doc, assets: [...current.doc.assets, asset] });
             }
           } catch (error) { if (mounted.current) setAssetError(String(error)); }
-          finally { if (mounted.current) setUploading(false); input.value = ''; }
+          finally { uploadBusy.current = false; if (mounted.current) setUploading(false); input.value = ''; }
         }} /><small id={`${id}-upload-status`} role="status">{cloud ? 'クラウドの画像追加は現在利用できません。' : uploading ? '画像を追加しています…' : 'PNG・JPEG・WebP・GIFの画像を追加できます。'}</small></label>{assetError && <p className="k-plot-editor__error" role="alert">{assetError}</p>}
+        <fieldset disabled={!mediaEnabled || uploading} style={{ border: 0, padding: 0 }}>
+          <legend>持ち込み音声・動画（ローカル）</legend>
+          <label><input type="checkbox" checked={mediaRights} onChange={event => setMediaRights(event.target.checked)} />このファイルを作品内で使用・保存する権利を持っています</label>
+          <label style={{ display: 'block' }}><input type="checkbox" checked={music} onChange={event => setMusic(event.target.checked)} />WAVを音楽として追加</label>
+          <label className="k-create-field">WAV音声・MP4動画を追加<input type="file" aria-label="WAV音声・MP4動画を追加" accept=".wav,audio/wav,.mp4,video/mp4" disabled={!mediaRights} onChange={async event => {
+            const input = event.target; const file = input.files?.[0];
+            if (!file || !mediaEnabled || !mediaRights || uploadBusy.current || uploading || latest.current.cloud || isCloud()) { input.value = ''; return; }
+            const scope = connectionScope(); uploadBusy.current = true; setUploading(true); setAssetError('');
+            try {
+              if (!file.size || file.size > 32 * 1024 * 1024) throw Error('32MiB以下の媒体を選んでください。');
+              const mime = file.type === 'video/mp4' || /\.mp4$/i.test(file.name) ? 'video/mp4' : ['audio/wav', 'audio/x-wav'].includes(file.type) || /\.wav$/i.test(file.name) ? 'audio/wav' : '';
+              if (!mime) throw Error('WAV音声・MP4動画を選んでください。');
+              const normalized = file.type === mime ? file : new File([file], file.name, { type: mime, lastModified: file.lastModified });
+              const asset = await uploadAsset(normalized, { rights_confirmed: true });
+              if (mounted.current && scope === connectionScope() && !latest.current.cloud && !isCloud()) {
+                const current = latest.current;
+                current.onChange({ ...current.doc, assets: [...current.doc.assets, { ...asset, type: mime === 'video/mp4' ? 'video' : music ? 'music' : 'audio' }] });
+                setMediaRights(false);
+              }
+            } catch (error) { if (mounted.current && scope === connectionScope()) setAssetError(String(error)); }
+            finally { uploadBusy.current = false; if (mounted.current) setUploading(false); input.value = ''; }
+          }} /></label>
+        </fieldset>
+        <p className="k-context-note">{cloud ? 'クラウドでは音声・動画の追加に対応していません。' : !mediaEnabled ? '接続先の持ち込み媒体対応を確認してください。' : uploading ? '媒体を追加しています…' : 'WAV音声・MP4動画は各32MiBまで。サーバーで形式を検査します。自動再生はしません。動画のcodecによっては、このブラウザーで再生できません。'}</p>
       </Panel>
     </section>
     <section {...panelProps('details')}>

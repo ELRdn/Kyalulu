@@ -4,9 +4,12 @@ import ConnectionSettings from './ConnectionSettings';
 import Button from './ui/Button';
 import './connection.css';
 import { activeRemote, connectionScope } from '../lib/remoteStore';
-import CloudLogin from './CloudLogin';
+import CloudRouteChoice from './CloudRouteChoice';
 import { setCloud, setCloudOwner } from '../lib/cloud';
 import { refreshAccountProfile } from '../lib/accountProfile';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { isCloud } from '../lib/cloudMode';
+import { loginPath } from '../lib/cloudGuest';
 
 type Access = { remote_mode: boolean; authenticated: boolean; administrative?: boolean; device_name?: string; cloud_mode?: boolean };
 const AccessContext = createContext<Access>({ remote_mode: false, authenticated: true });
@@ -32,6 +35,10 @@ async function readResponse(response: Response) {
 }
 
 export default function RuntimeGate({ children }: { children: ReactNode }) {
+  const route = useLocation();
+  const navigate = useNavigate();
+  const returnRoute = useRef(route.pathname + route.search);
+  returnRoute.current = route.pathname + route.search;
   const [access, setAccess] = useState<Access | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
@@ -61,7 +68,12 @@ export default function RuntimeGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     mounted.current = true;
     void check();
-    const required = () => { ++epoch.current; setCloudOwner(''); setBusy(false); setAccess(previous=>({...previous, remote_mode: previous?.remote_mode ?? true, authenticated: false})); setError('認証の有効期限が切れました。もう一度ログインしてください。'); };
+    const required = () => {
+      ++epoch.current; setCloudOwner(''); setBusy(false);
+      setAccess(previous=>({...previous, remote_mode: previous?.remote_mode ?? true, authenticated: false}));
+      setError('認証の有効期限が切れました。もう一度ログインしてください。');
+      if (isCloud()) navigate(loginPath(returnRoute.current));
+    };
     const online = () => { void check(); };
     const visible = () => { if (document.visibilityState === 'visible') void check(); };
     window.addEventListener('kyalulu-auth-required', required);
@@ -69,7 +81,7 @@ export default function RuntimeGate({ children }: { children: ReactNode }) {
     window.addEventListener('focus', online);
     document.addEventListener('visibilitychange', visible);
     return () => { mounted.current = false; ++epoch.current; window.removeEventListener('kyalulu-auth-required', required); window.removeEventListener('online', online); window.removeEventListener('focus', online); document.removeEventListener('visibilitychange', visible); };
-  }, [check]);
+  }, [check, navigate]);
   const pair = async (event: React.FormEvent) => {
     event.preventDefault(); setBusy(true); setError('');
     try {
@@ -78,8 +90,8 @@ export default function RuntimeGate({ children }: { children: ReactNode }) {
     } catch (error) { setError(error instanceof Error ? error.message : '端末を登録できませんでした。'); }
     finally { setBusy(false); }
   };
+  if (access?.cloud_mode) return <AccessContext.Provider key={connectionScope()} value={access}><CloudRouteChoice authenticated={access.authenticated}>{children}</CloudRouteChoice></AccessContext.Provider>;
   if (access?.authenticated) return <AccessContext.Provider key={connectionScope()} value={access}>{children}</AccessContext.Provider>;
-  if (access?.cloud_mode) return <CloudLogin />;
   return <main className="k-connect-screen"><div className="k-connect-screen__body">
     <div className="k-connect-screen__brand">Kyalulu ✦</div>
     <h1>{access ? 'いつもの会話を、このスマホで。' : '会話のサーバーに接続'}</h1>

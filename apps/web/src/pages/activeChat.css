@@ -337,3 +337,9 @@
 @media (pointer: coarse) {
   .k-composer__hint--keyboard { display: none; }
 }
+.k-vn-scene { display: grid; gap: 12px; padding: 16px; max-width: 920px; margin: auto; }
+.k-vn-scene__stage { position: relative; min-height: 360px; display: grid; align-content: end; overflow: hidden; border-radius: 16px; background: var(--bg-surface); border: 1px solid var(--border-subtle); }
+.k-vn-scene__background { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.k-vn-scene__portrait { position: relative; justify-self: center; max-height: 320px; max-width: 100%; object-fit: contain; }
+.k-vn-scene__dialogue { position: relative; padding: 20px; color: var(--text-primary); background: var(--bg-surface); border-top: 1px solid var(--border-subtle); }
+.k-chat-messages__inner[hidden] { display: none; }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Outlet, Link, useLocation } from "react-router-dom";
+import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import NavItem from "../components/ui/NavItem";
 import Avatar from "../components/ui/Avatar";
 import IconButton from "../components/ui/IconButton";
@@ -9,11 +9,13 @@ import { useTheme } from "../lib/theme";
 import { useDisplayName } from "../lib/profile";
 import { useAccountProfile } from '../lib/accountProfile';
 import "./shell.css";
-import { useAdministrative } from '../components/RuntimeGate';
+import { useAdministrative, useRuntimeAccess } from '../components/RuntimeGate';
+import { isCloudGuest, loginPath } from '../lib/cloudGuest';
 
 const LS_SIDEBAR_COMPACT = "kyalulu-sidebar-compact";
 
 const MOBILE_NAV: { to: string; icon: IconName; label: string }[] = [
+  { to: "/", icon: "home", label: "ホーム" },
   { to: "/chats", icon: "chat", label: "トーク" },
   { to: "/discover", icon: "compass", label: "キャラクター" },
   { to: "/create", icon: "pen", label: "つくる" },
@@ -42,6 +44,8 @@ const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigat
 
 export default function AppShell() {
   const administrative = useAdministrative();
+  const guest = isCloudGuest(useRuntimeAccess());
+  const navigate = useNavigate();
   const [compact, setCompact] = useState(() => localStorage.getItem(LS_SIDEBAR_COMPACT) === "1");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const { theme, toggle } = useTheme();
@@ -59,12 +63,13 @@ export default function AppShell() {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        setPaletteOpen((v) => !v);
+        if (guest) navigate('/discover');
+        else setPaletteOpen((v) => !v);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [guest, navigate]);
 
   // 画面遷移のたびに本文のスクロール位置を先頭へ戻す（前ページの位置を引き継がない）
   useEffect(() => {
@@ -86,21 +91,21 @@ export default function AppShell() {
             Kyalulu<span aria-hidden="true">✦</span>
           </span>
         </Link>
-        <button type="button" className="k-shell__search" onClick={() => setPaletteOpen(true)} aria-label="キャラクターやワールドを検索">
+        <button type="button" className="k-shell__search" onClick={() => guest ? navigate('/discover') : setPaletteOpen(true)} aria-label="キャラクターやワールドを検索">
           <Icon name="search" size={16} />
           <span className="k-shell__search-text">キャラクターやワールドを検索…</span>
           <kbd>{isMac ? "⌘" : "Ctrl"} K</kbd>
         </button>
         <div className="k-shell__header-actions">
-          <IconButton label="キャラクターやワールドを検索" className="k-shell__search-mobile" onClick={() => setPaletteOpen(true)} size="sm">
+          <IconButton label="キャラクターやワールドを検索" className="k-shell__search-mobile" onClick={() => guest ? navigate('/discover') : setPaletteOpen(true)} size="sm">
             <Icon name="search" size={16} />
           </IconButton>
           <IconButton label={theme === "dark" ? "ライトモードに切替" : "ダークモードに切替"} onClick={toggle} size="sm">
             <Icon name={theme === "dark" ? "sun" : "moon"} size={16} />
           </IconButton>
-          <Link to="/profile" className="k-shell__profile-chip">
-            <Avatar name={displayName} size="sm" />
-            <span className="k-shell__profile-name">{displayName}</span>
+          <Link to={guest ? loginPath(location.pathname + location.search) : '/profile'} className="k-shell__profile-chip">
+            <Avatar name={guest ? 'ゲスト' : displayName} size="sm" />
+            <span className="k-shell__profile-name">{guest ? 'ログイン / 新規登録' : displayName}</span>
           </Link>
         </div>
       </header>
@@ -155,7 +160,7 @@ export default function AppShell() {
         </div>
       </nav>
 
-      <CommandPalette open={paletteOpen} onClose={closePalette} />
+      {guest ? null : <CommandPalette open={paletteOpen} onClose={closePalette} />}
     </div>
   );
 }
