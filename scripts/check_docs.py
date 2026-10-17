@@ -49,6 +49,10 @@ class Page(HTMLParser):
 def check() -> dict:
     manifest = json.loads((OUTPUT / 'docs/build-manifest.json').read_text(encoding='utf-8'))
     sources = json.loads((ROOT / 'apps/landing/docs/content/sources.json').read_text(encoding='utf-8'))
+    source_urls = {
+        entry.get('url') or f"https://github.com/{sources['repository']}/blob/{sources['commit']}/{name}"
+        for name, entry in sources['files'].items()
+    }
     headers = (OUTPUT / '_headers').read_text(encoding='utf-8')
     assert all(len(line) < 2000 for line in headers.splitlines()), 'Cloudflare header line limit'
     assert manifest['sourceCommit'] == sources['commit']
@@ -96,9 +100,8 @@ def check() -> dict:
                 assert item['about']['@id'] == ORIGIN + '/#software'
                 assert item['abstract'] and page.select('h2', id='at-a-glance'), f'Missing visible answer summary: {url}'
                 for citation in item['citation']:
-                    prefix = f"https://github.com/{sources['repository']}/blob/{sources['commit']}/"
-                    assert citation.startswith(prefix)
-                    assert citation[len(prefix):] in sources['files'], f'Unverified citation: {url}'
+                    assert citation in source_urls, f'Unverified citation: {url}'
+                    assert page.select('a', href=citation), f'Citation missing from visible sources: {url}'
             if item['@type'] == 'FAQPage':
                 assert len(item['mainEntity']) >= 5
 

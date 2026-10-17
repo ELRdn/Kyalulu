@@ -53,6 +53,8 @@ LE は [Locally Uncensored](https://github.com/PurpleDoubleD/locally-uncensored)
 
 独立した日本語キャラクター評価パイロットは [CharacterBench](benchmarks/characterbench/README_JA.md) に置いている。12キャラ・264応答の固定問題集をCLIで実行できる。Kyalulu本体のRuntime/Memory評価とは別トラックで、状態診断・表面仕様の点数をキャラ品質の総合点とは扱わない。
 
+Kyalulu制作者公式のHugging Faceアカウントは [Naotaka0127](https://huggingface.co/Naotaka0127)。日本語RP・創作文章のデータ集として、[SFW候補](https://huggingface.co/datasets/Naotaka0127/Kyalulu-Synthetic-Roleplay-Japanese-SFW-AIO-beta)、[NSFW候補](https://huggingface.co/datasets/Naotaka0127/Kyalulu-Synthetic-Roleplay-Japanese-NSFW-AIO-beta)、[元AIOソースアーカイブ](https://huggingface.co/datasets/Naotaka0127/Kyalulu-Synthetic-Roleplay-Japanese-AIO-beta)を公開している。多言語の関連資料も含み、分類は自動ルールによる候補区分。利用条件は配布元ごとに適用され、CharacterBenchとは別のコレクションとして扱う。
+
 ## 必要環境
 
 - Python 3.11+ / [uv](https://docs.astral.sh/uv/) 0.12+

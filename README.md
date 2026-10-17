@@ -104,6 +104,14 @@ runtime; `runtime/python/cloud` is a separate allowlisted hosted API. Desktop an
 Research tools remain available to developers. [CharacterBench](benchmarks/characterbench/README.md)
 is a separate evaluation track, not a claim of real-model release acceptance.
 
+The official Hugging Face account of Kyalulu’s creator is [Naotaka0127](https://huggingface.co/Naotaka0127).
+The Japanese RP / creative-writing collection includes
+[SFW candidates](https://huggingface.co/datasets/Naotaka0127/Kyalulu-Synthetic-Roleplay-Japanese-SFW-AIO-beta),
+[NSFW candidates](https://huggingface.co/datasets/Naotaka0127/Kyalulu-Synthetic-Roleplay-Japanese-NSFW-AIO-beta)
+and the [original AIO source archive](https://huggingface.co/datasets/Naotaka0127/Kyalulu-Synthetic-Roleplay-Japanese-AIO-beta).
+Related multilingual materials are included. Classification uses automated rules;
+upstream licenses apply individually. These collections are separate from CharacterBench.
+
 [Encrypted Remote](docs/REMOTE.md) is a separate transport candidate requiring a
 PC Runtime and external security review. Existing [PC-connected PWA](docs/ANDROID_PWA.md)
 instructions apply to that developer channel.
