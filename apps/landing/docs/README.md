@@ -15,7 +15,7 @@ node scripts/preview_docs.mjs
 .venv/Scripts/python.exe -B scripts/verify_docs.py
 ```
 
-The build writes the complete landing site and 34 docs pages to
+The build writes the complete landing site and 38 docs pages to
 `.artifacts/landing-site`. It never publishes or changes Git state. Preview binds
 only to loopback, applies the generated Cloudflare headers and serves real 404s.
 If the default port is busy, set `KYALULU_DOCS_PORT` to a free port.
@@ -24,9 +24,10 @@ If the default port is busy, set `KYALULU_DOCS_PORT` to a free port.
 
 - `content/user-guides.mjs`: installation, models, characters, memory, worlds, privacy.
 - `content/advanced-guides.mjs`: imports, compatibility, mobile, Remote, development, CharacterBench.
+- `content/dataset-guide.mjs`: official Japanese RP / creative-writing datasets, SFW/NSFW partitions, loading and provenance.
 - `content/essentials.mjs`: overview, troubleshooting, FAQ, public scope.
 - `content/answers.mjs`: visible answer-first summaries in both languages.
-- `content/sources.json`: public source commit, review date and source SHA-256 hashes.
+- `content/sources.json`: public GitHub commit and pinned Hugging Face source URLs, review dates and source SHA-256 hashes.
 - `docs.css` and `docs.js`: responsive layout and optional search/theme/copy enhancements.
 
 Each article has independently authored Japanese and English sections. Internal
@@ -42,12 +43,17 @@ public GitHub commit, download only relevant public files into
 the commit, review date and actual SHA-256 hashes. A source review date does not
 assert fresh device testing. Do not promote unpublished local implementation as a release.
 
+Hugging Face dataset references use entries in `sources.json` with an immutable
+`url`, a SHA-256 of the raw file bytes and a `reviewed` date. Set the dataset
+article’s review date separately from the GitHub baseline; record snapshots for
+the cards, partition reports, policy and source lists used by the guide.
+
 ## SEO and deployment
 
 Every docs page contains crawlable HTML, a unique title/description, its own
 canonical URL, reciprocal Japanese/English/x-default hreflang, Open Graph and
 JSON-LD (CollectionPage or TechArticle, plus breadcrumbs and visible FAQ content).
-The sitemap includes both existing landing pages and all 34 docs pages. Visible
+The sitemap includes both existing landing pages and all 38 docs pages. Visible
 answer summaries have matching article abstracts; shared WebSite, SoftwareApplication
 and contributor entities identify the project without invented ratings or offers. Review
 dates are shown as source review dates; no artificial sitemap modification dates

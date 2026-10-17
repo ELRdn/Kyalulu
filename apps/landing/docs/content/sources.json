@@ -80,6 +80,46 @@
     },
     "models/example-le.yaml": {
       "sha256": "ce00c6aa003cfcd4c186f4ea363b31c74c8ae7a4fdba0916f30bf6d7559406f3"
+    },
+    "Hugging Face: SFW/README.md": {
+      "url": "https://huggingface.co/datasets/Naotaka0127/Kyalulu-Synthetic-Roleplay-Japanese-SFW-AIO-beta/blob/47c4d625fd974d1553bf492a5e0e4a7088854a59/README.md",
+      "sha256": "b08b864fbabcdf00125e1626ce38c5a6b2a0b79690d7141705c5ee8202610a94",
+      "reviewed": "2026-10-17"
+    },
+    "Hugging Face: SFW/POLICY.md": {
+      "url": "https://huggingface.co/datasets/Naotaka0127/Kyalulu-Synthetic-Roleplay-Japanese-SFW-AIO-beta/blob/47c4d625fd974d1553bf492a5e0e4a7088854a59/POLICY.md",
+      "sha256": "66bad1e9dd3a519a9dd37cb912a12e52c2cd21fc2301b03fd770d1d29d027784",
+      "reviewed": "2026-10-17"
+    },
+    "Hugging Face: SFW/partition-report.json": {
+      "url": "https://huggingface.co/datasets/Naotaka0127/Kyalulu-Synthetic-Roleplay-Japanese-SFW-AIO-beta/blob/47c4d625fd974d1553bf492a5e0e4a7088854a59/partition-report.json",
+      "sha256": "1710c2e7fcf419bf1a9c5f7227131868537afcf180b61189fee21085358f19b4",
+      "reviewed": "2026-10-17"
+    },
+    "Hugging Face: SFW/SOURCES.md": {
+      "url": "https://huggingface.co/datasets/Naotaka0127/Kyalulu-Synthetic-Roleplay-Japanese-SFW-AIO-beta/blob/47c4d625fd974d1553bf492a5e0e4a7088854a59/SOURCES.md",
+      "sha256": "26d3001a37ea1551c4b451bb59e3ebc79cfd136de9b44921328548e2f3a08b9e",
+      "reviewed": "2026-10-17"
+    },
+    "Hugging Face: NSFW/README.md": {
+      "url": "https://huggingface.co/datasets/Naotaka0127/Kyalulu-Synthetic-Roleplay-Japanese-NSFW-AIO-beta/blob/c77c5e573e2779b61dd879ca41d5f3dff65dbec5/README.md",
+      "sha256": "0a8477b7512371d7b8f2aa37c3ab58c26f6f4b7e01f93ce839ed251f3d1686ca",
+      "reviewed": "2026-10-17"
+    },
+    "Hugging Face: NSFW/partition-report.json": {
+      "url": "https://huggingface.co/datasets/Naotaka0127/Kyalulu-Synthetic-Roleplay-Japanese-NSFW-AIO-beta/blob/c77c5e573e2779b61dd879ca41d5f3dff65dbec5/partition-report.json",
+      "sha256": "1710c2e7fcf419bf1a9c5f7227131868537afcf180b61189fee21085358f19b4",
+      "reviewed": "2026-10-17"
+    },
+    "Hugging Face: NSFW/SOURCES.md": {
+      "url": "https://huggingface.co/datasets/Naotaka0127/Kyalulu-Synthetic-Roleplay-Japanese-NSFW-AIO-beta/blob/c77c5e573e2779b61dd879ca41d5f3dff65dbec5/SOURCES.md",
+      "sha256": "8201bf03065cec9d77cd903f701adbe77128385701a7fbb5225e1c4161770b36",
+      "reviewed": "2026-10-17"
+    },
+    "Hugging Face: AIO/README.md": {
+      "url": "https://huggingface.co/datasets/Naotaka0127/Kyalulu-Synthetic-Roleplay-Japanese-AIO-beta/blob/3d7b27b4754957418a577458b61f9f674dbd404f/README.md",
+      "sha256": "758871df04ba480681f3a0c946f976c3b67d384dc858751adad296037b8f29da",
+      "reviewed": "2026-10-17"
     }
   }
 }

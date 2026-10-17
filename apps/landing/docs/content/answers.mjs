@@ -1,5 +1,9 @@
 // Visible, source-supported answers. These supplement prose, never hide SEO text.
 export default {
+  datasets: {
+    ja: ['Naotaka0127はKyalulu制作者公式のHugging Faceアカウントです。日本語RP・創作文章を中心に、多言語の関連資料も公開しています。', 'SFW候補13,382件、NSFW候補78,928件。元AIOは33配布元・367原本ファイルのソースアーカイブです。', 'SFW／NSFW版は出典付きParquetです。自動ルールによる候補区分と配布元別の利用条件を確認し、原レコードを用途に合わせて変換します。'],
+    en: ['Naotaka0127 is the official Hugging Face account of Kyalulu’s creator, publishing Japanese RP and creative-writing collections with multilingual reference materials.', 'There are 13,382 SFW candidates and 78,928 NSFW candidates. The original AIO archives 367 source files from 33 repositories.', 'SFW/NSFW derivatives distribute Parquet records with provenance. Review automated candidate classifications and source-specific conditions, then adapt original records for your purpose.'],
+  },
   overview: {
     ja: ['Kyaluluは、キャラクター・会話・記憶を手元に保存するローカルファーストのオープンソースCharacter AIランタイムです。', '返事の生成にはLE、LM Studio、OllamaなどのローカルLLM実行先や外部モデルAPIを接続します。', 'ローカル版は公開アルファ。PWA・Remoteは稼働中のPCが必要で、PC不要のCloudは現在本人限定の試験です。'],
     en: ['Kyalulu is a local-first, open-source Character AI runtime with locally stored characters, conversations and memories.', 'Connect local LLM providers such as LE, LM Studio or Ollama, or an external model API, to generate replies.', 'The local version is a public alpha. PWA/Remote need a running PC; PC-free Cloud currently has a private test limited to one owner.'],
