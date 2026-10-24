@@ -155,7 +155,9 @@ it('acknowledges only the uploaded revision and retains edits made while the req
   const batch={request_id:'request',revisions:{chat:7},changes:[{id:'chat',kind:'conversation' as const,base_revision:2,payload:payload(),deleted:false}]};
   const ack=acknowledgeEntity(current,{id:'chat',revision:3,deleted:false},batch);
   expect(ack.dirty).toBe(true);expect(ack.payload.messages[0].content).toBe('edited after upload');
-  const branch=acknowledgeEntity(current,{id:'fork',source_id:'chat',revision:1,deleted:false,branched:true},batch);
+  const lineage={version:1,status:'verified',common_messages:1,common_message_uuid:'user'};
+  const branch=acknowledgeEntity(current,{id:'fork',source_id:'chat',revision:1,deleted:false,branched:true,lineage},batch);
+  expect(branch.payload.lineage).toEqual(lineage);
   expect(branch.dirty).toBe(true);expect(branch.payload.settings.session_id).toBe('fork');expect(current.id).toBe('chat');
 });
 it('pins the expected authenticated account on consent writes and rejects late responses',async()=>{

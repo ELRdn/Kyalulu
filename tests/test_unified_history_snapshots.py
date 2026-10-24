@@ -119,6 +119,74 @@ async def test_native_receiver_hydrates_historical_library_and_world_versions(ac
 
 
 @pytest.mark.asyncio
+async def test_native_branch_retains_canonical_identity_without_implicit_upload_or_account_transfer(accounts, pc):
+    from python.cloud.store import CloudError
+    sync = await enrolled(accounts, pc)
+    sync.configure([], True, consent=True)
+    incoming = history()['payload']
+    sync.receive({'cursor': 1, 'changes': [{'id': 'history', 'kind': 'conversation', 'revision': 1, 'deleted': False, 'payload': incoming}]})
+    source = sync.status()['selected'][0]
+    with sqlite3.connect(pc) as db:
+        point = db.execute("SELECT id FROM chat_history WHERE session_id=? AND role='assistant' ORDER BY id LIMIT 1", (source,)).fetchone()[0]
+    copy = (await conversation.branch(source, point))['session_id']
+    assert sync.status()['selected'] == [source]
+    assert sync.stage() is None
+    other = await enrolled(accounts, pc, 1)
+    with pytest.raises(CloudError, match='sync_account_copy_required'):
+        other.configure([copy], True, consent=True)
+    sync.configure([source, copy], True, consent=True)
+    staged = sync.stage()
+    assert len(staged['changes']) == 1
+    exported = staged['changes'][0]['payload']
+    assert exported['branch_of'] == 'history' and exported['fork_revision'] == 1
+    assert exported['fork_message_uuid'] == incoming['messages'][1]['uuid']
+    assert [message['uuid'] for message in exported['messages']] == [message['uuid'] for message in incoming['messages'][:2]]
+    assert exported['memories'][0]['uuid'] == 'stable-memory'
+    assert exported['memories'][0]['content'] == 'tea' and exported['memories'][0]['version'] == 3
+    entity_bridge.validate(exported)
+
+
+@pytest.mark.asyncio
+async def test_cloud_branch_keeps_canonical_ids_and_branch_origin_on_export(bridge):
+    service, owner, path = bridge
+    accept(service, owner)
+    incoming = history()
+    source = service.push(owner, 'initial', [incoming], runtime_path=path)['changes'][0]['runtime_session_id']
+    with sqlite3.connect(path) as db:
+        point = db.execute("SELECT id FROM chat_history WHERE session_id=? AND role='assistant' ORDER BY id LIMIT 1", (source,)).fetchone()[0]
+    with storage_context(CloudStorageContext(owner, path.parent)):
+        copy = (await conversation.branch(source, point))['session_id']
+    service.configure_runtime(owner, 1, [source, copy], True)
+    values = service.pull(owner, runtime_path=path)['changes']
+    exported = next(item['payload'] for item in values if item['id'] != incoming['id'])
+    assert exported['branch_of'] == incoming['id'] and exported['fork_revision'] == 1
+    assert [message['uuid'] for message in exported['messages']] == [message['uuid'] for message in incoming['payload']['messages'][:2]]
+    assert exported['memories'][0]['uuid'] == 'stable-memory'
+    assert exported['settings']['system_prompt'] == 'OLD SYSTEM'
+    assert exported['lineage']['status'] == 'verified' and exported['lineage']['common_messages'] == 2
+    cursor = service.pull(owner, runtime_path=path)['cursor']
+    assert service.pull(owner, cursor, runtime_path=path)['changes'] == []
+
+
+@pytest.mark.asyncio
+async def test_branch_allocates_shared_ids_for_messages_added_since_the_last_sync(bridge):
+    service, owner, path = bridge
+    accept(service, owner)
+    incoming = history()
+    source = service.push(owner, 'initial', [incoming], runtime_path=path)['changes'][0]['runtime_session_id']
+    with sqlite3.connect(path) as db:
+        point = db.execute("INSERT INTO chat_history(session_id,role,content) VALUES(?,'user','UNSENT TURN')", (source,)).lastrowid
+    with storage_context(CloudStorageContext(owner, path.parent)):
+        copy = (await conversation.branch(source, point))['session_id']
+    service.configure_runtime(owner, 1, [source, copy], True)
+    values = {item['id']:item['payload'] for item in service.pull(owner, runtime_path=path)['changes']}
+    original = values[incoming['id']]
+    copied = next(payload for identity,payload in values.items() if identity != incoming['id'])
+    assert original['messages'][-1]['uuid'] == copied['messages'][-1]['uuid']
+    assert copied['fork_message_uuid'] == original['messages'][-1]['uuid']
+
+
+@pytest.mark.asyncio
 async def test_finish_uses_frozen_generation_settings_instead_of_later_database_values(pc):
     with sqlite3.connect(pc) as db:db.execute("UPDATE session_settings SET system_prompt='LATER SETTING',temperature=1.4 WHERE session_id='selected'")
     await generations.reserve('frozen-settings','selected',{})

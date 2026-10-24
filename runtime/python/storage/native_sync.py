@@ -1,6 +1,7 @@
 """Durable entity synchronization for an explicitly enrolled native PC."""
 import json
 import sqlite3
+from copy import deepcopy
 from contextlib import contextmanager
 from pathlib import Path
 from urllib.parse import urlsplit, quote
@@ -187,7 +188,14 @@ class NativeSync:
                     selected=[sid for sid in selected if sid not in recovered]
                     db.execute('INSERT INTO runtime.native_sync_received VALUES(?,?,?,1) ON CONFLICT(namespace,id) DO UPDATE SET revision=MAX(revision,excluded.revision),deleted=1',(self.namespace,receipt['id'],receipt['revision']))
                 else:
-                    normalized={**capture,'payload':{**capture['payload'],'settings':{**capture['payload']['settings'],'session_id':receipt['id']},'state':{**capture['payload']['state'],'session_id':receipt['id']}}}
+                    payload = deepcopy(capture['payload'])
+                    if receipt.get('branched'):
+                        payload.update(branch_of=capture['id'], fork_revision=capture['base_revision'])
+                    if 'lineage' in receipt: payload['lineage'] = receipt['lineage']
+                    for snapshot in [payload, *[value for message in payload['messages'] for value in (message.get('before'),message.get('after')) if value]]:
+                        for key in ('settings','state'):
+                            if snapshot.get(key): snapshot[key]['session_id'] = receipt['id']
+                    normalized={**capture,'payload':payload}
                     bridge.acknowledge_capture(db,normalized,receipt['id'],receipt['revision'],self.namespace)
             self.save(db,'selected',selected);self.save(db,'outbox',None)
 

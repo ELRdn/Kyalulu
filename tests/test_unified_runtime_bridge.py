@@ -296,6 +296,8 @@ async def test_native_purge_updates_entity_tombstone_in_the_same_transaction(bri
     with storage_context(CloudStorageContext(owner, path.parent)):
         await conversation.purge(sid, cloud_revision=(service.store.path, owner, service.store.encrypt('{}')))
     assert service.pull(owner)['changes'][-1]['deleted']
+    with service.store.transaction() as db:
+        assert not db.execute('SELECT 1 FROM app_entity_history WHERE owner=?', (owner,)).fetchone()
     assert service.push(owner, 'offline-after-purge', [change(base=1)], runtime_path=path)['changes'][0]['deleted']
 
 

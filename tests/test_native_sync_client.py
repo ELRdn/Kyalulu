@@ -49,6 +49,30 @@ async def test_selected_native_data_roundtrips_without_replacing_ids_or_exportin
     assert await service.run()=={'phase':'off'}
 
 
+@pytest.mark.asyncio
+async def test_conflict_receipt_keeps_lineage_and_does_not_reupload_the_same_native_copy(accounts, pc):
+    service = await enrolled(accounts, pc)
+    service.configure(['selected'], True, consent=True)
+    await service.run()
+    app, owners = accounts
+    original = app.state.unified.pull(owners[0])['changes'][0]
+    updated = deepcopy(original['payload'])
+    updated['messages'][0]['content'] = 'OTHER CONTINUATION'
+    app.state.unified.push(owners[0], 'other', [{'id': original['id'], 'kind': 'conversation', 'base_revision': 1, 'payload': updated}])
+    with sqlite3.connect(pc) as db:
+        db.execute("UPDATE chat_history SET content='PC CONTINUATION' WHERE session_id='selected'")
+    await service.run()
+    with service.transaction() as db:
+        link = db.execute("SELECT * FROM runtime.unified_native_links WHERE namespace=? AND session_id='selected'", (service.namespace,)).fetchone()
+        mapping = json.loads(link['mapping'])
+        assert link['entity_id'] != original['id'] and mapping['lineage']['branch_of'] == original['id']
+        assert mapping['lineage']['lineage']['status'] == 'verified'
+    cursor = app.state.unified.pull(owners[0])['cursor']
+    assert service.stage() is None
+    await service.run()
+    assert app.state.unified.pull(owners[0])['cursor'] == cursor
+
+
 class LostReceipt(httpx.AsyncBaseTransport):
     def __init__(self,app):self.inner=httpx.ASGITransport(app);self.lost=False;self.requests=[]
     async def handle_async_request(self,request):

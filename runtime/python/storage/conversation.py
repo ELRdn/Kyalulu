@@ -256,6 +256,8 @@ async def purge(session_id, *, cloud_revision=None):
                         revision = row[0] + 1
                         await db.execute('UPDATE control.app_entities SET revision=?,deleted=1,payload=? WHERE owner=? AND id=?',
                                          (revision, cloud_revision[2], cloud_revision[1], link[0]))
+                        if await (await db.execute("SELECT 1 FROM control.sqlite_master WHERE name='app_entity_history'")).fetchone():
+                            await db.execute('DELETE FROM control.app_entity_history WHERE owner=? AND id=?', (cloud_revision[1], link[0]))
                         await db.execute("INSERT OR IGNORE INTO control.app_entity_deletions VALUES(?,?,?,CAST(strftime('%s','now') AS REAL))",
                                          (cloud_revision[1], link[0], revision))
                         await db.execute('INSERT INTO control.app_changes(owner,id,revision) VALUES(?,?,?)', (cloud_revision[1], link[0], revision))
@@ -351,7 +353,8 @@ async def branch(session_id, message_id):
                     memory['id']=memory_map.setdefault(memory['id'],'mem_'+uuid.uuid4().hex[:12])
             await db.execute("INSERT INTO generations(generation_id,session_id,fingerprint,status,result_json,user_id,assistant_id) "
                              "VALUES(?,?,'','completed',?,?,?)",(copied_id,new_id,json.dumps(result,ensure_ascii=False),user_id,assistant_id))
-        rows = await (await db.execute("SELECT kind,text,revision,source_message_ids,method,ordinal FROM conversation_summaries WHERE session_id=?",
+        summary_map = {}
+        rows = await (await db.execute("SELECT kind,text,revision,source_message_ids,method,ordinal,id FROM conversation_summaries WHERE session_id=?",
                                       (session_id,))).fetchall()
         for row in rows:
             ids = json.loads(row[3])
@@ -360,8 +363,12 @@ async def branch(session_id, message_id):
                 if row[4] == "extractive":
                     import re
                     text = re.sub(r"\[(\d+):", lambda m: f"[{mapping.get(int(m[1]), int(m[1]))}:", text)
+                summary_id = "sum_" + uuid.uuid4().hex
+                summary_map[row[6]] = summary_id
                 await db.execute("INSERT INTO conversation_summaries VALUES(?,?,?,?,?,?,?,?)",
-                                 ("sum_" + uuid.uuid4().hex, new_id, row[0], text, row[2],
+                                 (summary_id, new_id, row[0], text, row[2],
                                   json.dumps([mapping[i] for i in ids]), row[4], row[5]))
         await refresh(db, new_id)
+        from .entity_bridge import copy_branch_links
+        await copy_branch_links(db, session_id, new_id, mapping, memory_map, summary_map)
     return {"session_id": new_id}
