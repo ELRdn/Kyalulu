@@ -48,9 +48,8 @@ pnpm --filter web typecheck
 
 この実装だけで分岐・同期の全要件を完了したとは扱わない。
 
-- 各応答時点のsystem prompt・temperature・Library/Worldの固定版など、
-  **履歴の作品設定全体**を独立したsnapshotとして渡し、分岐先の設定に復元すること。
-  現時点ではstateに含む過去のCreator参照とその文書は保持するが、設定全体の復元ではない。
+- 履歴の作品設定全体は[2026-10-25の追加検証](2026-10-25-unified-history-settings.md)で対応。
+  この記録の試験数は当日の結果として保持する。旧snapshotに保存されなかった設定は復元できない。
 - 共通祖先を検証できるentity revision履歴、Native分岐のcanonical UUIDとlineage。
 - 旧データの履歴不足の明示、復元との全面照合、大容量分割protocol。
 - 3方式の実UI/実モデル/物理端末、配布・本番切替。

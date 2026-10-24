@@ -292,9 +292,14 @@ async def branch(session_id, message_id):
             cur = await db.execute("INSERT INTO chat_history(session_id,role,content,model_id) VALUES(?,?,?,?)",
                                    (new_id, message["role"], message["content"], message["model_id"]))
             mapping[message["id"]] = cur.lastrowid
-        await db.execute("INSERT INTO session_settings(session_id,system_prompt,temperature,extra_json,updated_at,character_id,persona_id,world_id,intro,library_binding) "
-                         "SELECT ?,system_prompt,temperature,extra_json,updated_at,character_id,persona_id,world_id,intro,library_binding "
-                         "FROM session_settings WHERE session_id=?", (new_id, session_id))
+        if snapshot and snapshot.get('settings'):
+            saved_settings=snapshot['settings']
+            await db.execute('INSERT INTO session_settings(session_id,system_prompt,temperature,character_id,persona_id,world_id,intro,library_binding) VALUES(?,?,?,?,?,?,?,?)',
+                (new_id,saved_settings.get('system_prompt',''),saved_settings.get('temperature',.8),saved_settings.get('character_id'),saved_settings.get('persona_id'),saved_settings.get('world_id'),saved_settings.get('intro',''),json.dumps(saved_settings.get('library_binding'))))
+        else:
+            await db.execute("INSERT INTO session_settings(session_id,system_prompt,temperature,extra_json,updated_at,character_id,persona_id,world_id,intro,library_binding) "
+                             "SELECT ?,system_prompt,temperature,extra_json,updated_at,character_id,persona_id,world_id,intro,library_binding "
+                             "FROM session_settings WHERE session_id=?", (new_id, session_id))
         from python.core.schemas import RuntimeState
         state = deepcopy(snapshot['state'] if snapshot else historical.get('state_before' if before_row else 'state',RuntimeState().model_dump()))
         state["session_id"] = new_id
@@ -314,6 +319,7 @@ async def branch(session_id, message_id):
                     result[key]["session_id"] = new_id
             for saved in result.get('sync_snapshots',{}).values():
                 saved['state']['session_id']=new_id
+                if saved.get('settings'):saved['settings']['session_id']=new_id
                 for memory in saved['memories']:
                     memory['scope']=new_scope
                     if memory.get('source_session_id')==session_id:memory['source_session_id']=new_id

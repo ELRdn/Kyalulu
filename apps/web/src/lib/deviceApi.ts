@@ -1,4 +1,4 @@
-import { PortableDocumentSchema, DeviceGenerationOutputSchema, RuntimeStateSchema, LibraryBindingSchema, CreatorDocumentSchema, CastMemberSchema } from '../../../../packages/schemas/src';
+import { PortableDocumentSchema, DeviceGenerationOutputSchema, RuntimeStateSchema, LibraryBindingSchema, CreatorDocumentSchema, CastMemberSchema, ConversationSettingsSchema } from '../../../../packages/schemas/src';
 import catalog from '../mobile/app-catalog.generated.json';
 import { MobileRuntime } from '../mobile/runtime';
 import { MODELS, readyModels } from '../mobile/models';
@@ -112,6 +112,7 @@ async function generate(body:Record<string,any>,signal?:AbortSignal) {
     const requested={...prompt.sections.generation_settings,temperature:body.temperature??p.settings.temperature??model.temperature};
     for(const key of ['seed','max_tokens','top_p'])if(body[key]!==undefined)(requested as Record<string,unknown>)[key]=body[key];
     const generationConfig=sampling(model,requested);
+    const frozenSettings=ConversationSettingsSchema.parse({...p.settings,session_id:id,system_prompt:body.system_prompt??p.settings.system_prompt??'',temperature:requested.temperature});
     const trace=retrieveMemories(p.memory_enabled?baseMemories:[],last.content);
     const memories=trace.candidates.filter(m=>trace.injected.includes(m.id));
     const world=prompt.sections.portable_snapshot.world;
@@ -151,7 +152,7 @@ async function generate(body:Record<string,any>,signal?:AbortSignal) {
               created_at:new Date().toISOString(),updated_at:new Date().toISOString(),access_count:0,last_accessed:null});
           }
           messages.push({id:assistantId,uuid:crypto.randomUUID(),role:'assistant',content:parsed.reply,created_at:new Date().toISOString(),model_id:model.id,
-            before:{state:baseState,memories:baseMemories},after:{state,memories:stored}});
+            before:{state:baseState,memories:baseMemories,settings:structuredClone(frozenSettings)},after:{state,memories:stored,settings:structuredClone(frozenSettings)}});
           const done={...pending,status:'completed',assistant_id:assistantId,full:parsed.reply,reply:parsed.reply,state,telemetry:{memory:trace,...result.measurement},
             generation_config:{...generationConfig,requested:{model_id:model.id,...generationConfig.requested},applied:{model_id:model.id,...generationConfig.applied}},validation:{ok:true,retries:0,errors:[]}};
           current=await saveEntity({...current,payload:{...current.payload,messages,memories:stored,state,last_generation:done,pending_generation:null,
@@ -226,7 +227,7 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
     if(typeof body.temperature!=='number'||!Number.isFinite(body.temperature)||body.temperature<0||body.temperature>2)throw fail('Invalid temperature');
     const binding=LibraryBindingSchema.parse(body.library_binding??{});
     if(!binding.character&&body.character_id){const saved=await entity(body.character_id,owner);if(saved?.payload.document?.kind==='character')binding.character={id:saved.id,revision:saved.payload.current_revision??saved.revision};}
-    const settings={...body,library_binding:binding};await compiled(settings,[],owner);
+    const settings=ConversationSettingsSchema.parse({...body,library_binding:binding});await compiled(settings,[],owner);
     await saveEntity({...session,payload:{...session.payload,settings}},session.revision);return json({ok:true});
   }
   if(path==='/api/chat/history') {
@@ -282,6 +283,7 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
     if(!snapshot)throw fail('Historical state is unavailable for branching',409);
     const id=crypto.randomUUID(),payload=structuredClone(source.payload),turn=snapshot?.state.turn??0;
     payload.messages=payload.messages.slice(0,index+1);payload.memories=structuredClone(snapshot?.memories??[]);payload.state=structuredClone(snapshot?.state??RuntimeStateSchema.parse({session_id:id}));
+    if(snapshot.settings)payload.settings=structuredClone(snapshot.settings);
     payload.summaries=payload.summaries.filter((s:any)=>s.source_message_ids?.every((mid:number)=>payload.messages.some((m:any)=>m.id===mid)));
     payload.branch_of=source.id;payload.fork_revision=source.revision;payload.settings.session_id=id;payload.state.session_id=id;payload.state.turn=turn;
     payload.last_generation=null;

@@ -14,6 +14,15 @@ it('imports the same historical fixture as Python without mixing memory revision
   expect(value.messages[1].after.memories[0]).toMatchObject({uuid:'stable-memory',content:'tea',version:3,source_message_ids:[501]});
   expect(value.messages[3].after.memories[0]).toMatchObject({uuid:'stable-memory',content:'coffee',version:4,source_message_ids:[503]});
   expect(value.messages[1].after.memories[0].id).toBe(value.memories[0].id);
+  expect(value.messages[1].after.settings.system_prompt).toBe('OLD SYSTEM');
+  expect(value.messages[1].after.settings.library_binding.character.revision).toBe(1);
+});
+it('uploads only the current and historical setting revisions referenced by the chat',()=>{
+  const payload:any=structuredClone(sharedHistory.payload);payload.library_snapshots['unrelated@1']={name:'PRIVATE UNRELATED'};
+  const outgoing=withLibrarySnapshots(payload,[]);
+  expect(Object.keys(outgoing.library_snapshots).sort()).toEqual(['character@1','character@2']);
+  expect(Object.keys(outgoing.creator_snapshots).sort()).toEqual(['created_'+'a'.repeat(32)+'@1','created_'+'a'.repeat(32)+'@2']);
+  expect(JSON.stringify(outgoing)).not.toContain('PRIVATE UNRELATED');
 });
 it.each(['future_source','before_self_source','bad_turn','duplicate_memory','missing_after'])('rejects corrupt historical snapshots: %s',damage=>{
   const payload:any=structuredClone(sharedHistory.payload),message=payload.messages[1];

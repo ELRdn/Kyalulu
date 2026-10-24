@@ -1,10 +1,10 @@
-import { PortableDocumentSchema, RuntimeStateSchema, CreatorDocumentSchema } from '../../../../packages/schemas/src';
+import { PortableDocumentSchema, RuntimeStateSchema, CreatorDocumentSchema, ConversationSettingsSchema } from '../../../../packages/schemas/src';
 import type { AppEntity } from './appStore';
 
 export function rebindConversation(payload: AppEntity['payload'], id: string) {
   const result = structuredClone(payload);
-  if (result.settings) result.settings.session_id = id;
   const bind = (snapshot: any) => {
+    if(snapshot?.settings)snapshot.settings.session_id=id;
     if (snapshot?.state) snapshot.state.session_id = id;
     for (const memory of snapshot?.memories ?? []) if (memory.scope) memory.scope = id;
   };
@@ -59,6 +59,7 @@ export function receiveConversation(payload: AppEntity['payload'], previous: App
     for(const [name,snapshot] of [['before',message.before],['after',message.after]] as const) {
       if(!Array.isArray(snapshot.memories)||new Set(snapshot.memories.map((m:any)=>m.uuid??m.id)).size!==snapshot.memories.length)throw Error('Invalid historical memories');
       snapshot.state=RuntimeStateSchema.parse(snapshot.state);bindMemories(snapshot.memories);
+      if(snapshot.settings!=null)snapshot.settings=ConversationSettingsSchema.parse(snapshot.settings);
       if(snapshot.memories.some((memory:any)=>(memory.source_message_ids??[]).some((id:number)=>(positions.get(id)??Infinity)>(name==='before'?index-1:index))
         ||memory.source_turn!=null&&memory.source_turn>snapshot.state.turn))throw Error('Future historical memory source');
     }
@@ -71,23 +72,33 @@ export function receiveConversation(payload: AppEntity['payload'], previous: App
   return result;
 }
 
+export function conversationSettings(payload:AppEntity['payload']):Record<string,any>[] {
+  return [payload.settings??{},...(payload.messages??[]).flatMap((message:any)=>[message.before?.settings,message.after?.settings].filter(Boolean))];
+}
 export function withLibrarySnapshots(payload: AppEntity['payload'], records: AppEntity[]) {
-  const result=structuredClone(payload),binding=result.settings?.library_binding??{};
+  const result=structuredClone(payload),settings=conversationSettings(result);
   result.library_snapshots={};
   result.creator_snapshots={};
-  for(const kind of ['persona','world'] as const){
-    const reference=result.settings?.[kind+'_id'],match=typeof reference==='string'?reference.match(/^(created_[0-9a-f]{32})@([1-9]\d*)$/):null;
-    if(!match)continue;
-    const source=records.find(e=>e.id===match[1]&&!e.deleted&&e.kind===kind),snapshot=source?.payload.versions?.[match[2]]??payload.creator_snapshots?.[reference]?.document;
-    if(!snapshot)throw Error('Referenced setting revision is missing');
-    result.creator_snapshots[reference]={kind,document:CreatorDocumentSchema.parse(snapshot)};
+  for(const sourceSettings of [...settings,...(result.messages??[]).flatMap((message:any)=>[message.before?.state,message.after?.state].filter(Boolean))]){
+    for(const kind of ['persona','world'] as const){
+      const reference=sourceSettings[kind+'_id'],match=typeof reference==='string'?reference.match(/^(created_[0-9a-f]{32})@([1-9]\d*)$/):null;
+      if(!match)continue;
+      if(result.creator_snapshots[reference]){if(result.creator_snapshots[reference].kind!==kind)throw Error('Setting kind conflict');continue;}
+      const source=records.find(e=>e.id===match[1]&&!e.deleted&&e.kind===kind),snapshot=source?.payload.versions?.[match[2]]??payload.creator_snapshots?.[reference]?.document;
+      if(!snapshot)throw Error('Referenced setting revision is missing');
+      result.creator_snapshots[reference]={kind,document:CreatorDocumentSchema.parse(snapshot)};
+    }
   }
-  for(const [field,value] of Object.entries(binding))for(const ref of (field==='lorebooks'?value:[value]) as any[]) {
-    if(!ref||typeof ref.id!=='string')continue;
-    const library=records.find(e=>e.id===ref.id&&!e.deleted),key=ref.id+'@'+ref.revision;
-    const snapshot=library?.payload.versions?.[String(ref.revision)]??payload.library_snapshots?.[key];
-    if(!snapshot)throw Error('Referenced library revision is missing');
-    result.library_snapshots[key]=receiveLibrarySnapshot(undefined,'snapshot',ref.id,ref.revision,snapshot).payload.document;
+  for(const sourceSettings of settings){
+    const binding=sourceSettings.library_binding??{};
+    for(const [field,value] of Object.entries(binding))for(const ref of (field==='lorebooks'?value:[value]) as any[]) {
+      if(!ref||typeof ref.id!=='string')continue;
+      const key=ref.id+'@'+ref.revision;if(result.library_snapshots[key])continue;
+      const library=records.find(e=>e.id===ref.id&&!e.deleted);
+      const snapshot=library?.payload.versions?.[String(ref.revision)]??payload.library_snapshots?.[key];
+      if(!snapshot)throw Error('Referenced library revision is missing');
+      result.library_snapshots[key]=receiveLibrarySnapshot(undefined,'snapshot',ref.id,ref.revision,snapshot).payload.document;
+    }
   }
   return result;
 }

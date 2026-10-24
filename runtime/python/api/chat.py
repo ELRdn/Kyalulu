@@ -375,7 +375,8 @@ async def run_chat(req, prepared):
                 evidence = "\n".join(m.content for m in req.messages if m.role == "user")
                 event["result"] = await generations.finish(
                     req.generation_id, event["result"], req.messages[-1].model_dump(), req.model_id,
-                    memory_scope=scope, memory_turn=state.turn + 1, evidence_text=evidence)
+                    memory_scope=scope, memory_turn=state.turn + 1, evidence_text=evidence,
+                    settings_snapshot={**settings.model_dump(),'system_prompt':req.system_prompt if req.system_prompt is not None else settings.system_prompt,'temperature':requested['temperature']})
                 finished = True
             yield event
     finally:

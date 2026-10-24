@@ -232,6 +232,8 @@ class CloudGenerations:
             "model": model,
             "tariff": tariff,
             "temperature": req.temperature if req.temperature is not None else settings.temperature,
+            "settings_snapshot": {**settings.model_dump(),'system_prompt':req.system_prompt or settings.system_prompt,
+                'temperature':req.temperature if req.temperature is not None else settings.temperature},
             "character_constraints": constraints,
         }
 
@@ -422,6 +424,7 @@ class CloudGenerations:
                     memory_turn=prepared["state"].turn + 1,
                     evidence_text=req.messages[-1].content,
                     cloud_revision=(self.store.path, owner),
+                    settings_snapshot=prepared['settings_snapshot'],
                 )
                 stages["save"] = round((time.perf_counter()-previous)*1000, 2)
                 result.setdefault("telemetry", {})["cloud_stages_ms"] = stages

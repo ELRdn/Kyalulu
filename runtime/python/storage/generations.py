@@ -3,6 +3,7 @@ from python.storage.context import get_db_path
 import hashlib
 import json
 import time
+from copy import deepcopy
 from contextlib import asynccontextmanager
 import aiosqlite
 import anyio
@@ -91,7 +92,8 @@ async def load_state(session_id: str, settings: dict) -> RuntimeState:
 
 async def finish(generation_id: str, result: dict, user: dict | None, model_id: str,
                  *, memory_scope: str | None = None, memory_turn: int | None = None,
-                 evidence_text: str = "", cloud_revision: tuple | None = None):
+                 evidence_text: str = "", cloud_revision: tuple | None = None,
+                 settings_snapshot: dict | None = None):
     async with transaction() as db:
         save_started = time.perf_counter()
         if cloud_revision:
@@ -151,9 +153,18 @@ async def finish(generation_id: str, result: dict, user: dict | None, model_id: 
         if save_reply:
             await conversation.refresh(db, sid)
         if result['status']=='completed' and 'state_before' in result:
+            if settings_snapshot is None:
+                cursor = await db.execute("SELECT system_prompt,temperature,character_id,persona_id,world_id,intro,library_binding "
+                    "FROM session_settings WHERE session_id IN (?, '__global__') ORDER BY CASE WHEN session_id=? THEN 0 ELSE 1 END LIMIT 1",(sid,sid))
+                cursor.row_factory=aiosqlite.Row
+                settings_row=await cursor.fetchone()
+                saved_settings={'system_prompt':'','temperature':.8,**(dict(settings_row) if settings_row else {})}
+            else:saved_settings=deepcopy(settings_snapshot)
+            saved_settings['session_id']=sid
+            if isinstance(saved_settings.get('library_binding'),str):saved_settings['library_binding']=json.loads(saved_settings['library_binding'])
             result['sync_snapshots'] = {
-                'before': {'state': result['state_before'], 'memories': before_memories},
-                'after': {'state': result['state'], 'memories': await memories.conversation_snapshot(db, sid)},
+                'before': {'state': result['state_before'], 'memories': before_memories,'settings':saved_settings},
+                'after': {'state': result['state'], 'memories': await memories.conversation_snapshot(db, sid),'settings':saved_settings},
             }
         result.setdefault("telemetry", {})["save_processing_ms"] = round((time.perf_counter() - save_started) * 1000, 2)
         await db.execute("UPDATE generations SET status=?,result_json=?,user_id=?,assistant_id=? WHERE generation_id=?",
