@@ -64,6 +64,8 @@ CREATE TABLE IF NOT EXISTS sync_heads(owner TEXT, id TEXT, revision INTEGER, del
 CREATE TABLE IF NOT EXISTS sync_requests(owner TEXT, id TEXT, hash TEXT, result TEXT, PRIMARY KEY(owner,id));
 CREATE TABLE IF NOT EXISTS ad_tickets(hash TEXT PRIMARY KEY, owner TEXT, expires REAL, day TEXT, used INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS receipts(id TEXT PRIMARY KEY, owner TEXT, sku TEXT, net_nano INTEGER, expires REAL, revoked INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS receipt_terms(id TEXT PRIMARY KEY, terms TEXT NOT NULL, funded INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS checkout_terms(id TEXT PRIMARY KEY, owner TEXT NOT NULL, sku TEXT NOT NULL, terms TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS billing_subscriptions(id TEXT PRIMARY KEY, owner TEXT);
 CREATE TABLE IF NOT EXISTS sync_devices(hash TEXT PRIMARY KEY, owner TEXT, expires REAL, session_hash TEXT);
 CREATE TABLE IF NOT EXISTS budget_debt(source TEXT PRIMARY KEY, amount INTEGER CHECK(amount>=0));
@@ -291,6 +293,16 @@ class CloudStore:
             raise CloudError("account_unavailable", 403)
         if row[0]:
             return False
+        if self.config.unified_enabled:
+            service = getattr(self, 'unified_service', None)
+            if service is None:
+                raise CloudError('unified_app_awaiting_acceptance', 503)
+            expires = time.time() + 30 * 86400
+            source = 'trial:' + owner
+            service._reserve_free(db, owner, source, self.config.trial_credits, expires)
+            service._grant_reserved(db, owner, source, self.config.trial_credits, expires, 'trial')
+            db.execute('UPDATE accounts SET trial_granted=1 WHERE id=?', (owner,))
+            return True
         liability = db.execute("SELECT COALESCE(SUM(remaining),0) FROM credit_lots WHERE expires>?",
                                (time.time(),)).fetchone()[0]
         liability += db.execute("SELECT COALESCE(SUM(amount),0) FROM credit_holds").fetchone()[0]
@@ -560,15 +572,21 @@ class CloudStore:
             "usage": history,
         }
 
-    def receipt(self, owner, source, sku, net_nano, expires, *, event_id, event_hash):
-        """Apply only server-verified settled revenue, with 20% cost admission.
+    def receipt(self, owner, source, sku, net_nano, expires, *, event_id, event_hash, terms=None):
+        """Apply verified settled revenue and back the snapshotted credit liability.
 
         Stripe fee/tax/net values are retrieved from expanded balance transactions.
         Unsettled or incomplete payment data never funds additional generation.
         """
-        from .contracts import PACKS
+        from .contracts import purchase_terms
 
-        credits = PLANS[sku].monthly_credits if sku in {"plus", "pro"} else PACKS[sku][1]
+        terms = terms or purchase_terms(sku, subscriber=self.account(owner)["plan"] != "free")
+        if (terms.get("sku") != sku or type(terms.get("credits")) is not int
+                or terms["credits"] <= 0 or terms.get("days") not in {30, 60, 180}):
+            raise CloudError("invalid_purchase_terms")
+        credits = terms["credits"]
+        credit_expires = expires if terms.get('version') == 'legacy' and sku in PLANS else time.time() + terms["days"] * 86400
+        funded = (credits * 100_000 + TARIFF.markup - 1) // TARIFF.markup
         with self.transaction() as db:
             prior = db.execute("SELECT hash FROM webhook_events WHERE id=?", (event_id,)).fetchone()
             if prior:
@@ -584,16 +602,20 @@ class CloudStore:
                 )
                 return
             if not db.execute("SELECT 1 FROM receipts WHERE id=?", (source,)).fetchone():
+                if net_nano < funded:
+                    raise CloudError("payment_funding_insufficient", 409)
                 db.execute(
                     "INSERT INTO receipts VALUES(?,?,?,?,?,0)",
                     (source, owner, sku, net_nano, expires),
                 )
                 db.execute(
                     "INSERT INTO funds VALUES(?,?,?,'paid')",
-                    ("paid:" + source, net_nano // 5, expires),
+                    ("paid:" + source, funded, max(expires, credit_expires)),
                 )
+                db.execute("INSERT INTO receipt_terms VALUES(?,?,?)",
+                           (source, json.dumps(terms, sort_keys=True), funded))
                 self.grant(
-                    owner, credits, expires, "monthly" if sku in PLANS else "purchase", source, db
+                    owner, credits, credit_expires, "monthly" if sku in PLANS else "purchase", source, db
                 )
             db.execute(
                 "INSERT INTO webhook_events VALUES(?,?,?)", (event_id, event_hash, time.time())
@@ -626,7 +648,8 @@ class CloudStore:
                     "SELECT COALESCE(SUM(amount),0) FROM fund_holds WHERE fund=?",
                     ("paid:" + source,),
                 ).fetchone()[0]
-                spent = row["net_nano"] // 5 - remaining - held
+                terms = db.execute("SELECT funded FROM receipt_terms WHERE id=?", (source,)).fetchone()
+                spent = (terms[0] if terms else row["net_nano"] // 5) - remaining - held
                 # Revenue clawbacks cannot erase API bills already incurred.
                 # Ring-fence that cost against remaining subsidy/paid funding.
                 db.execute("INSERT OR IGNORE INTO budget_debt VALUES(?,?)", (source, spent))

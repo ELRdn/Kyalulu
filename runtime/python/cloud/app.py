@@ -32,7 +32,7 @@ from .router import public_routes
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
-def create_app(config=None, *, transport=None):
+def create_app(config=None, *, transport=None, ad_provider=None):
     config = config or CloudConfig.from_env()
     store = CloudStore(config)
     profiles = AccountProfile(store)
@@ -67,6 +67,10 @@ def create_app(config=None, *, transport=None):
     app.state.jobs, app.state.sync = jobs, sync
     app.state.billing = billing
     app.state.transfers = transfers
+    from .unified import UnifiedService, install_routes
+    unified = UnifiedService(store, region_policies=dict(config.region_policies), ad_provider=ad_provider)
+    app.state.unified = unified
+    install_routes(app, unified)
 
     @app.exception_handler(CloudError)
     async def cloud_error(request, exc):
@@ -126,6 +130,8 @@ def create_app(config=None, *, transport=None):
                 "/api/cloud/auth/logout",  # Local revocation must work while Supabase is unavailable.
                 "/auth/callback",
                 "/api/cloud/billing/webhook",
+                "/api/cloud/app/rewards/webhook",
+                "/api/cloud/app/eligibility",
             }
             try:
                 if request.headers.get("host") != urlsplit(config.origin).netloc:
@@ -134,7 +140,7 @@ def create_app(config=None, *, transport=None):
                     raise CloudError("not_found", 404)
                 if (
                     request.method not in SAFE_METHODS
-                    and request.url.path != "/api/cloud/billing/webhook"
+                    and request.url.path not in {"/api/cloud/billing/webhook", "/api/cloud/app/rewards/webhook"}
                 ):
                     if request.headers.get("origin") != config.origin or request.headers.get(
                         "sec-fetch-site", "same-origin"
@@ -180,19 +186,25 @@ def create_app(config=None, *, transport=None):
                 if not public and request.url.path.startswith("/api/"):
                     bearer = request.headers.get("authorization", "")
                     if bearer.startswith("Bearer "):
-                        if not request.url.path.startswith("/api/cloud/sync"):
+                        native_sync = ((request.url.path == '/api/cloud/app/sync' and request.method in {'GET', 'POST'})
+                            or re.fullmatch(r'/api/cloud/app/sync/cancel/[^/]+',request.url.path) is not None and request.method=='POST'
+                            or request.url.path == '/api/cloud/app/sync/device' and request.method == 'GET'
+                            or re.fullmatch(r'/api/cloud/app/entities/[^/]+', request.url.path) is not None and request.method == 'GET')
+                        if not request.url.path.startswith("/api/cloud/sync") and not native_sync:
                             raise CloudError("sync_token_scope_required", 403)
                         token = bearer[7:]
                         with store.transaction() as db:
-                            device = db.execute(
-                                "SELECT owner,expires,session_hash FROM sync_devices WHERE hash=?",
-                                (digest(token),),
-                            ).fetchone()
+                            if native_sync:
+                                device = db.execute('SELECT owner,expires,session_hash,id FROM app_sync_devices WHERE hash=?', (digest(token),)).fetchone()
+                            else:
+                                device = db.execute('SELECT owner,expires,session_hash FROM sync_devices WHERE hash=?', (digest(token),)).fetchone()
                         if not device or device[1] <= time.time():
                             raise CloudError("sync_device_expired", 401)
                         owner = await auth.owner(token, session_hash=device[2])
                         if owner != device[0]:
                             raise CloudError("sync_device_invalid", 401)
+                        if native_sync:
+                            request.state.app_sync_device = device[3]
                     else:
                         try:
                             owner = await auth.owner(request.cookies.get(SESSION_COOKIE))
@@ -200,6 +212,16 @@ def create_app(config=None, *, transport=None):
                             if not public_read or exc.status != 401:
                                 raise
                 if owner:
+                    expected_owner = request.headers.get('x-kyalulu-owner')
+                    sync_scope = request.url.path.startswith(('/api/cloud/app/sync', '/api/cloud/app/runtime-consent', '/api/cloud/app/entities/'))
+                    bootstrap = request.url.path == '/api/cloud/app/sync/device' and request.method == 'GET' and getattr(request.state, 'app_sync_device', None)
+                    if (sync_scope and not bootstrap or expected_owner is not None) and expected_owner != owner:
+                        raise CloudError('sync_account_changed', 403)
+                    if config.unified_enabled and (
+                        request.url.path.startswith(('/api/cloud/quotes', '/api/cloud/app/sync', '/api/cloud/app/runtime-consent', '/api/cloud/app/entities/', '/api/cloud/app/daily', '/api/cloud/app/rewards', '/api/cloud/app/publications', '/api/cloud/billing/checkout'))
+                        or request.url.path.startswith('/api/chat') and request.method not in SAFE_METHODS
+                    ):
+                        unified.require_general(owner)
                     context = CloudStorageContext.for_owner(config.root / "tenants", owner)
                     context.directory.mkdir(parents=True, exist_ok=True)
                     scope.setdefault("state", {})["owner"] = owner
@@ -358,6 +380,8 @@ def create_app(config=None, *, transport=None):
                                     and (config.legal_approved or config.private_test)),
             "billing_available": config.billing_enabled and backend_block(config) is None,
             "ads_available": False,
+            'app_commercial': {'enabled': config.unified_enabled, 'subscriber': False,
+                               'ads_available': False, 'banner': None},
             "images_available": config.image_storage_enabled and backend_block(config) is None,
             "inference_available": backend_block(config) is None,
             "operator_route": public_route(config),
@@ -379,6 +403,7 @@ def create_app(config=None, *, transport=None):
             email=body.get("email"),
             consent=body.get("consent") is True,
             country=body.get("country"),
+            eligibility_ticket=body.get('eligibility_ticket'),
         )
         response = JSONResponse(result)
         response.set_cookie(
@@ -457,6 +482,7 @@ def create_app(config=None, *, transport=None):
             "billing_available": config.billing_enabled and backend_block(config) is None,
             "billing_portal_available": bool(config.stripe_key and store.account(owner)["customer"]),
             "ads_available": False,
+            'unified_sync_available':config.unified_enabled,
         }
 
     @app.get("/api/cloud/profile")
@@ -946,7 +972,7 @@ def create_app(config=None, *, transport=None):
                             from python.storage import conversation
                             try:
                                 response = JSONResponse(await conversation.purge(
-                                    request.path_params["session_id"], cloud_revision=(store.path, owner)))
+                                    request.path_params["session_id"], cloud_revision=(store.path, owner, store.encrypt('{}'))))
                             except generations.Conflict as exc:
                                 raise CloudError("stop_generation_before_delete", 409) from exc
                         else:
@@ -974,6 +1000,32 @@ def create_app(config=None, *, transport=None):
 
         @app.get("/{path:path}")
         async def web(path: str):
+            if path in {'migration', 'migration/', 'migration/index.html'}:
+                candidate = config.web_dist / 'migration/index.html'
+                if not candidate.is_file():
+                    raise CloudError('migration_shell_not_built', 503)
+                return FileResponse(candidate, headers={
+                    'Cross-Origin-Opener-Policy': 'unsafe-none',
+                    'Cross-Origin-Embedder-Policy': 'unsafe-none',
+                    'Cache-Control': 'no-cache',
+                    'Referrer-Policy': 'no-referrer',
+                    'Content-Security-Policy': "default-src 'none'; script-src 'self'; "
+                        "style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; "
+                        "connect-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",
+                })
+            isolated = path in {'device', 'device/', 'device/index.html'}
+            if isolated:
+                candidate = config.web_dist / 'device/index.html'
+                if not candidate.is_file():
+                    raise CloudError('device_shell_not_built', 503)
+                return FileResponse(candidate, headers={
+                    'Cross-Origin-Opener-Policy': 'same-origin',
+                    'Cross-Origin-Embedder-Policy': 'require-corp',
+                    'Content-Security-Policy': "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; "
+                        "worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+                        "connect-src 'self' https://huggingface.co https://*.huggingface.co https://*.hf.co; "
+                        "frame-src 'none'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'",
+                })
             candidate = (config.web_dist / path).resolve()
             if candidate.is_relative_to(config.web_dist.resolve()) and candidate.is_file():
                 return FileResponse(candidate)

@@ -245,6 +245,20 @@ async def purge(session_id, *, cloud_revision=None):
                              (cloud_revision[1], hashlib.sha256(session_id.encode()).hexdigest()))
             await db.execute("INSERT INTO control.sync_heads VALUES(?,'workspace',1,0,'{}') "
                              "ON CONFLICT(owner,id) DO UPDATE SET revision=revision+1,deleted=0", (cloud_revision[1],))
+            if await (await db.execute("SELECT 1 FROM sqlite_master WHERE name='unified_runtime_links'")).fetchone():
+                links = await (await db.execute('SELECT entity_id FROM unified_runtime_links WHERE session_id=?', (session_id,))).fetchall()
+                for link in links:
+                    row = await (await db.execute('SELECT revision,deleted FROM control.app_entities WHERE owner=? AND id=?',
+                                                 (cloud_revision[1], link[0]))).fetchone()
+                    if row and not row[1]:
+                        if len(cloud_revision) < 3:
+                            raise generations.Conflict('Cloud entity erasure context is required')
+                        revision = row[0] + 1
+                        await db.execute('UPDATE control.app_entities SET revision=?,deleted=1,payload=? WHERE owner=? AND id=?',
+                                         (revision, cloud_revision[2], cloud_revision[1], link[0]))
+                        await db.execute("INSERT OR IGNORE INTO control.app_entity_deletions VALUES(?,?,?,CAST(strftime('%s','now') AS REAL))",
+                                         (cloud_revision[1], link[0], revision))
+                        await db.execute('INSERT INTO control.app_changes(owner,id,revision) VALUES(?,?,?)', (cloud_revision[1], link[0], revision))
     return {"ok": True, "session_id": session_id, "deleted": True, "backup_policy": "tombstone_required_on_restore"}
 
 
@@ -256,6 +270,21 @@ async def branch(session_id, message_id):
         history = await _history(db, session_id)
         if message_id not in {m["id"] for m in history}:
             raise LookupError("message not found")
+        imported = await (await db.execute(
+            "SELECT MAX(h.id) FROM chat_history h JOIN imported_history i ON i.message_id=h.id "
+            "WHERE h.session_id=? AND h.id<=? AND json_extract(i.origin_json,'$.format')='unified'",
+            (session_id, message_id))).fetchone()
+        state_row = await (await db.execute("SELECT result_json FROM generations WHERE session_id=? AND valid=1 "
+                                           "AND status='completed' AND assistant_id<=? ORDER BY assistant_id DESC LIMIT 1",
+                                           (session_id, message_id))).fetchone()
+        point = next(message for message in history if message['id']==message_id)
+        before_row = await (await db.execute("SELECT result_json FROM generations WHERE session_id=? AND valid=1 "
+                                            "AND status='completed' AND user_id=? ORDER BY rowid DESC LIMIT 1",
+                                            (session_id,message_id))).fetchone() if point['role']=='user' else None
+        historical = json.loads((before_row or state_row)[0]) if before_row or state_row else {}
+        snapshot = historical.get('sync_snapshots',{}).get('before' if before_row else 'after')
+        if imported[0] is not None and not snapshot:
+            raise generations.Conflict("Historical state is unavailable for branching this synced copy")
         mapping = {}
         for message in history:
             if message["id"] > message_id:
@@ -266,14 +295,13 @@ async def branch(session_id, message_id):
         await db.execute("INSERT INTO session_settings(session_id,system_prompt,temperature,extra_json,updated_at,character_id,persona_id,world_id,intro,library_binding) "
                          "SELECT ?,system_prompt,temperature,extra_json,updated_at,character_id,persona_id,world_id,intro,library_binding "
                          "FROM session_settings WHERE session_id=?", (new_id, session_id))
-        state_row = await (await db.execute("SELECT result_json FROM generations WHERE session_id=? AND valid=1 "
-                                           "AND status='completed' AND assistant_id<=? ORDER BY assistant_id DESC LIMIT 1",
-                                           (session_id, message_id))).fetchone()
         from python.core.schemas import RuntimeState
-        state = json.loads(state_row[0])["state"] if state_row else RuntimeState().model_dump()
+        state = deepcopy(snapshot['state'] if snapshot else historical.get('state_before' if before_row else 'state',RuntimeState().model_dump()))
         state["session_id"] = new_id
         await db.execute("INSERT INTO runtime_states VALUES(?,?)", (new_id, json.dumps(state, ensure_ascii=False)))
+        new_scope = f"session:{new_id}"
         generation_map = {}
+        copied_generations = []
         rows = await (await db.execute("SELECT generation_id,result_json,user_id,assistant_id FROM generations "
                                       "WHERE session_id=? AND valid=1 AND status='completed' AND assistant_id<=? ORDER BY assistant_id",
                                       (session_id, message_id))).fetchall()
@@ -284,25 +312,39 @@ async def branch(session_id, message_id):
             for key in ("state", "state_before"):
                 if key in result:
                     result[key]["session_id"] = new_id
+            for saved in result.get('sync_snapshots',{}).values():
+                saved['state']['session_id']=new_id
+                for memory in saved['memories']:
+                    memory['scope']=new_scope
+                    if memory.get('source_session_id')==session_id:memory['source_session_id']=new_id
+                    memory['source_message_ids']=[mapping[i] for i in memory.get('source_message_ids',[])]
+                    if memory.get('source_generation_id'):memory['source_generation_id']=generation_map.get(memory['source_generation_id'])
             result.update(session_id=new_id, generation_id=copied_id, user_id=mapping.get(row[2]), assistant_id=mapping.get(row[3]))
             # Branch metadata contains only committed predecessor snapshots.
             result.pop("replace_message_id", None)
-            await db.execute("INSERT INTO generations(generation_id,session_id,fingerprint,status,result_json,user_id,assistant_id) "
-                             "VALUES(?,?,'','completed',?,?,?)", (copied_id, new_id, json.dumps(result, ensure_ascii=False),
-                                                                mapping.get(row[2]), mapping.get(row[3])))
+            copied_generations.append((copied_id,result,mapping.get(row[2]),mapping.get(row[3])))
         scope_row = await (await db.execute("SELECT scope,identity_json FROM session_scopes WHERE session_id=?", (session_id,))).fetchone()
-        new_scope = f"session:{new_id}"
         await db.execute("INSERT INTO session_scopes VALUES(?,?,'branch',?)", (new_id, new_scope, scope_row[1] if scope_row else "{}"))
         await db.execute("INSERT INTO session_memory SELECT ?,enabled,updated_at FROM session_memory WHERE session_id=?", (new_id, session_id))
-        if scope_row:
+        memory_map = {}
+        if scope_row or snapshot:
             from . import memories
-            for memory in await memories._list_memories(db, scope_row[0]):
+            items = snapshot['memories'] if snapshot else await memories._list_memories(db, scope_row[0])
+            for memory in items:
                 ids = memory.get("source_message_ids", [])
-                if memory["source_session_id"] == session_id and ids and max(ids) <= message_id:
-                    await memories._create(db, new_scope, memory["type"], memory["content"], memory["origin"], memory["supported"],
-                                           new_id, memory["source_turn"], generation_map.get(memory["source_generation_id"]), source_kind=memory["source_kind"],
-                                           source_quote=memory["source_quote"], source_revision=memory["source_revision"],
+                if memory['source_session_id'] in (session_id,None) and (bool(snapshot) or ids) and all(i in mapping for i in ids):
+                    copied_memory = await memories._create(db, new_scope, memory["type"], memory["content"], memory["origin"], memory["supported"],
+                                           new_id, memory["source_turn"], generation_map.get(memory.get("source_generation_id")), source_kind=memory["source_kind"],
+                                           source_quote=memory["source_quote"], source_revision=memory.get("source_revision"),
                                            source_message_ids=[mapping[i] for i in ids if i in mapping], confirmation=memory["confirmation"])
+                    await db.execute('UPDATE memories SET version=? WHERE id=?',(memory.get('version',1),copied_memory))
+                    memory_map[memory['id']]=copied_memory
+        for copied_id,result,user_id,assistant_id in copied_generations:
+            for saved in result.get('sync_snapshots',{}).values():
+                for memory in saved['memories']:
+                    memory['id']=memory_map.setdefault(memory['id'],'mem_'+uuid.uuid4().hex[:12])
+            await db.execute("INSERT INTO generations(generation_id,session_id,fingerprint,status,result_json,user_id,assistant_id) "
+                             "VALUES(?,?,'','completed',?,?,?)",(copied_id,new_id,json.dumps(result,ensure_ascii=False),user_id,assistant_id))
         rows = await (await db.execute("SELECT kind,text,revision,source_message_ids,method,ordinal FROM conversation_summaries WHERE session_id=?",
                                       (session_id,))).fetchall()
         for row in rows:

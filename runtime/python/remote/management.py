@@ -47,6 +47,17 @@ async def revoke(device_id: str, request: Request):
     return {'revoked': True}
 
 
+class ManagementPermission(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    enabled: bool
+
+
+@router.put('/devices/{device_id}/management')
+async def management(device_id: str, body: ManagementPermission, request: Request):
+    host(request).set_management(device_id, body.enabled)
+    return {'management': body.enabled}
+
+
 @router.post('/stop')
 async def stop(request: Request):
     await host(request).stop()

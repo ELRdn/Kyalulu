@@ -443,6 +443,11 @@ def apply_rows(db, value, *, validate_only=False):
                 + ")",
                 tuple(row[name] for name in names),
             )
+    if db.execute("SELECT 1 FROM sqlite_master WHERE name='unified_runtime_links'").fetchone():
+        for row in db.execute('SELECT session_id,mapping FROM unified_runtime_links').fetchall():
+            if selected is None or row[0] in selected:
+                mapping = json.loads(row[1]); mapping['restored_from_snapshot'] = True
+                db.execute('UPDATE unified_runtime_links SET mapping=? WHERE session_id=?', (json.dumps(mapping), row[0]))
 
 
 def apply_snapshot(path, value):

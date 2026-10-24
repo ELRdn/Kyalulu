@@ -175,7 +175,7 @@ def test_refund_disables_holds_and_replayed_receipts(config):
         event_id="evt_a",
         event_hash="a",
     )
-    assert store.balance(owner) == 51000
+    assert store.balance(owner) == 38500
     reserve(store, owner, "a")
     store.revoke_receipt("pi_a")
     store.settle(owner, "a", 0, success=False)

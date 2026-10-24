@@ -1,0 +1,153 @@
+{
+  "id": "device-conversation",
+  "kind": "conversation",
+  "base_revision": 0,
+  "payload": {
+    "storage_policy": "sync",
+    "rating": "general",
+    "settings": {
+      "session_id": "device-conversation",
+      "library_binding": null
+    },
+    "messages": [
+      {
+        "id": 1,
+        "uuid": "user-uuid",
+        "role": "user",
+        "content": "tea"
+      },
+      {
+        "id": 2,
+        "uuid": "reply-uuid",
+        "role": "assistant",
+        "content": "device reply",
+        "before": {
+          "state": {
+            "session_id": "device-conversation",
+            "turn": 0
+          },
+          "memories": []
+        },
+        "after": {
+          "state": {
+            "session_id": "device-conversation",
+            "turn": 1,
+            "location": "library"
+          },
+          "memories": [
+            {
+              "id": "tea-memory",
+              "type": "semantic",
+              "content": "tea",
+              "origin": "model",
+              "supported": true,
+              "source_session_id": "device-conversation",
+              "source_turn": 1,
+              "source_message_ids": [
+                1
+              ],
+              "uuid": "stable-memory",
+              "version": 3,
+              "source_quote": "tea"
+            }
+          ]
+        }
+      },
+      {
+        "id": 3,
+        "uuid": "user-2",
+        "role": "user",
+        "content": "coffee"
+      },
+      {
+        "id": 4,
+        "uuid": "assistant-2",
+        "role": "assistant",
+        "content": "park reply",
+        "before": {
+          "state": {
+            "session_id": "device-conversation",
+            "turn": 1,
+            "location": "library"
+          },
+          "memories": [
+            {
+              "id": "tea-memory",
+              "type": "semantic",
+              "content": "tea",
+              "origin": "model",
+              "supported": true,
+              "source_session_id": "device-conversation",
+              "source_turn": 1,
+              "source_message_ids": [
+                1
+              ],
+              "uuid": "stable-memory",
+              "version": 3,
+              "source_quote": "tea"
+            }
+          ]
+        },
+        "after": {
+          "state": {
+            "session_id": "device-conversation",
+            "turn": 2,
+            "location": "park"
+          },
+          "memories": [
+            {
+              "id": "tea-memory",
+              "type": "semantic",
+              "content": "coffee",
+              "origin": "model",
+              "supported": true,
+              "source_session_id": "device-conversation",
+              "source_turn": 2,
+              "source_message_ids": [
+                3
+              ],
+              "uuid": "stable-memory",
+              "version": 4,
+              "source_quote": "coffee"
+            }
+          ]
+        }
+      }
+    ],
+    "state": {
+      "session_id": "device-conversation",
+      "turn": 2,
+      "location": "park"
+    },
+    "memories": [
+      {
+        "id": "tea-memory",
+        "type": "semantic",
+        "content": "coffee",
+        "origin": "model",
+        "supported": true,
+        "source_session_id": "device-conversation",
+        "source_turn": 2,
+        "source_message_ids": [
+          3
+        ],
+        "uuid": "stable-memory",
+        "version": 4,
+        "source_quote": "coffee"
+      }
+    ],
+    "summaries": [
+      {
+        "id": "chapter-0",
+        "kind": "chapter",
+        "ordinal": 0,
+        "text": "tea",
+        "source_message_ids": [
+          1,
+          2
+        ]
+      }
+    ],
+    "memory_enabled": true
+  }
+}

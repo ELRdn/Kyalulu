@@ -87,6 +87,31 @@ async def test_remote_identity_expiry_and_revocation():
     await bridge.aclose()
 
 
+async def test_management_is_separate_live_and_never_grants_cloud_or_host_admin():
+    bridge, app, _, _ = setup()
+    roles = set()
+    bridge.adapter.management_device = lambda device: device in roles
+
+    @app.get('/api/diagnostics')
+    async def diagnostics(request: Request):
+        assert not mobile.local_admin(request)
+        return {'ready': True}
+
+    denied = await collect(submit(bridge, path='/api/diagnostics'))
+    assert denied[0]['status'] == 403
+    roles.add('phone')
+    allowed = await collect(submit(bridge, path='/api/diagnostics'))
+    assert allowed[0]['status'] == 200
+    status = json.loads(payload(await collect(submit(bridge, path='/api/mobile/status'))))
+    assert status['administrative'] is True
+    for path in ('/api/cloud/account', '/api/remote/status', '/api/mobile/admin/devices'):
+        assert (await collect(submit(bridge, path=path)))[0]['status'] == 403
+    roles.clear()
+    assert (await collect(submit(bridge, path='/api/diagnostics')))[0]['status'] == 403
+    assert (await collect(submit(bridge)))[0]['status'] == 200
+    await bridge.aclose()
+
+
 @pytest.mark.parametrize(
     "path",
     [

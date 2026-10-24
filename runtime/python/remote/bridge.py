@@ -76,10 +76,17 @@ class RemotePrincipal:
 
     device_id: str
     authorizer: Callable[[str], bool] = field(repr=False, compare=False)
+    management_authorizer: Callable[[str], bool] | None = field(default=None, repr=False, compare=False)
 
     def authorized(self) -> bool:
         try:
             return self.authorizer(self.device_id) is True
+        except Exception:
+            return False
+
+    def management(self) -> bool:
+        try:
+            return self.authorized() and self.management_authorizer is not None and self.management_authorizer(self.device_id) is True
         except Exception:
             return False
 
@@ -91,9 +98,10 @@ class RuntimeAdapter:
     session checks; do not pass a bare router or an app without that middleware.
     """
 
-    def __init__(self, app, *, authorize_device, origin="https://relay.invalid"):
+    def __init__(self, app, *, authorize_device, management_device=None, origin="https://relay.invalid"):
         self.app = app
         self.authorize_device = authorize_device
+        self.management_device = management_device
         parsed = urlsplit(origin)
         if (
             parsed.scheme != "https"
@@ -114,7 +122,7 @@ class RuntimeAdapter:
     def authorize(self, device_id):
         if not isinstance(device_id, str) or not device_id:
             raise BridgeError("authentication_required")
-        principal = RemotePrincipal(device_id, self.authorize_device)
+        principal = RemotePrincipal(device_id, self.authorize_device, self.management_device)
         if not principal.authorized():
             raise BridgeError("authentication_required")
         return principal
