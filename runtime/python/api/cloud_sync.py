@@ -128,7 +128,7 @@ async def configure(request: Request):
         config["image_consent"] = body.get("image_consent") is True
         if config["mode"] != "off":
             if body.get("consent") is not True:
-                raise ValueError("クラウド保存とDeepSeekでのSFW検査に同意してください")
+                raise ValueError("クラウドへのバックアップ保存と、同意済み提供元による内容検査に同意してください")
             result = await remote(config, "", method="PUT", body={"mode": config["mode"]})
             if result.get("conflict"):
                 return JSONResponse(result, status_code=409)
@@ -173,7 +173,7 @@ async def push():
                 count, chain = 0, ""
                 for page in snapshot_pages(path, selected, include_assets=True, asset_directory=storage.DB_PATH.parent / "library_assets"):
                     if page.get("assets") and config.get("image_consent") is not True:
-                        raise ValueError("画像のクラウド保存とDeepSeekへのSFW検査送信に同意してください")
+                        raise ValueError("画像のクラウド保存と、同意済み提供元による内容検査への送信に同意してください")
                     acknowledged = await remote(
                         config, f"/transfers/{transfer}/pages/{count}", method="PUT", body=page
                     )

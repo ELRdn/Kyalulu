@@ -9,35 +9,37 @@ from pathlib import Path
 from contextlib import closing
 
 
-def erase_conversations(db, sessions):
+def erase_conversations(db, sessions, *, schema='main'):
     """Apply durable erasures to a staged SQLite restore before promoting it."""
-    tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    db.execute("CREATE TABLE IF NOT EXISTS session_deletions(session_id TEXT PRIMARY KEY,deleted_at TEXT NOT NULL DEFAULT (datetime('now')))")
-    db.execute("PRAGMA secure_delete=ON")
+    if schema not in {'main', 'runtime'}:
+        raise ValueError('invalid erasure database')
+    tables = {r[0] for r in db.execute(f"SELECT name FROM {schema}.sqlite_master WHERE type='table'")}
+    db.execute(f"CREATE TABLE IF NOT EXISTS {schema}.session_deletions(session_id TEXT PRIMARY KEY,deleted_at TEXT NOT NULL DEFAULT (datetime('now')))")
+    db.execute(f"PRAGMA {schema}.secure_delete=ON")
     for sid in sessions:
         memory_ids = set()
         if "memories" in tables:
-            memory_ids = {r[0] for r in db.execute("SELECT id FROM memories WHERE source_session_id=? OR scope=?", (sid,f"session:{sid}"))}
+            memory_ids = {r[0] for r in db.execute(f"SELECT id FROM {schema}.memories WHERE source_session_id=? OR scope=?", (sid,f"session:{sid}"))}
         if "generations" in tables:
             from python.storage.conversation import erase_memory_references
-            for gid, encoded in db.execute("SELECT generation_id,result_json FROM generations WHERE session_id<>? AND result_json IS NOT NULL",(sid,)).fetchall():
+            for gid, encoded in db.execute(f"SELECT generation_id,result_json FROM {schema}.generations WHERE session_id<>? AND result_json IS NOT NULL",(sid,)).fetchall():
                 original = json.loads(encoded)
                 redacted = erase_memory_references(original,memory_ids,source_session_ids={sid})
                 if redacted is not original:
-                    db.execute("UPDATE generations SET result_json=? WHERE generation_id=?", (json.dumps(redacted,ensure_ascii=False),gid))
+                    db.execute(f"UPDATE {schema}.generations SET result_json=? WHERE generation_id=?", (json.dumps(redacted,ensure_ascii=False),gid))
         if "memories" in tables:
             if "memory_events" in tables:
-                db.execute("DELETE FROM memory_events WHERE memory_id IN (SELECT id FROM memories WHERE source_session_id=? OR scope=?)",
+                db.execute(f"DELETE FROM {schema}.memory_events WHERE memory_id IN (SELECT id FROM {schema}.memories WHERE source_session_id=? OR scope=?)",
                            (sid,f"session:{sid}"))
-            db.execute("DELETE FROM memories WHERE source_session_id=? OR scope=?",(sid,f"session:{sid}"))
+            db.execute(f"DELETE FROM {schema}.memories WHERE source_session_id=? OR scope=?",(sid,f"session:{sid}"))
         if {"memory_events","generations"} <= tables:
-            db.execute("DELETE FROM memory_events WHERE generation_id IN (SELECT generation_id FROM generations WHERE session_id=?)", (sid,))
+            db.execute(f"DELETE FROM {schema}.memory_events WHERE generation_id IN (SELECT generation_id FROM {schema}.generations WHERE session_id=?)", (sid,))
         if {"imported_history","chat_history"} <= tables:
-            db.execute("DELETE FROM imported_history WHERE message_id IN (SELECT id FROM chat_history WHERE session_id=?)", (sid,))
+            db.execute(f"DELETE FROM {schema}.imported_history WHERE message_id IN (SELECT id FROM {schema}.chat_history WHERE session_id=?)", (sid,))
         for table in ("chat_history","generations","runtime_states","session_settings","session_memory","conversation_summaries","session_scopes"):
             if table in tables:
-                db.execute(f"DELETE FROM {table} WHERE session_id=?",(sid,))
-        db.execute("INSERT OR IGNORE INTO session_deletions(session_id) VALUES(?)",(sid,))
+                db.execute(f"DELETE FROM {schema}.{table} WHERE session_id=?",(sid,))
+        db.execute(f"INSERT OR IGNORE INTO {schema}.session_deletions(session_id) VALUES(?)",(sid,))
 
 
 def promote_core(restored, data, new_assets):

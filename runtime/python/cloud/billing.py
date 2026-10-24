@@ -6,7 +6,7 @@ import json
 import time
 import asyncio
 import httpx
-from .contracts import PLANS, PACKS
+from .contracts import PLANS, PACKS, purchase_terms
 from .store import CloudError, fingerprint
 
 
@@ -56,18 +56,28 @@ class StripeBilling:
         account = self.store.account(owner)
         if sku in PLANS and account["plan"] != "free":
             raise CloudError("manage_existing_subscription_in_portal", 409)
+        pricing_key = hashlib.sha256((owner + ":" + request_id).encode()).hexdigest()
+        with self.store.transaction() as db:
+            old = db.execute("SELECT owner,sku,terms FROM checkout_terms WHERE id=?", (pricing_key,)).fetchone()
+            if old and (old['owner'], old['sku']) != (owner, sku):
+                raise CloudError("checkout_request_conflict", 409)
+            terms = json.loads(old['terms']) if old else {**purchase_terms(sku, subscriber=account['plan'] != 'free'),
+                'stripe_price': prices[sku], 'checkout_expires': int(time.time() + 30 * 60)}
+            db.execute("INSERT OR IGNORE INTO checkout_terms VALUES(?,?,?,?)",
+                       (pricing_key, owner, sku, json.dumps(terms)))
         data = {
             "mode": "subscription" if sku in PLANS else "payment",
-            "line_items[0][price]": prices[sku],
+            "line_items[0][price]": terms.get('stripe_price', prices[sku]),
             "line_items[0][quantity]": "1",
             "client_reference_id": owner,
             "metadata[owner]": owner,
             "metadata[sku]": sku,
+            "metadata[pricing_key]": pricing_key,
             "billing_address_collection": "required",
             "success_url": self.config.origin + "/#/profile?checkout=success",
             "cancel_url": self.config.origin + "/#/profile?checkout=cancelled",
             "consent_collection[terms_of_service]": "required",
-            "expires_at": str(int(time.time() + 30 * 60)),
+            "expires_at": str(terms.get('checkout_expires', int(time.time() + 30 * 60))),
         }
         if account["customer"]:
             data["customer"] = account["customer"]
@@ -80,6 +90,7 @@ class StripeBilling:
             data["customer"] = customer["id"]
         if sku in PLANS:
             data["subscription_data[metadata][owner]"] = owner
+            data["subscription_data[metadata][pricing_key]"] = pricing_key
         else:
             data["payment_intent_data[metadata][sku]"] = sku
         session = await self.call(
@@ -218,6 +229,7 @@ class StripeBilling:
                 await asyncio.sleep(30)
 
     async def process(self, event, event_hash):
+        terms_key = None
         with self.store.transaction() as db:
             prior = db.execute(
                 "SELECT hash FROM webhook_events WHERE id=?", (event["id"],)
@@ -243,6 +255,8 @@ class StripeBilling:
                     "subscription_details", {}
                 ).get("subscription")
                 await self.subscription(subscription_id)
+                subscription = await self.call("subscriptions/" + subscription_id)
+                terms_key = subscription.get("metadata", {}).get("pricing_key")
                 line = invoice.get("lines", {}).get("data", [])
                 # Proration/upgrades do not create another full monthly grant.
                 if invoice.get("billing_reason") not in {
@@ -256,6 +270,12 @@ class StripeBilling:
                     "price_details", {}
                 ).get("price")
                 sku = dict((v, k) for k, v in self.config.stripe_prices).get(price_id)
+                if terms_key:
+                    with self.store.transaction() as db:
+                        checkout = db.execute('SELECT sku,terms FROM checkout_terms WHERE id=?', (terms_key,)).fetchone()
+                    if not checkout or json.loads(checkout['terms']).get('stripe_price', price_id) != price_id:
+                        raise CloudError('checkout_price_conflict', 409)
+                    sku = checkout['sku']
                 expires = line[0]["period"]["end"]
                 intent_id = invoice.get("payment_intent")
                 if not intent_id:
@@ -280,6 +300,7 @@ class StripeBilling:
                 if session.get("payment_status") != "paid":
                     raise CloudError("payment_not_settled", 409)
                 sku = session.get("metadata", {}).get("sku")
+                terms_key = session.get("metadata", {}).get("pricing_key")
                 if sku not in PACKS:
                     raise CloudError("invalid_billing_sku")
                 expires = time.time() + 180 * 86400
@@ -305,6 +326,20 @@ class StripeBilling:
             ):
                 raise CloudError("payment_not_settled", 409)
             owner = self.owner_for(intent["customer"])
+            if terms_key:
+                with self.store.transaction() as db:
+                    saved = db.execute("SELECT terms FROM checkout_terms WHERE id=? AND owner=? AND sku=?",
+                                       (terms_key, owner, sku)).fetchone()
+                if not saved:
+                    raise CloudError("checkout_terms_missing", 409)
+                terms = json.loads(saved[0])
+            else:
+                # Pre-migration checkouts keep their original quantities and expiry.
+                legacy = {"plus": 12_500, "pro": 25_000, "credits_5": 50_000, "credits_10": 100_000}
+                if sku not in legacy:
+                    raise CloudError("invalid_billing_sku")
+                terms = {"version": "legacy", "sku": sku, "credits": legacy[sku],
+                         "days": 30 if sku in PLANS else 180}
             # Automatic-tax selling stays disabled pending accountant/provider acceptance.
             # This launch uses tax-exclusive configured prices; tax liability must be
             # subtracted through the approved tax reserve below before accepting sales.
@@ -316,7 +351,7 @@ class StripeBilling:
                 self.backups.admission(owner, PLANS[sku],
                     hold_until=expires + PLANS[sku].restore_days * 86400)
             self.store.receipt(
-                owner, intent_id, sku, net, expires, event_id=event["id"], event_hash=event_hash
+                owner, intent_id, sku, net, expires, event_id=event["id"], event_hash=event_hash, terms=terms
             )
             if kind == "invoice.paid":
                 await self.subscription(subscription_id)

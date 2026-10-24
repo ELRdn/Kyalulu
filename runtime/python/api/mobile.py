@@ -221,6 +221,18 @@ def permitted(method, path):
     return any(re.fullmatch(pattern, path) for pattern in ALLOWED.get(method, []))
 
 
+MANAGEMENT = {
+    'GET': [r'/api/(commands|diagnostics|providers|providers/health|le/capabilities|experiments|scenarios|leaderboard|ratings)',
+            r'/api/experiments/[^/]+(?:/export)?', r'/api/benchmarks(?:/[^/]+(?:/export)?)?'],
+    'POST': [r'/api/commands', r'/api/experiments/run', r'/api/experiments/[^/]+/rerun',
+             r'/api/ratings', r'/api/benchmarks(?:/[^/]+/cancel)?'],
+}
+
+
+def management_permitted(method, path):
+    return any(re.fullmatch(pattern, path) for pattern in MANAGEMENT.get(method, []))
+
+
 def valid_session_id(value):
     return (
         isinstance(value, str)
@@ -349,13 +361,13 @@ class MobileSecurity:
             principal = scope["kyalulu.remote"]
             if not isinstance(principal, RemotePrincipal) or not principal.authorized():
                 return await reject("authentication_required", 401)
-            if not api or not permitted(request.method, path):
+            if not api or not (permitted(request.method, path) or principal.management() and management_permitted(request.method, path)):
                 return await reject("admin_required", 403)
             if request.method == "POST" and path == "/api/mobile/logout":
                 return await reject("use_remote_device_revocation", 409)
             if request.method == "GET" and path == "/api/mobile/status":
                 response = JSONResponse({"remote_mode": True, "authenticated": True,
-                                         "administrative": False, "device_name": "Remote端末"})
+                                         "administrative": principal.management(), "device_name": "Remote端末"})
                 return await response(scope, receive, secured_send)
 
         local = local_admin(request)

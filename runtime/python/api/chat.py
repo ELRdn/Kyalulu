@@ -667,8 +667,18 @@ async def list_sessions():
             """)
             rows = await cur.fetchall()
             sessions = [dict(r) for r in rows]
+            copies, recoveries = {}, set()
+            if await (await db.execute("SELECT 1 FROM sqlite_master WHERE name='unified_runtime_links'")).fetchone():
+                copies = {r[0]: {"entity_id": r[1], "revision": r[2]} for r in await (await db.execute(
+                    "SELECT session_id,entity_id,revision FROM unified_runtime_links WHERE json_extract(mapping,'$.projection')=1"
+                )).fetchall()}
+                recoveries = {r[0] for r in await (await db.execute("SELECT session_id FROM unified_runtime_links WHERE json_extract(mapping,'$.recovery_from') IS NOT NULL")).fetchall()}
             for s in sessions:
                 s.update(_session_identity(await _load_settings(s["session_id"])))
+                if s["session_id"] in copies:
+                    s["sync_copy"] = copies[s["session_id"]]
+                if s["session_id"] in recoveries:
+                    s["sync_recovery"] = True
             # デフォルトセッションがまだ無い場合でも空で返す
             return {"sessions": sessions}
     except generations.Conflict as e:

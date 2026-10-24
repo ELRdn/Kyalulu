@@ -121,6 +121,16 @@ async def _list_memories(db, scope: str, include_deleted: bool = False) -> list[
     return [_row(r) for r in rows]
 
 
+async def conversation_snapshot(db, session_id):
+    """Only attributable active memories; never copy another session's shared facts."""
+    scope = await (await db.execute('SELECT scope FROM session_scopes WHERE session_id=?', (session_id,))).fetchone()
+    cursor = await db.execute(f"SELECT {COLUMNS} FROM memories WHERE status='active' AND "
+        "(source_session_id=? OR (source_session_id IS NULL AND scope=?))" + (' AND scope=?' if scope else '') + ' ORDER BY rowid',
+        (session_id, 'session:' + session_id) + ((scope[0],) if scope else ()))
+    cursor.row_factory = aiosqlite.Row
+    return [_row(row) for row in await cursor.fetchall()]
+
+
 async def get(memory_id: str) -> dict:
     await init()
     async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:

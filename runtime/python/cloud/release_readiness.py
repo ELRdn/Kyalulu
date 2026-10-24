@@ -10,17 +10,19 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 SOURCE_DIRS = ("runtime/python", "apps/web/src", "apps/web/public", "packages/schemas/src",
                "packages/ui/src", "packages/analytics", "packages/launcher/src", "packages/launcher/bin", "deploy/cloud",
-               "characters", "personas", "worlds", "prompts")
+               "characters", "personas", "worlds", "prompts", "scenarios", "scripts/mobile_wasm", "docs/licenses")
 SOURCE_FILES = ("uv.lock", "pyproject.toml", "runtime/pyproject.toml", "pnpm-lock.yaml",
                 "LICENSE", "package.json", "pnpm-workspace.yaml", "tsconfig.json",
-                "apps/web/index.html", "apps/web/package.json", "apps/web/vite.config.ts",
+                "apps/web/index.html", "apps/web/migration/index.html", "apps/web/package.json", "apps/web/vite.config.ts",
                 "apps/web/tsconfig.json", "apps/web/tsconfig.app.json", "apps/web/tsconfig.node.json",
                 "packages/schemas/package.json", "packages/schemas/tsconfig.json",
                 "packages/ui/package.json", "packages/ui/tsconfig.json", "packages/launcher/package.json",
                 "packages/launcher/runtime-manifest.json", "models/example-le.yaml",
                 "models/example-lmstudio.yaml", "models/example-ollama.yaml", "models/mock-echo.yaml",
                 "scripts/build_local_bundle.py", "scripts/collect_release_sources.py",
-                "scripts/prepare_cloud_bundle.py", "scripts/prepare_npm_manifest.mjs")
+                "scripts/prepare_cloud_bundle.py", "scripts/prepare_npm_manifest.mjs", "scripts/build_app_catalog.py",
+                "scripts/mobile_models.py", "scripts/mobile_release.py", "scripts/verify_mobile.py",
+                "scripts/publish_mobile.ps1", "tests/fixtures/unified-core.json", "tests/fixtures/portable-prompt.json")
 
 GATES = {
     "windows_clean": "Windows 11 x64 / Node only: first install, real local model, memory, restart, failed update, restore",

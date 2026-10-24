@@ -122,7 +122,10 @@ class CloudGenerations:
                 prior = await (await db.execute("SELECT content FROM chat_history WHERE session_id=? AND role='user' AND id<? ORDER BY id DESC LIMIT 1", (req.session_id, req.regenerate_message_id))).fetchone()
             if not tail or tail[0] != req.regenerate_message_id or tail[1] != "assistant" or not prior or messages[-1]["content"] != prior[0]:
                 raise CloudError("regeneration_conflict", 409)
-            state = await generations.state_before(req.session_id, req.regenerate_message_id, settings.model_dump())
+            try:
+                state = await generations.state_before(req.session_id, req.regenerate_message_id, settings.model_dump())
+            except generations.Conflict as exc:
+                raise CloudError('historical_state_unavailable', 409) from exc
         memory_ctx = scope = None
         try:
             pinned_scope = await memories.session_scope(settings.model_dump())
