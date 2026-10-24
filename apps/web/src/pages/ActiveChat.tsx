@@ -75,6 +75,9 @@ import { useCapabilities } from '../lib/capabilities';
 import { branchSession, deleteSessionData } from '../lib/api';
 import CloudQuoteConfirmation, { useQuoteConfirmation } from '../components/CloudQuoteConfirmation';
 import type { CloudQuote } from '../lib/quoteConsent';
+import { setGenerationBusy, executionTarget } from '../lib/appContext';
+import { AdBanner } from '../components/CreditOptions';
+import SessionPolicy from '../components/SessionPolicy';
 import ConversationContext from '../components/ConversationContext';
 import PortableMedia from '../components/PortableMedia';
 import StoryRuntime from '../components/StoryRuntime';
@@ -173,7 +176,8 @@ function ActiveChatSession() {
   const {cloud_mode} = useRuntimeAccess();
   const [cloudRoute,setCloudRoute] = useState<CloudRouteChoice>(defaultCloudRoute);
   useEffect(()=>setCloudRoute(defaultCloudRoute),[sessionId,cloud_mode]);
-  const [online, setOnline] = useState(() => navigator.onLine !== false);
+  const [networkOnline, setOnline] = useState(() => navigator.onLine !== false);
+  const online = executionTarget() === 'device' || networkOnline;
   const [error, setError] = useState<string | null>(null);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
@@ -266,6 +270,7 @@ function ActiveChatSession() {
   const input = recovery.input;
   const setInput = recovery.change;
   const mutationLocked = streaming || recovery.unresolved || sessionAction;
+  useEffect(() => { setGenerationBusy(mutationLocked); return () => setGenerationBusy(false); }, [mutationLocked]);
   const mutationBlocked = () => !mountedRef.current || sendingRef.current || sessionActionRef.current || recovery.blocked();
 
 
@@ -701,7 +706,7 @@ function ActiveChatSession() {
   const permanentlyDelete = async () => {
     if (mutationBlocked() || !capabilities?.features.permanent_delete) return;
     if (!(await confirm({ title: '会話データを完全消去しますか？',
-      description: '会話本文・生成結果・関連記憶を削除し、元に戻せません。共有範囲の記憶にも影響します。費用台帳の金額記録は残ります。バックアップの保持期間は接続先の方針に従います。',
+      description: '会話本文・生成結果・関連記憶を完全消去します。同期を許可した会話は、同じ会話IDの同期コピーも対象です。更新の競合は再確認し、他の端末の未送信変更は端末限定で保持します。費用台帳は残り、バックアップの保持期間は接続先の方針に従います。',
       confirmLabel: '完全消去する', danger: true })) || mutationBlocked()) return;
     const scope = connectionScope(); sessionActionRef.current = true; setSessionAction(true);
     try {
@@ -1004,6 +1009,8 @@ function ActiveChatSession() {
 
       {/* 中央: 会話 */}
       <div className="k-chat-main">
+        <AdBanner/>
+        <SessionPolicy sessionId={sessionId} model={currentModel?.display_name??modelId??''} disabled={mutationLocked}/>
         <div className="k-chat-header">
           <Link to="/chats" className="k-chat-header__back" aria-label="チャット一覧へ戻る">
             <Icon name="back" size={18} />

@@ -21,6 +21,9 @@ DIRECTORIES = (
     "personas",
     "worlds",
     "prompts",
+    "scenarios",
+    "scripts/mobile_wasm",
+    "docs/licenses",
 )
 FILES = (
     "LICENSE",
@@ -34,6 +37,7 @@ FILES = (
     "uv.lock",
     "runtime/pyproject.toml",
     "apps/web/index.html",
+    "apps/web/migration/index.html",
     "apps/web/package.json",
     "apps/web/vite.config.ts",
     "apps/web/tsconfig.json",
@@ -44,6 +48,22 @@ FILES = (
     "scripts/verify_npm_beta.mjs",
     "scripts/cloud_admin.py",
     "scripts/prepare_cloud_bundle.py",
+    "scripts/build_app_catalog.py",
+    "scripts/mobile_models.py",
+    "scripts/mobile_release.py",
+    "scripts/verify_mobile.py",
+    "scripts/publish_mobile.ps1",
+    "tests/fixtures/unified-core.json",
+    "tests/fixtures/portable-prompt.json",
+    "docs/MOBILE.md",
+    "docs/UNIFIED_APP.md",
+    "docs/UNIFIED_DELIVERY.md",
+    "docs/UNIFIED_SYNC_ERASURE_REVIEW.md",
+    "docs/validation/2026-10-23-mobile.md",
+    "docs/validation/2026-10-24-unified-sync.md",
+    "docs/validation/2026-10-24-unified-erasure.md",
+    "docs/validation/2026-10-24-unified-cache-migration.md",
+    "docs/validation/2026-10-24-unified-portable.md",
     "deploy/cloud/Dockerfile",
     "deploy/cloud/Dockerfile.prebuilt",
     "deploy/cloud/compose.yml",
@@ -125,6 +145,7 @@ def collect(destination):
     (destination / "BUILD.md").write_text(
         "# Corresponding source\n\nNode 22+, pnpm 10.30.1, uv 0.8.22.\n"
         "`pnpm install --frozen-lockfile` then `pnpm --filter web build`.\n"
+        "For the unified app, regenerate the catalog with `python scripts/build_app_catalog.py`, build pinned WASM using `scripts/mobile_wasm/bootstrap.py`, `prepare.py` and `build.sh`, then run `pnpm --filter web build:app`. See `docs/MOBILE.md` and `docs/UNIFIED_APP.md`.\n"
         "`uv sync --frozen --all-packages --all-extras --no-install-workspace` for Python.\n"
         "On the native target: `uv run --no-sync python scripts/build_local_bundle.py --output .artifacts/npm-beta --target win32-x64` (or darwin-arm64).\n"
         "Operator keys/data/model weights are excluded. Artifacts are not published by these steps.\n",

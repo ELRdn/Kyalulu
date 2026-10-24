@@ -12,19 +12,23 @@ import tempfile
 from collect_release_sources import ROOT, archive, collect
 
 
-def prepare(output):
+def prepare(output, *, unified=False):
     output.mkdir(parents=True, exist_ok=True)
-    if not (ROOT / "apps/web/dist/index.html").is_file():
+    web_dist = ROOT / ('.artifacts/unified-app' if unified else 'apps/web/dist')
+    if not (web_dist / "index.html").is_file():
         raise ValueError("Build Web locally before preparing the cloud bundle")
+    for path in web_dist.rglob('*'):
+        if path.is_symlink() or not path.resolve().is_relative_to(web_dist.resolve()):
+            raise ValueError('Prebuilt Web escaped its build directory')
     with tempfile.TemporaryDirectory(dir=output) as temporary:
         stage = Path(temporary) / "stage"
         stage.mkdir()
         corresponding = Path(temporary) / "source"
         collect(corresponding)
         archive(corresponding, stage / "kyalulu-source.tar.gz")
-        for directory in ("runtime/python", "characters", "personas", "worlds", "prompts"):
+        for directory in ("runtime/python", "characters", "personas", "worlds", "prompts", "scenarios"):
             shutil.copytree(corresponding / directory, stage / directory)
-        shutil.copytree(ROOT / "apps/web/dist", stage / "web")
+        shutil.copytree(web_dist, stage / "web")
         for name in ("LICENSE", "scripts/cloud_admin.py", "deploy/cloud/compose.yml",
                      "deploy/cloud/compose.vps.yml", "deploy/cloud/Caddyfile.example"):
             target = stage / name
@@ -67,4 +71,6 @@ def prepare(output):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=ROOT / ".artifacts/cloud-vps")
-    prepare(parser.parse_args().output)
+    parser.add_argument('--unified', action='store_true', help='Package the verified build:app output')
+    arguments = parser.parse_args()
+    prepare(arguments.output, unified=arguments.unified)

@@ -1,5 +1,6 @@
 /** Secrets live in IndexedDB, never URL queries or localStorage. */
 import {isCloud,cloudOwner} from './cloudMode';
+import { executionTarget, deviceOwner, generationBusy } from './appContext';
 export type RemoteDevice = {
   id: string; ownerId: string; hostId: string; deviceId: string;
   relay: string; name: string; hostName?: string; token: string; privateKey: string; hostKey: string;
@@ -8,10 +9,11 @@ const DB = 'kyalulu-remote-v1';
 let selected: RemoteDevice | null = null;
 export function activeRemote() { return selected; }
 export function connectionScope() {
-  return selected ? `remote:${selected.relay}:${selected.ownerId}:${selected.hostId}` : isCloud() ? `cloud:${window.location.origin}:${cloudOwner()}` : window.location.origin;
+  const target = executionTarget();
+  return target === 'device' ? `device:${deviceOwner()}` : selected && target === 'pc' ? `remote:${selected.relay}:${selected.ownerId}:${selected.hostId}` : isCloud() ? `cloud:${window.location.origin}:${cloudOwner()}` : window.location.origin;
 }
 export function scopedKey(key: string) {
-  return selected || isCloud() ? `${key}:${encodeURIComponent(connectionScope())}` : key;
+  return selected || isCloud() || executionTarget() === 'device' ? `${key}:${encodeURIComponent(connectionScope())}` : key;
 }
 function database(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -40,8 +42,9 @@ export async function restoreRemote() {
   return selected;
 }
 export function selectRemote(device: RemoteDevice | null) {
+  if (generationBusy()) throw Error('Stop generation and confirm its saved result before switching.');
   // Reload tears down all old requests/components. Never reuse another host's view state.
-  if (device) localStorage.setItem('kyalulu-active-remote', device.id);
+  if (device) { localStorage.setItem('kyalulu-active-remote', device.id); localStorage.setItem('kyalulu-execution-target', 'pc'); }
   else localStorage.removeItem('kyalulu-active-remote');
   location.hash = '/chats';
   location.reload();

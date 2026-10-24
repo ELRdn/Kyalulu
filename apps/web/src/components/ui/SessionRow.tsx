@@ -4,6 +4,7 @@ import Icon from "./Icon";
 import { sessionTitle, type SessionInfo } from "../../lib/api";
 import { cleanPreview, formatRelative } from "../../lib/text";
 import "./ui.css";
+import { useLanguage } from '../../lib/appContext';
 
 export default function SessionRow({
   session,
@@ -19,6 +20,7 @@ export default function SessionRow({
   onTogglePin?: () => void;
 }) {
   const name = sessionTitle(session);
+  const en = useLanguage() === 'en';
   const preview = cleanPreview(session.last_preview);
   return (
     <div className={`k-session-row ${active ? "k-session-row--active" : ""}`}>
@@ -30,6 +32,9 @@ export default function SessionRow({
             <span className="k-session-row__time">{formatRelative(session.last_at)}</span>
           </div>
           <div className="k-session-row__preview">{preview || "まだメッセージがありません"}</div>
+          {session.sync_copy && <div className="k-session-row__world">{en ? 'Synced copy' : '同期コピー'} · v{session.sync_copy.revision}</div>}
+          {session.sync_recovery && <div className="k-session-row__world">{en ? 'Recovered local edits' : '未同期の変更を保護'}</div>}
+          {session.offline_available === false && <div className="k-session-row__world">{en ? 'Connect to reopen' : '再取得には接続が必要'}</div>}
           {worldName && <div className="k-session-row__world">✦ {worldName}</div>}
         </div>
       </Link>

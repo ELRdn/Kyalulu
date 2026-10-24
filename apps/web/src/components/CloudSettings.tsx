@@ -6,12 +6,14 @@ import { useConfirm } from './ui/Dialog';
 import Button from './ui/Button';
 import Icon from './ui/Icon';
 import AnalyticsConsent from './AnalyticsConsent';
+import RuntimeSyncSettings from './RuntimeSyncSettings';
+import SyncDevices from './SyncDevices';
 import { analyticsLanguage, syncAppAnalytics } from '../lib/analytics';
 import './cloudSettings.css';
 
 type Plan = {id:string;monthly_usd:number;monthly_credits:number;storage_bytes:number};
 type Account = {
-  identity?:{id:string;email?:string};private_test?:boolean;
+  identity?:{id:string;email?:string};private_test?:boolean;unified_sync_available?:boolean;
   private_budget?:{limit_nano:number;prior_accounted_nano:number;available_nano:number};
   wallet:{credits:number;plan:string;used_credits?:number;
     usage?:{state:string;created:number;charged_credits:number;max_credits:number}[];
@@ -54,6 +56,7 @@ export default function CloudSettings() {
     {error&&<div className="k-cloud__notice is-error" role="alert">{error}<Button size="sm" variant="ghost" onClick={()=>void act(refresh,'更新しました。')}>再読み込み</Button></div>}
     {message&&<p className="k-cloud__notice" role="status">{message}</p>}
     <AnalyticsConsent enabled={analyticsReady} language={analyticsLanguage()} />
+    <RuntimeSyncSettings />
     {!account ? <div className="k-cloud__card" role="status">アカウントの状態を確認しています…</div> : <>
       <div className="k-cloud__overview">
         <div className="k-cloud__card k-cloud__wallet">
@@ -80,12 +83,12 @@ export default function CloudSettings() {
       </div>
       <div className="k-cloud__details">
         <details><summary>クレジット使用履歴と料金</summary><div className="k-cloud__detail-body">
-          <p>10,000 K-Credits＝$1。クレジットは予約せず、生成ごとのAPI実費の6倍相当を整数で、同意した消費上限内で精算します。失敗した生成の消費は0です。</p>
+          <p>生成ごとのAPI実費の6倍相当を整数で、同意した消費上限内で精算します。失敗した生成の消費は0です。月額分は60日、追加購入分は180日有効です。解約しても付与済み残高は有効期限まで残ります。</p>
           <div className="k-cloud__list">{account.wallet.lots.map((lot,i)=><div className="k-cloud__row" key={i}><span>{lot.kind==='admin'?'管理者からの付与':lot.kind==='purchase'?'購入分':'付与クレジット'}</span><span>{number(lot.remaining)} · {date(lot.expires)}まで</span></div>)}</div>
           {account.wallet.usage?.length ? <ul className="k-cloud__usage">{account.wallet.usage.map((entry,i)=><li key={i}><span>{new Date(entry.created*1000).toLocaleString()}</span><strong>{entry.state==='pending'?`生成中 · 消費上限 ${entry.max_credits}`:entry.state==='completed'?`${entry.charged_credits} 消費`:'失敗 · 消費0'}</strong></li>)}</ul> : <p>まだクレジットの使用履歴はありません。</p>}
           {account.private_budget&&<p className="k-cloud__muted">個人テストの累計API上限 ${(account.private_budget.limit_nano/1e9).toFixed(2)} · 残り ${(account.private_budget.available_nano/1e9).toFixed(6)}（過去の検証と運営側の確保額を含む）</p>}
           {account.billing_available&&<div className="k-cloud__actions">{account.plans.filter(p=>p.id!=='free').map(plan=><Button key={plan.id} disabled={busy} onClick={()=>void act(async()=>{const result=await cloudJson('billing/checkout',{method:'POST',body:JSON.stringify({sku:plan.id,request_id:crypto.randomUUID()})});location.assign(result.url);})}>{plan.id} ${plan.monthly_usd}/月</Button>)}
-            {[['credits_5','$5 · 50,000'],['credits_10','$10 · 100,000']].map(([sku,label])=><Button key={sku} disabled={busy} onClick={()=>void act(async()=>{const result=await cloudJson('billing/checkout',{method:'POST',body:JSON.stringify({sku,request_id:crypto.randomUUID()})});location.assign(result.url);})}>{label} K-Creditsを追加</Button>)}</div>}
+            {[['credits_5',`$5 · ${account.wallet.plan==='free'?'37,500':'45,000'}`],['credits_10',`$10 · ${account.wallet.plan==='free'?'75,000':'90,000'}`]].map(([sku,label])=><Button variant="secondary" key={sku} disabled={busy} onClick={()=>void act(async()=>{const result=await cloudJson('billing/checkout',{method:'POST',body:JSON.stringify({sku,request_id:crypto.randomUUID()})});location.assign(result.url);})}>{label} K-Creditsを追加</Button>)}</div>}
           {account.billing_portal_available&&<Button variant="secondary" disabled={busy} onClick={()=>void act(async()=>{location.assign((await cloudJson('billing/portal',{method:'POST'})).url);})}>契約・請求を管理</Button>}
         </div></details>
         <details><summary>ローカル端末とのデータ同期</summary><div className="k-cloud__detail-body">
@@ -111,6 +114,7 @@ export default function CloudSettings() {
           <Button variant="danger" disabled={busy} onClick={()=>void (async()=>{if(await confirm({title:'クラウドコピーを削除しますか？',description:'クラウドの会話・キャラ・記憶を削除してローカル同期を停止します。ローカルのデータは残ります。保持中のバックアップは期間満了まで残ります。',confirmLabel:'削除して同期を停止'})) await act(()=>cloudJson('sync/snapshot',{method:'DELETE'}),'クラウドコピーを削除しました。');})()}>クラウドコピーを削除</Button>
         </div></details>
       </div>
+      {account.unified_sync_available&&<SyncDevices/>}
       <footer className="k-cloud__footer"><span>{account.private_test?'招待したアカウント限定 · サブスク・追加購入なし':'アカウントごとにデータを保管'}</span><Button size="sm" variant="ghost" disabled={busy} onClick={()=>void act(async()=>{await cloudJson('auth/logout',{method:'POST'});location.reload();})}>ログアウト</Button></footer>
     </>}
   </section>;

@@ -1,0 +1,242 @@
+# Unified App Implementation Status
+
+2026-10-23 to 2026-10-24. **Partial implementation, not release acceptance.** No production
+deployment, provider application, purchase, contract or DNS change has been performed.
+Work is now committed incrementally on `codex/unified-app-integration`; merging is
+reserved for the owner. Pre-existing Mobile changes remain in place.
+
+## Local Build
+
+```powershell
+pnpm --filter web typecheck
+pnpm --filter web test -- --pool threads --maxWorkers 1
+pnpm --filter web build:app
+.venv/Scripts/python.exe scripts/unified_preview.py
+```
+
+Preview: http://127.0.0.1:5187/. This loopback-only fixture server has no login,
+payment, advertisement, age-verification or inference connector. JP/US and age 18+
+in its onboarding are **test fixtures, not approved regional policies**. Do not
+publish this server. The built application is `.artifacts/unified-app`.
+Existing `build` and `build:mobile` entry points remain separate and supported.
+Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:app`.
+
+## Delivered Behavior
+
+- Shared navigation, compact mascot home, recommendations before recent chats,
+  three optional interest screens, and a target selector outside RuntimeGate.
+- Public unified entry defaults to Cloud. `/device/` uses the same UI and browser
+  Worker, account-scoped IndexedDB and existing pinned model download verification.
+  Target changes preserve the original data/draft scope and never transfer chats.
+- Generation or unresolved recovery blocks target changes and PWA activation.
+  Device chat is not blocked by an offline network indicator.
+- Browser memory retrieval, evidence validation, source-linked extractive
+  chapter/arc summaries, basic RPG state and historical generation snapshots.
+  Python/TypeScript share `tests/fixtures/unified-core.json`.
+- Portable character/profile/Lore compilation now follows the Python portable
+  compiler's macro, prompt-order, example, scan-depth, recursion, budget and
+  compatibility rules on shared `tests/fixtures/portable-prompt.json` cases.
+  A generated Python casefold table pins Unicode matching semantics. Selected
+  library versions are checked for kind and rating instead of being ignored.
+- Device Persona/World creation, immutable revision lists and creator JSON export
+  use the existing shared screens. Cast knowledge/relationships and RPG outcomes
+  are included in the device generation contract. Created settings travel as
+  referenced snapshots through the consented Cloud bridge and hydrate in browsers;
+  other private works are excluded. See
+  [Portable validation](validation/2026-10-24-unified-portable.md).
+- Session/request temperatures, supported sampler overrides and the output token
+  reserve reach the Worker. GGUF names are mapped to the installed runtime API;
+  ONNX-only limitations and stop strings are reported as unsupported. Adjacent
+  same-role prompt parts are combined, and context fitting retains system
+  instructions and the newest user input rather than dropping World rules first.
+- Browser conversation entities have revisions, durable dirty state and stable
+  UUIDs. A consented outbox uses Web Locks and persistent request IDs; account
+  verification precedes upload. The server encrypts payloads, rejects local-only
+  uploads/credential metadata and preserves conflicting entities as branches.
+- Browser consent withdrawal atomically marks pending requests as withdrawn.
+  Only the request ID is sent for cancellation/receipt resolution. Applied receipts
+  survive document reload without further traffic while consent is off, and are
+  adopted after renewed consent without replaying the old body or losing newer
+  edits. See [withdrawal validation](validation/2026-10-24-unified-browser-withdrawal.md).
+- Cloud SQLite now has an opt-in, append-only entity bridge. Cloud/device Settings
+  requires explicit consent and individual Cloud conversation selections; there
+  is no automatic all-session export. Incoming device revisions create separate
+  native conversations, labelled as synced copies. Original native rows and IDs
+  are preserved. See [selected-sync validation](validation/2026-10-24-unified-sync.md).
+- Received browser histories allocate device-wide numeric IDs while retaining
+  message/memory UUIDs. Memory/summaries/snapshot/generation references move in
+  the same transaction. Referenced Portable library versions are hydrated without
+  replacing editable local documents; changed immutable versions abort the page.
+- Completed Python generations now save attributable before/after state and memory
+  snapshots in the finish transaction. Device snapshots import as native historical
+  generations and export back without provider prompts or private shared memories.
+  Native/device branches use the saved memory version, including user-message cut
+  points, and regeneration invalidates only the corresponding branch's memory.
+  Shared fixture tests cover this interchange. Full historical settings and verified
+  common ancestry still remain. See
+  [history snapshot validation](validation/2026-10-24-unified-history-snapshots.md).
+- Confirmed Cloud/device conversation erasure now uses account-scoped durable
+  tombstones, revision checks, replay-safe receipts and backup/legacy-restore
+  fences. Unsent edits survive as independent device-only recoveries. Updated
+  Cloud revisions require another confirmation in Settings. Native-PC evidence
+  is listed separately; production migration acceptance remains open. See
+  [erasure validation](validation/2026-10-24-unified-erasure.md).
+- Remote management is a separately persisted device permission granted/revoked
+  on the PC. It does not grant Cloud, Host or pairing administration.
+- Native PC entity sync now has explicit on-PC enrollment, sync-only session-bound
+  credentials, owner/origin namespaces and durable SQLite outboxes. Selected local
+  chats upload; account-synced chats arrive as separate native copies. Lost responses
+  replay the same request, and withdrawal resolves by receipt or cancellation fence
+  without resending the body. Local-only registration rejects LAN, public Host,
+  proxies, Relay administrators and Cloud tenants. Settings and chat headers expose
+  the state in JA/EN. See [Native sync validation](validation/2026-10-24-unified-native-sync.md).
+- New pricing snapshots bind quantity, bonus, Stripe price and checkout expiry
+  to the original request. Legacy checkouts retain legacy grants. Credit liability
+  is backed without resetting existing funds, balances or private-test budgets.
+- Funded trial/daily/ad grants, one pending reward per owner, reservations,
+  verified completion input, expiration and replay-safe accounting are implemented.
+  No production ad adapter is supplied. Client time never grants a reward.
+- A 50px top banner slot and credit-options dialog are wired into shared screens.
+  Device/native-local chats and subscribers do not display banners. Isolated
+  sandboxed cross-origin frames receive no private app data.
+- Regional eligibility tickets are issued and checked server-side for unified
+  login. Unknown policies and unverified guardian consent fail closed. This is
+  not adult verification; an independent provider receipt is required for that.
+- A private publication queue stores allowlisted fixed snapshots and moderator
+  CAS decisions. It is not yet a complete public moderation workflow.
+- Old Mobile has `?migrate=1`; App has `#/migration`. The fallback file checks
+  revision, byte length and SHA-256 before an atomic, replay-safe local copy.
+  Originals remain intact; failed quota transactions do not replace existing data.
+  Drafts are retained in the migrated payload even if localStorage restoration
+  fails. Model files are never uploaded; fallback requires re-download.
+- Both builds now include a neutral `/migration/` document. The old Mobile
+  requires source-window consent before a nonce-bound, exact-origin MessageChannel
+  is opened. One-MiB requests transfer the verified backup and selected matching
+  catalog models directly between top-level windows. Model readiness is committed
+  only after every file passes byte length and SHA-256; interrupted files are
+  aborted without replacing an existing file. File export remains available.
+- Offline retention keeps the ten most recently opened conversations plus pinned,
+  dirty, device-only and pending-generation records. Older acknowledged synchronized
+  bodies become identity-preserving stubs. Opening or pinning rehydrates through
+  an owner-checked endpoint without rewinding the main sync cursor. Unavailable
+  bodies return 503 rather than an empty conversation. See
+  [cache/migration validation](validation/2026-10-24-unified-cache-migration.md).
+
+## Feature Matrix
+
+"Existing" means retained code, not a new full acceptance run on that target.
+
+| Surface | Cloud/Python | Own PC/Python | Browser Device | Acceptance Gap |
+|---|---|---|---|---|
+| Character chat/settings | Existing | Existing | Adapter implemented | Real-model device 20-turn test |
+| Memory/provenance | Existing | Existing | Retrieval/proposals/manual CRUD | Full identity/shared-scope parity |
+| Summaries | Existing | Existing | Extractive chapters/arcs/manual edits | Long-context/end-to-end fixtures |
+| World/cast/RPG | Existing + creator snapshot bridge | Existing | Creator revisions, cast contract, RPG and selected Lore | Historical snapshot interchange and physical real-model acceptance |
+| Branches | Saved state/memory interchange; unsnapshotted sync history blocked | Historical generation copies; scoped memory invalidation | Saved snapshots and independent numeric IDs; user/assistant cut points | Full historical settings, canonical Native lineage and common-ancestor proof |
+| Character creation | Existing | Existing | Portable JSON/basic library | All creator/PNG/CHARX/history/media imports |
+| Research/experiments | Cloud restricted | Explicit management permission | Not implemented; not advertised as admin | Device benchmark execution/results |
+| Sync | Selected SQLite export, separate copies, confirmed erasure | Scoped entity enrollment/outbox/cancel receipts; legacy backup retained | Outbox, withdrawal receipts, version consent, library hydration, local recoveries | Complete lineage, large conversations and production migration |
+| Offline | Network generation required | Existing standalone | Recent ten, pinned, protected edits, hydration and stub identity | Real quota exhaustion, full PWA/browser/device restart acceptance |
+| Mobile migration | Not a Cloud upload | Not applicable | Verified file fallback and selected chunked model/data transfer | Deployed-domain popup/CSP, Android/iPhone and large-model acceptance |
+| Localization | Existing screens mainly JA | Same | New controls JA/EN | Complete existing screen translation |
+| Adult publication | Closed | Existing local controls retained | Closed | Vendor acceptance and public APIs/media gates |
+
+## Not Complete
+
+The new entity store has a **limited consented Cloud SQLite bridge**. New uploads
+after consent create independent conversations in the existing Cloud chat APIs.
+Existing uploads/receipts created before bridge consent are not retroactively
+projected. New copies are not silently selected for export; choose each native
+copy explicitly to bring subsequent Cloud edits back to devices. Unchanged
+versions are not copied repeatedly; successive uploaded revisions create new
+native copies. Native-PC entity bridging has isolated API/UI evidence; large-conversation
+support, complete lineage and snapshot interchange remain incomplete.
+Cloud/device deletion and restore protection are implemented with fixture and
+browser evidence; production/account/device-scale migration is not yet accepted.
+Historical state/memory snapshots now import when provided. Branch/regeneration
+still refuse missing history rather than inventing state. Full historical settings
+and common ancestry remain incomplete. Do not enable unified production on the
+strength of this bounded bridge.
+Portable prompt fixtures cover the portable compiler path; they do not establish
+byte-identical prompts for every legacy YAML/template route or equivalent model
+quality. Unsupported Lore conditions stay preserved with an audit instead of
+executing source scripts or regex. Real GGUF/ONNX inference with the new prompt
+assembly and sampler overrides has not been exercised in this phase.
+Cache trimming now runs after synchronization and reopening hydrated conversations.
+Document reload with API requests unavailable has been checked on fixture data;
+this is not evidence of a full browser/process/device or PWA-shell restart.
+
+Outstanding: canonical per-message/memory revision mapping for all old databases;
+native-PC large-scale/legacy-restore acceptance; full shared-history fork
+lineage; all browser feature parity; deployed/physical-device chunked migration;
+complete English UI; moderation classifier/report/appeal/public search/image
+integration; actual adult/guardian provider adapters; a contract-approved ad
+inventory/completion adapter and settled-revenue reconciliation; source archive
+and signed distribution inventory for the unified build; physical-device testing.
+
+The current feature matrix does not satisfy the approved plan's completion
+condition. Passing the bounded tests below must not be represented as that result.
+
+## Production Gates
+
+`KYALULU_UNIFIED_APP_ENABLED` defaults to false. `KYALULU_REGION_POLICIES` defaults
+to an empty object. Do not insert guessed regional approvals. Policies require
+explicit versions and accepted minimum ages/guardian thresholds; production legal
+approval remains independent. An adapter injection is not vendor acceptance.
+
+Retain existing private-test restrictions. Do not enable Stripe for an adult
+offering. No identity documents belong in the app database/logs. Ad provider
+completion must authenticate raw provider bytes before normalization; browser
+timers/messages are not completion evidence. Settled net ad receipts, not eCPM
+estimates, may fund new grants.
+
+## Recovery And Rollback
+
+1. Stop generation and confirm saved outcomes before changing target or applying
+   a PWA update. Export local/native data before any production migration.
+2. Leave the old Mobile URL live. Use its migration export or existing backup
+   fallback. Never delete the source browser's IndexedDB/OPFS during migration.
+   Deploy the new neutral `/migration/` on both domains before offering direct
+   transfer. Open it as a top-level page; the isolated `/device/` page must link to
+   it instead of embedding a third-party iframe or weakening inference isolation.
+   Preserve popup opener access only between the exact two migration origins.
+   Missing popup/OPFS/Web Locks support uses file export and model re-download.
+3. For sync failure, retain outbox records/request IDs and dirty data. Restore
+   connectivity/login for the same owner and retry; do not replay generation POSTs.
+4. Keep the operator database and tenant/native databases together with backups.
+   Schema additions are additive. Do not drop/reseed credit lots, funding,
+   receipts, revocations or test-budget tables to undo a release.
+5. Disable the unified flag, advertising and sales for an unaccepted environment.
+   Do not erase new IndexedDB stores, Remote keys or outboxes to roll back the UI.
+6. `/device/` documents require COOP/COEP and a CSP excluding advertising frames;
+   the main app document must remain compatible with separately isolated ads.
+   A deployment using Cloudflare/static hosting must apply the generated headers.
+   `/migration/` requires `COOP: unsafe-none`, `COEP: unsafe-none` and its own CSP
+   with `connect-src 'none'`. A reverse proxy must not add a conflicting global
+   policy. Generated Pages headers use distinct document paths, without relying
+   on overlapping COOP/CSP values being overridden.
+
+## Bounded Validation
+
+Current selected-sync work and browser fixture evidence are recorded separately
+in [2026-10-24-unified-sync.md](validation/2026-10-24-unified-sync.md). The historical
+counts below describe the preceding implementation phase, not the final tree.
+
+- `tests/test_cloud*.py`, `test_unified_app.py`, Remote bridge/Host and Mobile API:
+  459 passed before the final checkout-snapshot regression addition.
+- Frontend suite: 356 passed, including shared core and damaged migration fixtures.
+- Final unified boundary suite: 15 passed. Final pricing/Cloud-store subset:
+  42 passed before the last two malformed/HTTP-boundary test additions.
+- `build:app` passed with existing upstream WASM/chunk-size warnings.
+- `build:mobile` and final frontend typecheck passed.
+- In-app browser, isolated loopback fixture: three onboarding screens, Cloud
+  default, device target confirmation, shared character intro, 393px light/dark
+  layout, 1280px layout, Japanese draft after reload, and offline shell/data restart
+  were observed. No real model was generated and no payment/ad was served.
+- Explicit PWA update was offered, but browser automation stopped responding
+  during activation. Application of the update and final viewport cleanup could
+  not be confirmed; do not record that interaction as a passing test.
+- Android/iPhone 20-turn generation, lock/resume, network transition, real ads,
+  signed age verification, billing settlement, cache quota/race E2E and complete
+  three-target functionality remain unverified. Desktop packaged artifacts were
+  not rebuilt or installed.

@@ -1,0 +1,209 @@
+[
+  {
+    "id": "google-mobile-onnx",
+    "name": "Google Gemma 4 E2B Mobile QAT · ONNX q2f16",
+    "runtime": "onnx",
+    "repo": "onnx-community/gemma-4-E2B-it-qat-mobile-ONNX",
+    "revision": "a7f19b0ab28252b77cea830f52b8290b2479c87d",
+    "source": "https://huggingface.co/google/gemma-4-E2B-it-qat-mobile-ct",
+    "license": "Apache-2.0",
+    "files": [
+      {
+        "path": "chat_template.jinja",
+        "url": "https://huggingface.co/onnx-community/gemma-4-E2B-it-qat-mobile-ONNX/resolve/a7f19b0ab28252b77cea830f52b8290b2479c87d/chat_template.jinja",
+        "bytes": 17336,
+        "sha256": "2f1b4d75d067bae3fe44e676721c7f077d243bc007156cb9c2f8b5836613d082"
+      },
+      {
+        "path": "config.json",
+        "url": "https://huggingface.co/onnx-community/gemma-4-E2B-it-qat-mobile-ONNX/resolve/a7f19b0ab28252b77cea830f52b8290b2479c87d/config.json",
+        "bytes": 6673,
+        "sha256": "2387efbdf9d703a03f5e18f5de054eaff7956bb9dbce392bc576e38974f93654"
+      },
+      {
+        "path": "generation_config.json",
+        "url": "https://huggingface.co/onnx-community/gemma-4-E2B-it-qat-mobile-ONNX/resolve/a7f19b0ab28252b77cea830f52b8290b2479c87d/generation_config.json",
+        "bytes": 209,
+        "sha256": "fb53f4c64e58896a63472e8eb304397db4a39453e1da0f5d57625ec5a8c1050e"
+      },
+      {
+        "path": "onnx/decoder_model_merged_q2f16.onnx",
+        "url": "https://huggingface.co/onnx-community/gemma-4-E2B-it-qat-mobile-ONNX/resolve/a7f19b0ab28252b77cea830f52b8290b2479c87d/onnx/decoder_model_merged_q2f16.onnx",
+        "bytes": 807184,
+        "sha256": "c0e72ee12b6715bc968621a09ee695e232f6e5f1190f4fae6d02ba2c5319ddee"
+      },
+      {
+        "path": "onnx/decoder_model_merged_q2f16.onnx_data",
+        "url": "https://huggingface.co/onnx-community/gemma-4-E2B-it-qat-mobile-ONNX/resolve/a7f19b0ab28252b77cea830f52b8290b2479c87d/onnx/decoder_model_merged_q2f16.onnx_data",
+        "bytes": 994621440,
+        "sha256": "9b9e8d541335ccdd0226c697882a84a1cb77ac2726ce097e5847589b1e632bcc"
+      },
+      {
+        "path": "onnx/embed_tokens_q2f16.onnx",
+        "url": "https://huggingface.co/onnx-community/gemma-4-E2B-it-qat-mobile-ONNX/resolve/a7f19b0ab28252b77cea830f52b8290b2479c87d/onnx/embed_tokens_q2f16.onnx",
+        "bytes": 5491,
+        "sha256": "ee1b97a04187ba19a23a8ca1761bcd5f241e37ef9ed29ccedb4c1f15e54ec114"
+      },
+      {
+        "path": "onnx/embed_tokens_q2f16.onnx_data",
+        "url": "https://huggingface.co/onnx-community/gemma-4-E2B-it-qat-mobile-ONNX/resolve/a7f19b0ab28252b77cea830f52b8290b2479c87d/onnx/embed_tokens_q2f16.onnx_data",
+        "bytes": 1296564224,
+        "sha256": "a4e548ba02cabd151b9aea983c0338d8ce80b34b00a02a17a3fff50509f03076"
+      },
+      {
+        "path": "tokenizer.json",
+        "url": "https://huggingface.co/onnx-community/gemma-4-E2B-it-qat-mobile-ONNX/resolve/a7f19b0ab28252b77cea830f52b8290b2479c87d/tokenizer.json",
+        "bytes": 32169626,
+        "sha256": "cc8d3a0ce36466ccc1278bf987df5f71db1719b9ca6b4118264f45cb627bfe0f"
+      },
+      {
+        "path": "tokenizer_config.json",
+        "url": "https://huggingface.co/onnx-community/gemma-4-E2B-it-qat-mobile-ONNX/resolve/a7f19b0ab28252b77cea830f52b8290b2479c87d/tokenizer_config.json",
+        "bytes": 1877,
+        "sha256": "7df7e062c54d160443fd723987cd885a55e869d3048e2c1b563a3a965c903f95"
+      }
+    ],
+    "temperature": 1,
+    "topK": 64,
+    "topP": 0.95,
+    "note": "同じMobile QAT系の公開ONNX変換版です。CTファイルそのものではありません。WebGPU・shader-f16が必要です。"
+  },
+  {
+    "id": "kyalulu-iq3m",
+    "name": "Kyalulu E2B JP Rolepaly beta · IQ3_M",
+    "runtime": "gguf",
+    "repo": "Naotaka0127/Kyalulu-E2B-JP-Rolepaly-beta-GGUF",
+    "revision": "afa8d2cf7d521cf045d8ac90a790670083d320a4",
+    "source": "https://huggingface.co/Naotaka0127/Kyalulu-E2B-JP-Rolepaly-beta-GGUF",
+    "license": "Apache-2.0",
+    "files": [
+      {
+        "path": "kyalulu-iq3m-00001-of-00005.gguf",
+        "bytes": 43314112,
+        "sha256": "5a785c67550b5c6c39432d7e8ce1b6176ecbbc3b0cacc225815bcb5e6b63d268",
+        "url": "https://huggingface.co/Naotaka0127/Kyalulu-Mobile-GGUF/resolve/4d37b2546568cb4f1d413966483eb8391fe67b92/kyalulu-iq3m/kyalulu-iq3m-00001-of-00005.gguf"
+      },
+      {
+        "path": "kyalulu-iq3m-00002-of-00005.gguf",
+        "bytes": 1926758592,
+        "sha256": "37610bfc61e62293995cebeeb845f77c8dc732daad76d9d0d5a8a34f3337a5e8",
+        "url": "https://huggingface.co/Naotaka0127/Kyalulu-Mobile-GGUF/resolve/4d37b2546568cb4f1d413966483eb8391fe67b92/kyalulu-iq3m/kyalulu-iq3m-00002-of-00005.gguf"
+      },
+      {
+        "path": "kyalulu-iq3m-00003-of-00005.gguf",
+        "bytes": 510399232,
+        "sha256": "883f261e4e7ddcb11b2f52b4f56c2845697f2f5d5aac4b5b68515507a166dbfb",
+        "url": "https://huggingface.co/Naotaka0127/Kyalulu-Mobile-GGUF/resolve/4d37b2546568cb4f1d413966483eb8391fe67b92/kyalulu-iq3m/kyalulu-iq3m-00003-of-00005.gguf"
+      },
+      {
+        "path": "kyalulu-iq3m-00004-of-00005.gguf",
+        "bytes": 506003200,
+        "sha256": "7fc3611209f28d15462bac5b8449e61dfdf223e6c27769f66fdfc4d98e1647b0",
+        "url": "https://huggingface.co/Naotaka0127/Kyalulu-Mobile-GGUF/resolve/4d37b2546568cb4f1d413966483eb8391fe67b92/kyalulu-iq3m/kyalulu-iq3m-00004-of-00005.gguf"
+      },
+      {
+        "path": "kyalulu-iq3m-00005-of-00005.gguf",
+        "bytes": 139103360,
+        "sha256": "19f6a370815fbdaf2763721ea392ec1145320f6dac2613178c5867be67f1fe75",
+        "url": "https://huggingface.co/Naotaka0127/Kyalulu-Mobile-GGUF/resolve/4d37b2546568cb4f1d413966483eb8391fe67b92/kyalulu-iq3m/kyalulu-iq3m-00005-of-00005.gguf"
+      }
+    ],
+    "temperature": 0.85,
+    "topK": 64,
+    "topP": 0.95,
+    "note": "IQ3_Mは実験用の容量優先モデルです。",
+    "distributionRevision": "4d37b2546568cb4f1d413966483eb8391fe67b92"
+  },
+  {
+    "id": "google-q4",
+    "name": "Google Gemma 4 E2B QAT · Q4_0",
+    "runtime": "gguf",
+    "repo": "google/gemma-4-E2B-it-qat-q4_0-gguf",
+    "revision": "675cff42a74c774d6cb76f76d8eacb49b48c9b93",
+    "source": "https://huggingface.co/google/gemma-4-E2B-it-qat-q4_0-gguf",
+    "license": "Apache-2.0",
+    "files": [
+      {
+        "path": "google-q4-00001-of-00005.gguf",
+        "bytes": 43315936,
+        "sha256": "2aed0be1922552c44d5d58e2901eb619410406e7b8021d4ee4cd83a4342eded6",
+        "url": "https://huggingface.co/Naotaka0127/Kyalulu-Mobile-GGUF/resolve/e640c670e5ecdf33c21415dbe50c637ce9c4b757/google-q4/google-q4-00001-of-00005.gguf"
+      },
+      {
+        "path": "google-q4-00002-of-00005.gguf",
+        "bytes": 1926758592,
+        "sha256": "37610bfc61e62293995cebeeb845f77c8dc732daad76d9d0d5a8a34f3337a5e8",
+        "url": "https://huggingface.co/Naotaka0127/Kyalulu-Mobile-GGUF/resolve/e640c670e5ecdf33c21415dbe50c637ce9c4b757/google-q4/google-q4-00002-of-00005.gguf"
+      },
+      {
+        "path": "google-q4-00003-of-00005.gguf",
+        "bytes": 511960928,
+        "sha256": "35e1735782ab84ab059f41eea9b961f806e277469287a4ff9a92913ca1c3e28b",
+        "url": "https://huggingface.co/Naotaka0127/Kyalulu-Mobile-GGUF/resolve/e640c670e5ecdf33c21415dbe50c637ce9c4b757/google-q4/google-q4-00003-of-00005.gguf"
+      },
+      {
+        "path": "google-q4-00004-of-00005.gguf",
+        "bytes": 505303456,
+        "sha256": "dbb94db546f70dc0b150dafd8475e2d109f6738f7e564cb90462bc82f0cb587b",
+        "url": "https://huggingface.co/Naotaka0127/Kyalulu-Mobile-GGUF/resolve/e640c670e5ecdf33c21415dbe50c637ce9c4b757/google-q4/google-q4-00004-of-00005.gguf"
+      },
+      {
+        "path": "google-q4-00005-of-00005.gguf",
+        "bytes": 362177920,
+        "sha256": "bc05eed5f61dcc4a35bc1515603c2a917e5760ac2a409d837f72ecd6b168aa99",
+        "url": "https://huggingface.co/Naotaka0127/Kyalulu-Mobile-GGUF/resolve/e640c670e5ecdf33c21415dbe50c637ce9c4b757/google-q4/google-q4-00005-of-00005.gguf"
+      }
+    ],
+    "temperature": 1,
+    "topK": 64,
+    "topP": 0.95,
+    "note": "",
+    "distributionRevision": "e640c670e5ecdf33c21415dbe50c637ce9c4b757"
+  },
+  {
+    "id": "heretic-iq3m",
+    "name": "Heretic Gemma 4 E2B · IQ3_M",
+    "runtime": "gguf",
+    "repo": "mradermacher/gemma-4-E2B-it-qat-q4_0-unquantized-heretic-i1-GGUF",
+    "revision": "ad4ee4e644fb0123d44deea5c5a4ee9c172a64c6",
+    "source": "https://huggingface.co/mradermacher/gemma-4-E2B-it-qat-q4_0-unquantized-heretic-i1-GGUF",
+    "license": "Apache-2.0",
+    "files": [
+      {
+        "path": "heretic-iq3m-00001-of-00005.gguf",
+        "bytes": 43315264,
+        "sha256": "3ebc1721f0b56872e16c48d9d0f330a895f4da13571f9bb1ac4d9e4c637a9b2c",
+        "url": "https://huggingface.co/Naotaka0127/Kyalulu-Mobile-GGUF/resolve/7fbfb600facc6c9ee019fffe7aa2894895686285/heretic-iq3m/heretic-iq3m-00001-of-00005.gguf"
+      },
+      {
+        "path": "heretic-iq3m-00002-of-00005.gguf",
+        "bytes": 1926758592,
+        "sha256": "37610bfc61e62293995cebeeb845f77c8dc732daad76d9d0d5a8a34f3337a5e8",
+        "url": "https://huggingface.co/Naotaka0127/Kyalulu-Mobile-GGUF/resolve/7fbfb600facc6c9ee019fffe7aa2894895686285/heretic-iq3m/heretic-iq3m-00002-of-00005.gguf"
+      },
+      {
+        "path": "heretic-iq3m-00003-of-00005.gguf",
+        "bytes": 510399232,
+        "sha256": "e02a56f9d3d76653855fb6911246def9e218964cda803e7324bcd88da698ffa0",
+        "url": "https://huggingface.co/Naotaka0127/Kyalulu-Mobile-GGUF/resolve/7fbfb600facc6c9ee019fffe7aa2894895686285/heretic-iq3m/heretic-iq3m-00003-of-00005.gguf"
+      },
+      {
+        "path": "heretic-iq3m-00004-of-00005.gguf",
+        "bytes": 506003200,
+        "sha256": "8532ed87f3189689f16fd9ce7afc8ced69e140236c3f94648331d66d9be848da",
+        "url": "https://huggingface.co/Naotaka0127/Kyalulu-Mobile-GGUF/resolve/7fbfb600facc6c9ee019fffe7aa2894895686285/heretic-iq3m/heretic-iq3m-00004-of-00005.gguf"
+      },
+      {
+        "path": "heretic-iq3m-00005-of-00005.gguf",
+        "bytes": 139103360,
+        "sha256": "1a306a9062a2d545d419c0750fe8e334ec93d48e5583d4af2e5224ce0df38985",
+        "url": "https://huggingface.co/Naotaka0127/Kyalulu-Mobile-GGUF/resolve/7fbfb600facc6c9ee019fffe7aa2894895686285/heretic-iq3m/heretic-iq3m-00005-of-00005.gguf"
+      }
+    ],
+    "temperature": 1,
+    "topK": 64,
+    "topP": 0.95,
+    "note": "IQ3_Mは実験用の容量優先モデルです。",
+    "distributionRevision": "7fbfb600facc6c9ee019fffe7aa2894895686285"
+  }
+]

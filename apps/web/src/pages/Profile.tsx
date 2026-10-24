@@ -22,13 +22,16 @@ import RemoteHostSettings from '../components/RemoteHostSettings';
 import { DeviceRegistration, useAdministrative, useRuntimeAccess } from '../components/RuntimeGate';
 import CloudSettings from '../components/CloudSettings';
 import LocalCloudSync from '../components/LocalCloudSync';
+import NativeSyncSettings from '../components/NativeSyncSettings';
 import Button from '../components/ui/Button';
 import { useAccountProfile, refreshAccountProfile } from '../lib/accountProfile';
 import { friendlyMessage } from '../lib/errors';
+import DeviceSettings from '../components/DeviceSettings';
+import { executionTarget, isUnifiedEntry } from '../lib/appContext';
 
 export default function Profile() {
   const administrative = useAdministrative();
-  const {cloud_mode} = useRuntimeAccess();
+  const {cloud_mode,remote_mode} = useRuntimeAccess();
   const displayName = useDisplayName();
   const accountSync = useAccountProfile();
   const [nameDraft, setNameDraft] = useState(displayName);
@@ -90,9 +93,10 @@ export default function Profile() {
   return (
     <div className="k-page" style={{ maxWidth: 780 }}>
       {confirmDialog}
+      <DeviceSettings />
       {loadError && <p role="alert">{loadError}<Button size="sm" variant="secondary" onClick={() => setRetry(value => value + 1)}>再読込</Button></p>}
       {!cloud_mode && <ConnectionSettings />}
-      {administrative && <RemoteHostSettings />}
+      {administrative && executionTarget() === 'local' && <RemoteHostSettings />}
       <DeviceRegistration />
       <section className={`k-profile-card ${cloud_mode?'k-profile-card--cloud':''}`}>
         <Avatar name={displayName} size="xl" />
@@ -144,7 +148,7 @@ export default function Profile() {
                 </button>
               </div>
             </Row>
-            {!cloud_mode && <div id="adult" className="k-setting-anchor">
+            {!cloud_mode && !isUnifiedEntry() && <div id="adult" className="k-setting-anchor">
               <Row label="成人向けコンテンツ" desc="18歳以上の方のみ。成人向けのキャラクターと会話を表示します。">
                 <Switch checked={adult} onChange={(v) => void toggleAdult(v)} label="成人向けコンテンツを表示" />
               </Row>
@@ -153,7 +157,7 @@ export default function Profile() {
         </Card>
       </section>
 
-      {administrative && <LocalCloudSync />}
+      {administrative && !remote_mode && executionTarget()==='local' && <><NativeSyncSettings/><details><summary>以前のバックアップ同期</summary><LocalCloudSync/></details></>}
 
       {savedCharacters.length > 0 && (
         <section className="k-section">

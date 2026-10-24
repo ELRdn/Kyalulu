@@ -68,6 +68,13 @@ export const StateUpdateSchema = z.object({
 export const GenerationOutputSchema = z.object({
   reply: z.string().min(1), state_update: StateUpdateSchema,
 }).strict();
+export const DeviceGenerationOutputSchema = GenerationOutputSchema.extend({
+  memory_proposals: z.array(z.object({
+    type: z.enum(['semantic', 'episodic', 'relationship']),
+    content: z.string().min(1).max(200),
+    source_kind: z.enum(['user_statement', 'user_correction', 'work_setting', 'story_event']).default('user_statement'),
+  }).strict()).max(3).default([]),
+}).strict();
 export const RuntimeStateSchema = z.object({
   session_id: z.string().default("default"),
   turn: z.number().int().min(0).default(0),

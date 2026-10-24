@@ -197,6 +197,9 @@ export type ChatMessage = {
 };
 
 export type SessionInfo = {
+  offline_available?: boolean;
+  sync_recovery?: boolean;
+  sync_copy?: {entity_id:string;revision:number};
   session_id: string;
   count: number;
   last_at: string | null;
