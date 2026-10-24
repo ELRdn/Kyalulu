@@ -1,6 +1,6 @@
 # Unified App Implementation Status
 
-2026-10-23 to 2026-10-24. **Partial implementation, not release acceptance.** No production
+2026-10-23 to 2026-10-25. **Partial implementation, not release acceptance.** No production
 deployment, provider application, purchase, contract or DNS change has been performed.
 Work is now committed incrementally on `codex/unified-app-integration`; merging is
 reserved for the owner. Pre-existing Mobile changes remain in place.
@@ -72,9 +72,12 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
   generations and export back without provider prompts or private shared memories.
   Native/device branches use the saved memory version, including user-message cut
   points, and regeneration invalidates only the corresponding branch's memory.
-  Shared fixture tests cover this interchange. Full historical settings and verified
-  common ancestry still remain. See
-  [history snapshot validation](validation/2026-10-24-unified-history-snapshots.md).
+  Shared fixture tests cover this interchange. Historical snapshots also preserve
+  the request system prompt, temperature and referenced Library/Creator versions;
+  branches restore these settings without reading later edits. Missing historical
+  versions roll back the complete receive transaction. Verified common ancestry
+  still remains. See [history snapshot validation](validation/2026-10-24-unified-history-snapshots.md)
+  and [historical settings validation](validation/2026-10-25-unified-history-settings.md).
 - Confirmed Cloud/device conversation erasure now uses account-scoped durable
   tombstones, revision checks, replay-safe receipts and backup/legacy-restore
   fences. Unsent edits survive as independent device-only recoveries. Updated
@@ -132,7 +135,7 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 | Memory/provenance | Existing | Existing | Retrieval/proposals/manual CRUD | Full identity/shared-scope parity |
 | Summaries | Existing | Existing | Extractive chapters/arcs/manual edits | Long-context/end-to-end fixtures |
 | World/cast/RPG | Existing + creator snapshot bridge | Existing | Creator revisions, cast contract, RPG and selected Lore | Historical snapshot interchange and physical real-model acceptance |
-| Branches | Saved state/memory interchange; unsnapshotted sync history blocked | Historical generation copies; scoped memory invalidation | Saved snapshots and independent numeric IDs; user/assistant cut points | Full historical settings, canonical Native lineage and common-ancestor proof |
+| Branches | Saved state/memory/settings interchange; unsnapshotted sync history blocked | Historical generation copies; scoped memory invalidation | Saved snapshots and independent numeric IDs; user/assistant cut points | Canonical Native lineage, common-ancestor proof and legacy settings gaps |
 | Character creation | Existing | Existing | Portable JSON/basic library | All creator/PNG/CHARX/history/media imports |
 | Research/experiments | Cloud restricted | Explicit management permission | Not implemented; not advertised as admin | Device benchmark execution/results |
 | Sync | Selected SQLite export, separate copies, confirmed erasure | Scoped entity enrollment/outbox/cancel receipts; legacy backup retained | Outbox, withdrawal receipts, version consent, library hydration, local recoveries | Complete lineage, large conversations and production migration |
@@ -154,8 +157,9 @@ support, complete lineage and snapshot interchange remain incomplete.
 Cloud/device deletion and restore protection are implemented with fixture and
 browser evidence; production/account/device-scale migration is not yet accepted.
 Historical state/memory snapshots now import when provided. Branch/regeneration
-still refuse missing history rather than inventing state. Full historical settings
-and common ancestry remain incomplete. Do not enable unified production on the
+still refuse missing history rather than inventing state. Older snapshots without
+settings retain their previous current-settings fallback; past settings cannot be
+recovered from absent data. Verified common ancestry remains incomplete. Do not enable unified production on the
 strength of this bounded bridge.
 Portable prompt fixtures cover the portable compiler path; they do not establish
 byte-identical prompts for every legacy YAML/template route or equivalent model

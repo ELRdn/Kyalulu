@@ -210,7 +210,7 @@ class NativeSync:
                 elif remote['id'] not in excluded:
                     payload=remote.get('payload');value=bridge.validate(payload);documents={}
                     snapshots=payload.get('library_snapshots',{})
-                    for ref in bridge.references(value.settings.model_dump()):
+                    for ref in bridge.all_references(value):
                         document=snapshots.get(ref['id']+'@'+str(ref['revision']))
                         if not document:raise CloudError('sync_library_revision_missing',409)
                         documents[(ref['id'],ref['revision'])]=document

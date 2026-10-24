@@ -12,6 +12,11 @@ vi.mock('./appStore',async importOriginal=>({
   setMeta:async(key:string,value:any)=>{fixture.meta.set(key,structuredClone(value));},
   entity:async(id:string,owner:string)=>structuredClone(fixture.entities.get(JSON.stringify([owner,id]))),
   openEntity:async(id:string,owner:string)=>structuredClone(fixture.entities.get(JSON.stringify([owner,id]))),
+  saveEntity:async(value:AppEntity,expected?:number)=>{
+    const key=JSON.stringify([value.owner,value.id]),previous=fixture.entities.get(key);
+    if(value.owner!==fixture.owner||expected!==undefined&&expected!==(previous?.revision??0))throw Error('Transaction aborted');
+    const saved={...value,revision:(previous?.revision??0)+1,dirty:value.payload.storage_policy==='sync'};fixture.entities.set(key,structuredClone(saved));return saved;
+  },
   trimOfflineCache:vi.fn().mockResolvedValue(undefined),
   appTransaction:(_stores:string[],_mode:string,action:any)=>new Promise((resolve,reject)=>{
     const entities=structuredClone(fixture.entities),meta=structuredClone(fixture.meta);
@@ -62,7 +67,26 @@ it.each([[1,0,1,[]],[2,1,2,['tea']],[3,1,3,['tea']]] as const)('branches shared 
   expect(copy.payload.state.turn).toBe(turn);expect(copy.payload.messages).toHaveLength(count);
   expect(copy.payload.memories.map((memory:any)=>memory.content)).toEqual(memories);
   expect(copy.payload.messages.every((message:any)=>message.id>100)).toBe(true);
+  expect(copy.payload.settings.system_prompt).toBe(point===3?'NEW SYSTEM':'OLD SYSTEM');
+  expect(copy.payload.settings.library_binding.character.revision).toBe(point===3?2:1);
+  expect(copy.payload.settings.world_id.endsWith(point===3?'@2':'@1')).toBe(true);
   expect(get('chat').payload.memories[0].content).toBe('coffee');
+});
+it('hydrates all historical revisions and can compile settings from an earlier branch',async()=>{
+  const payload=structuredClone(sharedHistory.payload);
+  await receiveSyncPage('owner-a',[{id:'chat',kind:'conversation',revision:1,deleted:false,payload}],1);
+  expect(Object.keys(get('character').payload.versions).sort()).toEqual(['1','2']);
+  expect(Object.keys(get('created_'+'a'.repeat(32)).payload.versions).sort()).toEqual(['1','2']);
+  const point=get('chat').payload.messages[1].id;
+  const result=await deviceFetch('/api/chat/sessions/chat/branch',{method:'POST',body:JSON.stringify({message_id:point})});
+  expect(result.status).toBe(200);const copy=get((await result.json()).session_id);
+  const compiled=await deviceFetch('/api/chat/settings',{method:'PUT',body:JSON.stringify(copy.payload.settings)});
+  expect(compiled.status,await compiled.text()).toBe(200);expect(copy.payload.settings.system_prompt).toBe('OLD SYSTEM');
+});
+it('rolls back the entire page when a historical fixed library revision is missing',async()=>{
+  const payload:any=structuredClone(sharedHistory.payload);delete payload.library_snapshots['character@1'];
+  await expect(receiveSyncPage('owner-a',[{id:'chat',kind:'conversation',revision:1,deleted:false,payload}],1)).rejects.toThrow('aborted');
+  expect(fixture.entities.size).toBe(0);expect(fixture.meta.get('sync:owner-a:cursor')).toBeUndefined();
 });
 
 it('imports unused characters and per-conversation snapshots once while retaining drafts and stopped history',async()=>{

@@ -265,12 +265,12 @@ class UnifiedService:
         db.execute('RELEASE app_runtime_capture')
 
     def _library_documents(self, db, owner, payload):
-        from python.storage.entity_bridge import references
+        from python.storage.entity_bridge import all_references, validate
         snapshots = payload.get('library_snapshots', {})
         if not isinstance(snapshots, dict):
             raise CloudError('invalid_sync_library')
         documents = {}
-        for ref in references(payload.get('settings', {})):
+        for ref in all_references(validate(payload)):
             document = snapshots.get(ref['id'] + '@' + str(ref['revision']))
             if document is None:
                 row = db.execute("SELECT payload FROM app_entities WHERE owner=? AND id=? AND kind='character' AND deleted=0", (owner, ref['id'])).fetchone()

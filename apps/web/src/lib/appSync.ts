@@ -1,7 +1,7 @@
 import { allEntities, appTransaction, entity, getMeta, scrubGenerationRecords, trimOfflineCache, type AppEntity, type Outbox } from './appStore';
 import { cloudFetch } from './transport';
 import { deviceOwner, generationBusy } from './appContext';
-import { receiveConversation, receiveLibrarySnapshot, receiveCreatorSnapshot, rebindConversation, withLibrarySnapshots } from './appSyncData';
+import { receiveConversation, receiveLibrarySnapshot, receiveCreatorSnapshot, rebindConversation, withLibrarySnapshots, conversationSettings } from './appSyncData';
 
 type Batch=Outbox&{revisions:Record<string,number>;withdrawn?:boolean;receipt?:{changes:Ack[]}};
 type Ack={id:string;source_id?:string;revision:number;deleted:boolean;branched?:boolean};
@@ -100,24 +100,31 @@ export async function receiveSyncPage(owner:string, changes:any[], cursor:number
               if(!remote.deleted&&remote.kind==='conversation') {
                 if(payload.storage_policy!=='sync')throw Error('Invalid storage policy');
                 payload=rebindConversation(receiveConversation(payload,local?.payload,allocate),remote.id);
-                for(const kind of ['persona','world'] as const){
-                  const reference=payload.settings?.[kind+'_id'];
-                  if(typeof reference!=='string'||!reference.startsWith('created_'))continue;
-                  const snapshot=payload.creator_snapshots?.[reference];
-                  if(!snapshot||snapshot.kind!==kind)throw Error('Setting snapshot missing');
-                  const id=reference.split('@')[0],setting=receiveCreatorSnapshot(records.get(id),owner,reference,kind,snapshot.document);
-                  records.set(id,setting);store.put(setting);
-                }
-                const binding=payload.settings?.library_binding??{};
-                for(const [field,value] of Object.entries(binding))for(const ref of (field==='lorebooks'?value:[value]) as any[]) {
-                  if(!ref||typeof ref.id!=='string')continue;
-                  const snapshot=payload.library_snapshots?.[ref.id+'@'+ref.revision];
-                  if(!snapshot) {
-                    if(!records.get(ref.id)?.payload.versions?.[String(ref.revision)])throw Error('Library snapshot missing');
-                    continue;
+                const creators=new Set<string>(),libraries=new Set<string>();
+                for(const settings of [...conversationSettings(payload),...(payload.messages??[]).flatMap((message:any)=>[message.before?.state,message.after?.state].filter(Boolean))]){
+                  for(const kind of ['persona','world'] as const){
+                    const reference=settings[kind+'_id'];
+                    if(typeof reference!=='string'||!reference.startsWith('created_')||creators.has(kind+':'+reference))continue;
+                    creators.add(kind+':'+reference);
+                    const snapshot=payload.creator_snapshots?.[reference];
+                    if(!snapshot||snapshot.kind!==kind)throw Error('Setting snapshot missing');
+                    const id=reference.split('@')[0],setting=receiveCreatorSnapshot(records.get(id),owner,reference,kind,snapshot.document);
+                    records.set(id,setting);store.put(setting);
                   }
-                  const library=receiveLibrarySnapshot(records.get(ref.id),owner,ref.id,ref.revision,snapshot);
-                  records.set(library.id,library);store.put(library);
+                }
+                for(const settings of conversationSettings(payload)){
+                  const binding=settings.library_binding??{};
+                  for(const [field,value] of Object.entries(binding))for(const ref of (field==='lorebooks'?value:[value]) as any[]) {
+                    if(!ref||typeof ref.id!=='string'||libraries.has(ref.id+'@'+ref.revision))continue;
+                    libraries.add(ref.id+'@'+ref.revision);
+                    const snapshot=payload.library_snapshots?.[ref.id+'@'+ref.revision];
+                    if(!snapshot) {
+                      if(!records.get(ref.id)?.payload.versions?.[String(ref.revision)])throw Error('Library snapshot missing');
+                      continue;
+                    }
+                    const library=receiveLibrarySnapshot(records.get(ref.id),owner,ref.id,ref.revision,snapshot);
+                    records.set(library.id,library);store.put(library);
+                  }
                 }
               }
               if(!remote.deleted&&['character','preset'].includes(remote.kind)&&payload.versions) {

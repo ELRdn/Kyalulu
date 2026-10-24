@@ -8,6 +8,11 @@ export const PortableDocumentSchema = z.object({ schema_version: z.literal(1).de
 export const LibraryItemSchema = z.object({ id: z.string(), revision: z.number().int().positive(), document: PortableDocumentSchema, original_id: z.string().nullable().default(null) });
 export const LibraryRefSchema = z.object({ id: z.string(), revision: z.number().int().positive() });
 export const LibraryBindingSchema = z.object({ character: LibraryRefSchema.nullable().default(null), profile: LibraryRefSchema.nullable().default(null), lorebooks: z.array(LibraryRefSchema).default([]), expression_asset_id: z.string().nullable().default(null) });
+export const ConversationSettingsSchema = z.object({
+  session_id:z.string().min(1).max(200),system_prompt:z.string().max(128000).default(''),temperature:z.number().finite().min(0).max(2).default(.8),
+  character_id:z.string().max(200).nullable().default(null),persona_id:z.string().max(200).nullable().default(null),world_id:z.string().max(200).nullable().default(null),
+  intro:z.string().max(32000).default(''),library_binding:LibraryBindingSchema.nullable().default(null),
+}).strict();
 export const ImportPreviewSchema = z.object({ preview_id: z.string(), filename: z.string(), source_hash: z.string(), documents: z.array(PortableDocumentSchema), duplicates: z.record(z.array(z.object({ id: z.string(), revision: z.number().int().positive(), name: z.string() }))).default({}) });
 export const ImportCommitSchema = z.object({ request_id: z.string().min(1).max(128), selections: z.array(z.object({ index: z.number().int().nonnegative(), document: PortableDocumentSchema, history_indices: z.array(z.number().int().nonnegative()).default([]), target_id: z.string().nullable().default(null), expected_revision: z.number().int().positive().nullable().default(null), content_rating: z.enum(['sfw', 'nsfw']).nullable().optional(), duplicate_action: z.literal('copy').nullable().optional() })).min(1) });
 export type PortableDocument = z.infer<typeof PortableDocumentSchema>;

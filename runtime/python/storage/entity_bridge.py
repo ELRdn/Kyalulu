@@ -1,6 +1,7 @@
 """Append-only Runtime projections. Sync never replaces an existing conversation."""
 import json
 import re
+from copy import deepcopy
 from uuid import uuid4
 from typing import Literal
 
@@ -57,6 +58,7 @@ class WireSnapshot(BaseModel):
     model_config = ConfigDict(extra='forbid', strict=True)
     state: RuntimeState
     memories: list[WireMemory] = Field(default_factory=list, max_length=50000)
+    settings: WireSettings | None = None
 
 
 WireMessage.model_rebuild()
@@ -188,6 +190,12 @@ def references(settings):
             if isinstance(ref, dict) and 'id' in ref]
 
 
+def all_references(value):
+    settings = [value.settings] + [snapshot.settings for message in value.messages
+        for snapshot in (message.before,message.after) if snapshot and snapshot.settings]
+    return list({(ref['id'],ref['revision']):ref for item in settings for ref in references(item.model_dump())}.values())
+
+
 def creator_references(settings):
     from .creator import REF
     for kind in ('persona', 'world'):
@@ -219,40 +227,44 @@ def import_copy(db, entity_id, revision, payload, documents,namespace=None):
         return old['session_id']
     sid = 'sync_' + uuid4().hex
     settings = value.settings.model_dump()
+    historical_settings = {(message.id,name):snapshot.settings.model_dump() for message in value.messages
+        for name,snapshot in [('before',message.before),('after',message.after)] if snapshot and snapshot.settings}
+    setting_sources=[settings,*historical_settings.values()]
     library_map = {}
-    for ref in references(settings):
-        key = (ref['id'], ref['revision'])
-        if key not in documents:
-            raise CloudError('sync_library_revision_missing', 409)
-        document = PortableDocument.model_validate(documents[key])
-        if document.assets or document.nsfw:
-            raise CloudError('sync_media_or_adult_adapter_required', 503)
-        native = library_map.setdefault(ref['id'], 'lib_' + uuid4().hex)
-        db.execute('INSERT OR IGNORE INTO runtime.library_versions(id,revision,document_json) VALUES(?,?,?)',
-                   (native, ref['revision'], document.model_dump_json()))
-        if settings['character_id'] == ref['id']:
-            settings['character_id'] = native
-        ref['id'] = native
+    for source in setting_sources:
+        for ref in references(source):
+            key = (ref['id'], ref['revision'])
+            if key not in documents:
+                raise CloudError('sync_library_revision_missing', 409)
+            document = PortableDocument.model_validate(documents[key])
+            if document.assets or document.nsfw:
+                raise CloudError('sync_media_or_adult_adapter_required', 503)
+            native = library_map.setdefault(ref['id'], 'lib_' + uuid4().hex)
+            db.execute('INSERT OR IGNORE INTO runtime.library_versions(id,revision,document_json) VALUES(?,?,?)',
+                       (native, ref['revision'], document.model_dump_json()))
+            if source['character_id'] == ref['id']:
+                source['character_id'] = native
+            ref['id'] = native
     creators = {}
     snapshots = payload.get('creator_snapshots', {})
     if not isinstance(snapshots, dict):
         raise CloudError('invalid_sync_setting')
     historical_states = [snapshot.state.model_dump() for message in value.messages for snapshot in (message.before,message.after) if snapshot]
     seen_creators, creator_kinds = set(), {}
-    for source in [settings,*historical_states]:
+    for source in [*setting_sources,*historical_states]:
         for kind, reference, asset_id, source_revision in list(creator_references(source)):
             if asset_id in creator_kinds and creator_kinds[asset_id]!=kind:
                 raise CloudError('invalid_sync_setting_identity')
-            if reference in seen_creators:continue
-            seen_creators.add(reference)
-            if reference not in snapshots:
-                raise CloudError('sync_setting_revision_missing', 409)
-            document = creator_document(snapshots[reference], kind)
-            creator_kinds[asset_id]=kind
-            native = creators.setdefault(asset_id, 'created_' + uuid4().hex)
-            db.execute('INSERT INTO runtime.creator_versions(asset_id,revision,kind,document_json) VALUES(?,?,?,?)',
-                       (native, source_revision, kind, json.dumps(document, ensure_ascii=False)))
-            if source is settings:settings[kind + '_id'] = native + '@' + str(source_revision)
+            if reference not in seen_creators:
+                seen_creators.add(reference)
+                if reference not in snapshots:
+                    raise CloudError('sync_setting_revision_missing', 409)
+                document = creator_document(snapshots[reference], kind)
+                creator_kinds[asset_id]=kind
+                native = creators.setdefault(asset_id, 'created_' + uuid4().hex)
+                db.execute('INSERT INTO runtime.creator_versions(asset_id,revision,kind,document_json) VALUES(?,?,?,?)',
+                           (native, source_revision, kind, json.dumps(document, ensure_ascii=False)))
+            if any(source is item for item in setting_sources):source[kind + '_id'] = creators[asset_id] + '@' + str(source_revision)
     db.execute('INSERT INTO runtime.session_settings(session_id,system_prompt,temperature,character_id,persona_id,world_id,intro,library_binding) VALUES(?,?,?,?,?,?,?,?)',
                (sid, settings['system_prompt'], settings['temperature'], settings['character_id'], settings['persona_id'], settings['world_id'], settings['intro'], json.dumps(settings['library_binding'])))
     ids, message_map = {}, {}
@@ -316,6 +328,8 @@ def import_copy(db, entity_id, revision, payload, documents,namespace=None):
                               'source_revision':json.dumps({'entity_id':entity_id,'memory_id':memory.id,'memory_uuid':stable,'source_session_id':memory.source_session_id}),
                               'source_generation_id':origin,'source_message_ids':sources})
             saved[name]={'state':snapshot_state,'memories':items}
+            if (message.id,name) in historical_settings:
+                saved[name]['settings']={**historical_settings[(message.id,name)],'session_id':sid}
         assistant=ids[message.id]
         record={'generation_id':generation_id,'session_id':sid,'status':'completed','reply':message.content,'full':message.content,
                 'user_id':previous_user,'assistant_id':assistant,'state_before':saved['before']['state'],'state':saved['after']['state'],
@@ -341,31 +355,35 @@ def export_session(db, sid, entity_id, mapping):
     inverse = {native: stable for stable, native in mapping.get('library', {}).items()}
     creator_inverse = {native: stable for stable, native in mapping.get('creators', {}).items()}
     history = {row['assistant_id']:json.loads(row['result_json']) for row in db.execute("SELECT assistant_id,result_json FROM runtime.generations WHERE session_id=? AND valid=1 AND status='completed' AND result_json IS NOT NULL ORDER BY rowid",(sid,))}
+    historical_settings = {(mid,name):deepcopy(snapshot['settings']) for mid,result in history.items()
+        for name,snapshot in result.get('sync_snapshots',{}).items() if snapshot.get('settings')}
+    setting_sources=[settings,*historical_settings.values()]
     historical_states = [snapshot['state'] for result in history.values() for snapshot in result.get('sync_snapshots',{}).values()]
     creator_snapshots, creator_ids = {}, {}
-    for source in [settings,*historical_states]:
+    for source in [*setting_sources,*historical_states]:
         for kind, reference, asset_id, source_revision in list(creator_references(source)):
-            if reference in creator_ids:continue
-            row = db.execute('SELECT kind,document_json FROM runtime.creator_versions WHERE asset_id=? AND revision=?', (asset_id, source_revision)).fetchone()
-            if not row or row['kind'] != kind:
-                raise CloudError('sync_setting_revision_missing', 409)
-            stable = creator_inverse.get(asset_id, asset_id) + '@' + str(source_revision)
-            creator_snapshots[stable] = {'kind': kind, 'document': creator_document({'kind': kind, 'document': json.loads(row['document_json'])}, kind)}
-            creator_ids[reference] = stable
-            if source is settings:settings[kind + '_id'] = stable
+            if reference not in creator_ids:
+                row = db.execute('SELECT kind,document_json FROM runtime.creator_versions WHERE asset_id=? AND revision=?', (asset_id, source_revision)).fetchone()
+                if not row or row['kind'] != kind:
+                    raise CloudError('sync_setting_revision_missing', 409)
+                stable = creator_inverse.get(asset_id, asset_id) + '@' + str(source_revision)
+                creator_snapshots[stable] = {'kind': kind, 'document': creator_document({'kind': kind, 'document': json.loads(row['document_json'])}, kind)}
+                creator_ids[reference] = stable
+            if any(source is item for item in setting_sources):source[kind + '_id'] = creator_ids[reference]
     documents = {}
-    for ref in references(settings):
-        row = db.execute('SELECT document_json FROM runtime.library_versions WHERE id=? AND revision=?', (ref['id'], ref['revision'])).fetchone()
-        if not row:
-            raise CloudError('sync_library_revision_missing', 409)
-        stable = inverse.get(ref['id'], ref['id'])
-        document = json.loads(row[0])
-        if document.get('assets') or document.get('nsfw'):
-            raise CloudError('sync_media_or_adult_adapter_required', 503)
-        documents[stable + '@' + str(ref['revision'])] = document
-        if settings.get('character_id') == ref['id']:
-            settings['character_id'] = stable
-        ref['id'] = stable
+    for source in setting_sources:
+        for ref in references(source):
+            row = db.execute('SELECT document_json FROM runtime.library_versions WHERE id=? AND revision=?', (ref['id'], ref['revision'])).fetchone()
+            if not row:
+                raise CloudError('sync_library_revision_missing', 409)
+            stable = inverse.get(ref['id'], ref['id'])
+            document = json.loads(row[0])
+            if document.get('assets') or document.get('nsfw'):
+                raise CloudError('sync_media_or_adult_adapter_required', 503)
+            documents[stable + '@' + str(ref['revision'])] = document
+            if source.get('character_id') == ref['id']:
+                source['character_id'] = stable
+            ref['id'] = stable
     messages, ids = [], {}
     mapped = mapping.setdefault('messages', {})
     next_id = max((m['id'] for m in mapped.values()), default=0)
@@ -405,6 +423,8 @@ def export_session(db, sid, entity_id, mapping):
             for field in ('persona_id','world_id'):
                 if snapshot_state.get(field) in creator_ids:snapshot_state[field]=creator_ids[snapshot_state[field]]
             wire[name]={'state':snapshot_state,'memories':[wire_memory(memory) for memory in snapshot['memories']]}
+            if (native,name) in historical_settings:
+                wire[name]['settings']={**historical_settings[(native,name)],'session_id':entity_id}
     summaries, summary_map = [], mapping.setdefault('summaries', {})
     for row in db.execute('SELECT * FROM runtime.conversation_summaries WHERE session_id=? ORDER BY kind,ordinal', (sid,)):
         summaries.append({k: row[k] for k in ('id', 'kind', 'text', 'revision', 'method', 'ordinal')} |
