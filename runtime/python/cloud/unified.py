@@ -5,6 +5,7 @@ import json
 import math
 import secrets
 import time
+from copy import deepcopy
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -26,6 +27,7 @@ DDL = """
 CREATE TABLE IF NOT EXISTS app_entities(owner TEXT,id TEXT,kind TEXT,revision INTEGER,
  payload TEXT,deleted INTEGER,PRIMARY KEY(owner,id));
 CREATE TABLE IF NOT EXISTS app_changes(seq INTEGER PRIMARY KEY AUTOINCREMENT,owner TEXT,id TEXT,revision INTEGER);
+CREATE TABLE IF NOT EXISTS app_entity_history(owner TEXT,id TEXT,revision INTEGER,record TEXT,PRIMARY KEY(owner,id,revision));
 CREATE INDEX IF NOT EXISTS app_change_owner ON app_changes(owner,seq);
 CREATE TABLE IF NOT EXISTS app_sync_requests(owner TEXT,id TEXT,hash TEXT,result TEXT,PRIMARY KEY(owner,id));
 CREATE TABLE IF NOT EXISTS app_sync_cancellations(owner TEXT,id TEXT,PRIMARY KEY(owner,id));
@@ -54,6 +56,7 @@ class UnifiedService:
         with store.transaction() as db:
             db.executescript(DDL)
             db.execute('INSERT OR IGNORE INTO app_entity_deletions SELECT owner,id,revision,? FROM app_entities WHERE deleted=1', (time.time(),))
+            db.execute('DELETE FROM app_entity_history WHERE EXISTS (SELECT 1 FROM app_entity_deletions d WHERE d.owner=app_entity_history.owner AND d.id=app_entity_history.id)')
         store.unified_service = self
 
     def available(self):
@@ -204,6 +207,48 @@ class UnifiedService:
             db.execute('UPDATE app_runtime_consent SET selected=?,revision=revision+1 WHERE owner=?', (json.dumps(remaining), owner))
         return remaining
 
+    @staticmethod
+    def _message_manifest(payload):
+        messages = payload.get('messages')
+        if not isinstance(messages, list): return None
+        result, seen = [], set()
+        for message in messages:
+            if (not isinstance(message, dict) or not isinstance(message.get('uuid'), str)
+                or not 0 < len(message['uuid']) <= 200 or message['uuid'] in seen
+                or message.get('role') not in ('user', 'assistant', 'system')
+                or not isinstance(message.get('content'), str)
+                or message.get('model_id') is not None and not isinstance(message['model_id'], str)
+                or type(message.get('revision', 1)) is not int or message.get('revision', 1) < 1): return None
+            seen.add(message['uuid'])
+            result.append([message['uuid'], fingerprint([message['role'], message['content'], message.get('model_id'), message.get('revision', 1)])])
+        return result
+
+    def _remember_revision(self, db, owner, entity_id, revision, payload):
+        record = {'payload_sha256': fingerprint(payload), 'messages': self._message_manifest(payload)}
+        db.execute('INSERT OR IGNORE INTO app_entity_history VALUES(?,?,?,?)',
+                   (owner, entity_id, revision, self.store.encrypt(json.dumps(record))))
+
+    def _branch_lineage(self, db, owner, parent_id, revision, payload):
+        result = {'version': 1, 'status': 'unverified', 'parent_id': parent_id, 'parent_revision': revision, 'branch_revision': 1}
+        if not isinstance(parent_id, str) or not 0 < len(parent_id) <= 200 or type(revision) is not int or revision < 1:
+            return {**result, 'reason': 'ancestor_unavailable'}
+        parent = db.execute('SELECT * FROM app_entities WHERE owner=? AND id=? AND deleted=0', (owner, parent_id)).fetchone()
+        if not parent or parent['kind'] != 'conversation': return {**result, 'reason': 'ancestor_unavailable'}
+        head = json.loads(self.store.decrypt(parent['payload']))
+        self._remember_revision(db, owner, parent_id, parent['revision'], head)
+        row = db.execute('SELECT record FROM app_entity_history WHERE owner=? AND id=? AND revision=?', (owner, parent_id, revision)).fetchone()
+        if not row: return {**result, 'reason': 'ancestor_unavailable'}
+        ancestor = json.loads(self.store.decrypt(row[0]))
+        manifests = [ancestor['messages'], self._message_manifest(head), self._message_manifest(payload)]
+        if any(value is None for value in manifests): return {**result, 'reason': 'legacy_message_identity_missing'}
+        common = []
+        for before, current, incoming in zip(*manifests):
+            if before != current or before != incoming: break
+            common.append(before)
+        return {**result, 'status': 'verified', 'ancestor_sha256': ancestor['payload_sha256'],
+                'common_messages': len(common), 'common_message_uuid': common[-1][0] if common else None,
+                'common_sha256': fingerprint(common)}
+
     def _write_change(self, db, owner, change, capacity):
         row = db.execute('SELECT * FROM app_entities WHERE owner=? AND id=?', (owner, change.id)).fetchone()
         revision = row['revision'] if row else 0
@@ -221,18 +266,34 @@ class UnifiedService:
             if change.deleted:
                 return {'id': entity_id, 'source_id': change.id, 'revision': revision, 'deleted': True}, {}
             raise CloudError('sync_entity_deleted', 409)
-        payload = {} if change.deleted else dict(change.payload)
+        payload = {} if change.deleted else deepcopy(change.payload)
+        if change.kind == 'conversation': payload.pop('lineage', None)
+        if row and change.kind == 'conversation':
+            previous = json.loads(self.store.decrypt(row['payload']))
+            self._remember_revision(db, owner, change.id, row['revision'], previous)
+            for key in ('branch_of', 'fork_revision', 'fork_message_uuid', 'lineage'):
+                payload.pop(key, None)
+                if key in previous and not change.deleted: payload[key] = previous[key]
         if change.base_revision != revision:
             if change.kind != 'conversation' or change.deleted or change.base_revision > revision:
                 raise CloudError('sync_revision_conflict', 409)
             entity_id, branch, revision = str(uuid4()), True, 0
             payload.update(branch_of=change.id, fork_revision=change.base_revision)
-            for key in ('settings', 'state'):
-                if isinstance(payload.get(key), dict):
-                    payload[key] = {**payload[key], 'session_id': entity_id}
+            payload['lineage'] = self._branch_lineage(db, owner, change.id, change.base_revision, payload)
+            messages = payload.get('messages')
+            for snapshot in [payload, *[value for message in (messages if isinstance(messages, list) else []) if isinstance(message, dict)
+                                        for value in (message.get('before'), message.get('after')) if isinstance(value, dict)]]:
+                for key in ('settings', 'state'):
+                    if isinstance(snapshot.get(key), dict): snapshot[key]['session_id'] = entity_id
+        elif not row and change.kind == 'conversation' and payload.get('branch_of'):
+            payload['lineage'] = self._branch_lineage(db, owner, payload['branch_of'], payload.get('fork_revision'), payload)
         revision += 1
+        if change.kind == 'conversation':
+            if change.deleted: db.execute('DELETE FROM app_entity_history WHERE owner=? AND id=?', (owner, entity_id))
+            else: self._remember_revision(db, owner, entity_id, revision, payload)
         encoded = self.store.encrypt(json.dumps(payload, ensure_ascii=False))
         used = db.execute('SELECT COALESCE(SUM(LENGTH(payload)),0) FROM app_entities WHERE owner=? AND id!=?', (owner, entity_id)).fetchone()[0]
+        used += db.execute('SELECT COALESCE(SUM(LENGTH(record)),0) FROM app_entity_history WHERE owner=?', (owner,)).fetchone()[0]
         if not change.deleted and used + len(encoded) > capacity:
             raise CloudError('cloud_storage_full', 413)
         db.execute('INSERT INTO app_entities VALUES(?,?,?,?,?,?) ON CONFLICT(owner,id) DO UPDATE SET '
@@ -241,7 +302,8 @@ class UnifiedService:
         db.execute('INSERT INTO app_changes(owner,id,revision) VALUES(?,?,?)', (owner, entity_id, revision))
         if change.deleted:
             db.execute('INSERT INTO app_entity_deletions VALUES(?,?,?,?)', (owner, entity_id, revision, time.time()))
-        return {'id': entity_id, 'source_id': change.id, 'revision': revision, 'branched': branch, 'deleted': change.deleted}, payload
+        return {'id': entity_id, 'source_id': change.id, 'revision': revision, 'branched': branch, 'deleted': change.deleted,
+                **({'lineage': payload['lineage']} if 'lineage' in payload else {})}, payload
 
     def _capture_runtime(self, db, owner, selected, capacity, *, defer_full=False):
         from python.storage.entity_bridge import capture, acknowledge_capture, validate
@@ -287,6 +349,7 @@ class UnifiedService:
         directory = self.store.config.root / 'tenants' / owner
         size = db.execute('PRAGMA runtime.page_count').fetchone()[0] * db.execute('PRAGMA runtime.page_size').fetchone()[0]
         entities = db.execute('SELECT COALESCE(SUM(LENGTH(payload)),0) FROM app_entities WHERE owner=?', (owner,)).fetchone()[0]
+        entities += db.execute('SELECT COALESCE(SUM(LENGTH(record)),0) FROM app_entity_history WHERE owner=?', (owner,)).fetchone()[0]
         if storage_usage(directory) - (directory / 'data.db').stat().st_size + size + entities + growth > capacity:
             raise CloudError('cloud_storage_full', 413)
 

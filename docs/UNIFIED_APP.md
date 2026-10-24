@@ -76,7 +76,14 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
   the request system prompt, temperature and referenced Library/Creator versions;
   branches restore these settings without reading later edits. Missing historical
   versions roll back the complete receive transaction. Verified common ancestry
-  still remains. See [history snapshot validation](validation/2026-10-24-unified-history-snapshots.md)
+  is now recorded as an encrypted revision/message manifest, with the exact shared
+  prefix compared against the stored ancestor, current head and incoming branch.
+  Legacy/missing ancestry is labelled unverified; this proof covers messages, not
+  equality of branch memories or a restorable archive of ancestor bodies.
+  Synced Native branches retain common message/memory/summary identities and their
+  namespace without opting the branch into upload. See
+  [lineage validation](validation/2026-10-25-unified-lineage.md),
+  [history snapshot validation](validation/2026-10-24-unified-history-snapshots.md)
   and [historical settings validation](validation/2026-10-25-unified-history-settings.md).
 - Confirmed Cloud/device conversation erasure now uses account-scoped durable
   tombstones, revision checks, replay-safe receipts and backup/legacy-restore
@@ -135,7 +142,7 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 | Memory/provenance | Existing | Existing | Retrieval/proposals/manual CRUD | Full identity/shared-scope parity |
 | Summaries | Existing | Existing | Extractive chapters/arcs/manual edits | Long-context/end-to-end fixtures |
 | World/cast/RPG | Existing + creator snapshot bridge | Existing | Creator revisions, cast contract, RPG and selected Lore | Historical snapshot interchange and physical real-model acceptance |
-| Branches | Saved state/memory/settings interchange; unsnapshotted sync history blocked | Historical generation copies; scoped memory invalidation | Saved snapshots and independent numeric IDs; user/assistant cut points | Canonical Native lineage, common-ancestor proof and legacy settings gaps |
+| Branches | Saved state/memory/settings; recorded revision/message ancestry | Synced branch UUIDs and namespace retained; explicit upload selection | Saved snapshots and independent numeric IDs; user/assistant cut points | Pre-enrollment/legacy identity gaps, restorable revision bodies and physical acceptance |
 | Character creation | Existing | Existing | Portable JSON/basic library | All creator/PNG/CHARX/history/media imports |
 | Research/experiments | Cloud restricted | Explicit management permission | Not implemented; not advertised as admin | Device benchmark execution/results |
 | Sync | Selected SQLite export, separate copies, confirmed erasure | Scoped entity enrollment/outbox/cancel receipts; legacy backup retained | Outbox, withdrawal receipts, version consent, library hydration, local recoveries | Complete lineage, large conversations and production migration |
@@ -153,13 +160,16 @@ projected. New copies are not silently selected for export; choose each native
 copy explicitly to bring subsequent Cloud edits back to devices. Unchanged
 versions are not copied repeatedly; successive uploaded revisions create new
 native copies. Native-PC entity bridging has isolated API/UI evidence; large-conversation
-support, complete lineage and snapshot interchange remain incomplete.
+support, pre-enrollment/legacy lineage and complete snapshot interchange remain incomplete.
 Cloud/device deletion and restore protection are implemented with fixture and
 browser evidence; production/account/device-scale migration is not yet accepted.
 Historical state/memory snapshots now import when provided. Branch/regeneration
 still refuse missing history rather than inventing state. Older snapshots without
 settings retain their previous current-settings fallback; past settings cannot be
-recovered from absent data. Verified common ancestry remains incomplete. Do not enable unified production on the
+recovered from absent data. Revision/message manifests now prove a shared prefix
+when the ancestor is recorded, but do not reconstruct absent ancestor bodies or
+prove historical memory equality. Pre-enrollment Native branches still need a
+canonical identity migration. Do not enable unified production on the
 strength of this bounded bridge.
 Portable prompt fixtures cover the portable compiler path; they do not establish
 byte-identical prompts for every legacy YAML/template route or equivalent model
@@ -171,8 +181,8 @@ Document reload with API requests unavailable has been checked on fixture data;
 this is not evidence of a full browser/process/device or PWA-shell restart.
 
 Outstanding: canonical per-message/memory revision mapping for all old databases;
-native-PC large-scale/legacy-restore acceptance; full shared-history fork
-lineage; all browser feature parity; deployed/physical-device chunked migration;
+native-PC large-scale/legacy-restore acceptance; pre-enrollment fork identity and
+restorable revision history; all browser feature parity; deployed/physical-device chunked migration;
 complete English UI; moderation classifier/report/appeal/public search/image
 integration; actual adult/guardian provider adapters; a contract-approved ad
 inventory/completion adapter and settled-revenue reconciliation; source archive

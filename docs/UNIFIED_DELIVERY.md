@@ -14,7 +14,7 @@
 | Portable再利用、ブラウザ記憶/物語とPython共通fixture | World/cast/Lore・プリセット・固定版を実装、共通fixtureと同期往復を検証 | 履歴snapshot interchange、実モデル・実機を含むパリティ試験は残る |
 | 認証・課金経路とRuntime通信の分離、Cloud鍵をRemoteへ送らない | 実装・限定検証 | 認証切替・Remote通信捕捉・所有者分離試験 |
 | 安定ID/revisionと数値ID互換、永続outbox、自動同期 | Cloud/deviceに加えNative-PCの登録・namespace・outboxを隔離検証 | 大容量/旧DB復元の全面照合、全方式の統合証拠 |
-| 競合の共通履歴分岐、記憶を自動混合せず出典保持 | state/記憶/作品設定snapshotのPython/Device往復・過去時点分岐を共通fixture検証 | 共通祖先、Native canonical lineage、旧設定欠落、3方式の実UI確認 |
+| 競合の共通履歴分岐、記憶を自動混合せず出典保持 | state/記憶/作品設定snapshot往復、記録済みrevisionの共通message列、同期済みNative分岐のUUID継承を隔離検証 | 同期前/旧ID移行、祖先本文の復元、旧設定欠落、3方式の実UI確認 |
 | 同期削除・復元、未送信変更の保護 | 条件付き承認でNative-PCとBrowserのowner/revision・撤回fence・永続受領を隔離検証 | 旧復元/実端末スケール確認 |
 | 端末限定の外部送信禁止・共有記憶分離 | 部分検証 | 生成/記憶/同期/広告/外部AIの通信否定試験 |
 | 最近10件＋固定会話のオフライン保存、容量不足とアカウント分離 | 再取得・保持を実装、fixture検証 | 未送信保持と文書再読込を確認。PWA/ブラウザ/実機の再起動と実容量試験は残る |
@@ -48,4 +48,6 @@ PC専用の登録・自動同期・撤回と画面の追加証拠は
 [History snapshots](validation/2026-10-24-unified-history-snapshots.md) に記録する。
 履歴の作品設定・生成request値・過去Library/World版の追加証拠は
 [Historical settings](validation/2026-10-25-unified-history-settings.md) に記録する。
+revision/messageの共通列証明と同期済みNative分岐のID継承は
+[Lineage](validation/2026-10-25-unified-lineage.md) に記録する。
 この表は公開合格や全計画完了の宣言ではない。

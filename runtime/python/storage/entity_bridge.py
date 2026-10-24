@@ -208,6 +208,52 @@ def creator_references(settings):
         yield kind, reference, match[1], int(match[2])
 
 
+async def copy_branch_links(db, source, target, message_ids, memory_ids, summary_ids):
+    """Retain canonical identities without enrolling a new branch for upload."""
+    for table in ('unified_runtime_links', 'unified_native_links'):
+        if not await (await db.execute("SELECT 1 FROM sqlite_master WHERE name=?", (table,))).fetchone():
+            continue
+        rows = await (await db.execute(f'SELECT * FROM {table} WHERE session_id=?', (source,))).fetchall()
+        for row in rows:
+            parent = json.loads(row['mapping'])
+            mapped = parent.setdefault('messages', {})
+            next_id = max((item['id'] for item in mapped.values()), default=0)
+            for old in message_ids:
+                if str(old) not in mapped:
+                    message = await (await db.execute('SELECT role,content,model_id FROM chat_history WHERE id=? AND session_id=?', (old, source))).fetchone()
+                    next_id += 1
+                    mapped[str(old)] = {'id': next_id, 'uuid': str(uuid4()), 'revision': 1, 'digest': fingerprint(list(message))}
+            mapped_memories = parent.setdefault('memories', {})
+            for old in memory_ids:
+                if old in mapped_memories:
+                    continue
+                memory = await (await db.execute('SELECT source_revision FROM memories WHERE id=?', (old,))).fetchone()
+                try: provenance = json.loads(memory[0] or 'null') if memory else None
+                except (ValueError, TypeError): provenance = None
+                provenance = provenance if isinstance(provenance, dict) else {}
+                stable = provenance.get('memory_uuid') or provenance.get('memory_id') or str(uuid4())
+                mapped_memories[old] = {'id': provenance.get('memory_id', stable), 'uuid': stable,
+                    'source_session_id': provenance.get('source_session_id', row['entity_id'])}
+            mapped_summaries = parent.setdefault('summaries', {})
+            for old in summary_ids:
+                mapped_summaries.setdefault(old, str(uuid4()))
+            copied = deepcopy(parent)
+            copied['messages'] = {str(new): deepcopy(mapped[str(old)]) for old, new in message_ids.items()}
+            copied['memories'] = {new: deepcopy(mapped_memories[old]) for old, new in memory_ids.items()}
+            copied['summaries'] = {new: mapped_summaries[old] for old, new in summary_ids.items()}
+            copied['lineage'] = {'branch_of': row['entity_id'], 'fork_revision': row['revision'],
+                'fork_message_uuid': mapped[str(next(reversed(message_ids)))]['uuid']}
+            namespace = row['namespace'] if table == 'unified_native_links' else None
+            clause, args = (' AND namespace=?', (namespace,)) if namespace else ('', ())
+            await db.execute(f'UPDATE {table} SET mapping=? WHERE session_id=?' + clause, (json.dumps(parent), source) + args)
+            entity_id = str(uuid4())
+            if namespace:
+                await db.execute('INSERT INTO unified_native_owners VALUES(?,?)', (target, namespace))
+                await db.execute(f'INSERT INTO {table} VALUES(?,?,?,?,?,?)', (namespace, target, entity_id, 0, '', json.dumps(copied)))
+            else:
+                await db.execute(f'INSERT INTO {table} VALUES(?,?,?,?,?)', (target, entity_id, 0, '', json.dumps(copied)))
+
+
 def creator_document(snapshot, kind):
     from python.api.creator import Document
     try:
@@ -299,7 +345,8 @@ def import_copy(db, entity_id, revision, payload, documents,namespace=None):
                    (native_id, sid, summary.kind, text, summary.revision,
                     json.dumps([ids[i] for i in summary.source_message_ids]), summary.method, summary.ordinal))
         summary_map[native_id] = summary.id
-    mapping = {'messages': message_map, 'memories': memory_map, 'summaries': summary_map, 'library': library_map, 'creators': creators, 'projection': True}
+    mapping = {'messages': message_map, 'memories': memory_map, 'summaries': summary_map, 'library': library_map, 'creators': creators, 'projection': True,
+               'lineage': {key:deepcopy(payload[key]) for key in ('branch_of','fork_revision','fork_message_uuid','lineage') if key in payload}}
     historical_memories = {item['uuid']: native for native,item in memory_map.items()}
     previous_user=None;source_generations={}
     for message in value.messages:
@@ -440,7 +487,7 @@ def export_session(db, sid, entity_id, mapping):
         if wire_state.get(field) in creator_ids:
             wire_state[field] = creator_ids[wire_state[field]]
     enabled = db.execute('SELECT enabled FROM runtime.session_memory WHERE session_id=?', (sid,)).fetchone()
-    return {'storage_policy': 'sync', 'rating': 'general', 'settings': settings, 'messages': messages, 'memories': memories,
+    return {**mapping.get('lineage', {}), 'storage_policy': 'sync', 'rating': 'general', 'settings': settings, 'messages': messages, 'memories': memories,
             'summaries': summaries, 'state': wire_state,
             'memory_enabled': bool(enabled and enabled[0]), 'library_snapshots': documents, 'creator_snapshots': creator_snapshots}
 
@@ -471,4 +518,6 @@ def capture(db, selected,namespace=None):
 
 
 def acknowledge_capture(db, change, entity_id, revision,namespace=None):
-    Links(db,namespace).put(change['native_session_id'],entity_id,revision,fingerprint(change['payload']),change['mapping'])
+    mapping = deepcopy(change['mapping'])
+    mapping['lineage'] = {key:deepcopy(change['payload'][key]) for key in ('branch_of','fork_revision','fork_message_uuid','lineage') if key in change['payload']}
+    Links(db,namespace).put(change['native_session_id'],entity_id,revision,fingerprint(change['payload']),mapping)

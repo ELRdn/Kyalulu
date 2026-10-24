@@ -4,7 +4,7 @@ import { deviceOwner, generationBusy } from './appContext';
 import { receiveConversation, receiveLibrarySnapshot, receiveCreatorSnapshot, rebindConversation, withLibrarySnapshots, conversationSettings } from './appSyncData';
 
 type Batch=Outbox&{revisions:Record<string,number>;withdrawn?:boolean;receipt?:{changes:Ack[]}};
-type Ack={id:string;source_id?:string;revision:number;deleted:boolean;branched?:boolean};
+type Ack={id:string;source_id?:string;revision:number;deleted:boolean;branched?:boolean;lineage?:Record<string,unknown>};
 export type SyncState={phase:'off'|'syncing'|'saved'|'error';pending:number;error:string};
 let state:SyncState={phase:'off',pending:0,error:''};
 const off:SyncState={phase:'off',pending:0,error:''};
@@ -40,6 +40,7 @@ export function acknowledgeEntity(local:AppEntity, ack:Ack, batch:Batch) {
   const updated={...local,id:ack.id,serverRevision:ack.revision,dirty:local.revision!==batch.revisions[source]};
   if(ack.deleted)return {...updated,deleted:true,dirty:false,payload:{storage_policy:'sync',deleted_revision:ack.revision}};
   if(ack.branched)updated.payload={...rebindConversation(local.payload,ack.id),branch_of:source,fork_revision:batch.changes.find(c=>c.id===source)!.base_revision};
+  if(ack.lineage)updated.payload={...updated.payload,lineage:ack.lineage};
   return updated;
 }
 
@@ -255,6 +256,7 @@ async function synchronize(owner:string) {
                       const sent=pending.changes.find(c=>c.id===source)!;
                       updated.deleted=false;updated.dirty=false;
                       updated.payload={...rebindConversation(sent.payload,ack.id),branch_of:source,fork_revision:sent.base_revision};
+                      if(ack.lineage)updated.payload.lineage=ack.lineage;
                     }
                     updated.payload=rebindConversation(receiveConversation(updated.payload,undefined,()=>++number),ack.id);
                     updated.payload.last_generation=null;
