@@ -35,8 +35,8 @@ export default function StorySettingsEditor({ cast, rpg, onChange, onValidity, d
       <label style={{ display: 'block', marginTop: 16 }}><input type="checkbox" checked={!!rpg} onChange={event => {
         const value = event.target.checked ? RPGOptionsSchema.parse({}) : null;
         setRaw(JSON.stringify(value, null, 2)); setError(''); last.current = JSON.stringify(value); onChange(cast, value);
-      }} /> サーバーでdice・HP・所持品を管理する</label>
-      {rpg && <><p>発言全体が行動のキーワードと一致したとき、サーバーがd20＋技能を判定します。前後の空白・英字の大小は区別しません。成功時のみHP・所持品を更新します。</p>
+      }} /> 実行先でサイコロ・HP・所持品を管理する</label>
+      {rpg && <><p>発言全体が行動のキーワードと一致したとき、選んだ実行先がd20＋技能を判定します。前後の空白・英字の大小は区別しません。成功時のみHP・所持品を更新します。</p>
         <label>RPGルール（JSON）<Textarea rows={12} value={raw} aria-invalid={!!error} aria-describedby="rpg-rule-help" spellCheck={false} onChange={event => {
           setRaw(event.target.value);
           try { const value = RPGOptionsSchema.parse(JSON.parse(event.target.value)); last.current = JSON.stringify(value); setError(''); onChange(cast, value); }

@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { activeRemote, deleteRemote, remoteDevices, restoreRemote, selectRemote, type RemoteDevice } from '../lib/remoteStore';
 import { type PairingLink } from '../lib/remotePairing';
 import Button from './ui/Button';
+import { executionTarget } from '../lib/appContext';
 
 export function RemoteConnections() {
   const [devices, setDevices] = useState<RemoteDevice[]>([]);
@@ -37,7 +38,7 @@ export default function RemoteSetup({ entry, children }: { entry: { invitation?:
   const pairing = entry.invitation;
   const managed = !!import.meta.env.VITE_RELAY_ORIGIN;
   if (!loaded) return <main className="k-connect-screen" aria-busy="true"><p>接続先を確認しています…</p></main>;
-  if (!pairing && !error && (!managed || activeRemote())) return <>{children}</>;
+  if (!pairing && (!error || executionTarget() !== 'pc') && (executionTarget() !== 'pc' || !managed || activeRemote())) return <>{children}</>;
   return <main className="k-connect-screen"><div className="k-connect-screen__body">
     <div className="k-connect-screen__brand">Kyalulu ✦</div><h1>いつものPCと、つながる。</h1>
     <p>会話はPCに保存。通信は、この端末とPCだけで復号します。</p>
@@ -63,6 +64,6 @@ export function RemoteBanner() {
     window.addEventListener('kyalulu-remote-status', update);
     return () => window.removeEventListener('kyalulu-remote-status', update);
   }, []);
-  if (!activeRemote()) return null;
+  if (!activeRemote() || executionTarget() !== 'pc') return null;
   return <div className="k-remote-banner" role="status"><a href="#/profile">{activeRemote()?.hostName || '自宅PC'} · {connected ? '暗号化接続中' : '接続できません'}</a><span>会話はPCに保存</span></div>;
 }

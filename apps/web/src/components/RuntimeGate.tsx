@@ -10,6 +10,7 @@ import { refreshAccountProfile } from '../lib/accountProfile';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { isCloud } from '../lib/cloudMode';
 import { loginPath } from '../lib/cloudGuest';
+import { rememberOwner, clearDeviceOwner } from '../lib/appContext';
 
 type Access = { remote_mode: boolean; authenticated: boolean; administrative?: boolean; device_name?: string; cloud_mode?: boolean };
 const AccessContext = createContext<Access>({ remote_mode: false, authenticated: true });
@@ -59,6 +60,8 @@ export default function RuntimeGate({ children }: { children: ReactNode }) {
       }
       setCloud(result.cloud_mode === true);
       setCloudOwner(result.authenticated && typeof result.owner_scope === 'string' ? result.owner_scope : '');
+      if (result.cloud_mode && result.authenticated) rememberOwner(result.owner_scope);
+      else if (result.cloud_mode) clearDeviceOwner();
       if (result.cloud_mode && result.authenticated) void refreshAccountProfile();
       if (mounted.current && attempt === epoch.current) { setAccess(result); setError(''); }
     } catch {
@@ -69,6 +72,7 @@ export default function RuntimeGate({ children }: { children: ReactNode }) {
     mounted.current = true;
     void check();
     const required = () => {
+      if (isCloud()) clearDeviceOwner();
       ++epoch.current; setCloudOwner(''); setBusy(false);
       setAccess(previous=>({...previous, remote_mode: previous?.remote_mode ?? true, authenticated: false}));
       setError('認証の有効期限が切れました。もう一度ログインしてください。');

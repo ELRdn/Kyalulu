@@ -1,6 +1,7 @@
 import { apiFetch } from './transport';
 import { friendlyMessage } from './errors';
 import { cloudEpoch, isCloud } from './cloudMode';
+import { clearDeviceOwner } from './appContext';
 export {isCloud,setCloud,setCloudOwner,cloudOwner} from './cloudMode';
 export async function cloudJson(path: string, init: RequestInit = {}) {
   const epoch = isCloud() ? cloudEpoch() : null;
@@ -14,5 +15,6 @@ export async function cloudJson(path: string, init: RequestInit = {}) {
   if (epoch !== null && cloudEpoch() !== epoch) throw Error('アカウントが切り替わりました。');
   if (!response.ok) throw Error(friendlyMessage(result?.error || result?.detail || `HTTP ${response.status}`));
   if (!result || typeof result !== 'object' || Array.isArray(result)) throw Error('サーバーの応答を確認できません。再試行してください。');
+  if(path==='auth/logout') clearDeviceOwner();
   return result;
 }

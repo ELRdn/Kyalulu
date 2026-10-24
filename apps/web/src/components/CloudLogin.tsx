@@ -54,7 +54,7 @@ export default function CloudLogin({ returnTo = '/' }: { returnTo?: string }) {
     setBusy(true);setMessage('');
     rememberLoginReturn(returnTo);
     try {
-      const result=await cloudJson('auth/login',{method:'POST',body:JSON.stringify({provider:authProvider,email,consent,country,
+      const result=await cloudJson('auth/login',{method:'POST',body:JSON.stringify({provider:authProvider,email,consent,country,eligibility_ticket:localStorage.getItem('kyalulu-eligibility-ticket'),
         operator_backend:provider,provider_consent_version:providerVersion,provider_disclosure_version:providerVersion})});
       analyticsConsent(analyticsEnabled ? 'granted' : 'denied');
       if(result.url) location.assign(result.url);

@@ -2,7 +2,7 @@ import MarkdownView from "./MarkdownView";
 import { splitSegments } from "../lib/text";
 
 /** キャラクターの返答を「地の文（ナレーション）」と「セリフ」に分けて表示する */
-export default function MessageContent({ content, isStreaming = false }: { content: string; isStreaming?: boolean }) {
+export default function MessageContent({ content, isStreaming = false, allowImages = true }: { content: string; isStreaming?: boolean; allowImages?: boolean }) {
   const segments = splitSegments(content);
   if (segments.length === 0) return null;
   return (
@@ -14,12 +14,12 @@ export default function MessageContent({ content, isStreaming = false }: { conte
             <span className="k-narration__mark" aria-hidden="true">
               ✦
             </span>
-            <MarkdownView content={seg.text} isStreaming={streamingHere} />
+            <MarkdownView content={seg.text} isStreaming={streamingHere} allowImages={allowImages} />
           </div>
         ) : (
           <div key={i} className="k-bubble k-bubble--character">
             {seg.speaker && <div className="k-msg__meta"><span className="k-msg__name">{seg.speaker}</span></div>}
-            <MarkdownView content={seg.text} isStreaming={streamingHere} />
+            <MarkdownView content={seg.text} isStreaming={streamingHere} allowImages={allowImages} />
           </div>
         );
       })}

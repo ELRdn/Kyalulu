@@ -13,13 +13,13 @@ export default function LocalCloudSync() {
   useEffect(()=>{void call('',undefined,'GET').then(value=>{setSettings(value);setMode(value.mode);setSelected(value.selected.join(','));}).catch(()=>{});},[]);
   if(!settings)return null;
   async function act(action:()=>Promise<unknown>){setBusy(true);setMessage('');try{const result=await action();setMessage(typeof result==='object'&&result!==null?JSON.stringify(result):'完了');}catch(e){setMessage(String(e));}finally{setBusy(false);}}
-  return <section className="k-section"><h2>任意のクラウド同期</h2><p>既定はオフ。会話・キャラ・Persona・World・記憶を同期できます。APIキー、Remote鍵、端末設定、実験は送りません。クラウドではDeepSeekによるSFW検査を受けます。</p>
+  return <section className="k-section"><h2>以前のバックアップ同期</h2><p>既定はオフ。会話・キャラ・Persona・World・記憶をバックアップ形式で送受信します。APIキー、Remote鍵、端末設定、実験は送りません。内容検査にはCloudのログイン画面で説明され、同意した提供元の経路を使用します。</p>
     <div className="k-connection__form"><p>接続先：{settings.origin}</p>
       <label>同期用トークン<input type="password" value={token} autoComplete="off" maxLength={256} onChange={e=>setToken(e.target.value)} placeholder={settings.connected?'登録済み（変更時のみ入力）':'クラウド設定画面で発行'} /></label>
       <label>範囲<select value={mode} onChange={e=>setMode(e.target.value)}><option value="off">オフ</option><option value="selected">選択した会話と関連データ</option><option value="all">全同期</option></select></label>
       {mode==='selected'&&<label>会話ID（カンマ区切り）<input value={selected} onChange={e=>setSelected(e.target.value)} /></label>}
-      <label><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/>クラウド保存とSFW検査への送信に同意します</label>
-      <label><input type="checkbox" checked={imageConsent} onChange={e=>setImageConsent(e.target.checked)}/>関連画像をDeepSeekモデルへSFW検査のために送信し、クラウドへ保存することに同意します（送信先はクラウドのログイン画面で説明され、同意した提供元の経路を使用します。運営の検証完了後に利用可能・静止画1MBまで）</label>
+      <label><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/>Cloudへのバックアップ保存と、同意済み提供元による内容検査への送信に同意します</label>
+      <label><input type="checkbox" checked={imageConsent} onChange={e=>setImageConsent(e.target.checked)}/>関連画像の内容検査への送信とCloud保存に同意します（同意済み提供元の経路を使用。運営の検証完了後に利用可能・静止画1MBまで）</label>
       <Button disabled={busy || (mode!=='off'&&!consent)} onClick={()=>void act(async()=>{const value=await call('',{mode,selected:selected.split(',').map(s=>s.trim()).filter(Boolean),consent,image_consent:imageConsent,...(token?{token}:{})},'PUT');setSettings(value);setToken('');return {mode:value.mode};})}>設定を保存</Button>
       <Button disabled={busy || settings.mode==='off'} onClick={()=>void act(()=>call('/push'))}>ローカルの変更を同期</Button>
       <Button disabled={busy || settings.mode==='off'} onClick={()=>{if(window.confirm('今のローカル版を別コピーに保存して、クラウド版を採用しますか？'))void act(async()=>{const result=await call('/adopt');setConflict(false);return result;});}}>クラウド版を採用（ローカルをバックアップ）</Button>

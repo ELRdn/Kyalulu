@@ -20,6 +20,7 @@ const CreatorSettings = lazy(() => import("./pages/CreatorSettings"));
 const BenchmarkLab = lazy(() => import("./pages/BenchmarkLab"));
 const PublicWork = lazy(() => import('./pages/PublicWork'));
 const PublicAuthor = lazy(() => import('./pages/PublicAuthor'));
+const Migration = lazy(() => import('./pages/Migration'));
 
 const deferred = (node: ReactNode) => <Suspense fallback={<div className="k-page" aria-busy="true" />}>{node}</Suspense>;
 function AdminPage({ children }: { children: ReactNode }) {
@@ -46,6 +47,7 @@ export default function App() {
         <Route path="/create/settings" element={deferred(<CreatorSettings />)} />
         <Route path="/research/benchmarks" element={<AdminPage>{deferred(<BenchmarkLab />)}</AdminPage>} />
         <Route path="/profile" element={<Profile />} />
+        <Route path="/migration" element={deferred(<Migration />)} />
         <Route path="/studio" element={<AdminPage>{deferred(<Studio />)}</AdminPage>} />
         <Route path="/research" element={<AdminPage>{deferred(<ResearchPage />)}</AdminPage>} />
         <Route path="/status" element={<AdminPage>{deferred(<Status />)}</AdminPage>} />

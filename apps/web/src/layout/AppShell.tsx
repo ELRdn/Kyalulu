@@ -11,6 +11,9 @@ import { useAccountProfile } from '../lib/accountProfile';
 import "./shell.css";
 import { useAdministrative, useRuntimeAccess } from '../components/RuntimeGate';
 import { isCloudGuest, loginPath } from '../lib/cloudGuest';
+import CreditOptions, { AdBanner } from '../components/CreditOptions';
+import { labels, useLanguage } from '../lib/appContext';
+import { UnifiedSync } from '../components/SessionPolicy';
 
 const LS_SIDEBAR_COMPACT = "kyalulu-sidebar-compact";
 
@@ -43,6 +46,8 @@ const DAILY_WORDS = [
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
 export default function AppShell() {
+  const language=useLanguage(),t=labels[language];
+  const navLabel=(path:string)=>({'/':t.home,'/chats':t.chats,'/discover':t.discover,'/create':t.create,'/profile':t.profile}[path]);
   const administrative = useAdministrative();
   const guest = isCloudGuest(useRuntimeAccess());
   const navigate = useNavigate();
@@ -114,7 +119,7 @@ export default function AppShell() {
         <nav className={`k-shell__sidebar ${rail ? "k-shell__sidebar--compact" : ""}`} aria-label="メインナビゲーション">
           <div className="k-shell__nav-group">
             {CONSUMER_NAV.map((item) => (
-              <NavItem key={item.to} to={item.to} icon={<Icon name={item.icon} size={19} />} label={item.label} compact={rail} end={item.end} />
+              <NavItem key={item.to} to={item.to} icon={<Icon name={item.icon} size={19} />} label={navLabel(item.to)||item.label} compact={rail} end={item.end} />
             ))}
           </div>
           {administrative && <><div className="k-shell__sidebar-divider" />
@@ -140,6 +145,7 @@ export default function AppShell() {
         </nav>
 
         <main className="k-shell__main" id="main" ref={mainRef}>
+          {['/','/discover'].includes(location.pathname)&&<AdBanner/>}
           {accountSync.error && location.pathname!=='/profile' && <div className="k-shell__sync-alert" role="alert">{accountSync.error} <Link to="/profile">プロフィールで確認</Link></div>}
           <Outlet />
         </main>
@@ -153,7 +159,7 @@ export default function AppShell() {
             return (
               <Link key={item.to} to={item.to} aria-current={active ? "page" : undefined} className={`k-shell__bottomnav-item ${active ? "active" : ""}`}>
                 <Icon name={item.icon} size={21} />
-                <span>{item.label}</span>
+                <span>{navLabel(item.to)||item.label}</span>
               </Link>
             );
           })}
@@ -161,6 +167,8 @@ export default function AppShell() {
       </nav>
 
       {guest ? null : <CommandPalette open={paletteOpen} onClose={closePalette} />}
+      <CreditOptions/>
+      <UnifiedSync/>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { useSyncExternalStore } from "react";
+import { generationBusy } from './appContext';
 
 interface InstallPrompt extends Event {
   prompt(): Promise<void>;
@@ -114,6 +115,7 @@ export async function installPwa() {
 }
 
 export function applyPwaUpdate() {
+  if (generationBusy()) { publish({error:'生成を停止し、保存結果を確認してから更新してください。'}); return; }
   if (!registration?.waiting || state.busy || !state.online) return;
   // Explicit confirmation also protects drafts outside the conversation page.
   if (!window.confirm("アプリを更新して再読み込みします。生成中の応答や未保存の入力が失われる場合があります。保存・停止してから更新してください。")) return;
