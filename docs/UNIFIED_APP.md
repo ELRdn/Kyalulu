@@ -23,6 +23,11 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 
 ## Delivered Behavior
 
+- Cloud settings and legacy backup-sync labels, consent/confirmation copy and
+  dates follow the selected JA/EN language. Subscription choices show their
+  monthly credit quantity before secondary top-ups; closed billing stays closed.
+  Other screens and shared/API error localization remain incomplete. See
+  [settings language validation](validation/2026-10-25-unified-cloud-settings-language.md).
 - Shared navigation, compact mascot home, recommendations before recent chats,
   three optional interest screens, and a target selector outside RuntimeGate.
 - Public unified entry defaults to Cloud. `/device/` uses the same UI and browser
