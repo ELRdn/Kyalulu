@@ -66,6 +66,12 @@ const knownEnglish: Record<string, string> = {
   '認証の有効期限が切れました。もう一度ログインしてください。': 'Authentication expired. Sign in again.',
   '端末を登録できませんでした。': 'This device could not be registered.',
   '登録を解除できませんでした。接続を確認して再試行してください。': 'Registration could not be revoked. Check the connection and try again.',
+  '登場人物・RPGルールを確認してください。': 'Check the cast and RPG rules.',
+  '100KB以下の設定ファイルを選んでください。': 'Choose a settings file no larger than 100 KB.',
+  'ペルソナのKyalulu設定ファイルを選んでください。': 'Choose a Kyalulu persona settings file.',
+  '世界観のKyalulu設定ファイルを選んでください。': 'Choose a Kyalulu world settings file.',
+  '設定ファイルの形式が正しくありません。': 'The settings file format is invalid.',
+  '登場人物は12人までです。': 'The cast is limited to 12 characters.',
 };
 const erasedCleanupPrefix = 'サーバーの会話データは消去しましたが、この端末の下書き・返信履歴の消去を確認できません。';
 
