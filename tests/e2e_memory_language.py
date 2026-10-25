@@ -32,6 +32,18 @@ async def main():
                     await page.evaluate('([language,theme])=>window.__MEMORY_LANGUAGE__.mount(document.getElementById("root"),language,theme).then(fn=>{window.__unmount=fn})', [language, theme])
                     en = language == 'en'
                     await page.get_by_role('switch', name='Remember conversations' if en else '会話を覚える').wait_for()
+                    await page.get_by_role('button', name='Review model quote' if en else 'モデルの見積を確認', exact=True).click()
+                    quote_region = page.get_by_role('region', name='Review quote before sending' if en else '送信前の見積確認')
+                    send = quote_region.get_by_role('button', name='Send' if en else '送信する', exact=True)
+                    assert not await send.is_enabled()
+                    await quote_region.get_by_role('checkbox').check()
+                    assert await send.is_enabled()
+                    await quote_region.get_by_role('checkbox').uncheck()
+                    assert not await send.is_enabled()
+                    assert await page.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'Quote horizontal overflow'
+                    await page.screenshot(path=str(OUTPUT / f'quote-{language}-{width}-{theme}.png'), full_page=True)
+                    await quote_region.get_by_role('button', name='Cancel' if en else 'キャンセル', exact=True).click()
+                    await quote_region.wait_for(state='detached')
                     erase = page.get_by_role('button', name='Erase memories in this scope' if en else 'この範囲の記憶を消去', exact=True)
                     await erase.click()
                     dialog = page.get_by_role('dialog')
@@ -56,7 +68,7 @@ async def main():
                         assert 'Corrected manually' in await page.locator('main').inner_text()
                     assert await page.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'Horizontal overflow'
                     await page.screenshot(path=str(OUTPUT / f'{language}-{width}-{theme}.png'), full_page=True)
-                    results.append({'language': language, 'width': width, 'theme': theme, 'canceled_erasure_kept_memories': True, 'device_edits_saved': True, 'overflow': False})
+                    results.append({'language': language, 'width': width, 'theme': theme, 'quote_consent_required_and_revocable': True, 'canceled_erasure_kept_memories': True, 'device_edits_saved': True, 'overflow': False})
                 finally:
                     await context.close()
         finally:

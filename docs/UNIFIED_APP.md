@@ -32,6 +32,10 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
   while preserving existing routes, commands and accounting distinctions. Unknown
   provider detail text remains unchanged; other screen copy is still incomplete.
   See [error language validation](validation/2026-10-26-unified-error-language.md).
+- Model disclosures, quote/training consent, route guidance and official-reasoning
+  summary labels follow JA/EN. Consent remains revocable and an expired quote stays
+  unsendable. Provider-supplied privacy notes remain verbatim. See
+  [model language validation](validation/2026-10-26-unified-model-language.md).
 - Cloud settings and legacy backup-sync labels, consent/confirmation copy and
   dates follow the selected JA/EN language. Subscription choices show their
   monthly credit quantity before secondary top-ups; closed billing stays closed.
