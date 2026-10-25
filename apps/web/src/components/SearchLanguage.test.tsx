@@ -11,10 +11,14 @@ import { friendlyMessage } from '../lib/errors';
 import ChatsLanding from '../pages/ChatsLanding';
 import StoryControls from './StoryControls';
 import { applyStory, readStory } from '../lib/story';
+import Profile from '../pages/Profile';
+import ConnectionSettings from './ConnectionSettings';
 
 const fixture = vi.hoisted(() => ({ language: 'en', administrative: false, guest: false,
   params: new URLSearchParams(), states: [] as unknown[], next: 0,
   pinned: [] as string[], saved: [] as string[],
+  target: 'device', cloud: false, pending: 0, profileReady: true, profileError: '',
+  saveName: vi.fn(), setTheme: vi.fn(),
   navigate: vi.fn(), close: vi.fn(), browse: vi.fn(), fetch: vi.fn(), preview: vi.fn(), hub: vi.fn(), toggle: vi.fn(),
 }));
 vi.mock('react', async importOriginal => ({ ...await importOriginal<typeof import('react')>(),
@@ -28,7 +32,8 @@ vi.mock('react-router-dom', () => ({ useNavigate: () => fixture.navigate, useSea
   NavLink: ({ to, children, className, ...props }: any) => <a href={to} className={typeof className === 'function' ? className({ isActive: false }) : className} {...props}>{typeof children === 'function' ? children({ isActive: false }) : children}</a>,
 }));
 vi.mock('../lib/appContext', async importOriginal => ({ ...await importOriginal<typeof import('../lib/appContext')>(),
-  useLanguage: () => fixture.language, useExecutionTarget: () => 'device',
+  useLanguage: () => fixture.language, useExecutionTarget: () => fixture.target,
+  executionTarget: () => fixture.target, isUnifiedEntry: () => true,
 }));
 vi.mock('../lib/api', async importOriginal => ({ ...await importOriginal<typeof import('../lib/api')>(),
   fetchCharacters: fixture.fetch, fetchSessions: fixture.fetch, fetchWorlds: fixture.fetch,
@@ -38,13 +43,22 @@ vi.mock('../lib/pins', () => ({ usePinnedSessions: () => fixture.pinned, toggleP
 vi.mock('../lib/saved', () => ({ useSavedCharacters: () => fixture.saved }));
 vi.mock('../lib/title', () => ({ useDocumentTitle: vi.fn() }));
 vi.mock('../lib/cloudGuest', () => ({ isCloudGuest: () => fixture.guest, fetchBrowseCatalog: fixture.browse, loginPath: (to: string) => '/login?next=' + encodeURIComponent(to) }));
-vi.mock('./RuntimeGate', () => ({ useAdministrative: () => fixture.administrative, useRuntimeAccess: () => ({}) }));
+vi.mock('./RuntimeGate', () => ({ useAdministrative: () => fixture.administrative,
+  useRuntimeAccess: () => ({ cloud_mode: fixture.cloud, remote_mode: false }), DeviceRegistration: () => null }));
 vi.mock('./CommunityWorks', () => ({ default: () => null }));
 vi.mock('./RuntimeMedia', () => ({ RuntimeImage: ({ src, alt, ...props }: any) => <img src={src} alt={alt} {...props} /> }));
-vi.mock('./ui/Dialog', () => ({ default: ({ children, label }: any) => <div role="dialog" aria-label={label}>{children}</div> }));
-vi.mock('../lib/theme', () => ({ useTheme: () => ({ theme: 'dark', toggle: fixture.toggle }) }));
-vi.mock('../lib/profile', () => ({ useDisplayName: () => 'Original name' }));
-vi.mock('../lib/accountProfile', () => ({ useAccountProfile: () => ({ error: null }) }));
+vi.mock('./ui/Dialog', () => ({ default: ({ children, label }: any) => <div role="dialog" aria-label={label}>{children}</div>, useConfirm: () => [null, vi.fn()] }));
+vi.mock('../lib/theme', () => ({ useTheme: () => ({ theme: 'dark', toggle: fixture.toggle, setTheme: fixture.setTheme }) }));
+vi.mock('../lib/profile', () => ({ useDisplayName: () => 'Original name', setDisplayName: fixture.saveName }));
+vi.mock('../lib/accountProfile', () => ({ useAccountProfile: () => ({ error: fixture.profileError,
+  pending: fixture.pending, profile: fixture.profileReady ? {} : null }), refreshAccountProfile: vi.fn() }));
+vi.mock('../lib/mode', () => ({ useResearcherMode: () => [false, vi.fn()] }));
+vi.mock('./DeviceSettings', () => ({ default: () => null }));
+vi.mock('./CloudSettings', () => ({ default: () => null }));
+vi.mock('./LocalCloudSync', () => ({ default: () => null }));
+vi.mock('./NativeSyncSettings', () => ({ default: () => null }));
+vi.mock('./RemoteHostSettings', () => ({ default: () => null }));
+vi.mock('./RemoteSetup', () => ({ RemoteConnections: () => null }));
 vi.mock('./CreditOptions', () => ({ default: () => null, AdBanner: () => null }));
 vi.mock('./SessionPolicy', () => ({ UnifiedSync: () => null }));
 vi.mock('../lib/hubs', () => ({ hubItems: fixture.hub, hubDetail: fixture.hub, previewUrl: fixture.preview }));
@@ -69,6 +83,7 @@ beforeEach(() => {
   vi.clearAllMocks(); fixture.language = 'en'; fixture.administrative = false; fixture.guest = false;
   fixture.params = new URLSearchParams('mood=butler');
   fixture.pinned = []; fixture.saved = [];
+  fixture.target = 'device'; fixture.cloud = false; fixture.pending = 0; fixture.profileReady = true; fixture.profileError = '';
   vi.stubGlobal('localStorage', { getItem: () => null });
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -218,4 +233,75 @@ it('keeps story drafts and original prompt instructions when language changes', 
   expect(change).toHaveBeenCalledOnce();
   expect(change.mock.calls[0][0]).toContain('Original base instructions');
   expect(readStory(change.mock.calls[0][0])).toEqual(draft);
+});
+
+function profile(error: unknown = null) {
+  return view(Profile, ['入力中の名前 · draft', [{ session_id: 'chat-one', count: 3, character_id: 'hero', character_name: 'Original character' }],
+    characters, error, false, 0]);
+}
+
+it('keeps profile drafts, saved characters and pinned links without exposing unified adult shortcuts', () => {
+  fixture.saved = ['hero']; fixture.pinned = ['chat-one'];
+  for (const language of ['ja', 'en']) {
+    fixture.language = language;
+    // Nested controls use their defaults after the page's six state entries.
+    const html = renderToStaticMarkup(profile());
+    expect(html).toContain('入力中の名前 · draft');
+    expect(html).toContain('href="/chats/chat-one"'); expect(html).toContain('Original character');
+    expect(html).toContain(language === 'en' ? 'Saved characters' : '保存したキャラクター');
+    expect(html).toContain(language === 'en' ? 'Your display name is saved on this device.' : '表示名はこのデバイスに保存されます。');
+    expect(html).not.toContain(language === 'en' ? 'Show adult content' : '成人向けコンテンツを表示');
+    expect(html).not.toContain('href="/studio"');
+    expect(fixture.saveName).not.toHaveBeenCalled();
+  }
+});
+
+it('retains the explicit account save and composing-Enter guard in both profile languages', () => {
+  fixture.cloud = true;
+  for (const language of ['ja', 'en']) {
+    fixture.language = language;
+    const tree = profile(), blur = vi.fn();
+    const input = nodes(tree, node => node.props.id === 'k-profile-name')[0];
+    input.props.onKeyDown({ key: 'Enter', nativeEvent: { isComposing: true }, keyCode: 13, currentTarget: { blur } });
+    input.props.onKeyDown({ key: 'Enter', nativeEvent: { isComposing: false }, keyCode: 229, currentTarget: { blur } });
+    expect(blur).not.toHaveBeenCalled();
+    input.props.onBlur(); expect(fixture.saveName).not.toHaveBeenCalled();
+    input.props.onKeyDown({ key: 'Enter', nativeEvent: { isComposing: false }, keyCode: 13, currentTarget: { blur } });
+    expect(blur).toHaveBeenCalledOnce();
+    const save = nodes(tree, node => typeof node.type !== 'string' && node.props.children === (language === 'en' ? 'Save display name' : '表示名を保存'))[0];
+    expect(save.props.disabled).toBe(false); save.props.onClick();
+    expect(fixture.saveName).toHaveBeenLastCalledWith('入力中の名前 · draft'); fixture.saveName.mockClear();
+    fixture.profileReady = false;
+    const locked = profile();
+    expect(nodes(locked, node => node.props.id === 'k-profile-name')[0].props.disabled).toBe(true);
+    fixture.profileReady = true;
+  }
+});
+
+it('localizes retained profile/account failures and keeps unverified counts hidden', () => {
+  fixture.cloud = true; fixture.profileError = 'アカウントを同期できませんでした。接続を確認して再試行してください。';
+  for (const language of ['ja', 'en']) {
+    fixture.language = language;
+    const html = renderToStaticMarkup(profile({ cause: Error('Failed to fetch') }));
+    expect(html).toContain(language === 'en' ? 'Your account could not be synced.' : 'アカウントを同期できませんでした。');
+    expect(html).not.toContain('k-profile-stats');
+  }
+  fixture.pending = 1;
+  const busy = renderToStaticMarkup(profile());
+  expect(busy).toContain('Saving…');
+  expect(fixture.saveName).not.toHaveBeenCalled();
+});
+
+it('describes device storage accurately and preserves explicit server-switch review across languages', () => {
+  const server = { name: '自分のPC · original', url: 'https://example.test' };
+  for (const language of ['ja', 'en']) {
+    fixture.language = language;
+    const html = renderToStaticMarkup(view(ConnectionSettings, [[server], '入力中の接続名', server.url, '', server]));
+    expect(html).toContain('入力中の接続名'); expect(html).toContain(server.name);
+    expect(html).toContain('href="https://example.test/#/chats"'); expect(html).toContain('referrerPolicy="no-referrer"');
+    expect(html).toContain(language === 'en' ? 'On-device conversations and memories are stored in this browser.' : '端末内の会話・記憶はこのブラウザーに保存されます。');
+    expect(html).toContain(language === 'en' ? 'Conversations and memories do not move automatically.' : '会話や記憶は自動で移りません。');
+    expect(html).toContain(language === 'en' ? 'check its result in the current conversation' : '今の会話で結果を確認してから');
+    expect(fixture.fetch).not.toHaveBeenCalled();
+  }
 });

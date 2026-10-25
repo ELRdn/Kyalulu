@@ -23,6 +23,14 @@ const knownEnglish: Record<string, string> = {
   '履歴への保存結果を確認できません。': 'Saving to history could not be verified.',
   '保存された返信を履歴で確認できません。': 'The saved reply could not be verified in history.',
   '端末の送信下書きを消去できません。': 'The send draft on this device could not be erased.',
+  'アカウントの保存内容を確認できませんでした。': 'The saved account data could not be verified.',
+  'アカウントを同期できませんでした。接続を確認して再試行してください。': 'Your account could not be synced. Check your connection and try again.',
+  'アカウントを保存できませんでした。': 'Your account could not be saved.',
+  '接続先を保存できませんでした。ブラウザーの保存容量と設定を確認してください。': 'The destination could not be saved. Check browser storage space and settings.',
+  '保存された接続先が無効です。削除して登録し直してください。': 'The saved destination is invalid. Remove it and register it again.',
+  'アドレスを確認してください。': 'Check the address.',
+  'スマホから接続するサーバーにはHTTPSのアドレスを指定してください。': 'Use an HTTPS address for a server accessed from your phone.',
+  '認証情報やパスを含まないアドレスを指定してください（例：https://my-pc.example.ts.net）。': 'Use an address without credentials or a path (e.g. https://my-pc.example.ts.net).',
 };
 const erasedCleanupPrefix = 'サーバーの会話データは消去しましたが、この端末の下書き・返信履歴の消去を確認できません。';
 
