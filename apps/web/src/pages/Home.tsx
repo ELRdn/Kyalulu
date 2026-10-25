@@ -52,7 +52,7 @@ export default function Home() {
     {!!recent.length&&<section className="k-section" aria-labelledby="home-recent">
       <div className="k-section__head"><h2 id="home-recent" className="k-section__title">{t.resume}</h2><Link to="/chats">{t.chats}</Link></div>
       <div className="k-resume-grid">{recent.map(s=><Link key={s.session_id} to={`/chats/${encodeURIComponent(s.session_id)}`} className="k-resume-card">
-        <div className="k-resume-card__top"><Avatar name={sessionTitle(s)} size="lg" src={s.portrait_url} mascot={!s.character_name}/><div className="k-resume-card__who"><span className="k-resume-card__name">{sessionTitle(s)}</span><span className="k-resume-card__time">{formatRelative(s.last_at)}</span></div></div>
+        <div className="k-resume-card__top"><Avatar name={sessionTitle(s)} size="lg" src={s.portrait_url} mascot={!s.character_name}/><div className="k-resume-card__who"><span className="k-resume-card__name">{sessionTitle(s)}</span><span className="k-resume-card__time">{formatRelative(s.last_at, language)}</span></div></div>
         <p className="k-resume-card__preview">{cleanPreview(s.last_preview,90)}</p>
       </Link>)}</div>
     </section>}

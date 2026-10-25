@@ -25,7 +25,7 @@ async def stored_state(page):
 
 async def ui_check(browser, url, width):
     print('UI: open', url, width, flush=True)
-    context = await browser.new_context(viewport={'width': width, 'height': 844}, accept_downloads=True,
+    context = await browser.new_context(viewport={'width': width, 'height': 844}, accept_downloads=True, locale='ja-JP',
         user_agent=f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{browser.version} Safari/537.36')
     page = await context.new_page()
     errors, requests = [], []
@@ -107,7 +107,7 @@ async def ui_check(browser, url, width):
 async def real_check(playwright, url, model_id, offline=False, prune=False, cpu=False, exercise=False):
     print('Real model: open',model_id,flush=True)
     profile = ROOT / '.artifacts/mobile-test-browser'
-    context = await playwright.chromium.launch_persistent_context(str(profile), channel='chrome', headless=True,
+    context = await playwright.chromium.launch_persistent_context(str(profile), channel='chrome', headless=True, locale='ja-JP',
             viewport={'width': 430, 'height': 900}, downloads_path=str(OUT/'downloads'), args=['--enable-unsafe-webgpu'])
     page = context.pages[0] if context.pages else await context.new_page()
     for extra in context.pages[1:]:
