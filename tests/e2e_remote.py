@@ -38,6 +38,13 @@ class MemoryVault:
         self.config = copy.deepcopy(value)
 
 
+async def language_in_place(page, language):
+    await page.evaluate('''async language=>{
+        const {preferences,savePreferences}=await import('/src/lib/appContext.ts');
+        savePreferences({...preferences(),language});
+    }''', language)
+
+
 async def run():
     output = ROOT / ".artifacts" / "remote-v1" / ("e2e-" + uuid.uuid4().hex[:8])
     output.mkdir(parents=True)
@@ -150,11 +157,13 @@ async def run():
                     link = await host.pair()
                     await page.goto(link["url"])
                     assert "#remote=" not in page.url
-                    await page.get_by_label("このスマホの名前").fill(
+                    await page.get_by_label("この端末の名前").fill(
                         "Acceptance Android"
                     )
+                    await language_in_place(page, 'en')
+                    await expect(page.get_by_label('This device’s name')).to_have_value('Acceptance Android')
                     await page.get_by_role(
-                        "button", name="このPCに登録する", exact=True
+                        "button", name="Register with this PC", exact=True
                     ).click()
                     await wait_until(lambda: bool(host.status()["pending"]))
                     code = await page.locator(
@@ -162,6 +171,10 @@ async def run():
                     ).inner_text()
                     device = host.status()["pending"][0]["device_id"]
                     assert not host.authorized(device)
+                    await language_in_place(page, 'ja')
+                    await expect(page.get_by_role('button', name='PCの承認を待っています…', exact=True)).to_be_visible()
+                    assert await page.locator('form [role="status"] strong').inner_text() == code
+                    assert [item['device_id'] for item in host.status()['pending']] == [device]
                     await page.screenshot(
                         path=str(output / "approval.png"), full_page=True
                     )
@@ -169,6 +182,20 @@ async def run():
                     await expect(
                         page.get_by_role("heading", name="登録できました")
                     ).to_be_visible()
+                    keys_before = await page.evaluate('''async()=>{
+                        const {remoteDevices}=await import('/src/lib/remoteStore.ts');
+                        const bytes=new TextEncoder().encode(JSON.stringify(await remoteDevices()));
+                        return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),v=>v.toString(16).padStart(2,'0')).join('');
+                    }''')
+                    await language_in_place(page, 'en')
+                    await expect(page.get_by_role('heading', name='Registered successfully', exact=True)).to_be_visible()
+                    assert await page.evaluate('''async expected=>{
+                        const {remoteDevices}=await import('/src/lib/remoteStore.ts');
+                        const bytes=new TextEncoder().encode(JSON.stringify(await remoteDevices()));
+                        return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),v=>v.toString(16).padStart(2,'0')).join('')===expected;
+                    }''', keys_before)
+                    await page.screenshot(path=str(output / 'paired-en.png'), full_page=True)
+                    await language_in_place(page, 'ja')
                     await page.get_by_role(
                         "button", name="会話を開く", exact=True
                     ).click()
@@ -178,6 +205,7 @@ async def run():
                     report["checks"].append(
                         "QR fragment erased; Noise pinned pairing; PC approval; persisted reconnect"
                     )
+                    report['checks'].append('JA/EN pairing preserves name, one pending approval, confirmation code and persisted device-key fingerprint')
 
                     async def api(path, method="GET", body=None):
                         return await page.evaluate(
@@ -259,6 +287,17 @@ async def run():
                             "button", name="送信", exact=True
                         ).click()
                         await wait_until(lambda: bool(chat._running))
+                        assert await page.evaluate('''async()=>{
+                            const {generationBusy}=await import('/src/lib/appContext.ts');
+                            const {activeRemote,deleteRemote,remoteDevices}=await import('/src/lib/remoteStore.ts');
+                            if(!generationBusy())throw Error('Expected active generation');
+                            const before=JSON.stringify(await remoteDevices()),selected=activeRemote().id;
+                            try {await deleteRemote(selected);return false;}
+                            catch(error){if(!String(error).includes('Stop generation and confirm its saved result'))throw error;}
+                            return JSON.stringify(await remoteDevices())===before&&activeRemote().id===selected
+                                &&localStorage.getItem('kyalulu-active-remote')===selected;
+                        }''')
+                        report['checks'].append('active generation blocks key erasure before IndexedDB or selected destination changes')
                         await host.socket.close()
                         await asyncio.sleep(2)
                         await wait_until(lambda: host.connected)
