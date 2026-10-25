@@ -112,7 +112,7 @@ async def run():
             app.state.remote_host = host
             await host.start()
             await wait_until(lambda: host.connected)
-            env = {**os.environ, "VITE_RELAY_ORIGIN": relay_origin}
+            env = {**os.environ, "VITE_RELAY_ORIGIN": relay_origin, "VITE_UNIFIED_APP": "1"}
             log = (output / "vite.log").open("wb")
             vite = await asyncio.to_thread(
                 subprocess.Popen,
@@ -150,6 +150,13 @@ async def run():
                         is_mobile=True,
                         has_touch=True,
                     )
+                    await context.add_init_script('''
+                        if(!localStorage.getItem('kyalulu-app-preferences-v1')){
+                            localStorage.setItem('kyalulu-app-preferences-v1',JSON.stringify({version:1,language:'ja',country:'JP',age:25,accepted:true,
+                              genres:[],moods:[],activities:[],favorites:[],dismissed:[]}));
+                            localStorage.setItem('kyalulu-execution-target','pc');
+                        }
+                    ''')
                     page = await context.new_page()
                     errors, requests = [], []
                     page.on("pageerror", lambda e: errors.append(str(e)))
@@ -206,6 +213,28 @@ async def run():
                         "QR fragment erased; Noise pinned pairing; PC approval; persisted reconnect"
                     )
                     report['checks'].append('JA/EN pairing preserves name, one pending approval, confirmation code and persisted device-key fingerprint')
+                    await language_in_place(page, 'en')
+                    await expect(page.locator('.k-remote-banner')).to_contain_text('Encrypted connection')
+                    await page.goto(web_origin + '/#/profile')
+                    destinations=page.get_by_role('region',name='Remote destinations',exact=True)
+                    # A named section uses the region role and must appear only once.
+                    await expect(destinations).to_have_count(1)
+                    await destinations.get_by_role('button',name='Connect',exact=True).click()
+                    review=destinations.get_by_role('group',name='Confirm PC destination',exact=True)
+                    await expect(review).to_contain_text('Unsent drafts are saved separately')
+                    await destinations.screenshot(path=str(output/'remote-settings-en.png'),animations='disabled')
+                    await language_in_place(page,'ja')
+                    japanese=page.get_by_role('region',name='Remoteの接続先',exact=True)
+                    await expect(japanese.get_by_role('group',name='PCの接続先を確認',exact=True)).to_contain_text('未送信の下書きは接続先ごと')
+                    await japanese.get_by_role('button',name='キャンセル',exact=True).click()
+                    assert await page.evaluate('''async expected=>{
+                        const {remoteDevices}=await import('/src/lib/remoteStore.ts');
+                        const bytes=new TextEncoder().encode(JSON.stringify(await remoteDevices()));
+                        return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),v=>v.toString(16).padStart(2,'0')).join('')===expected;
+                    }''',keys_before)
+                    assert len(host.status()['devices'])==1
+                    report['checks'].append('unified PC settings have one destination list; JA/EN review cancellation retains registered keys')
+                    await page.goto(web_origin + '/#/chats')
 
                     async def api(path, method="GET", body=None):
                         return await page.evaluate(

@@ -97,7 +97,7 @@ export default function Profile() {
       <DeviceSettings />
       {isUnifiedEntry()&&<p><Link to="/publications">{en?'Publication review and appeals':'公開作品の審査・異議申立て'}</Link> · <Link to="/published">{en?'Approved works':'承認済み作品'}</Link></p>}
       {loadError && <p role="alert">{friendlyMessage(loadError.cause,language)}<Button size="sm" variant="secondary" onClick={() => setRetry(value => value + 1)}>{en?'Reload':'再読込'}</Button></p>}
-      {!cloud_mode && <ConnectionSettings />}
+      {!cloud_mode && <ConnectionSettings showRegisteredPCs={executionTarget()!=='pc'} />}
       {administrative && executionTarget() === 'local' && <RemoteHostSettings />}
       <DeviceRegistration />
       <section className={`k-profile-card ${cloud_mode?'k-profile-card--cloud':''}`}>

@@ -16,7 +16,7 @@ function readServers(): Server[] {
   } catch { return []; }
 }
 
-export default function ConnectionSettings() {
+export default function ConnectionSettings({showRegisteredPCs=true}:{showRegisteredPCs?:boolean}={}) {
   const language=useLanguage(),en=language==='en',device=useExecutionTarget()==='device';
   const [servers, setServers] = useState(readServers);
   const [name, setName] = useState(en?'My PC':'自分のPC');
@@ -38,7 +38,7 @@ export default function ConnectionSettings() {
     try { setDestination({ ...server, url: serverAddress(server.url) }); setError(''); }
     catch { setError('保存された接続先が無効です。削除して登録し直してください。'); }
   };
-  return <>{!device && (activeRemote() || import.meta.env.VITE_RELAY_ORIGIN) && <RemoteConnections />}<section className="k-connection" aria-labelledby="connection-title">
+  return <>{showRegisteredPCs && !device && (activeRemote() || import.meta.env.VITE_RELAY_ORIGIN) && <RemoteConnections />}<section className="k-connection" aria-labelledby="connection-title">
     <h2 id="connection-title">{device?(en?'Open another server':'別のサーバーを開く'):(en?'Take your conversations with you':'会話を持ち歩く')}</h2>
     <p>{en?'Current destination: ':'接続中：'}<strong>{device?(en?'This browser':'このブラウザー'):activeRemote() ? `${activeRemote()?.hostName || (en?'Registered PC':'登録したPC')}${en?' (encrypted relay)':'（暗号化中継）'}` : location.protocol === 'file:' ? (en?'This PC':'このPC') : location.host}</strong></p>
     <p>{device?(en?'On-device conversations and memories are stored in this browser. Opening another server does not transfer them.':'端末内の会話・記憶はこのブラウザーに保存されます。別のサーバーを開いても自動では移りません。'):(en?'Characters, conversations and memories are stored on the connected server. Keep your PC and conversation server running when using your own PC.':'キャラ・会話・記憶は接続中のサーバーに保存されます。自分のPCを使うときは、PCと会話サーバーを起動しておいてください。')}</p>
