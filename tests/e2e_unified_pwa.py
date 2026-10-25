@@ -109,7 +109,7 @@ async def check_library_workspace(page, language, before, draft, output):
     page.on('dialog',accept)
     try:
         await page.reload()
-        await editor.get_by_role('tab',name='Intro' if language=='en' else 'イントロ',exact=False).click()
+        await editor.get_by_role('tab',name='Intro' if alternate=='en' else 'イントロ',exact=False).click()
         await expect(greeting).to_have_value('原文の挨拶 *星を見る*')
     finally:
         page.remove_listener('dialog',accept)
