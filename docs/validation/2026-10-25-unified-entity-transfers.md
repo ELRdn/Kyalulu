@@ -69,7 +69,8 @@ pnpm --filter desktop build
 ## 残る必須作業
 
 現在のentity契約は本文を単一JSONとして保持するため、commit・受信・IndexedDB更新で
-全体の実体化とコピーが必要になる。断片ごとのoutbox確認にも全体読込が残る。
+全体の実体化とコピーが必要になる。断片ごとのoutbox確認の全体読込は
+[後続の索引化](2026-10-25-unified-outbox-guards.md)で除去した。
 **250MB/1GB単一会話の運用合格には、ストリームでの投影と分割保存、メモリ上限、
 アカウント全容量・旧snapshot復元を含む実容量試験が必要。**
 一時downloadはrevision/消去fenceで直ちにアクセスを止め、既存の1時間期限と

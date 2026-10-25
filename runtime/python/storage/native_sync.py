@@ -37,6 +37,18 @@ class NativeSync:
             else:bridge.prepare(db,self.namespace)
             db.execute('CREATE TABLE IF NOT EXISTS runtime.native_sync_meta(namespace TEXT,key TEXT,value TEXT,PRIMARY KEY(namespace,key))')
             db.execute('CREATE TABLE IF NOT EXISTS runtime.native_sync_received(namespace TEXT,id TEXT,revision INTEGER,deleted INTEGER,PRIMARY KEY(namespace,id))')
+            # SQL keeps guards current even when a legacy writer changes the original row.
+            if not db.execute("SELECT 1 FROM runtime.sqlite_master WHERE name='native_sync_outbox_sources'").fetchone():
+                db.execute('CREATE TABLE runtime.native_sync_outbox_sources(namespace TEXT,session_id TEXT,deleted INTEGER,PRIMARY KEY(namespace,session_id))')
+                db.execute("CREATE INDEX runtime.native_sync_outbox_header ON native_sync_meta(namespace,json_extract(value,'$.request_id'),COALESCE(json_extract(value,'$.withdrawn'),0),json_array_length(value,'$.captures'),json_array_length(value,'$.changes'),json_type(value)) WHERE key='outbox'")
+                sources = "SELECT json_extract(c.value,'$.native_session_id'),COALESCE(json_extract(p.value,'$.deleted'),0) FROM json_each(NEW.value,'$.captures') c JOIN json_each(NEW.value,'$.changes') p ON c.key=p.key"
+                for name, event in [('insert','INSERT'),('update','UPDATE OF value')]:
+                    db.execute(f"CREATE TRIGGER runtime.native_sync_outbox_{name} AFTER {event} ON native_sync_meta WHEN NEW.key='outbox' BEGIN "
+                        "DELETE FROM native_sync_outbox_sources WHERE namespace=NEW.namespace; "
+                        f"INSERT INTO native_sync_outbox_sources SELECT NEW.namespace,* FROM ({sources}); END")
+                db.execute("CREATE TRIGGER runtime.native_sync_outbox_delete AFTER DELETE ON native_sync_meta WHEN OLD.key='outbox' BEGIN DELETE FROM native_sync_outbox_sources WHERE namespace=OLD.namespace; END")
+                db.execute("INSERT INTO runtime.native_sync_outbox_sources SELECT m.namespace,json_extract(c.value,'$.native_session_id'),COALESCE(json_extract(p.value,'$.deleted'),0) "
+                    "FROM runtime.native_sync_meta m,json_each(m.value,'$.captures') c JOIN json_each(m.value,'$.changes') p ON c.key=p.key WHERE m.key='outbox'")
             yield db
             db.commit()
         except BaseException:
@@ -49,6 +61,12 @@ class NativeSync:
 
     def save(self,db,key,value):
         db.execute('INSERT INTO runtime.native_sync_meta VALUES(?,?,?) ON CONFLICT(namespace,key) DO UPDATE SET value=excluded.value',(self.namespace,key,json.dumps(value)))
+
+    def outbox_header(self, db):
+        # The covering expression index reads flags/counts without loading the body.
+        return db.execute("SELECT json_extract(value,'$.request_id') AS request_id,COALESCE(json_extract(value,'$.withdrawn'),0) AS withdrawn,"
+            "json_array_length(value,'$.captures') AS captures,json_array_length(value,'$.changes') AS changes,json_type(value) AS type "
+            "FROM runtime.native_sync_meta INDEXED BY native_sync_outbox_header WHERE namespace=? AND key='outbox'", (self.namespace,)).fetchone()
 
     def configure(self,selected,enabled,*,consent=False):
         if type(enabled) is not bool or enabled and consent is not True:raise CloudError('sync_consent_required')
@@ -72,7 +90,8 @@ class NativeSync:
 
     def status(self):
         with self.transaction(allow_generation=True) as db:
-            return {'enabled':self.meta(db,'enabled',False),'selected':self.meta(db,'selected',[]),'pending':bool(self.meta(db,'outbox')),'cursor':self.meta(db,'cursor',0)}
+            pending = self.outbox_header(db)
+            return {'enabled':self.meta(db,'enabled',False),'selected':self.meta(db,'selected',[]),'pending':bool(pending and pending['type']!='null'),'cursor':self.meta(db,'cursor',0)}
 
     async def remote(self,path,*,body=None):
         if path == '/sync' and body is not None:
@@ -111,13 +130,18 @@ class NativeSync:
         return value
 
     def _transfer_active(self, request_id=None):
-        if request_id is not None:
-            pending = self.stage()
-            if not pending or pending.get('withdrawn') or pending['request_id'] != request_id:
+        with self.transaction() as db:
+            if not self.meta(db, 'enabled', False): raise CloudError('sync_request_canceled' if request_id is not None else 'sync_consent_required', 409)
+            if request_id is None: return
+            pending = self.outbox_header(db)
+            if not pending or pending['request_id'] != request_id or pending['withdrawn']:
                 raise CloudError('sync_request_canceled', 409)
-        else:
-            with self.transaction() as db:
-                if not self.meta(db, 'enabled', False): raise CloudError('sync_consent_required', 409)
+            sources = db.execute('SELECT session_id,deleted FROM runtime.native_sync_outbox_sources WHERE namespace=?', (self.namespace,)).fetchall()
+            if not pending['captures'] or pending['captures'] != pending['changes'] or len(sources) != pending['captures']:
+                raise CloudError('invalid_sync_outbox', 409)
+            selected = set(self.meta(db, 'selected', []))
+            if any(row['session_id'] not in selected or not row['deleted'] and db.execute('SELECT 1 FROM runtime.session_deletions WHERE session_id=?', (row['session_id'],)).fetchone() for row in sources):
+                raise CloudError('sync_request_canceled', 409)
 
     async def _upload(self, request_id, raw):
         from python.cloud.entity_transfers import CHUNK_BYTES

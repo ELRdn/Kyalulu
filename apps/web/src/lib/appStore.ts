@@ -7,10 +7,11 @@ export type Outbox = { request_id: string; changes: {id:string;kind:EntityKind;b
 const DB = 'kyalulu-app-v1';
 async function database() {
   return new Promise<IDBDatabase>((resolve,reject) => {
-    const open = indexedDB.open(DB, 1);
+    const open = indexedDB.open(DB, 2);
     open.onupgradeneeded = () => {
-      open.result.createObjectStore('entities', {keyPath:['owner','id']});
-      open.result.createObjectStore('meta');
+      if(!open.result.objectStoreNames.contains('entities'))open.result.createObjectStore('entities', {keyPath:['owner','id']});
+      const meta=open.result.objectStoreNames.contains('meta')?open.transaction!.objectStore('meta'):open.result.createObjectStore('meta');
+      if(!meta.indexNames.contains('sync-outbox-state'))meta.createIndex('sync-outbox-state',['request_id','withdrawn']);
     };
     open.onsuccess = () => resolve(open.result);
     open.onerror = () => reject(Error('Cannot open device storage / 端末の保存領域を開けません'));

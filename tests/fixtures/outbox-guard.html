@@ -1,0 +1,76 @@
+<!doctype html><meta charset="utf-8"><title>Disposable outbox guard fixture</title>
+<p>Local fixture with fake accounts and conversations. No providers.</p>
+<script type="module">
+import {appTransaction,getMeta,entity} from '/src/lib/appStore.ts';
+import {rememberOwner} from '/src/lib/appContext.ts';
+import {syncNow,syncState} from '/src/lib/appSync.ts';
+
+const scenario=new URL(location.href).searchParams.get('scenario')??'legacy';
+const owner='fixture-owner-a',root='sync:'+owner+':outbox',foreign='sync:0-foreign:outbox';
+const transfer='11111111-1111-4111-8111-111111111111';
+const check=(condition,message)=>{if(!condition)throw Error(message);};
+const digest=async raw=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',raw)),b=>b.toString(16).padStart(2,'0')).join('');
+
+async function run(){
+  rememberOwner(owner);localStorage.setItem('fixture-existing-storage','retain');
+  const source={id:'chat',owner,kind:'conversation',revision:1,serverRevision:0,dirty:true,deleted:false,pinned:false,opened:1,
+    payload:{storage_policy:'sync',rating:'general',settings:{session_id:'chat',library_binding:null},state:{session_id:'chat'},
+      messages:Array.from({length:28},(_,index)=>({id:index+1,uuid:'fixture-'+index,role:'user',content:'large fixture '.repeat(6000)})),memories:[],summaries:[]}};
+  const pending={request_id:'fixture-large',revisions:{chat:1},changes:[{id:'chat',kind:'conversation',base_revision:0,payload:source.payload,deleted:false}]};
+  if(scenario==='fresh')pending.withdrawn=0;
+  const opened=indexedDB.open('kyalulu-app-v1',1);
+  opened.onupgradeneeded=()=>{opened.result.createObjectStore('entities',{keyPath:['owner','id']});opened.result.createObjectStore('meta');};
+  const old=await new Promise((resolve,reject)=>{opened.onsuccess=()=>resolve(opened.result);opened.onerror=()=>reject(opened.error);});
+  await new Promise((resolve,reject)=>{const tx=old.transaction(['entities','meta'],'readwrite');tx.objectStore('entities').put(source);
+    tx.objectStore('meta').put(pending,root);tx.objectStore('meta').put(true,'sync:'+owner+':consent');
+    tx.objectStore('meta').put({request_id:pending.request_id,withdrawn:0,private:'OTHER ACCOUNT BODY'},foreign);
+    tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);});old.close();
+  let bodyReads=0,foreignReads=0,keyProbes=0,committed=false,startedReads=0;
+  const counts=[],chunks=[],api=[];
+  const originalGet=IDBObjectStore.prototype.get,originalKeys=IDBIndex.prototype.openKeyCursor;
+  IDBObjectStore.prototype.get=function(key){if(this.name==='meta'){if(key===root)bodyReads++;if(key===foreign)foreignReads++;}return originalGet.call(this,key);};
+  IDBIndex.prototype.openKeyCursor=function(...args){if(this.name==='sync-outbox-state')keyProbes++;return originalKeys.apply(this,args);};
+  globalThis.fetch=async(input,init={})=>{
+    const path=String(input);api.push(path);
+    check(path.startsWith('/api/'),'Unexpected fetch');
+    const reply=value=>new Response(JSON.stringify(value),{headers:{'Content-Type':'application/json'}});
+    if(path==='/api/mobile/status')return reply({cloud_mode:true,authenticated:true,owner_scope:owner});
+    check(new Headers(init.headers).get('X-Kyalulu-Owner')===owner,'Wrong account header');
+    if(path==='/api/cloud/app/sync/transfers'){
+      const current=await getMeta(root);check(current.request_id===pending.request_id&&current.withdrawn===0,'Legacy index normalization failed');
+      check(JSON.stringify(current.changes)===JSON.stringify(pending.changes),'Migration changed private data');
+      startedReads=bodyReads;return reply({transfer_id:transfer,next:0,chunk_bytes:1024*1024});
+    }
+    if(path.includes('/parts/')){
+      counts.push(bodyReads);const part=JSON.parse(init.body),raw=Uint8Array.from(atob(part.data),c=>c.charCodeAt(0));
+      check(await digest(raw)===part.sha256,'Part hash mismatch');chunks.push(raw);
+      if(chunks.length===1&&scenario!=='legacy'&&scenario!=='fresh'){
+        if(scenario==='account')rememberOwner('fixture-owner-b');
+        else await appTransaction(['meta'],'readwrite',(tx,done)=>{const meta=tx.objectStore('meta'),r=meta.get(root);r.onsuccess=()=>{meta.put(scenario==='withdrawal'?{...r.result,withdrawn:true}:{...r.result,request_id:'replacement'},root);done();};});
+      }
+      return reply({next:chunks.length});
+    }
+    if(path.endsWith('/commit')){counts.push(bodyReads);committed=true;return reply({changes:[{id:'chat',revision:1,deleted:false}]});}
+    check(path.startsWith('/api/cloud/app/sync?'),'Unexpected API');return reply({changes:[],cursor:committed?1:0,has_more:false});
+  };
+  try{
+    await syncNow(owner);
+    const saved=await entity('chat',owner),remaining=await getMeta(root);
+    if(scenario==='legacy'||scenario==='fresh'){
+      check(chunks.length===3&&committed,'Transfer did not complete');
+      check(counts.every(count=>count===startedReads),'A part reloaded the entire outbox');
+      check(!remaining&&!saved.dirty&&saved.serverRevision===1,'Receipt did not settle atomically');
+      const raw=new Uint8Array(chunks.reduce((total,chunk)=>total+chunk.length,0));let offset=0;for(const chunk of chunks){raw.set(chunk,offset);offset+=chunk.length;}
+      check(JSON.stringify(JSON.parse(new TextDecoder().decode(raw)))===JSON.stringify({request_id:pending.request_id,changes:pending.changes}),'Body changed during migration');
+    }else{
+      check(chunks.length===1&&!committed&&saved.dirty&&remaining,'Control change did not fence the body');
+    }
+    check(foreignReads===0,'Read another account body');
+    check(localStorage.getItem('fixture-existing-storage')==='retain','Unrelated storage changed');
+    const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('kyalulu-app-v1');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+    check(db.version===2&&db.transaction('meta').objectStore('meta').indexNames.contains('sync-outbox-state'),'Index upgrade missing');db.close();
+    return {ok:true,scenario,parts:chunks.length,committed,keyProbes,bodyReads,foreignReads,state:syncState().phase,networkCalls:api.length};
+  }finally{IDBObjectStore.prototype.get=originalGet;IDBIndex.prototype.openKeyCursor=originalKeys;}
+}
+run().then(result=>window.__OUTBOX_RESULT__=result).catch(error=>window.__OUTBOX_RESULT__={ok:false,scenario,error:String(error),stack:error.stack});
+</script>
