@@ -28,6 +28,10 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
   screens place memory type labels above content. Real device-storage UI checks
   cover canceled erasure and saved edits; OS IME composition remains unverified.
   See [memory language validation](validation/2026-10-26-unified-memory-language.md).
+- Shared API/network error guidance and action labels use the browser language,
+  while preserving existing routes, commands and accounting distinctions. Unknown
+  provider detail text remains unchanged; other screen copy is still incomplete.
+  See [error language validation](validation/2026-10-26-unified-error-language.md).
 - Cloud settings and legacy backup-sync labels, consent/confirmation copy and
   dates follow the selected JA/EN language. Subscription choices show their
   monthly credit quantity before secondary top-ups; closed billing stays closed.
