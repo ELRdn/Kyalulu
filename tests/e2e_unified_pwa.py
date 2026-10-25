@@ -44,6 +44,110 @@ def without_open_times(rows):
     return [{key: value for key, value in row.items() if key != 'opened'} for row in rows]
 
 
+async def check_library_workspace(page, language, before, draft, output):
+    chat_url=page.url
+    await page.goto(chat_url.rsplit('/chats/',1)[0]+'/create')
+    await page.locator('.k-page-head').get_by_role('button',name='Create new' if language=='en' else '新しく作る',exact=True).click()
+    chooser=page.locator('dialog[open]')
+    await chooser.get_by_role('button').filter(has_text='Create a plot' if language=='en' else 'プロットを作る').click()
+    editor=page.locator('.k-portable-editor')
+    # Portable field labels are reviewed separately; this check targets workspace controls.
+    await editor.get_by_role('textbox',name='名前',exact=True).fill('ライブラリの原文')
+    await editor.get_by_role('textbox',name='説明',exact=True).fill('Original description · 原文')
+    await editor.get_by_role('tab',name='イントロ',exact=False).click()
+    greeting=editor.get_by_role('textbox',name='最初の挨拶',exact=True)
+    await greeting.fill('原文の挨拶 *星を見る*')
+    key='kyalulu-create-draft-v1:device%3Apwa-fixture:editor:new-character'
+    await page.wait_for_function('key=>JSON.parse(sessionStorage.getItem(key)||"null")?.document.data.first_mes==="原文の挨拶 *星を見る*"',arg=key)
+    stored=await page.evaluate('key=>sessionStorage.getItem(key)',key)
+    alternate='ja' if language=='en' else 'en'
+    await language_in_place(page,alternate)
+    await page.get_by_role('button',name='Save temporary draft' if alternate=='en' else '一時下書きを保存',exact=True).wait_for()
+    assert await page.evaluate('key=>sessionStorage.getItem(key)',key)==stored
+    assert await greeting.input_value()=='原文の挨拶 *星を見る*'
+    async def accept(dialog):
+        await dialog.accept()
+    page.on('dialog',accept)
+    try:
+        await page.reload()
+        await editor.get_by_role('tab',name='イントロ',exact=False).click()
+        await expect(greeting).to_have_value('原文の挨拶 *星を見る*')
+    finally:
+        page.remove_listener('dialog',accept)
+    assert await page.evaluate('key=>sessionStorage.getItem(key)',key)==stored
+    await page.get_by_role('button',name='Save temporary draft' if alternate=='en' else '一時下書きを保存',exact=True).click()
+    await language_in_place(page,language)
+    await page.get_by_role('status').filter(has_text='A temporary draft was saved' if language=='en' else '一時下書きをこのブラウザーに保存しました').wait_for()
+    back=page.locator('.k-create-editor-footer').get_by_role('button',name='Keep draft and go back' if language=='en' else '下書きを残して戻る',exact=True)
+    await back.click()
+    await page.locator('dialog[open]').get_by_role('button',name='Continue editing' if language=='en' else '編集を続ける',exact=True).click()
+    assert await page.evaluate('key=>sessionStorage.getItem(key)',key)==stored
+    await back.click()
+    await page.locator('dialog[open]').get_by_role('button',name='Keep draft and go back' if language=='en' else '下書きを残して戻る',exact=True).click()
+    await page.locator('.k-page-head').get_by_role('button',name='Create new' if language=='en' else '新しく作る',exact=True).click()
+    await chooser.get_by_text('Resume temporary draft' if language=='en' else '一時下書きから再開',exact=True).wait_for()
+    await chooser.get_by_role('button').filter(has_text='Create a plot' if language=='en' else 'プロットを作る').click()
+    await expect(editor.get_by_role('textbox',name='名前',exact=True)).to_have_value('ライブラリの原文')
+    assert await page.evaluate('key=>sessionStorage.getItem(key)',key)==stored
+    await page.locator('.k-create-editor-head').get_by_role('button',name='Save' if language=='en' else '保存',exact=True).click()
+    await expect(page.locator('.k-create-editor-head').get_by_role('button',name='Save as a new version' if language=='en' else '新しい版として保存',exact=True)).to_be_enabled()
+    first=await entities(page,['character'])
+    assert len(first)==1 and first[0]['payload']['versions']['1']['data']['description']=='Original description · 原文'
+    await editor.get_by_role('tab',name='プロット',exact=False).click()
+    await editor.get_by_role('textbox',name='説明',exact=True).fill('Original description · revision two')
+    await language_in_place(page,alternate)
+    await page.locator('.k-create-editor-head').get_by_role('button',name='Save as a new version' if alternate=='en' else '新しい版として保存',exact=True).click()
+    await page.get_by_role('status').filter(has_text='Existing conversations keep' if alternate=='en' else 'これまでの会話は').wait_for()
+    second=await entities(page,['character'])
+    assert second[0]['id']==first[0]['id'] and second[0]['payload']['current_revision']==2
+    assert second[0]['payload']['versions']['1']==first[0]['payload']['versions']['1']
+    await page.get_by_role('button',name='Back to my library' if alternate=='en' else 'マイライブラリに戻る',exact=True).click()
+    card=page.locator('.k-lib-card').filter(has_text='ライブラリの原文')
+    await card.get_by_role('button',name='Export' if alternate=='en' else '書き出し',exact=True).click()
+    await page.get_by_role('combobox',name='Export format' if alternate=='en' else '書き出し形式',exact=True).select_option('ccv3-json')
+    await language_in_place(page,language)
+    await page.get_by_role('combobox',name='Export format' if language=='en' else '書き出し形式',exact=True).wait_for()
+    await expect(page.locator('dialog[open] select')).to_have_value('ccv3-json')
+    await page.locator('dialog[open]').get_by_role('button',name='Review export' if language=='en' else '書き出し内容を確認',exact=True).click()
+    async with page.expect_download() as downloading:
+        await page.locator('dialog[open] .k-confirm__actions a[role="button"]').click()
+    exported=json.loads(Path(await (await downloading.value).path()).read_text(encoding='utf-8'))
+    assert exported['data']['description']=='Original description · revision two'
+    await page.locator('dialog[open]').get_by_role('button',name='Close' if language=='en' else '閉じる',exact=True).click()
+
+    raw=json.dumps({'schema_version':1,'name':'持込の原文','data':{'description':'Imported original description','first_mes':'持込の挨拶'},
+        'source':{'remote':{'source':'github','source_id':'fixture/card.json','sha256':'a'*64,'document_index':0,'transport':'browser','content_rating':'sfw'}}},ensure_ascii=False).encode('utf-8')
+    file={'name':'fictional-card.json','mimeType':'application/json','buffer':raw}
+    await page.get_by_label('File to import' if language=='en' else '取り込むファイル',exact=True).set_input_files(file)
+    await page.get_by_role('heading',name='Review import' if language=='en' else '取り込み内容を確認',exact=True).wait_for()
+    preview_url=page.url
+    await language_in_place(page,alternate)
+    await page.get_by_role('heading',name='Review import' if alternate=='en' else '取り込み内容を確認',exact=True).wait_for()
+    assert page.url==preview_url and await entities(page,['character'])==second
+    await page.get_by_role('button',name='Save selected content' if alternate=='en' else '選択した内容を保存',exact=True).click()
+    await expect(page.locator('.k-lib-card')).to_have_count(2)
+    saved=await entities(page,['character'])
+    await page.get_by_label('File to import' if alternate=='en' else '取り込むファイル',exact=True).set_input_files(file)
+    await page.get_by_text('This original was already imported.' if alternate=='en' else '同じ原本を取り込み済みです。',exact=True).wait_for()
+    await expect(page.get_by_role('button',name='Save selected content' if alternate=='en' else '選択した内容を保存',exact=True)).to_be_disabled()
+    await page.get_by_role('checkbox',name='Duplicate as a new item' if alternate=='en' else '新しい項目として複製する',exact=True).check()
+    await language_in_place(page,language)
+    await expect(page.get_by_role('checkbox',name='Duplicate as a new item' if language=='en' else '新しい項目として複製する',exact=True)).to_be_checked()
+    await page.locator('.k-back-link').click()
+    await page.locator('dialog[open]').get_by_role('button',name='Continue editing' if language=='en' else '編集を続ける',exact=True).click()
+    assert await entities(page,['character'])==saved
+    await page.locator('.k-back-link').click()
+    await page.locator('dialog[open]').get_by_role('button',name='Keep draft and go back' if language=='en' else '下書きを残して戻る',exact=True).click()
+    await page.get_by_role('button',name='Resume draft' if language=='en' else '下書きを再開',exact=True).wait_for()
+    assert not await page.evaluate('document.documentElement.scrollWidth > innerWidth')
+    await page.screenshot(path=str(output/f'{language}-{page.viewport_size["width"]}-library.png'),full_page=True,animations='disabled')
+    await page.goto(chat_url)
+    await page.locator('.k-composer textarea').wait_for()
+    assert await page.locator('.k-composer textarea').input_value()==draft
+    assert without_open_times(await conversations(page))==without_open_times(before)
+    assert await entities(page,['character'])==saved
+
+
 async def check_creator_settings(page, language, before, draft, output):
     chat_url=page.url
     await page.goto(chat_url.rsplit('/chats/',1)[0]+'/create/settings')
@@ -262,6 +366,7 @@ async def check_chat_management(page, language, before, draft, output):
     assert without_open_times(await conversations(page)) == without_open_times(before)
     await check_profile_settings(page, language, before, draft, output)
     await check_creator_settings(page, language, before, draft, output)
+    await check_library_workspace(page, language, before, draft, output)
 
     key = 'kyalulu:chat-recovery:v1:device%3Apwa-fixture:' + session_id
     original = await page.evaluate('key=>localStorage.getItem(key)', key)
@@ -527,6 +632,8 @@ async def check(dist, output):
                             'profile_device_storage_disclosure_and_adult_gate': True,
                             'creator_language_drafts_version_save_and_old_export': True,
                             'world_cast_rpg_invalid_json_and_owner_isolation': True,
+                            'library_workspace_language_draft_reload_save_export_and_import': True,
+                            'library_duplicate_requires_choice_and_cancellation_keeps_data': True,
                             'uncertain_generation_language_switch_preserves_pending_without_resend': True,
                             'tutorial_language_switch_preserves_step_and_draft': True, 'tutorial_receipts': True,
                             'draft_reload': True, 'explicit_update': True, 'other_tab_update_blocked': True,

@@ -108,3 +108,6 @@ PC登録・接続状態・直接接続登録の日英表示、生成中の鍵保
 人物像・世界観と登場人物/RPG編集の日英表示、元の版の書き出し、入力幅、
 言語切替の下書き保持とowner切替の編集分離は
 [Creator language](validation/2026-10-26-unified-creator-language.md) に記録する。
+Create操作・取込み/保存/競合/書き出しの日英表示、同一IDの下書き再開、
+Deviceの出典重複を保存時にも照合する処理と再送/同時実行は
+[Create workspace language](validation/2026-10-26-unified-create-workspace-language.md) に記録する。
