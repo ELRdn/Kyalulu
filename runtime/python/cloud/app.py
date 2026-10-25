@@ -51,13 +51,15 @@ def create_app(config=None, *, transport=None, ad_provider=None):
 
         with RuntimeLock(config.root):
             store.recover()
+            unified.transfers.cleanup()
+            transfer_worker = asyncio.create_task(unified.transfers.worker())
             billing_worker = None if config.private_test else asyncio.create_task(billing.worker())
             try:
                 yield
             finally:
-                if billing_worker:
-                    billing_worker.cancel()
-                    await asyncio.gather(billing_worker, return_exceptions=True)
+                workers = [transfer_worker] + ([billing_worker] if billing_worker else [])
+                for worker in workers: worker.cancel()
+                await asyncio.gather(*workers, return_exceptions=True)
                 await jobs.shutdown()
 
     app = FastAPI(
