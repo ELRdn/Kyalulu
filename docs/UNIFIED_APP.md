@@ -28,6 +28,13 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
   monthly credit quantity before secondary top-ups; closed billing stays closed.
   Other screens and shared/API error localization remain incomplete. See
   [settings language validation](validation/2026-10-25-unified-cloud-settings-language.md).
+- Consented entity sync now sends large outboxes as resumable, encrypted 1 MiB
+  transfer pages. Size and SHA-256 verification precede the existing atomic push;
+  paged downloads are fenced by owner/revision/deletion. Browser/Native withdrawal
+  stops the next part. Existing small-request APIs and pre-upgrade receipts remain
+  supported. Multi-megabyte fixtures pass; single-JSON storage, staging cleanup and
+  250 MB/1 GB physical acceptance remain open. See
+  [entity transfer validation](validation/2026-10-25-unified-entity-transfers.md).
 - Shared navigation, compact mascot home, recommendations before recent chats,
   three optional interest screens, and a target selector outside RuntimeGate.
 - Public unified entry defaults to Cloud. `/device/` uses the same UI and browser

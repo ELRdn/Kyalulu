@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS app_changes(seq INTEGER PRIMARY KEY AUTOINCREMENT,own
 CREATE TABLE IF NOT EXISTS app_entity_history(owner TEXT,id TEXT,revision INTEGER,record TEXT,PRIMARY KEY(owner,id,revision));
 CREATE INDEX IF NOT EXISTS app_change_owner ON app_changes(owner,seq);
 CREATE TABLE IF NOT EXISTS app_sync_requests(owner TEXT,id TEXT,hash TEXT,result TEXT,PRIMARY KEY(owner,id));
+CREATE TABLE IF NOT EXISTS app_transfer_manifests(owner TEXT,request_id TEXT,size INTEGER,sha256 TEXT,PRIMARY KEY(owner,request_id));
 CREATE TABLE IF NOT EXISTS app_sync_cancellations(owner TEXT,id TEXT,PRIMARY KEY(owner,id));
 CREATE TABLE IF NOT EXISTS app_runtime_consent(owner TEXT PRIMARY KEY,revision INTEGER,selected TEXT,accepted INTEGER);
 CREATE TABLE IF NOT EXISTS app_entity_deletions(owner TEXT,id TEXT,revision INTEGER,created REAL,PRIMARY KEY(owner,id));
@@ -58,6 +59,8 @@ class UnifiedService:
             db.execute('INSERT OR IGNORE INTO app_entity_deletions SELECT owner,id,revision,? FROM app_entities WHERE deleted=1', (time.time(),))
             db.execute('DELETE FROM app_entity_history WHERE EXISTS (SELECT 1 FROM app_entity_deletions d WHERE d.owner=app_entity_history.owner AND d.id=app_entity_history.id)')
         store.unified_service = self
+        from .entity_transfers import EntityTransfers
+        self.transfers = EntityTransfers(self)
 
     def available(self):
         if not self.store.config.unified_enabled:
@@ -312,8 +315,6 @@ class UnifiedService:
             changes = capture(db, selected)
             for change in changes:
                 self._validate_payload(change['payload']); validate(change['payload'])
-                if len(json.dumps(change['payload']).encode()) > 2_000_000:
-                    raise CloudError('sync_batch_too_large', 413)
                 record, stored = self._write_change(db, owner, Change.model_validate({k: change[k] for k in ('id', 'kind', 'base_revision', 'payload')}), capacity)
                 change['payload'] = stored
                 acknowledge_capture(db, change, record['id'], record['revision'])
@@ -353,7 +354,7 @@ class UnifiedService:
         if storage_usage(directory) - (directory / 'data.db').stat().st_size + size + entities + growth > capacity:
             raise CloudError('cloud_storage_full', 413)
 
-    def push(self, owner, request_id, changes, *, runtime_path=None):
+    def push(self, owner, request_id, changes, *, runtime_path=None, verified_transfer=False):
         self.available()
         if not isinstance(request_id, str) or not 1 <= len(request_id) <= 100:
             raise CloudError("invalid_sync_request")
@@ -366,7 +367,7 @@ class UnifiedService:
             raise CloudError('invalid_sync_entity') from exc
         if len({c.id for c in parsed}) != len(parsed):
             raise CloudError("duplicate_sync_entity")
-        if len(json.dumps(changes, ensure_ascii=False).encode()) > 2_000_000:
+        if not verified_transfer and len(json.dumps(changes, ensure_ascii=False).encode()) > 2_000_000:
             raise CloudError("sync_batch_too_large", 413)
         for change in parsed:
             if change.payload.get("storage_policy") != "sync" and not change.deleted:
@@ -383,6 +384,8 @@ class UnifiedService:
                 if old[0] != digest:
                     raise CloudError("sync_request_conflict", 409)
                 return json.loads(self.store.decrypt(old[1]))
+            if not verified_transfer and db.execute('SELECT 1 FROM app_transfer_manifests WHERE owner=? AND request_id=?', (owner, request_id)).fetchone():
+                raise CloudError('sync_transfer_required', 409)
             if db.execute('SELECT 1 FROM app_sync_cancellations WHERE owner=? AND id=?',(owner,request_id)).fetchone():
                 raise CloudError('sync_request_canceled',409)
             selected = self._attach_consented_runtime(db, owner, runtime_path) if runtime_path is not None else None
@@ -434,11 +437,14 @@ class UnifiedService:
         if not isinstance(request_id,str) or not 0<len(request_id)<=100:raise CloudError('invalid_sync_request')
         with self.store.transaction() as db:
             row=db.execute('SELECT hash,result FROM app_sync_requests WHERE owner=? AND id=?',(owner,request_id)).fetchone()
-            if row:return {'state':'applied','hash':row[0],'result':json.loads(self.store.decrypt(row[1]))}
-            db.execute('INSERT OR IGNORE INTO app_sync_cancellations VALUES(?,?)',(owner,request_id))
-        return {'state':'canceled'}
+            if row: answer = {'state':'applied','hash':row[0],'result':json.loads(self.store.decrypt(row[1]))}
+            else:
+                db.execute('INSERT OR IGNORE INTO app_sync_cancellations VALUES(?,?)',(owner,request_id))
+                answer = {'state':'canceled'}
+        self.transfers.discard_upload(owner, request_id)
+        return answer
 
-    def pull(self, owner, cursor=0, *, runtime_path=None):
+    def pull(self, owner, cursor=0, *, runtime_path=None, paged=False):
         self.available()
         if type(cursor) is not int or cursor < 0:
             raise CloudError("invalid_sync_cursor")
@@ -453,12 +459,17 @@ class UnifiedService:
                               "ON c.owner=e.owner AND c.id=e.id WHERE c.owner=? AND c.seq>? "
                               "ORDER BY c.seq LIMIT 100", (owner, cursor)).fetchall()
         result = []
-        for row in rows:
+        inline_remaining = 1_500_000
+        # Changes join the current head; send each head once while advancing over every event.
+        for row in {row['id']: row for row in rows}.values():
             payload = json.loads(self.store.decrypt(row["payload"]))
             if payload.get("rating") == "adult":
                 self.require_adult(owner)
-            result.append({"id": row["id"], "kind": row["kind"], "revision": row["revision"],
-                           "deleted": bool(row["deleted"]), "payload": payload})
+            entity = {"id": row["id"], "kind": row["kind"], "revision": row["revision"],
+                      "deleted": bool(row["deleted"]), "payload": payload}
+            wire = self.transfers.download(owner, entity, inline_limit=inline_remaining) if paged and not entity['deleted'] else entity
+            result.append(wire)
+            if paged and 'payload' in wire: inline_remaining -= len(json.dumps(wire, ensure_ascii=False).encode())
         return {"cursor": rows[-1]["seq"] if rows else cursor, "changes": result, "has_more": len(rows) == 100,
                 **({'upload_blocked': upload_blocked} if upload_blocked else {})}
 
@@ -643,8 +654,36 @@ class UnifiedService:
 
 
 def install_routes(app, service):
+    import asyncio
+    from fastapi import Request, Query
+    transfer_locks = {}
+
+    @app.post('/api/cloud/app/sync/transfers')
+    async def begin_transfer(request: Request):
+        body = await request.json()
+        if not isinstance(body, dict) or set(body) != {'request_id', 'size', 'sha256'}: raise CloudError('invalid_entity_transfer')
+        async with transfer_locks.setdefault(request.state.owner, asyncio.Lock()):
+            return service.transfers.begin(request.state.owner, body['request_id'], body['size'], body['sha256'])
+
+    @app.post('/api/cloud/app/sync/transfers/{transfer}/parts/{index}')
+    async def append_transfer(transfer: str, index: int, request: Request):
+        body = await request.json()
+        if not isinstance(body, dict) or set(body) != {'data', 'sha256'}: raise CloudError('invalid_transfer_page')
+        async with transfer_locks.setdefault(request.state.owner, asyncio.Lock()):
+            return service.transfers.append(request.state.owner, transfer, index, body['data'], body['sha256'])
+
+    @app.post('/api/cloud/app/sync/transfers/{transfer}/commit')
+    async def commit_transfer(transfer: str, request: Request):
+        from python.storage.context import get_db_path
+        from python.storage import db as storage
+        async with transfer_locks.setdefault(request.state.owner, asyncio.Lock()):
+            return service.transfers.commit(request.state.owner, transfer, runtime_path=get_db_path(storage.DB_PATH))
+
+    @app.get('/api/cloud/app/sync/transfers/{transfer}/parts/{index}')
+    async def download_part(transfer: str, index: int, request: Request):
+        return service.transfers.part(request.state.owner, transfer, index)
+
     from .auth import digest, SESSION_COOKIE
-    from fastapi import Request
 
     @app.get('/api/cloud/app/devices')
     async def devices(request: Request):
@@ -684,8 +723,6 @@ def install_routes(app, service):
         identifier=getattr(request.state,'app_sync_device',None)
         if not identifier: raise CloudError('entity_sync_token_required',403)
         return {'owner':request.state.owner,'device_id':identifier,'protocol':'entity-v1'}
-    from fastapi import Request, Query
-
     @app.post('/api/cloud/app/eligibility')
     async def eligibility(request: Request):
         service.available()
@@ -731,18 +768,19 @@ def install_routes(app, service):
         return service.cancel_sync_request(request.state.owner,request_id)
 
     @app.get("/api/cloud/app/sync")
-    async def pull(request: Request, cursor: int = Query(default=0, ge=0)):
+    async def pull(request: Request, cursor: int = Query(default=0, ge=0), paged: bool = False):
         from python.storage.context import get_db_path
         from python.storage import db as storage
-        return service.pull(request.state.owner, cursor, runtime_path=get_db_path(storage.DB_PATH))
+        return service.pull(request.state.owner, cursor, runtime_path=get_db_path(storage.DB_PATH), paged=paged)
 
     @app.get('/api/cloud/app/runtime-consent')
     async def runtime_consent(request: Request):
         return service.runtime_consent(request.state.owner)
 
     @app.get('/api/cloud/app/entities/{entity_id}')
-    async def read_entity(entity_id: str, request: Request):
-        return service.read_entity(request.state.owner, entity_id)
+    async def read_entity(entity_id: str, request: Request, paged: bool = False):
+        entity = service.read_entity(request.state.owner, entity_id)
+        return service.transfers.download(request.state.owner, entity) if paged and not entity['deleted'] else entity
 
     @app.put('/api/cloud/app/runtime-consent')
     async def configure_runtime(request: Request):

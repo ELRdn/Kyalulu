@@ -189,6 +189,8 @@ def create_app(config=None, *, transport=None, ad_provider=None):
                         native_sync = ((request.url.path == '/api/cloud/app/sync' and request.method in {'GET', 'POST'})
                             or re.fullmatch(r'/api/cloud/app/sync/cancel/[^/]+',request.url.path) is not None and request.method=='POST'
                             or request.url.path == '/api/cloud/app/sync/device' and request.method == 'GET'
+                            or re.fullmatch(r'/api/cloud/app/sync/transfers(?:/[0-9a-f-]{36}/(?:parts/\d+|commit))?', request.url.path) is not None
+                                and request.method in {'GET', 'POST'}
                             or re.fullmatch(r'/api/cloud/app/entities/[^/]+', request.url.path) is not None and request.method == 'GET')
                         if not request.url.path.startswith("/api/cloud/sync") and not native_sync:
                             raise CloudError("sync_token_scope_required", 403)

@@ -43,6 +43,7 @@ import { cloudFetch } from './transport';
 import { importMobile } from '../pages/Migration';
 import { initialData, newConversation } from '../mobile/store';
 import { deviceFetch } from './deviceApi';
+import { Sha256 } from '../mobile/sha256';
 import sharedHistory from '../../../../tests/fixtures/unified-history.json';
 
 const payload=()=>({storage_policy:'sync',rating:'general',settings:{session_id:'chat',library_binding:{character:{id:'character',revision:3}}},state:{session_id:'chat'},
@@ -57,6 +58,68 @@ beforeEach(()=>{
   fixture.entities=new Map();fixture.meta=new Map([['sync:owner-a:consent',true]]);fixture.owner='owner-a';fixture.failAt=0;
   vi.stubGlobal('IDBKeyRange',{bound:(lower:any,upper:any)=>({lower,upper})});
   vi.stubGlobal('navigator',{locks:{request:async(_name:string,action:()=>any)=>action()}});
+});
+
+it('keeps a large browser outbox through a lost part receipt and resumes without duplicating the first part',async()=>{
+  const current=local('chat');current.dirty=true;
+  current.payload.messages=Array.from({length:28},(_,index)=>({id:index+1,uuid:'large-'+index,role:'user',content:'large fixture '.repeat(6000)}));
+  put(current);
+  const transfer='11111111-1111-4111-8111-111111111111',requests:string[]=[],parts:number[]=[];
+  let next=0,lost=false,committed=false;
+  vi.mocked(cloudFetch).mockImplementation(async(path,init)=>{
+    if(path==='/api/mobile/status')return new Response(JSON.stringify({cloud_mode:true,authenticated:true,owner_scope:'owner-a'}));
+    const value=init?.body?JSON.parse(String(init.body)):null;
+    if(path==='/api/cloud/app/sync/transfers'){
+      requests.push(value.request_id);expect(value.size).toBeGreaterThan(2_000_000);
+      return new Response(JSON.stringify({transfer_id:transfer,next,chunk_bytes:1024*1024}));
+    }
+    if(path.includes('/parts/')){
+      const index=Number(path.split('/').at(-1));parts.push(index);
+      const raw=Uint8Array.from(atob(value.data),c=>c.charCodeAt(0));
+      expect(new Sha256().update(raw).digest()).toBe(value.sha256);next=index+1;
+      if(!lost){lost=true;throw Error('fixture part response lost');}
+      return new Response(JSON.stringify({next}));
+    }
+    if(path.endsWith('/commit')){committed=true;return new Response(JSON.stringify({changes:[{id:'chat',revision:1,deleted:false}]}));}
+    return new Response(JSON.stringify({changes:[],cursor:committed?1:0,has_more:false}));
+  });
+  await syncNow('owner-a');
+  const pending=fixture.meta.get('sync:owner-a:outbox');expect(pending).toBeTruthy();expect(get('chat').dirty).toBe(true);
+  await syncNow('owner-a');
+  expect(new Set(requests).size).toBe(1);expect(parts.filter(index=>index===0)).toHaveLength(1);
+  expect(get('chat').dirty).toBe(false);expect(get('chat').payload.messages).toHaveLength(28);
+  expect(fixture.meta.has('sync:owner-a:outbox')).toBe(false);
+});
+
+it('stops a large browser body at the next part after consent is withdrawn',async()=>{
+  const current=local('chat');current.dirty=true;
+  current.payload.messages=Array.from({length:28},(_,index)=>({id:index+1,uuid:'large-'+index,role:'user',content:'large fixture '.repeat(6000)}));
+  put(current);const parts:string[]=[];
+  vi.mocked(cloudFetch).mockImplementation(async(path,init)=>{
+    if(path==='/api/mobile/status')return new Response(JSON.stringify({cloud_mode:true,authenticated:true,owner_scope:'owner-a'}));
+    if(path==='/api/cloud/app/sync/transfers')return new Response(JSON.stringify({transfer_id:'11111111-1111-4111-8111-111111111111',next:0,chunk_bytes:1024*1024}));
+    if(path.includes('/parts/')){parts.push(path);await setSyncConsent('owner-a',false);return new Response(JSON.stringify({next:1}));}
+    expect(path).not.toContain('/commit');
+    return new Response(JSON.stringify({changes:[],cursor:0,has_more:false}));
+  });
+  await syncNow('owner-a');
+  expect(parts).toHaveLength(1);expect(get('chat').dirty).toBe(true);
+  expect(fixture.meta.get('sync:owner-a:outbox').withdrawn).toBe(true);expect(syncState().phase).toBe('off');
+});
+
+it.each([[false,7,0],[true,7,1],[false,8,1]] as const)('fetches referenced bytes only for missing or newer content (evicted=%s revision=%s)',async(evicted,revision,expected)=>{
+  const current=local('chat');current.serverRevision=7;
+  const raw=new TextEncoder().encode(JSON.stringify(current.payload)),sha=new Sha256().update(raw).digest();
+  put(evicted?offlineStub(current):current);let served=false,parts=0;
+  vi.mocked(cloudFetch).mockImplementation(async path=>{
+    if(path==='/api/mobile/status')return new Response(JSON.stringify({cloud_mode:true,authenticated:true,owner_scope:'owner-a'}));
+    if(path.includes('/parts/')){parts++;return new Response(JSON.stringify({data:btoa(String.fromCharCode(...raw)),sha256:sha}));}
+    const changes=served?[]:[{id:'chat',kind:'conversation',revision,deleted:false,payload_ref:{id:'chat',revision,transfer_id:'11111111-1111-4111-8111-111111111111',size:raw.length,sha256:sha,chunks:1,chunk_bytes:1024*1024}}];
+    served=true;return new Response(JSON.stringify({changes,cursor:9,has_more:false}));
+  });
+  await syncNow('owner-a');
+  expect(parts).toBe(expected);expect(get('chat').payload.messages).toHaveLength(1);
+  expect(get('chat').payload.cache_evicted).toBeFalsy();expect(fixture.meta.get('sync:owner-a:cursor')).toBe(9);
 });
 afterEach(()=>{vi.unstubAllGlobals();vi.clearAllMocks();});
 
