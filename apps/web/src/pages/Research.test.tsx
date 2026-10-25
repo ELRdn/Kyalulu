@@ -15,7 +15,7 @@ vi.mock('react', async original => ({ ...await original<typeof import('react')>(
   useEffect:(effect:()=>void,deps:unknown[])=>{if(hooks.active)hooks.effects.push({effect,deps});},
   useRef:(initial:unknown)=>({current:initial}),
 }));
-vi.mock('../lib/appContext',()=>({useLanguage:()=>hooks.language}));
+vi.mock('../lib/appContext',()=>({useLanguage:()=>hooks.language,useExecutionTarget:()=>'local',useGenerationBusy:()=>false}));
 vi.mock('../lib/title',()=>({useDocumentTitle:vi.fn()}));
 vi.mock('../lib/api',()=>({fetchExperiments:vi.fn(),fetchExperimentDetail:vi.fn(),putRating:vi.fn(),runExperiments:vi.fn(),fetchModels:vi.fn(),fetchScenarios:vi.fn(),fetchLeaderboard:vi.fn(),replayExperiment:vi.fn()}));
 vi.mock('react-router-dom',()=>({Link:({to,children}:{to:string;children:ReactNode})=><a href={to}>{children}</a>}));
@@ -76,7 +76,7 @@ it('switches language without rerunning experiments or changing filters, and sen
   expect(fetchExperiments).not.toHaveBeenCalled();expect(runExperiments).not.toHaveBeenCalled();
   expect(find(tree,n=>n.type==='input'&&n.props.type==='number').props.value).toBe(2);
   await button(tree,'▶ 実行').props.onClick();
-  expect(runExperiments).toHaveBeenCalledExactlyOnceWith(meta.scenario_id,meta.model_id,2,undefined,false,true);
+  expect(runExperiments).toHaveBeenCalledExactlyOnceWith(meta.scenario_id,meta.model_id,2,undefined,false,true,undefined,undefined);
   expect(fetchExperiments).toHaveBeenCalledWith(50,false);
   tree=render();await button(tree,'全件 (参考)').props.onClick();
   expect(fetchLeaderboard).toHaveBeenLastCalledWith('all');
@@ -98,7 +98,7 @@ it('keeps raw prompts, measurements, replay identifiers and export routes intact
   expect(html).toContain('/api/experiments/exp_original/export');
   const deps=hooks.effects.map(e=>e.deps);
   await button(tree,'↻ Replay').props.onClick();
-  expect(replayExperiment).toHaveBeenCalledExactlyOnceWith('exp_original',false);
+  expect(replayExperiment).toHaveBeenCalledExactlyOnceWith('exp_original',false,undefined);
   hooks.language='ja';expect(renderToStaticMarkup(call(node))).toContain('↻ 再実行');
   expect(hooks.effects.map(e=>e.deps)).toEqual(deps);
 });

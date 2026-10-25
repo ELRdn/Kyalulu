@@ -125,6 +125,9 @@ export const ScenarioTurnSchema = z.object({
   turn: z.number().int().min(1),
   type: ScenarioEventTypeSchema.default("normal"),
   user: z.string().min(1),
+  new_session: z.boolean().default(false),
+  expect_recall: z.array(z.string()).default([]),
+  forbid_recall: z.array(z.string()).default([]),
 });
 export type ScenarioTurn = z.infer<typeof ScenarioTurnSchema>;
 
@@ -139,8 +142,15 @@ export const ScenarioCardSchema = z.object({
   turns: z.array(ScenarioTurnSchema).min(1),
   nsfw: z.boolean().default(false),
   nsfw_level: z.enum(["innuendo", "explicit"]).nullable().default(null),
-});
+}).refine(value => new Set(value.turns.map(turn => turn.turn)).size === value.turns.length, "Scenario turn numbers must be unique");
 export type ScenarioCard = z.infer<typeof ScenarioCardSchema>;
+
+export const MemoryOptionsSchema = z.object({
+  top_k: z.number().int().min(1).max(20).default(5),
+  budget_tokens: z.number().int().min(20).max(4000).default(300),
+  min_score: z.number().min(0).max(1).default(.12),
+  fill_recent: z.boolean().default(true),
+}).strict();
 
 export const ExperimentMetaSchema = z.object({
   experiment_id: z.string().min(1),
@@ -173,6 +183,9 @@ export const ExperimentMetaSchema = z.object({
   scenario_snapshot: z.record(z.unknown()).default({}),
   extra_system_prompt: z.string().nullable().default(null),
   official: z.boolean().default(false),
+  memory_enabled: z.boolean().default(false),
+  memory_options: z.record(z.unknown()).default({}),
+  history_turn_limit: z.number().int().min(1).max(100).nullable().default(null),
 });
 export type ExperimentMeta = z.infer<typeof ExperimentMetaSchema>;
 

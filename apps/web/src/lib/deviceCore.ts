@@ -1,5 +1,6 @@
 import { RPGOptionsSchema, type RPGOptions } from '../../../../packages/schemas/src/story';
 import { casefold } from './devicePrompt';
+import { MemoryOptionsSchema } from '../../../../packages/schemas/src';
 
 export const normalizeMemory = (text:string) => text.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,'');
 export function memoryBigrams(text:string) {
@@ -12,7 +13,8 @@ export function estimateTokens(text:string) {
 }
 export type DeviceMemory={id:string;type:'semantic'|'episodic'|'relationship';content:string;
   origin:string;supported:boolean|null;status:string;[key:string]:any};
-export function retrieveMemories(memories:DeviceMemory[],query:string) {
+export function retrieveMemories(memories:DeviceMemory[],query:string,options:unknown={}) {
+  const {top_k,budget_tokens,min_score,fill_recent}=MemoryOptionsSchema.parse(options);
   const q=memoryBigrams(query);
   const ranked=memories.filter(m=>m.status==='active').map((m,i)=>{
     const grams=memoryBigrams(m.content);
@@ -23,15 +25,15 @@ export function retrieveMemories(memories:DeviceMemory[],query:string) {
   let used=0;const injected:string[]=[];
   for(const m of ranked) {
     const tokens=estimateTokens(m.content)+4;
-    m.decision=m.supported===false&&m.origin==='model'?'unverified':m.score<.12?'below_threshold':injected.length>=5?'over_top_k':used+tokens>300?'over_budget':'injected';
+    m.decision=m.supported===false&&m.origin==='model'?'unverified':m.score<min_score?'below_threshold':injected.length>=top_k?'over_top_k':used+tokens>budget_tokens?'over_budget':'injected';
     if(m.decision==='injected'){used+=tokens;injected.push(m.id);}
   }
-  for(const m of ranked.filter(m=>m.decision==='below_threshold').sort((a,b)=>b.recency-a.recency)) {
+  for(const m of ranked.filter(m=>fill_recent&&m.decision==='below_threshold').sort((a,b)=>b.recency-a.recency)) {
     const tokens=estimateTokens(m.content)+4;
-    if(injected.length>=5||used+tokens>300)continue;
+    if(injected.length>=top_k||used+tokens>budget_tokens)continue;
     m.decision='recent_fill';used+=tokens;injected.push(m.id);
   }
-  return {query,candidates:ranked,injected,injected_tokens:used};
+  return {query,candidates:ranked,injected,injected_tokens:used,top_k,budget_tokens,min_score,fill_recent};
 }
 export function prepareRpg(raw:unknown, state:Record<string,any>, input:string, generationId:string,
   roll=()=>crypto.getRandomValues(new Uint32Array(1))[0]) {

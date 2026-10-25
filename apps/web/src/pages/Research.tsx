@@ -17,7 +17,7 @@ import { RuntimeDownload } from "../components/RuntimeMedia";
 import "./research.css";
 import { useDocumentTitle } from "../lib/title";
 import { Link } from "react-router-dom";
-import { useLanguage } from "../lib/appContext";
+import { useLanguage, useExecutionTarget, useGenerationBusy } from "../lib/appContext";
 import { friendlyMessage } from "../lib/errors";
 
 function Stars({ value, onChange }: { value: number; onChange: (n: number) => void }) {
@@ -190,9 +190,11 @@ function ExperimentColumn({
 }) {
   const language = useLanguage(), en = language === "en";
   const [detail, setDetail] = useState<ExperimentDetail | null>(null);
+  const device = useExecutionTarget()==='device',busy=useGenerationBusy(),replayController=useRef<AbortController|null>(null);
   const [loading, setLoading] = useState(false);
   const [replaying, setReplaying] = useState(false);
   const [replayError, setReplayError] = useState<unknown>(null);
+  useEffect(()=>()=>{replayController.current?.abort('selection_changed');},[expId,device]);
 
   useEffect(() => {
     if (!expId) return;
@@ -215,13 +217,16 @@ function ExperimentColumn({
   const handleReplay = async () => {
     setReplaying(true);
     setReplayError(null);
+    const controller=device?new AbortController():null;replayController.current=controller;
     try {
-      const results = await replayExperiment(detail.meta.experiment_id as string, showNsfw);
+      const results = await replayExperiment(detail.meta.experiment_id as string, showNsfw,controller?{request_id:crypto.randomUUID(),signal:controller.signal}:undefined);
+      if(controller?.signal.reason==='selection_changed')return;
       if (results[0]) onReplayed(results[0].experiment_id);
     } catch (e) {
-      setReplayError(e);
+      if(!controller?.signal.aborted)setReplayError(e);
     } finally {
       setReplaying(false);
+      replayController.current=null;
     }
   };
 
@@ -273,11 +278,12 @@ function ExperimentColumn({
           </RuntimeDownload>
           <button
             onClick={handleReplay}
-            disabled={replaying}
+            disabled={replaying||device&&busy}
             style={{ padding: "3px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-subtle)", color: "var(--text)", fontSize: 10, cursor: replaying ? "not-allowed" : "pointer" }}
           >
             {replaying ? (en ? "Replaying…" : "再実行中…") : (en ? "↻ Replay" : "↻ 再実行")}
           </button>
+          {device&&replaying&&<button onClick={()=>replayController.current?.abort()}>{en?'Stop replay':'再実行を停止'}</button>}
           {replayError != null && <span role="alert" style={{ fontSize: 10, color: "var(--error-text)" }}>{friendlyMessage(replayError, language)}</span>}
         </div>
       </div>
@@ -339,6 +345,8 @@ function ExperimentColumn({
 
 export default function ResearchPage() {
   const language = useLanguage(), en = language === "en";
+  const device = useExecutionTarget() === 'device';
+  const busy = useGenerationBusy();
   useDocumentTitle(en ? "Research" : "研究");
   const [exps, setExps] = useState<ExperimentMeta[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
@@ -359,9 +367,12 @@ export default function ResearchPage() {
   const [focus, setFocus] = useState<"A" | "B" | null>(null);
   const colScrollRefs = useRef<(HTMLDivElement | null)[]>([]);
   const syncingRef = useRef(false);
+  const requestId = useRef<string|null>(null);
+  const runController = useRef<AbortController|null>(null);
 
-  const load = async () => {
+  const load = async (isCurrent=()=>true) => {
     const [e, m, s, b] = await Promise.all([fetchExperiments(50, showNsfw), fetchModels().catch(() => []), fetchScenarios(showNsfw).catch(() => []), fetchLeaderboard(boardScope).catch(() => null)]);
+    if(!isCurrent())return;
     setExps(e);
     setModels(m as any);
     setScenarios(s as any);
@@ -382,9 +393,12 @@ export default function ResearchPage() {
   };
 
   useEffect(() => {
-    load();
+    let active=true;
+    void load(()=>active).catch(error=>{if(active)setRunError(error);});
+    return ()=>{active=false;};
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showNsfw]);
+  useEffect(()=>()=>{runController.current?.abort('page_closed');},[]);
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
@@ -398,15 +412,21 @@ export default function ResearchPage() {
     if (!runScenario || !runModel) return;
     setRunning(true);
     setRunError(null);
+    if(device)requestId.current=crypto.randomUUID();
+    const controller=device?new AbortController():null;runController.current=controller;
     try {
-      const res = await runExperiments(runScenario, runModel, runs, undefined, showNsfw, runMemory);
+      const res = await runExperiments(runScenario, runModel, runs, undefined, showNsfw, runMemory,device?requestId.current!:undefined,controller?.signal);
+      if(controller?.signal.reason==='page_closed')return;
       // 新しい実験を先頭に追加
       await load();
       if (res.length) setSelected(res.map((r: any) => r.experiment_id).slice(0, 3));
     } catch (e) {
-      setRunError(e);
+      if(controller?.signal.reason==='page_closed')return;
+      if(controller?.signal.aborted)await load().catch(setRunError);else setRunError(e);
     } finally {
       setRunning(false);
+      requestId.current=null;
+      runController.current=null;
     }
   };
 
@@ -473,7 +493,7 @@ export default function ResearchPage() {
             showNsfw={showNsfw}
             onReplayed={id => {
               setSelected(prev => prev.map((old, i) => i === idx ? id : old));
-              void fetchExperiments(50, showNsfw).then(setExps);
+              void fetchExperiments(50, showNsfw).then(setExps).catch(setRunError);
             }}
         />
       </div>
@@ -485,7 +505,7 @@ export default function ResearchPage() {
       {/* ツールバー */}
       <div style={{ padding: 12, borderBottom: "1px solid var(--border)", background: "var(--bg-card)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <div style={{ fontWeight: 700, fontSize: 13 }}>{en ? "Research" : "研究"} — A/B/C</div>
-        <Link to="/research/benchmarks" style={{ fontSize: 12 }}>{en ? "Long-turn and memory benchmarks" : "長ターン・記憶の比較実験"}</Link>
+        {!device&&<Link to="/research/benchmarks" style={{ fontSize: 12 }}>{en ? "Long-turn and memory benchmarks" : "長ターン・記憶の比較実験"}</Link>}
         <span style={{ fontSize: 11, color: "var(--text-dim)", border: "1px solid var(--border)", padding: "2px 8px", borderRadius: 99 }}>{en ? `${exps.length} experiments` : `実験 ${exps.length}件`}</span>
         <label style={{ fontSize: 11, display: "flex", gap: 4, alignItems: "center", color: showNsfw ? "var(--error-text)" : "var(--text-dim)" }}>
           <input type="checkbox" checked={showNsfw} onChange={(e) => setShowNsfw(e.target.checked)} /> {en ? "Adult content (NSFW)" : "成人向け (NSFW)"}
@@ -507,15 +527,18 @@ export default function ResearchPage() {
           <label style={{ fontSize: 11, display: "flex", gap: 4, alignItems: "center" }} title={en ? "Store, retrieve and inject proposed memories in a separate memory scope for each run" : "実行ごとに独立した記憶領域を使い、提案された記憶を保存・検索・注入する"}>
             <input type="checkbox" checked={runMemory} onChange={(e) => setRunMemory(e.target.checked)} /> {en ? "Memory" : "記憶"}
           </label>
-          <button onClick={handleRun} disabled={running} style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: running ? "var(--border)" : "var(--accent)", color: running ? "var(--text-dim)" : "var(--accent-text)", fontSize: 12, cursor: running ? "not-allowed" : "pointer" }}>
+          <button onClick={handleRun} disabled={running||device&&busy} style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: running ? "var(--border)" : "var(--accent)", color: running ? "var(--text-dim)" : "var(--accent-text)", fontSize: 12, cursor: running ? "not-allowed" : "pointer" }}>
             {running ? (en ? "Running…" : "実行中…") : (en ? "▶ Run" : "▶ 実行")}
           </button>
-          <button onClick={load} aria-label={en ? "Reload experiments" : "実験を再読込"} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-card)", fontSize: 12, cursor: "pointer" }}>↻</button>
+          {device&&running&&<button onClick={()=>runController.current?.abort()}>{en?'Stop experiment':'実験を停止'}</button>}
+          <button onClick={()=>void load().catch(setRunError)} aria-label={en ? "Reload experiments" : "実験を再読込"} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-card)", fontSize: 12, cursor: "pointer" }}>↻</button>
           <label style={{ fontSize: 11, display: "flex", gap: 4, alignItems: "center" }}>
             <input type="checkbox" checked={syncScroll} onChange={(e) => setSyncScroll(e.target.checked)} /> {en ? "Sync scrolling" : "スクロール同期"}
           </label>
         </div>
       </div>
+
+      {device&&<p style={{padding:'8px 12px',fontSize:12}}>{en?'Experiments run on this device using a prepared model. Keep this page open; closing it interrupts the run. Research data stays on this device and is not synced.':'準備済みのモデルを使い、この端末で実行します。画面を閉じると中断します。研究データはこの端末に保存し、同期しません。'}</p>}
 
       {/* 実験一覧（折りたたみ） */}
       <details open style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-subtle)" }}>

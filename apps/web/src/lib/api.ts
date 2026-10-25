@@ -446,11 +446,12 @@ export async function fetchRatings(experiment_id: string): Promise<{ turn: numbe
   const j = await checkedJson(r);
   return j.ratings ?? [];
 }
-export async function runExperiments(scenario: string, model_id: string, runs = 1, temperature?: number, allow_nsfw = false, memory = false): Promise<{ experiment_id: string }[]> {
+export async function runExperiments(scenario: string, model_id: string, runs = 1, temperature?: number, allow_nsfw = false, memory = false, request_id?: string, signal?:AbortSignal): Promise<{ experiment_id: string }[]> {
   const r = await fetch("/api/experiments/run", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ scenario, model_id, runs, temperature, allow_nsfw, memory }),
+    body: JSON.stringify({ scenario, model_id, runs, temperature, allow_nsfw, memory, request_id }),
+    signal,
   });
   const j = await checkedJson(r);
   return j.results ?? [];
@@ -654,9 +655,9 @@ export type GenerationResult = {
   raw_prompt?: string; attempts?: { number: number; raw: string; errors: string[]; messages: ChatMessage[] }[];
   snapshot_valid?: boolean; token_budget?: Record<string, unknown>;
 };
-export async function replayExperiment(id: string, allow_nsfw = false): Promise<{ experiment_id: string }[]> {
+export async function replayExperiment(id: string, allow_nsfw = false, options?:{request_id:string;signal:AbortSignal}): Promise<{ experiment_id: string }[]> {
   const r = await fetch(`/api/experiments/${encodeURIComponent(id)}/rerun`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runs: 1, allow_nsfw }),
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runs: 1, allow_nsfw,request_id:options?.request_id }),signal:options?.signal,
   });
   const j = await checkedJson(r);
   return j.results;

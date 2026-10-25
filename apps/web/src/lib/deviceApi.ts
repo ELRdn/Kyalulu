@@ -14,6 +14,7 @@ import { Sha256 } from '../mobile/sha256';
 import { commitDeviceImport } from './deviceImport';
 import { parseDeviceImport } from './deviceParseImport';
 import { acceptDeviceMedia, readDeviceAsset, saveDeviceAsset, validateDeviceDocumentAssets } from './deviceAssets';
+import { deviceResearchRoute, deviceResearchBusy, type ResearchTurn } from './deviceResearch';
 
 let runtime:MobileRuntime|undefined, loaded='';
 let running:string|null=null;
@@ -84,27 +85,30 @@ async function compiled(settings:Record<string,any>,history:{role:string;content
   return compilePortable({document:d,character_version:binding.character?'1.0.'+binding.character.revision:builtin.find(c=>c.id===settings.character_id)?.version??null,
     library_binding:binding,lorebooks,persona,world,extra_system_prompt:settings.system_prompt??settings.extra_system_prompt??''},history);
 }
-async function generate(body:Record<string,any>,signal?:AbortSignal) {
+async function generate(body:Record<string,any>,signal?:AbortSignal,scope?:ResearchTurn) {
   const owner=deviceOwner(),currentOwner=()=>{if(owner!==deviceOwner())throw fail('Account changed',409);};
-  if(running)throw fail('A generation is already running',409);
+  if(running||deviceResearchBusy()&&!scope)throw fail('A generation is already running',409);
   const id=String(body.session_id??'default'),generationId=body.generation_id;
   if(typeof generationId!=='string'||generationId.length>200||!Array.isArray(body.messages)||!body.messages.length||body.messages.length>200
     ||body.messages.some((m:any)=>!m||!['user','assistant'].includes(m.role)||typeof m.content!=='string'||m.content.length>128000))throw fail('Invalid generation request');
   if(body.allow_nsfw)throw fail('Adult verification is required',403);
-  const existing=await getMeta<any>('generation:'+owner+':'+generationId);currentOwner();
+  const existing=scope?null:await getMeta<any>('generation:'+owner+':'+generationId);currentOwner();
   if(existing)throw fail('Generation already exists; reconcile its saved status',409);
   const model=MODELS.find(m=>m.id===body.model_id);
   if(!model||!(await readyModels()).has(model.id))throw fail('Prepare this model in Settings / 設定からモデルを準備してください',409);
   currentOwner();
+  if(running||deviceResearchBusy()&&!scope)throw fail('A generation is already running',409);
   running=generationId;setGenerationBusy(true);
   try {
     runtime??=new MobileRuntime();
     if(loaded!==model.id){await runtime.load(model.id,false,new URL('/',location.href).href);loaded=model.id;}
     currentOwner();
-    const session=await conversation(id,owner),p=session.payload;
+    const session=scope?.session??await conversation(id,owner),p=session.payload;
+    if(session.owner!==owner||session.id!==id)throw fail('Invalid generation scope',409);
+    const save=scope?async(value:AppEntity,_revision:number,_metadata:Record<string,unknown>)=>scope.save(value):saveEntity;
     const last=body.messages.at(-1);
     if(last.role!=='user')throw fail('A user message is required');
-    const userId=body.regenerate_message_id?p.messages.at(-2)?.id:await nextId(owner),assistantId=await nextId(owner);
+    const userId=body.regenerate_message_id?p.messages.at(-2)?.id:scope?(p.message_sequence??0)+1:await nextId(owner),assistantId=scope?userId+1:await nextId(owner);
     let messages=[...p.messages];
     let baseState=p.state,baseMemories=p.memories;
     if(body.regenerate_message_id){
@@ -114,12 +118,13 @@ async function generate(body:Record<string,any>,signal?:AbortSignal) {
       baseState=previous.before.state;baseMemories=previous.before.memories;messages=messages.slice(0,-1);
     }
     if(!body.regenerate_message_id)messages.push({id:userId,uuid:crypto.randomUUID(),role:'user',content:last.content,created_at:new Date().toISOString(),model_id:model.id});
-    const prompt=await compiled({...p.settings,system_prompt:body.system_prompt??p.settings.system_prompt},messages,owner);currentOwner();
+    const prompt=scope?.prompt??await compiled({...p.settings,system_prompt:body.system_prompt??p.settings.system_prompt},messages,owner);currentOwner();
     const requested={...prompt.sections.generation_settings,temperature:body.temperature??p.settings.temperature??model.temperature};
     for(const key of ['seed','max_tokens','top_p'])if(body[key]!==undefined)(requested as Record<string,unknown>)[key]=body[key];
+    if(scope?.requested)Object.assign(requested,scope.requested);
     const generationConfig=sampling(model,requested);
     const frozenSettings=ConversationSettingsSchema.parse({...p.settings,session_id:id,system_prompt:body.system_prompt??p.settings.system_prompt??'',temperature:requested.temperature});
-    const trace=retrieveMemories(p.memory_enabled?baseMemories:[],last.content);
+    const trace=retrieveMemories(p.memory_enabled?baseMemories:[],last.content,scope?.memoryOptions);
     const memories=trace.candidates.filter(m=>trace.injected.includes(m.id));
     const world=prompt.sections.portable_snapshot.world;
     const cast=(world?.cast??[]).map((member:unknown)=>CastMemberSchema.parse(member));
@@ -131,7 +136,7 @@ async function generate(body:Record<string,any>,signal?:AbortSignal) {
       '\nRemember only these recorded memories: '+JSON.stringify(memories.map(m=>({type:m.type,content:m.content})))+
       '\nReturn JSON only: {"reply":"your in-character reply","state_update":{"location":"","time":"","mood":"","active_scene":"","relationship_state":{"stage":"stranger","tone":"neutral","unresolved_conflict":false}},"memory_proposals":[]}. Memory proposals: at most 3, each {type:semantic|episodic|relationship,content,source_kind:user_statement|user_correction|work_setting|story_event}. Never invent user facts.';
     const pending={generation_id:generationId,session_id:id,status:'pending',assistant_id:null,user_id:body.regenerate_message_id?null:userId};
-    let current=await saveEntity({...session,payload:{...p,messages,pending_generation:generationId}},session.revision,{['generation:'+owner+':'+generationId]:pending});
+    let current=await save({...session,payload:{...p,messages,pending_generation:generationId,...(scope?{message_sequence:assistantId}:{})}},session.revision,{['generation:'+owner+':'+generationId]:pending});
     let closed=false;
     const stream=new ReadableStream<Uint8Array>({start(controller) {
       let ended=false,raw='';
@@ -140,7 +145,8 @@ async function generate(body:Record<string,any>,signal?:AbortSignal) {
       void (async()=>{
         try {
           signal?.throwIfAborted();
-          const result=await runtime!.generate(assemblePortable(prompt,messages.filter((m:any)=>!['stopped','interrupted'].includes(m.imported_state)).map((m:any)=>({role:m.role,content:m.content})),system) as import('../mobile/types').ChatTurn[],event=>{
+          const input=assemblePortable(prompt,messages.filter((m:any)=>!['stopped','interrupted'].includes(m.imported_state)).map((m:any)=>({role:m.role,content:m.content})),system);
+          const result=await runtime!.generate(input as import('../mobile/types').ChatTurn[],event=>{
             if(event.type==='delta'){raw+=event.text??'';send('progress',{stage:'generation',elapsed_ms:0});}
           },requested);
           if(deviceOwner()!==owner)throw fail('Account changed');
@@ -150,23 +156,27 @@ async function generate(body:Record<string,any>,signal?:AbortSignal) {
           catch {throw fail('The model returned an invalid structured response. No memory or story state was applied. / モデルの応答形式が不正です。記憶・状態は変更していません。');}
           const state={...baseState,...parsed.state_update,rpg,turn:(baseState.turn??0)+1};
           const stored:DeviceMemory[]=[...baseMemories];
-          if(p.memory_enabled)for(const proposal of validateProposals(parsed.memory_proposals,baseMemories,last.content)) {
+          const decisions=p.memory_enabled?validateProposals(parsed.memory_proposals,baseMemories,last.content):[];
+          for(const proposal of decisions) {
             if(proposal.action!=='store')continue;
             const supported='supported' in proposal&&proposal.supported===true;
             stored.push({...proposal,id:crypto.randomUUID(),scope:id,origin:'model',supported,status:'active',version:1,
-              source_session_id:id,source_turn:state.turn,source_message_ids:[userId],source_quote:last.content,confirmation:supported?'evidenced':'unverified',
+              source_session_id:scope?baseState.session_id:id,source_turn:state.turn,source_message_ids:[userId],source_quote:last.content,confirmation:supported?'evidenced':'unverified',
               created_at:new Date().toISOString(),updated_at:new Date().toISOString(),access_count:0,last_accessed:null});
           }
           messages.push({id:assistantId,uuid:crypto.randomUUID(),role:'assistant',content:parsed.reply,created_at:new Date().toISOString(),model_id:model.id,
             before:{state:baseState,memories:baseMemories,settings:structuredClone(frozenSettings)},after:{state,memories:stored,settings:structuredClone(frozenSettings)}});
-          const done={...pending,status:'completed',assistant_id:assistantId,full:parsed.reply,reply:parsed.reply,state,telemetry:{memory:trace,...result.measurement},
-            generation_config:{...generationConfig,requested:{model_id:model.id,...generationConfig.requested},applied:{model_id:model.id,...generationConfig.applied}},validation:{ok:true,retries:0,errors:[]}};
-          current=await saveEntity({...current,payload:{...current.payload,messages,memories:stored,state,last_generation:done,pending_generation:null,
+          const done={...pending,status:'completed',assistant_id:assistantId,full:parsed.reply,reply:parsed.reply,state,telemetry:{memory:trace,...result.measurement,
+            ...(scope?{first_reply_ms:result.measurement?.firstTokenMs??null,tokens_per_second:result.measurement?.tokensPerSecond??null}:{})},
+            generation_config:{...generationConfig,requested:{model_id:model.id,...generationConfig.requested},applied:{model_id:model.id,...generationConfig.applied}},validation:{ok:true,retries:0,errors:[]},
+            ...(scope?{compiled:prompt,raw_prompt:JSON.stringify(input),state_before:baseState,memory:p.memory_enabled?{...trace,decisions}:null,
+              token_budget:{total_prompt_tokens:input.reduce((sum,m)=>sum+estimateTokens(m.content),0),estimated:true}}:{})};
+          current=await save({...current,payload:{...current.payload,messages,memories:stored,state,last_generation:done,pending_generation:null,
             summaries:refreshSummaries(messages,p.summaries,id)}},current.revision,{['generation:'+owner+':'+generationId]:done});
           send('done',done);
         } catch(error) {
           let saveError='';
-          try{current=await saveEntity({...current,payload:{...current.payload,pending_generation:null}},current.revision,{['generation:'+owner+':'+generationId]:{...pending,status:'failed'}});}
+          try{current=await save({...current,payload:{...current.payload,pending_generation:null}},current.revision,{['generation:'+owner+':'+generationId]:{...pending,status:'failed'}});}
           catch{saveError=' Device save failed; the pending record is retained / 保存できないため未完了の記録を保持しています。';}
           send('error',{error:(error instanceof Error?error.message:String(error))+saveError});
         } finally {signal?.removeEventListener('abort',abort);running=null;setGenerationBusy(false);if(!ended&&!closed){ended=true;controller.close();}}
@@ -186,6 +196,7 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
   const url=new URL(input,'https://device.invalid'),path=decodeURIComponent(url.pathname),method=(init.method??'GET').toUpperCase();
   let body:Record<string,any>={};
   if(typeof init.body==='string'){if(init.body.length>32*1024*1024)throw fail('Request too large',413);body=JSON.parse(init.body);}
+  if(/^\/api\/(experiments|ratings|leaderboard)(?:\/|$)/.test(path))return deviceResearchRoute(path,method,body,url,owner,init.signal??undefined,generate,compiled);
   if(path==='/api/library/assets'&&method==='POST') {
     if(!(init.body instanceof FormData))throw fail('Choose a media file');
     const file=init.body.get('file');if(!(file instanceof File)||file.size>32*1024*1024)throw fail('Choose a file up to 32 MiB');
@@ -445,7 +456,6 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
     const saved=await saveEntity({...e,payload:{...e.payload,...body}},e.revision);return json({id:e.id,...saved.payload});
   }
   if(path==='/api/scenarios')return json({scenarios:catalog.scenarios.map(s=>({...s,turns:s.turns.length}))});
-  if(path==='/api/experiments')return json({experiments:[]});
   if(path.startsWith('/api/local/cloud'))return json({mode:'off',selected:[],connected:false,origin:location.origin,revision:0});
   if(path==='/api/remote/status')return json({installed:false,connected:false});
   throw fail('This operation is not yet implemented by the browser runtime: '+path,501);

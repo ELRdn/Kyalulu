@@ -10,7 +10,7 @@ import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 import { useAdministrative, useRuntimeAccess } from './components/RuntimeGate';
 import { subscribeAppAnalyticsPageView, syncAppAnalytics } from './lib/analytics';
-import { useLanguage } from './lib/appContext';
+import { useLanguage, useExecutionTarget, useDeviceOwner } from './lib/appContext';
 
 // 制作・検証向けの画面は初回表示に不要なので分割して遅延読み込みする
 const Create = lazy(() => import("./pages/Create"));
@@ -35,6 +35,8 @@ function AdminPage({ children }: { children: ReactNode }) {
 export default function App() {
   const location = useLocation();
   const { cloud_mode } = useRuntimeAccess();
+  const target = useExecutionTarget();
+  const owner = useDeviceOwner();
   useEffect(() => { syncAppAnalytics(); }, [cloud_mode]);
   useEffect(() => subscribeAppAnalyticsPageView(location.key, location.pathname), [location.key, location.pathname, cloud_mode]);
   return (
@@ -57,7 +59,7 @@ export default function App() {
         <Route path="/profile" element={<Profile />} />
         <Route path="/migration" element={deferred(<Migration />)} />
         <Route path="/studio" element={<AdminPage>{deferred(<Studio />)}</AdminPage>} />
-        <Route path="/research" element={<AdminPage>{deferred(<ResearchPage />)}</AdminPage>} />
+        <Route path="/research" element={target==='device'?deferred(<ResearchPage key={owner} />):<AdminPage>{deferred(<ResearchPage />)}</AdminPage>} />
         <Route path="/status" element={<AdminPage>{deferred(<Status />)}</AdminPage>} />
         <Route path="*" element={<NotFound />} />
       </Route>
