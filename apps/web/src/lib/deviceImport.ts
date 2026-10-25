@@ -8,6 +8,14 @@ import { validateDeviceDocumentAssets } from './deviceAssets';
 const conflict=(message:string)=>Object.assign(Error(message),{status:409});
 const hash=(raw:Uint8Array)=>new Sha256().update(raw).digest();
 
+export function deviceSourceMatches(document:{source:Record<string,unknown>},records:AppEntity[],owner:string) {
+  const remote=document.source.remote as Record<string,unknown>|undefined;
+  // Unknown or absent provenance is not a stable source identity.
+  if(!remote||!['source','source_id','sha256'].every(key=>typeof remote[key]==='string'&&remote[key]))return [];
+  return records.filter(record=>record.owner===owner&&!record.deleted&&record.payload.document
+    &&['source','source_id','sha256','document_index'].every(key=>(record.payload.document.source?.remote?.[key]??null)===(remote[key]??null)));
+}
+
 /** Source bytes, selected versions, histories and replay receipt commit together. */
 export async function commitDeviceImport(owner:string,previewId:string,input:unknown,records:AppEntity[]) {
   const body=ImportCommitSchema.parse(input),key='import:'+owner+':'+body.request_id;
@@ -27,7 +35,9 @@ export async function commitDeviceImport(owner:string,previewId:string,input:unk
   for(const selection of body.selections){
     if(selection.index>=preview.documents.length)throw Error('Invalid selection');
     const source=PortableDocumentSchema.parse(preview.documents[selection.index]),doc=structuredClone(selection.document);
-    if(source.nsfw||doc.nsfw)throw Object.assign(Error('Adult verification required'),{status:403});
+    const remote=source.source.remote as Record<string,unknown>|undefined;
+    if(source.nsfw||doc.nsfw||remote?.content_rating==='nsfw'||selection.content_rating==='nsfw')throw Object.assign(Error('Adult verification required'),{status:403});
+    if(remote?.content_rating==='unknown'&&selection.content_rating==null)throw Error('Content rating must be selected before saving this URL import');
     await validateDeviceDocumentAssets(doc,owner);
     if(!doc.name.trim())throw Error('Name is required');
     if(selection.history_indices.some(index=>index>=source.histories.length)||selection.history_indices.length&&doc.kind!=='character')throw Error('Invalid history selection');
@@ -65,31 +75,38 @@ export async function commitDeviceImport(owner:string,previewId:string,input:unk
       if(owner!==deviceOwner()){abort(conflict('Account changed'));return;}
       const receipt=read.result;
       if(receipt){if(receipt.request_fingerprint!==fingerprint)abort(conflict('Import request already used'));else done({items:receipt.items,sessions:receipt.sessions});return;}
-      let pending=updates.length;
-      for(const update of updates){
-        const current=store.get([owner,update.value.id]);current.onsuccess=()=>{
-          if(owner!==deviceOwner()||(current.result?.revision??0)!==(update.base?.revision??0)){abort(conflict('Library changed; reload before updating'));return;}
-          if(--pending)return;
-          const sequence=meta.get('message-sequence:'+owner);sequence.onsuccess=()=>{
-            try{
-              if(owner!==deviceOwner())throw conflict('Account changed');
-              let number=sequence.result??0;
-              if(!Number.isSafeInteger(number)||number<0)throw Error('Invalid message sequence');
-              for(const record of records)for(const message of record.payload.messages??[]){
-                if(!Number.isSafeInteger(message.id)||message.id<1)throw Error('Invalid stored message ID');
-                number=Math.max(number,message.id);
-              }
-              for(const {value} of updates){
-                if(value.kind==='conversation')for(const message of value.payload.messages){if(!Number.isSafeInteger(++number))throw Error('Message ID limit reached');message.id=number;}
-                store.put(value);
-              }
-              meta.put(number,'message-sequence:'+owner);
-              if(preview.original)meta.put(preview.original,'original:'+owner+':'+preview.source_hash);
-              const result={items,sessions};meta.put({...result,request_fingerprint:fingerprint},key);done(result);
-            }catch(error){abort(error);}
+      const library=store.getAll(IDBKeyRange.bound([owner,''],[owner,'\uffff']));
+      library.onsuccess=()=>{
+        for(const selection of body.selections)if(!selection.target_id&&selection.duplicate_action!=='copy'
+          &&deviceSourceMatches(preview.documents[selection.index],library.result,owner).length){
+          abort(conflict('Already imported; select an existing item or explicitly copy'));return;
+        }
+        let pending=updates.length;
+        for(const update of updates){
+          const current=store.get([owner,update.value.id]);current.onsuccess=()=>{
+            if(owner!==deviceOwner()||(current.result?.revision??0)!==(update.base?.revision??0)){abort(conflict('Library changed; reload before updating'));return;}
+            if(--pending)return;
+            const sequence=meta.get('message-sequence:'+owner);sequence.onsuccess=()=>{
+              try{
+                if(owner!==deviceOwner())throw conflict('Account changed');
+                let number=sequence.result??0;
+                if(!Number.isSafeInteger(number)||number<0)throw Error('Invalid message sequence');
+                for(const record of records)for(const message of record.payload.messages??[]){
+                  if(!Number.isSafeInteger(message.id)||message.id<1)throw Error('Invalid stored message ID');
+                  number=Math.max(number,message.id);
+                }
+                for(const {value} of updates){
+                  if(value.kind==='conversation')for(const message of value.payload.messages){if(!Number.isSafeInteger(++number))throw Error('Message ID limit reached');message.id=number;}
+                  store.put(value);
+                }
+                meta.put(number,'message-sequence:'+owner);
+                if(preview.original)meta.put(preview.original,'original:'+owner+':'+preview.source_hash);
+                const result={items,sessions};meta.put({...result,request_fingerprint:fingerprint},key);done(result);
+              }catch(error){abort(error);}
+            };
           };
-        };
-      }
+        }
+      };
     };
   });}catch(error){throw failure??error;}
 }

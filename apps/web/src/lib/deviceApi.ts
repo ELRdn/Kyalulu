@@ -11,7 +11,7 @@ import { compilePortable, assemblePortable } from './devicePrompt';
 import { sampling } from '../mobile/sampling';
 import { exportPortable, type ExportAsset } from './deviceExport';
 import { Sha256 } from '../mobile/sha256';
-import { commitDeviceImport } from './deviceImport';
+import { commitDeviceImport, deviceSourceMatches } from './deviceImport';
 import { parseDeviceImport } from './deviceParseImport';
 import { acceptDeviceMedia, readDeviceAsset, saveDeviceAsset, validateDeviceDocumentAssets } from './deviceAssets';
 import { deviceResearchRoute, deviceResearchBusy, type ResearchTurn } from './deviceResearch';
@@ -440,7 +440,8 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
     else {if(typeof body.text!=='string'||Array.from(body.text).length>2000000)throw fail('Invalid import text');raw=encoder.encode(body.text);}
     const {documents,assets}=await parseDeviceImport(filename,raw);
     if(documents.some(doc=>doc.nsfw))throw fail('Adult verification required',403);
-    const preview_id=crypto.randomUUID(),preview={preview_id,filename,source_hash:contentHash(raw),documents,duplicates:{}};
+    const preview_id=crypto.randomUUID(),preview={preview_id,filename,source_hash:contentHash(raw),documents,
+      duplicates:Object.fromEntries(documents.map((document,index)=>[String(index),deviceSourceMatches(document,records,owner).map(value=>({id:value.id,revision:value.payload.current_revision??value.revision,name:value.payload.document.name}))]))};
     await appTransaction<void>(['meta'],'readwrite',(tx,done)=>{
       if(owner!==deviceOwner())throw fail('Account changed',409);
       const store=tx.objectStore('meta');
