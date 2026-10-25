@@ -23,7 +23,8 @@ async def main():
         try:
             for initial, width, theme in [('ja', 393, 'light'), ('en', 393, 'dark'), ('en', 1280, 'light')]:
                 context = await browser.new_context(viewport={'width': width, 'height': 852})
-                requests, writes = [], []
+                requests, writes, benchmark_posts = [], [], []
+                jobs = []
                 try:
                     async def route(request):
                         url = urlsplit(request.request.url)
@@ -36,13 +37,21 @@ async def main():
                         if url.path == '/api/experiments':
                             value = {'experiments': [meta('fixture_' + str(n)) for n in range(3)]}
                         elif url.path == '/api/models':
-                            value = {'models': [{'id': 'fixture_model'}]}
+                            value = {'models': [{'id': 'fixture_model', 'display_name': 'Fixture model'}, {'id': 'mock-echo', 'display_name': 'Mock fixture'}]}
                         elif url.path == '/api/scenarios':
-                            value = {'scenarios': [{'id': 'fixture_scenario', 'official': True}]}
+                            value = {'scenarios': [{'id': 'fixture_scenario', 'official': True, 'turns': 20}]}
                         elif url.path == '/api/leaderboard':
                             value = {'scope': 'official', 'generated_at': '2026-10-26T00:00:00Z', 'ranking': [], 'total_experiments': 3}
                         elif url.path == '/api/ratings':
                             writes.append(request.request.post_data_json); value = {'ok': True}
+                        elif url.path == '/api/benchmarks':
+                            if request.request.method == 'POST':
+                                benchmark_posts.append(request.request.post_data_json)
+                                value = {'id': 'fixture_job', 'status': 'completed', 'created_at': '2026-10-26T00:00:00Z',
+                                         'planned_runs': 2, 'planned_turns': 40, 'current': None, 'results': []}
+                                jobs.append(value)
+                            else:
+                                value = {'jobs': jobs}
                         elif url.path.startswith('/api/experiments/'):
                             identifier = url.path.rsplit('/', 1)[-1]
                             value = {'meta': meta(identifier), 'raw_prompt': '原文プロンプト', 'ratings': {},
@@ -57,7 +66,7 @@ async def main():
                     page.on('pageerror', lambda error: errors.append(str(error)))
                     await page.goto(origin + '/@fs/' + quote((ROOT / 'tests/fixtures/research-language.html').as_posix(), safe='/:'))
                     await page.wait_for_function('window.__RESEARCH_LANGUAGE__ !== undefined')
-                    await page.evaluate('([language,theme])=>window.__RESEARCH_LANGUAGE__.mount(document.getElementById("root"),language,theme)', [initial, theme])
+                    await page.evaluate('([language,theme])=>{window.__unmount=window.__RESEARCH_LANGUAGE__.mount(document.getElementById("root"),language,theme)}', [initial, theme])
                     column = page.locator('.k-research-col').first
                     comment = column.get_by_role('textbox', name='Comment (optional)' if initial == 'en' else 'コメント（任意）')
                     await comment.wait_for()
@@ -87,8 +96,26 @@ async def main():
                     await column.get_by_text('fixture_1', exact=True).wait_for()
                     await page.wait_for_function('document.querySelector(".k-research-col input[placeholder*=Comment],.k-research-col input[placeholder*=コメント]")?.value===""')
                     assert len(writes) == 1
+                    await page.evaluate('([language,theme])=>{window.__unmount();window.__unmount=window.__RESEARCH_LANGUAGE__.mount(document.getElementById("root"),language,theme,"benchmark")}', [initial, theme])
+                    await page.get_by_label('Scenario' if initial == 'en' else 'シナリオ').select_option('fixture_scenario')
+                    await page.get_by_label('Seed' if initial == 'en' else 'シード', exact=True).fill('127')
+                    await page.evaluate('language=>window.__RESEARCH_LANGUAGE__.language(language)', other)
+                    seed = page.get_by_label('Seed' if other == 'en' else 'シード', exact=True)
+                    assert await seed.input_value() == '127' and not benchmark_posts
+                    await page.get_by_text('Memory retrieval and context conditions' if other == 'en' else '記憶検索・文脈の条件', exact=True).click()
+                    await page.get_by_label('Maximum memories' if other == 'en' else '最大記憶数', exact=True).fill('7')
+                    await page.get_by_role('button', name='Start benchmark' if other == 'en' else '比較実験を開始', exact=True).click()
+                    await page.get_by_role('button', name='Results JSON' if other == 'en' else '結果JSON', exact=True).wait_for()
+                    assert len(benchmark_posts) == 1
+                    assert benchmark_posts[0]['seed'] == 127 and benchmark_posts[0]['memory_options']['top_k'] == 7
+                    assert benchmark_posts[0]['scenarios'] == ['fixture_scenario'] and benchmark_posts[0]['model_ids'] == ['mock-echo']
+                    assert benchmark_posts[0]['memory'] == 'compare' and len(benchmark_posts[0]['request_id']) == 36
+                    assert ('do not count as model quality evidence' if other == 'en' else 'モデルの品質評価には数えません') in await page.locator('main').inner_text()
+                    assert await page.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'Benchmark horizontal overflow'
+                    await page.screenshot(path=str(OUTPUT / f'benchmark-{initial}-{width}-{theme}.png'), full_page=True)
                     results.append({'initial_language': initial, 'width': width, 'theme': theme, 'draft_retained_on_language_change': True,
-                                    'no_automatic_request': True, 'explicit_rating_saved': True, 'draft_reset_on_experiment_change': True, 'overflow': False})
+                                    'no_automatic_request': True, 'explicit_rating_saved': True, 'draft_reset_on_experiment_change': True,
+                                    'benchmark_conditions_retained': True, 'benchmark_explicit_request_only': True, 'overflow': False})
                 finally:
                     await context.close()
         finally:
