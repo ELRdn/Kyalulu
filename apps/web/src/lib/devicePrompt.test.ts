@@ -1,6 +1,11 @@
 import { expect, it } from 'vitest';
 import fixture from '../../../../tests/fixtures/portable-prompt.json';
+import loreValues from '../../../../tests/fixtures/device-lore-values.json';
 import { compilePortable, assemblePortable, selectLore, casefold } from './devicePrompt';
+it('matches Python on null positions and empty/disabled Lore flags',()=>{
+  expect(selectLore(loreValues.books,loreValues.history)).toEqual(loreValues.expected);
+  expect(loreValues.expected.selected.map(entry=>entry.content)).toEqual(['Stars','Allowed']);
+});
 it.each(fixture)('matches Python compile and assembly: $name',test=>{
   const compiled=compilePortable(test.snapshot,test.history);
   expect(compiled).toEqual(test.expected);

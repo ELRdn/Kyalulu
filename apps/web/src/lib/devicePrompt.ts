@@ -24,7 +24,7 @@ function keys(entry:RecordValue,name:string,alias:string) {
 export const portableTruthy=(value:unknown)=>Array.isArray(value)?value.length>0:value&&typeof value==='object'?Object.keys(value).length>0:!!value;
 export function unsupportedLoreCondition(entry:RecordValue) {
   return portableTruthy(entry.use_regex)||portableTruthy(entry.useRegex)||['useProbability','delay','cooldown','sticky','timeConditions','time_conditions','matchWholeWords','excludeRecursion','preventRecursion','delayUntilRecursion','group'].some(k=>portableTruthy(entry[k]))
-    ||![0,false,null,undefined].includes(entry.selectiveLogic)||!['before_char','after_char'].includes(entry.position??'after_char')
+    ||![0,false,null,undefined].includes(entry.selectiveLogic)||!['before_char','after_char'].includes(entry.position===undefined?'after_char':entry.position)
     ||keys(entry,'keys','keys').some(k=>/^\/.+\/[a-z]*$/.test(k));
 }
 export function selectLore(books:RecordValue[],history:Message[],render=(value:string)=>value) {
@@ -38,17 +38,17 @@ export function selectLore(books:RecordValue[],history:Message[],render=(value:s
       const additions:string[]=[];
       for(const {entry,index} of pending){
         if(visited.has(index))continue;
-        const reason=entry.enabled===false?'disabled':unsupportedLoreCondition(entry)?'unsupported condition':null;
+        const reason=!portableTruthy(entry.enabled===undefined?true:entry.enabled)?'disabled':unsupportedLoreCondition(entry)?'unsupported condition':null;
         if(reason){audit.push({book:bookIndex,entry:index,selected:false,reason});visited.add(index);continue;}
-        const haystack=entry.case_sensitive?scan:casefold(scan),matches=(values:string[])=>values.some(k=>k&&haystack.includes(entry.case_sensitive?k:casefold(k)));
-        let active=!!entry.constant||matches(keys(entry,'keys','key'));
-        if(entry.selective&&!entry.constant)active=active&&matches(keys(entry,'secondary_keys','keysecondary'));
+        const sensitive=portableTruthy(entry.case_sensitive),constant=portableTruthy(entry.constant),haystack=sensitive?scan:casefold(scan),matches=(values:string[])=>values.some(k=>k&&haystack.includes(sensitive?k:casefold(k)));
+        let active=constant||matches(keys(entry,'keys','key'));
+        if(portableTruthy(entry.selective)&&!constant)active=active&&matches(keys(entry,'secondary_keys','keysecondary'));
         if(!active)continue;
         visited.add(index);const content=render(text(entry.content)),size=estimate(content),fits=size<=remaining;
-        audit.push({book:bookIndex,entry:index,selected:fits,estimated_tokens:size,reason:fits?entry.constant?'constant':'keyword':'budget exceeded'});
+        audit.push({book:bookIndex,entry:index,selected:fits,estimated_tokens:size,reason:fits?constant?'constant':'keyword':'budget exceeded'});
         if(fits){remaining-=size;selected.push({...entry,content,_book:bookIndex,_entry:index});additions.push(content);}
       }
-      if(!additions.length||!book.recursive_scanning)break;scan+='\n'+additions.join('\n');
+      if(!additions.length||!portableTruthy(book.recursive_scanning))break;scan+='\n'+additions.join('\n');
     }
     for(const {index} of pending)if(!visited.has(index))audit.push({book:bookIndex,entry:index,selected:false,reason:'no keyword match'});
   });

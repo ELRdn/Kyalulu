@@ -7301,6 +7301,108 @@
     "assets": {}
   },
   {
+    "name": "st/world-null-position",
+    "filename": "st-world-null-position.json",
+    "base64": "eyJlbnRyaWVzIjogeyIxIjogeyJrZXkiOiBbInNlYSJdLCAiY29udGVudCI6ICJVbnN1cHBvcnRlZCBwb3NpdGlvbiIsICJwb3NpdGlvbiI6IG51bGx9LCAiMiI6IHsia2V5IjogWyJzZWEiXSwgImNvbnRlbnQiOiAiRGlzYWJsZWQiLCAiZW5hYmxlZCI6IFtdfX19",
+    "documents": [
+      {
+        "schema_version": 1,
+        "kind": "lorebook",
+        "name": "st-world-null-position",
+        "data": {
+          "character_book": {
+            "name": "",
+            "entries": [
+              {
+                "key": [
+                  "sea"
+                ],
+                "content": "Unsupported position",
+                "position": null,
+                "keys": [
+                  "sea"
+                ],
+                "secondary_keys": [],
+                "constant": false,
+                "enabled": false,
+                "insertion_order": 0,
+                "case_sensitive": false,
+                "selective": false,
+                "comment": ""
+              },
+              {
+                "key": [
+                  "sea"
+                ],
+                "content": "Disabled",
+                "enabled": false,
+                "keys": [
+                  "sea"
+                ],
+                "secondary_keys": [],
+                "constant": false,
+                "insertion_order": 1,
+                "case_sensitive": false,
+                "selective": false,
+                "position": "after_char",
+                "comment": ""
+              }
+            ]
+          }
+        },
+        "speaking_style": "",
+        "nsfw": false,
+        "profile": {
+          "settings": {},
+          "system_prompt": "",
+          "post_history_instructions": "",
+          "context_template": "",
+          "prompts": [],
+          "model_hint": "",
+          "variables": {}
+        },
+        "assets": [],
+        "histories": [],
+        "source_format": "sillytavern_worldinfo",
+        "source": {
+          "filename": "st-world-null-position.json",
+          "format": "sillytavern_worldinfo",
+          "original": {
+            "entries": {
+              "1": {
+                "key": [
+                  "sea"
+                ],
+                "content": "Unsupported position",
+                "position": null
+              },
+              "2": {
+                "key": [
+                  "sea"
+                ],
+                "content": "Disabled",
+                "enabled": []
+              }
+            }
+          }
+        },
+        "notices": [
+          {
+            "path": "lorebook",
+            "status": "converted",
+            "reason": "SillyTavern world info imported as a lorebook"
+          },
+          {
+            "path": "data.character_book.entries.1",
+            "status": "converted",
+            "reason": "Unsupported advanced condition disabled (regex, probability, or time); source preserved"
+          }
+        ]
+      }
+    ],
+    "assets": {}
+  },
+  {
     "name": "cai/character",
     "filename": "cai-character.json",
     "base64": "eyJuYW1lIjogIkd1aWRlIiwgImRlc2NyaXB0aW9uIjogIlB1YmxpYyBkZXNjcmlwdGlvbiIsICJncmVldGluZyI6ICJIZWxsbyIsICJkZWZpbml0aW9uIjogInt7Y2hhcn19OiBLZWVwIGV4YWN0XHJcbiIsICJjcmVhdG9yTm90ZXMiOiAiTk9UIFBST01QVCJ9",
