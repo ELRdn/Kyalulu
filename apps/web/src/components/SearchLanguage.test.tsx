@@ -8,9 +8,13 @@ import HubBrowser from './HubBrowser';
 import HubLinks from './HubLinks';
 import { sessionTitle } from '../lib/api';
 import { friendlyMessage } from '../lib/errors';
+import ChatsLanding from '../pages/ChatsLanding';
+import StoryControls from './StoryControls';
+import { applyStory, readStory } from '../lib/story';
 
 const fixture = vi.hoisted(() => ({ language: 'en', administrative: false, guest: false,
   params: new URLSearchParams(), states: [] as unknown[], next: 0,
+  pinned: [] as string[], saved: [] as string[],
   navigate: vi.fn(), close: vi.fn(), browse: vi.fn(), fetch: vi.fn(), preview: vi.fn(), hub: vi.fn(), toggle: vi.fn(),
 }));
 vi.mock('react', async importOriginal => ({ ...await importOriginal<typeof import('react')>(),
@@ -30,6 +34,8 @@ vi.mock('../lib/api', async importOriginal => ({ ...await importOriginal<typeof 
   fetchCharacters: fixture.fetch, fetchSessions: fixture.fetch, fetchWorlds: fixture.fetch,
 }));
 vi.mock('../lib/adult', () => ({ useAdultContent: () => [false] }));
+vi.mock('../lib/pins', () => ({ usePinnedSessions: () => fixture.pinned, togglePin: vi.fn() }));
+vi.mock('../lib/saved', () => ({ useSavedCharacters: () => fixture.saved }));
 vi.mock('../lib/title', () => ({ useDocumentTitle: vi.fn() }));
 vi.mock('../lib/cloudGuest', () => ({ isCloudGuest: () => fixture.guest, fetchBrowseCatalog: fixture.browse, loginPath: (to: string) => '/login?next=' + encodeURIComponent(to) }));
 vi.mock('./RuntimeGate', () => ({ useAdministrative: () => fixture.administrative, useRuntimeAccess: () => ({}) }));
@@ -62,6 +68,7 @@ function palette(query: string) {
 beforeEach(() => {
   vi.clearAllMocks(); fixture.language = 'en'; fixture.administrative = false; fixture.guest = false;
   fixture.params = new URLSearchParams('mood=butler');
+  fixture.pinned = []; fixture.saved = [];
   vi.stubGlobal('localStorage', { getItem: () => null });
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -154,4 +161,61 @@ it('localizes generated conversation labels while preserving authored names', ()
   expect(sessionTitle({ session_id: 'new', character_name: null }, 'en')).toBe('Free chat');
   expect(sessionTitle({ session_id: 'new', character_name: null })).toBe('フリートーク');
   expect(sessionTitle({ session_id: 'new', character_name: '原文' }, 'en')).toBe('原文');
+});
+
+it('preserves chat-list search, pinning and sort across display languages', () => {
+  const sessions = [
+    { session_id: 'old', count: 2, character_name: null, last_preview: 'Earlier text', last_at: '2026-10-01 10:00:00' },
+    { session_id: 'new', count: 3, character_name: null, last_preview: 'Later text', last_at: '2026-10-02 10:00:00' },
+  ];
+  for (const query of ['Free chat', 'フリートーク']) {
+    for (const language of ['ja', 'en']) {
+      fixture.language = language;
+      const render = (oldest: boolean) => renderToStaticMarkup(view(ChatsLanding,
+        [sessions, [], false, null, null, 0, query, oldest, characters]));
+      const newest = render(false), oldest = render(true);
+      expect(newest.indexOf('href="/chats/new"')).toBeLessThan(newest.indexOf('href="/chats/old"'));
+      expect(oldest.indexOf('href="/chats/old"')).toBeLessThan(oldest.indexOf('href="/chats/new"'));
+      fixture.pinned = ['old'];
+      const pinned = render(false);
+      expect(pinned).toContain(language === 'en' ? 'Pinned' : 'ピン留め');
+      expect(pinned.indexOf('href="/chats/old"')).toBeLessThan(pinned.indexOf('href="/chats/new"'));
+      fixture.pinned = [];
+    }
+  }
+  expect(fixture.fetch).not.toHaveBeenCalled();
+});
+
+it('retains recovery ID/uncertainty warnings and partial-erasure context in English', () => {
+  for (const message of ['下書きの保存データを読み込めません。送信を停止しています。', '下書きを端末に保存できませんでした。',
+    '前の送信結果を確認しています。', '送信IDが変わったため確認を中断しました。', '送信結果のIDが一致しません。',
+    '送信結果をまだ確認できません。', '履歴への保存結果を確認できません。', '保存された返信を履歴で確認できません。']) {
+    expect(friendlyMessage(Error(message), 'en')).not.toMatch(/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u);
+    expect(friendlyMessage(Error(message), 'ja')).toBe(message);
+  }
+  const partial = 'サーバーの会話データは消去しましたが、この端末の下書き・返信履歴の消去を確認できません。Error: Failed to fetch';
+  expect(friendlyMessage(partial, 'en')).toContain('Server conversation data was erased');
+  expect(friendlyMessage(partial, 'en')).toContain('could not be verified');
+  expect(friendlyMessage(partial, 'ja')).toBe(partial);
+  const check = '送信結果の確認に失敗しました (HTTP 404)';
+  expect(friendlyMessage(Error(check), 'en')).toBe('Could not check the send result (HTTP 404).');
+  expect(friendlyMessage(Error(check), 'ja')).toBe(check);
+});
+
+it('keeps story drafts and original prompt instructions when language changes', () => {
+  const draft = { scene: '原文の場面', goal: '原文の目標', pace: 'slow' as const };
+  const original = applyStory('Original base instructions', draft), change = vi.fn();
+  for (const language of ['ja', 'en']) {
+    fixture.language = language;
+    const tree = view(() => StoryControls({ value: original, onChange: change, disabled: false }), [draft]);
+    const html = renderToStaticMarkup(tree);
+    expect(html).toContain('原文の場面'); expect(html).toContain('原文の目標');
+    expect(html).toContain(language === 'en' ? 'Story direction' : '物語の進め方');
+    expect(change).not.toHaveBeenCalled();
+  }
+  const tree = view(() => StoryControls({ value: original, onChange: change, disabled: false }), [draft]);
+  nodes(tree, node => node.type === 'form')[0].props.onSubmit({ preventDefault() {} });
+  expect(change).toHaveBeenCalledOnce();
+  expect(change.mock.calls[0][0]).toContain('Original base instructions');
+  expect(readStory(change.mock.calls[0][0])).toEqual(draft);
 });
