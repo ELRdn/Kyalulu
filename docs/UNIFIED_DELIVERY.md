@@ -11,7 +11,7 @@
 | 好み・お気に入り・興味なしのタグ推薦、先行する年齢/公開/ブロック制限 | 部分実装 | 既存/公開タグfixtureと検索APIを含む制限・順位の試験 |
 | PC単体・オフライン維持と3方式の機能対応表 | 部分実装 | 会話・制作・記憶・要約・World・分岐・入出力・研究の全行確認 |
 | 実行先/モデル/保存/同期の表示、生成中切替の停止・保存確認 | 実装・限定検証 | 3方式での停止/保存/再開・自動転送なしのE2E |
-| Portable再利用、ブラウザ記憶/物語とPython共通fixture | World/cast/Lore、6形式export、JSON/PNG/CHARX/backup import、原本保持・選択履歴のatomic commit、媒体upload/再生取得を実装。34入力と実decoder・実IDBの共通検証 | 他入力形式・全画面媒体操作、実容量・実モデル・実機を含むパリティ試験は残る |
+| Portable再利用、ブラウザ記憶/物語とPython共通fixture | World/cast/Lore、6形式export、JSON/PNG/CHARX/backup・ST/CAI/BYAF import、原本保持・選択履歴のatomic commit、媒体upload/再生取得を実装。47入力と実decoder・実IDBの共通検証 | 各形式の追加実データ・全画面媒体操作、実容量・実モデル・実機を含むパリティ試験は残る |
 | 認証・課金経路とRuntime通信の分離、Cloud鍵をRemoteへ送らない | 実装・限定検証 | 認証切替・Remote通信捕捉・所有者分離試験 |
 | 安定ID/revisionと数値ID互換、永続outbox、自動同期 | Cloud/device/Native-PCを隔離検証。2MB超の分割転送・再開・競合・撤回と断片確認の索引化、実Chromium v1→v2移行を追加 | 分割保存/ストリーム化、250MB/1GB実容量・旧DB復元の全面照合、全方式の統合証拠 |
 | 競合の共通履歴分岐、記憶を自動混合せず出典保持 | state/記憶/作品設定snapshot往復、記録済みrevisionの共通message列、同期済みNative分岐のUUID継承を隔離検証 | 同期前/旧ID移行、祖先本文の復元、旧設定欠落、3方式の実UI確認 |
@@ -66,3 +66,5 @@ Libraryの形式/版/原本、取込みの再送・競合・容量不足、媒�
 [Device exports](validation/2026-10-25-unified-device-exports.md) に記録する。
 Binary取込み・画像実decode・権利確認・owner別媒体と明示再生は
 [Device imports](validation/2026-10-25-unified-device-imports.md) に記録する。
+SillyTavern・Character.AI・BYAFの追加形式と分離した履歴取込みは
+[Source imports](validation/2026-10-25-unified-device-source-imports.md) に記録する。

@@ -40,6 +40,27 @@ it('bounds decompression, checks archive CRCs and refuses duplicate/symlink/over
   await expect(openPortableZip(duplicate)).rejects.toThrow('Duplicate');
 });
 it('accepts large base64 without recursive regex failure and rejects malformed padding',()=>{
-  const raw=new Uint8Array(1024*1024+2);expect(strictBase64(base64(raw))).toEqual(raw);
+  const raw=Uint8Array.from({length:1024*1024+2},(_,index)=>index%251);expect(Buffer.compare(Buffer.from(strictBase64(Buffer.from(raw).toString('base64'))),Buffer.from(raw))).toBe(0);
   for(const bad of ['AA','AAAA=','AA=A','!!!!'])expect(()=>strictBase64(bad)).toThrow();
+});
+it.each(['timezone','calendar','missing-scenario','schema','character-id','greeting','outputs','history-role','image-path'])('rejects malformed BYAF %s without accepting a partial document',async change=>{
+  const source=cases.find(item=>item.name==='byaf/two-scenarios')!,files=await openPortableZip(fromBase64(source.base64)),read=(name:string)=>JSON.parse(new TextDecoder().decode(files.get(name)!)),manifest=read('manifest.json'),character=read(manifest.characters[0]),scenario=read(manifest.scenarios[0]);
+  if(change==='timezone')manifest.createdAt='2026-01-01T00:00:00';
+  if(change==='calendar')scenario.messages[1].outputs[1].activeTimestamp='2026-02-30T00:00:00Z';
+  if(change==='missing-scenario')manifest.scenarios=['scenarios/missing.json'];
+  if(change==='schema')manifest.schemaVersion=2;
+  if(change==='character-id')character.id='other';
+  if(change==='greeting')scenario.firstMessages[0].characterID='other';
+  if(change==='outputs')scenario.messages[1].outputs=[];
+  if(change==='history-role')scenario.messages[0].type='system';
+  if(change==='image-path')character.images[0].path='../private.png';
+  files.set('manifest.json',new TextEncoder().encode(JSON.stringify(manifest)));files.set('characters/alice/character.json',new TextEncoder().encode(JSON.stringify(character)));files.set('scenarios/forest.json',new TextEncoder().encode(JSON.stringify(scenario)));
+  await expect(parseDeviceImport('invalid.byaf',portableZip(files))).rejects.toThrow('BYAF');
+});
+it('keeps connection configuration out of imported sampler settings and the definition opaque',async()=>{
+  const preset=cases.find(item=>item.name==='st/ordered')!,{documents:[profile]}=await parseDeviceImport(preset.filename,fromBase64(preset.base64));
+  expect(profile.profile.settings).toEqual({temperature:.7,repeat_penalty:1.1});expect(profile.profile.model_hint).toBe('display-only');
+  expect(profile.source.original).toMatchObject({api_key:'FAKE-DO-NOT-IMPORT'});
+  const pasted=cases.find(item=>item.name==='cai/pasted-definition')!,{documents:[character]}=await parseDeviceImport(pasted.filename,fromBase64(pasted.base64));
+  expect(character.data.first_mes).toBe('');expect(character.data.definition).toBe('exact\r\nGreeting: INSIDE DEFINITION\r\n  Keep spaces.\r\n');
 });

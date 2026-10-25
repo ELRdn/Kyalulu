@@ -6661,5 +6661,1900 @@
       }
     ],
     "assets": {}
+  },
+  {
+    "name": "st/ordered",
+    "filename": "st-ordered.json",
+    "base64": "eyJuYW1lIjogIk9yZGVyZWQgcHJlc2V0IiwgInByb21wdHMiOiBbeyJpZGVudGlmaWVyIjogIm1haW4iLCAiY29udGVudCI6ICJNQUlOIn0sIHsiaWRlbnRpZmllciI6ICJjdXN0b20iLCAicm9sZSI6ICJ1bnN1cHBvcnRlZCIsICJjb250ZW50IjogIktlZXAgbWUifSwgeyJpZGVudGlmaWVyIjogInVudXNlZCIsICJjb250ZW50IjogIk9GRiJ9XSwgInByb21wdF9vcmRlciI6IFt7ImNoYXJhY3Rlcl9pZCI6IDUwLCAib3JkZXIiOiBbeyJpZGVudGlmaWVyIjogIm1haW4ifV19LCB7ImNoYXJhY3Rlcl9pZCI6IDEwMCwgIm9yZGVyIjogW3siaWRlbnRpZmllciI6ICJjdXN0b20iLCAiZW5hYmxlZCI6IGZhbHNlfSwgeyJpZGVudGlmaWVyIjogIm1haW4ifSwgeyJpZGVudGlmaWVyIjogIm1pc3NpbmcifV19XSwgInRlbXBlcmF0dXJlIjogMC43LCAicmVwX3BlbiI6IDEuMSwgImFwaV9rZXkiOiAiRkFLRS1ETy1OT1QtSU1QT1JUIiwgImFwaV91cmwiOiAiaHR0cHM6Ly9pbnZhbGlkLnRlc3QiLCAibW9kZWwiOiAiZGlzcGxheS1vbmx5IiwgInVua25vd24iOiAzLCAid29ybGRpbmZvIjogeyJuYW1lIjogIldvcmxkIiwgImVudHJpZXMiOiB7IjIiOiB7ImtleSI6ICJzZWEscG9ydCIsICJjb250ZW50IjogIlNlYSJ9LCAiMSI6IHsia2V5IjogWyJuaWdodCJdLCAiY29udGVudCI6ICJEaXNhYmxlZCIsICJ1c2VQcm9iYWJpbGl0eSI6IHRydWV9fX19",
+    "documents": [
+      {
+        "schema_version": 1,
+        "kind": "profile",
+        "name": "Ordered preset",
+        "data": {
+          "description": "",
+          "character_book": {
+            "name": "World",
+            "entries": [
+              {
+                "key": [
+                  "night"
+                ],
+                "content": "Disabled",
+                "useProbability": true,
+                "keys": [
+                  "night"
+                ],
+                "secondary_keys": [],
+                "constant": false,
+                "enabled": false,
+                "insertion_order": 0,
+                "case_sensitive": false,
+                "selective": false,
+                "position": "after_char",
+                "comment": ""
+              },
+              {
+                "key": "sea,port",
+                "content": "Sea",
+                "keys": [
+                  "sea",
+                  "port"
+                ],
+                "secondary_keys": [],
+                "constant": false,
+                "enabled": true,
+                "insertion_order": 1,
+                "case_sensitive": false,
+                "selective": false,
+                "position": "after_char",
+                "comment": ""
+              }
+            ]
+          }
+        },
+        "speaking_style": "",
+        "nsfw": false,
+        "profile": {
+          "settings": {
+            "temperature": 0.7,
+            "repeat_penalty": 1.1
+          },
+          "system_prompt": "",
+          "post_history_instructions": "",
+          "context_template": "",
+          "prompts": [
+            {
+              "identifier": "custom",
+              "role": "system",
+              "content": "Keep me",
+              "marker": true,
+              "enabled": false
+            },
+            {
+              "identifier": "main",
+              "content": "MAIN",
+              "role": "system",
+              "marker": true,
+              "enabled": true
+            },
+            {
+              "identifier": "unused",
+              "content": "OFF",
+              "role": "system",
+              "marker": true,
+              "enabled": false
+            }
+          ],
+          "model_hint": "display-only",
+          "variables": {}
+        },
+        "assets": [],
+        "histories": [],
+        "source_format": "sillytavern_preset",
+        "source": {
+          "filename": "st-ordered.json",
+          "format": "sillytavern_preset",
+          "original": {
+            "name": "Ordered preset",
+            "prompts": [
+              {
+                "identifier": "main",
+                "content": "MAIN"
+              },
+              {
+                "identifier": "custom",
+                "role": "unsupported",
+                "content": "Keep me"
+              },
+              {
+                "identifier": "unused",
+                "content": "OFF"
+              }
+            ],
+            "prompt_order": [
+              {
+                "character_id": 50,
+                "order": [
+                  {
+                    "identifier": "main"
+                  }
+                ]
+              },
+              {
+                "character_id": 100,
+                "order": [
+                  {
+                    "identifier": "custom",
+                    "enabled": false
+                  },
+                  {
+                    "identifier": "main"
+                  },
+                  {
+                    "identifier": "missing"
+                  }
+                ]
+              }
+            ],
+            "temperature": 0.7,
+            "rep_pen": 1.1,
+            "api_key": "FAKE-DO-NOT-IMPORT",
+            "api_url": "https://invalid.test",
+            "model": "display-only",
+            "unknown": 3,
+            "worldinfo": {
+              "name": "World",
+              "entries": {
+                "2": {
+                  "key": "sea,port",
+                  "content": "Sea"
+                },
+                "1": {
+                  "key": [
+                    "night"
+                  ],
+                  "content": "Disabled",
+                  "useProbability": true
+                }
+              }
+            }
+          },
+          "prompt_order_selected": 100
+        },
+        "notices": [
+          {
+            "path": "preset",
+            "status": "converted",
+            "reason": "SillyTavern prompt preset imported as a profile"
+          },
+          {
+            "path": "profile.prompts.custom",
+            "status": "preserved",
+            "reason": "Unsupported message role kept in source"
+          },
+          {
+            "path": "profile.prompts.missing",
+            "status": "error",
+            "reason": "prompt_order references a prompt that is not defined"
+          },
+          {
+            "path": "profile.prompts.unreferenced",
+            "status": "converted",
+            "reason": "1 prompt(s) outside prompt_order preserved but disabled"
+          },
+          {
+            "path": "generation_settings.api_key",
+            "status": "preserved",
+            "reason": "API URL, key, and endpoint configuration is never imported"
+          },
+          {
+            "path": "generation_settings.api_url",
+            "status": "preserved",
+            "reason": "API URL, key, and endpoint configuration is never imported"
+          },
+          {
+            "path": "generation_settings.model",
+            "status": "converted",
+            "reason": "Model name kept as a display hint only"
+          },
+          {
+            "path": "generation_settings.unknown",
+            "status": "preserved",
+            "reason": "Unknown generation setting kept in source only"
+          },
+          {
+            "path": "data.character_book.entries.1",
+            "status": "converted",
+            "reason": "Unsupported advanced condition disabled (regex, probability, or time); source preserved"
+          },
+          {
+            "path": "preset.worldinfo",
+            "status": "converted",
+            "reason": "Embedded world info normalized to a character book"
+          }
+        ]
+      }
+    ],
+    "assets": {}
+  },
+  {
+    "name": "st/first-block-fallback",
+    "filename": "st-first-block-fallback.json",
+    "base64": "eyJuYW1lIjogIk9yZGVyZWQgcHJlc2V0IiwgInByb21wdHMiOiBbeyJpZGVudGlmaWVyIjogIm1haW4iLCAiY29udGVudCI6ICJNQUlOIn0sIHsiaWRlbnRpZmllciI6ICJjdXN0b20iLCAicm9sZSI6ICJ1bnN1cHBvcnRlZCIsICJjb250ZW50IjogIktlZXAgbWUifSwgeyJpZGVudGlmaWVyIjogInVudXNlZCIsICJjb250ZW50IjogIk9GRiJ9XSwgInByb21wdF9vcmRlciI6IFt7ImNoYXJhY3Rlcl9pZCI6IDUwLCAib3JkZXIiOiBbeyJpZGVudGlmaWVyIjogIm1haW4ifV19XSwgInRlbXBlcmF0dXJlIjogMC43LCAicmVwX3BlbiI6IDEuMSwgImFwaV9rZXkiOiAiRkFLRS1ETy1OT1QtSU1QT1JUIiwgImFwaV91cmwiOiAiaHR0cHM6Ly9pbnZhbGlkLnRlc3QiLCAibW9kZWwiOiAiZGlzcGxheS1vbmx5IiwgInVua25vd24iOiAzLCAid29ybGRpbmZvIjogeyJuYW1lIjogIldvcmxkIiwgImVudHJpZXMiOiB7IjIiOiB7ImtleSI6ICJzZWEscG9ydCIsICJjb250ZW50IjogIlNlYSJ9LCAiMSI6IHsia2V5IjogWyJuaWdodCJdLCAiY29udGVudCI6ICJEaXNhYmxlZCIsICJ1c2VQcm9iYWJpbGl0eSI6IHRydWV9fX19",
+    "documents": [
+      {
+        "schema_version": 1,
+        "kind": "profile",
+        "name": "Ordered preset",
+        "data": {
+          "description": "",
+          "character_book": {
+            "name": "World",
+            "entries": [
+              {
+                "key": [
+                  "night"
+                ],
+                "content": "Disabled",
+                "useProbability": true,
+                "keys": [
+                  "night"
+                ],
+                "secondary_keys": [],
+                "constant": false,
+                "enabled": false,
+                "insertion_order": 0,
+                "case_sensitive": false,
+                "selective": false,
+                "position": "after_char",
+                "comment": ""
+              },
+              {
+                "key": "sea,port",
+                "content": "Sea",
+                "keys": [
+                  "sea",
+                  "port"
+                ],
+                "secondary_keys": [],
+                "constant": false,
+                "enabled": true,
+                "insertion_order": 1,
+                "case_sensitive": false,
+                "selective": false,
+                "position": "after_char",
+                "comment": ""
+              }
+            ]
+          }
+        },
+        "speaking_style": "",
+        "nsfw": false,
+        "profile": {
+          "settings": {
+            "temperature": 0.7,
+            "repeat_penalty": 1.1
+          },
+          "system_prompt": "",
+          "post_history_instructions": "",
+          "context_template": "",
+          "prompts": [
+            {
+              "identifier": "main",
+              "content": "MAIN",
+              "role": "system",
+              "marker": true,
+              "enabled": true
+            },
+            {
+              "identifier": "custom",
+              "role": "system",
+              "content": "Keep me",
+              "marker": true,
+              "enabled": false
+            },
+            {
+              "identifier": "unused",
+              "content": "OFF",
+              "role": "system",
+              "marker": true,
+              "enabled": false
+            }
+          ],
+          "model_hint": "display-only",
+          "variables": {}
+        },
+        "assets": [],
+        "histories": [],
+        "source_format": "sillytavern_preset",
+        "source": {
+          "filename": "st-first-block-fallback.json",
+          "format": "sillytavern_preset",
+          "original": {
+            "name": "Ordered preset",
+            "prompts": [
+              {
+                "identifier": "main",
+                "content": "MAIN"
+              },
+              {
+                "identifier": "custom",
+                "role": "unsupported",
+                "content": "Keep me"
+              },
+              {
+                "identifier": "unused",
+                "content": "OFF"
+              }
+            ],
+            "prompt_order": [
+              {
+                "character_id": 50,
+                "order": [
+                  {
+                    "identifier": "main"
+                  }
+                ]
+              }
+            ],
+            "temperature": 0.7,
+            "rep_pen": 1.1,
+            "api_key": "FAKE-DO-NOT-IMPORT",
+            "api_url": "https://invalid.test",
+            "model": "display-only",
+            "unknown": 3,
+            "worldinfo": {
+              "name": "World",
+              "entries": {
+                "2": {
+                  "key": "sea,port",
+                  "content": "Sea"
+                },
+                "1": {
+                  "key": [
+                    "night"
+                  ],
+                  "content": "Disabled",
+                  "useProbability": true
+                }
+              }
+            }
+          },
+          "prompt_order_selected": 50
+        },
+        "notices": [
+          {
+            "path": "preset",
+            "status": "converted",
+            "reason": "SillyTavern prompt preset imported as a profile"
+          },
+          {
+            "path": "preset.prompt_order",
+            "status": "preserved",
+            "reason": "No character_id 100 block found; first prompt_order block used"
+          },
+          {
+            "path": "profile.prompts.custom",
+            "status": "preserved",
+            "reason": "Unsupported message role kept in source"
+          },
+          {
+            "path": "profile.prompts.unreferenced",
+            "status": "converted",
+            "reason": "2 prompt(s) outside prompt_order preserved but disabled"
+          },
+          {
+            "path": "generation_settings.api_key",
+            "status": "preserved",
+            "reason": "API URL, key, and endpoint configuration is never imported"
+          },
+          {
+            "path": "generation_settings.api_url",
+            "status": "preserved",
+            "reason": "API URL, key, and endpoint configuration is never imported"
+          },
+          {
+            "path": "generation_settings.model",
+            "status": "converted",
+            "reason": "Model name kept as a display hint only"
+          },
+          {
+            "path": "generation_settings.unknown",
+            "status": "preserved",
+            "reason": "Unknown generation setting kept in source only"
+          },
+          {
+            "path": "data.character_book.entries.1",
+            "status": "converted",
+            "reason": "Unsupported advanced condition disabled (regex, probability, or time); source preserved"
+          },
+          {
+            "path": "preset.worldinfo",
+            "status": "converted",
+            "reason": "Embedded world info normalized to a character book"
+          }
+        ]
+      }
+    ],
+    "assets": {}
+  },
+  {
+    "name": "st/standalone",
+    "filename": "st-standalone.json",
+    "base64": "eyJuYW1lIjogIlN0YW5kYWxvbmUiLCAiZ2VuZXJhdGlvbl9zZXR0aW5ncyI6IHsidGVtcCI6IDAuMiwgIm1heF90b2tlbnMiOiAxMDAsICJwcm94eV9ob3N0IjogIkZBS0UifSwgInRlbXBlcmF0dXJlIjogMC44LCAic3lzdGVtX3Byb21wdCI6ICJTWVMiLCAic3Rvcnlfc3RyaW5nIjogIkNvbnRleHQiLCAicG9zdF9oaXN0b3J5X2luc3RydWN0aW9ucyI6ICJFTkQifQ==",
+    "documents": [
+      {
+        "schema_version": 1,
+        "kind": "profile",
+        "name": "Standalone",
+        "data": {},
+        "speaking_style": "",
+        "nsfw": false,
+        "profile": {
+          "settings": {
+            "temperature": 0.8,
+            "max_tokens": 100
+          },
+          "system_prompt": "SYS",
+          "post_history_instructions": "END",
+          "context_template": "Context",
+          "prompts": [],
+          "model_hint": "",
+          "variables": {}
+        },
+        "assets": [],
+        "histories": [],
+        "source_format": "sillytavern_preset",
+        "source": {
+          "original": {
+            "name": "Standalone",
+            "generation_settings": {
+              "temp": 0.2,
+              "max_tokens": 100,
+              "proxy_host": "FAKE"
+            },
+            "temperature": 0.8,
+            "system_prompt": "SYS",
+            "story_string": "Context",
+            "post_history_instructions": "END"
+          }
+        },
+        "notices": [
+          {
+            "path": "preset",
+            "status": "converted",
+            "reason": "Standalone SillyTavern profile imported"
+          },
+          {
+            "path": "generation_settings.proxy_host",
+            "status": "preserved",
+            "reason": "API URL, key, and endpoint configuration is never imported"
+          },
+          {
+            "path": "generation_settings.generation_settings",
+            "status": "preserved",
+            "reason": "Unknown generation setting kept in source only"
+          },
+          {
+            "path": "generation_settings.post_history_instructions",
+            "status": "preserved",
+            "reason": "Unknown generation setting kept in source only"
+          }
+        ]
+      }
+    ],
+    "assets": {}
+  },
+  {
+    "name": "st/world-dictionary",
+    "filename": "st-world-dictionary.json",
+    "base64": "eyJuYW1lIjogIldvcmxkIiwgImVudHJpZXMiOiB7IjEwIjogeyJrZXkiOiAic2VhLHBvcnQiLCAiY29udGVudCI6ICJTZWEifSwgIjIiOiB7ImtleSI6ICJzdGFycyIsICJjb250ZW50IjogIk5pZ2h0In19fQ==",
+    "documents": [
+      {
+        "schema_version": 1,
+        "kind": "lorebook",
+        "name": "World",
+        "data": {
+          "character_book": {
+            "name": "World",
+            "entries": [
+              {
+                "key": "stars",
+                "content": "Night",
+                "keys": [
+                  "stars"
+                ],
+                "secondary_keys": [],
+                "constant": false,
+                "enabled": true,
+                "insertion_order": 0,
+                "case_sensitive": false,
+                "selective": false,
+                "position": "after_char",
+                "comment": ""
+              },
+              {
+                "key": "sea,port",
+                "content": "Sea",
+                "keys": [
+                  "sea",
+                  "port"
+                ],
+                "secondary_keys": [],
+                "constant": false,
+                "enabled": true,
+                "insertion_order": 1,
+                "case_sensitive": false,
+                "selective": false,
+                "position": "after_char",
+                "comment": ""
+              }
+            ]
+          }
+        },
+        "speaking_style": "",
+        "nsfw": false,
+        "profile": {
+          "settings": {},
+          "system_prompt": "",
+          "post_history_instructions": "",
+          "context_template": "",
+          "prompts": [],
+          "model_hint": "",
+          "variables": {}
+        },
+        "assets": [],
+        "histories": [],
+        "source_format": "sillytavern_worldinfo",
+        "source": {
+          "filename": "st-world-dictionary.json",
+          "format": "sillytavern_worldinfo",
+          "original": {
+            "name": "World",
+            "entries": {
+              "10": {
+                "key": "sea,port",
+                "content": "Sea"
+              },
+              "2": {
+                "key": "stars",
+                "content": "Night"
+              }
+            }
+          }
+        },
+        "notices": [
+          {
+            "path": "lorebook",
+            "status": "converted",
+            "reason": "SillyTavern world info imported as a lorebook"
+          }
+        ]
+      }
+    ],
+    "assets": {}
+  },
+  {
+    "name": "st/world-array",
+    "filename": "st-world-array.json",
+    "base64": "eyJlbnRyaWVzIjogW3siY29udGVudCI6ICJBbHdheXMiLCAiY29uc3RhbnQiOiB0cnVlfV19",
+    "documents": [
+      {
+        "schema_version": 1,
+        "kind": "lorebook",
+        "name": "st-world-array",
+        "data": {
+          "character_book": {
+            "name": "",
+            "entries": [
+              {
+                "content": "Always",
+                "constant": true,
+                "keys": [],
+                "secondary_keys": [],
+                "enabled": true,
+                "insertion_order": 0,
+                "case_sensitive": false,
+                "selective": false,
+                "position": "after_char",
+                "comment": ""
+              }
+            ]
+          }
+        },
+        "speaking_style": "",
+        "nsfw": false,
+        "profile": {
+          "settings": {},
+          "system_prompt": "",
+          "post_history_instructions": "",
+          "context_template": "",
+          "prompts": [],
+          "model_hint": "",
+          "variables": {}
+        },
+        "assets": [],
+        "histories": [],
+        "source_format": "sillytavern_worldinfo",
+        "source": {
+          "filename": "st-world-array.json",
+          "format": "sillytavern_worldinfo",
+          "original": {
+            "entries": [
+              {
+                "content": "Always",
+                "constant": true
+              }
+            ]
+          }
+        },
+        "notices": [
+          {
+            "path": "lorebook",
+            "status": "converted",
+            "reason": "World entries imported as a lorebook"
+          }
+        ]
+      }
+    ],
+    "assets": {}
+  },
+  {
+    "name": "cai/character",
+    "filename": "cai-character.json",
+    "base64": "eyJuYW1lIjogIkd1aWRlIiwgImRlc2NyaXB0aW9uIjogIlB1YmxpYyBkZXNjcmlwdGlvbiIsICJncmVldGluZyI6ICJIZWxsbyIsICJkZWZpbml0aW9uIjogInt7Y2hhcn19OiBLZWVwIGV4YWN0XHJcbiIsICJjcmVhdG9yTm90ZXMiOiAiTk9UIFBST01QVCJ9",
+    "documents": [
+      {
+        "schema_version": 1,
+        "kind": "character",
+        "name": "Guide",
+        "data": {
+          "description": "Public description",
+          "first_mes": "Hello",
+          "greeting": "Hello",
+          "definition": "{{char}}: Keep exact\r\n",
+          "personality": "",
+          "scenario": "",
+          "creator_notes": "NOT PROMPT"
+        },
+        "speaking_style": "",
+        "nsfw": false,
+        "profile": {
+          "settings": {},
+          "system_prompt": "",
+          "post_history_instructions": "",
+          "context_template": "",
+          "prompts": [],
+          "model_hint": "",
+          "variables": {}
+        },
+        "assets": [],
+        "histories": [],
+        "source_format": "characterai",
+        "source": {
+          "filename": "cai-character.json",
+          "format": "characterai",
+          "original": {
+            "name": "Guide",
+            "description": "Public description",
+            "greeting": "Hello",
+            "definition": "{{char}}: Keep exact\r\n",
+            "creatorNotes": "NOT PROMPT"
+          }
+        },
+        "notices": [
+          {
+            "path": "character.definition",
+            "status": "converted",
+            "reason": "Character.AI definition preserved verbatim; creator notes stay out of prompt text"
+          },
+          {
+            "path": "character.top_level",
+            "status": "preserved",
+            "reason": "Unknown fields kept: creatorNotes"
+          }
+        ]
+      }
+    ],
+    "assets": {}
+  },
+  {
+    "name": "cai/lore-array",
+    "filename": "cai-lore-array.json",
+    "base64": "W3siY29tbWVudCI6ICJGaXJzdCIsICJrZXkiOiAic2VhLHBvcnQiLCAiY29udGVudCI6ICJTZWEifSwgeyJ0aXRsZSI6ICJTZWNvbmQiLCAia2V5cyI6IFsibmlnaHQiXSwgImNvbnRlbnQiOiAiTmlnaHQiLCAiZW5hYmxlZCI6IGZhbHNlfV0=",
+    "documents": [
+      {
+        "schema_version": 1,
+        "kind": "lorebook",
+        "name": "cai-lore-array",
+        "data": {
+          "character_book": {
+            "name": "cai-lore-array",
+            "entries": [
+              {
+                "comment": "First",
+                "keys": [
+                  "sea",
+                  "port"
+                ],
+                "content": "Sea",
+                "enabled": true
+              },
+              {
+                "comment": "Second",
+                "keys": [
+                  "night"
+                ],
+                "content": "Night",
+                "enabled": false
+              }
+            ]
+          }
+        },
+        "speaking_style": "",
+        "nsfw": false,
+        "profile": {
+          "settings": {},
+          "system_prompt": "",
+          "post_history_instructions": "",
+          "context_template": "",
+          "prompts": [],
+          "model_hint": "",
+          "variables": {}
+        },
+        "assets": [],
+        "histories": [],
+        "source_format": "characterai_lorebook",
+        "source": {
+          "filename": "cai-lore-array.json",
+          "format": "characterai_lorebook",
+          "original": [
+            {
+              "comment": "First",
+              "key": "sea,port",
+              "content": "Sea"
+            },
+            {
+              "title": "Second",
+              "keys": [
+                "night"
+              ],
+              "content": "Night",
+              "enabled": false
+            }
+          ]
+        },
+        "notices": [
+          {
+            "path": "lorebook",
+            "status": "converted",
+            "reason": "Character.AI lorebook imported with 2 entries"
+          }
+        ]
+      }
+    ],
+    "assets": {}
+  },
+  {
+    "name": "cai/lore-object",
+    "filename": "cai-lore-object.json",
+    "base64": "eyJuYW1lIjogIkxvcmUiLCAiZW50cmllcyI6IFt7ImtleSI6IFsic2VhIl0sICJjb250ZW50IjogIlNlYSJ9XX0=",
+    "documents": [
+      {
+        "schema_version": 1,
+        "kind": "lorebook",
+        "name": "Lore",
+        "data": {
+          "character_book": {
+            "name": "Lore",
+            "entries": [
+              {
+                "comment": "",
+                "keys": [
+                  "sea"
+                ],
+                "content": "Sea",
+                "enabled": true
+              }
+            ]
+          }
+        },
+        "speaking_style": "",
+        "nsfw": false,
+        "profile": {
+          "settings": {},
+          "system_prompt": "",
+          "post_history_instructions": "",
+          "context_template": "",
+          "prompts": [],
+          "model_hint": "",
+          "variables": {}
+        },
+        "assets": [],
+        "histories": [],
+        "source_format": "characterai_lorebook",
+        "source": {
+          "filename": "cai-lore-object.json",
+          "format": "characterai_lorebook",
+          "original": {
+            "name": "Lore",
+            "entries": [
+              {
+                "key": [
+                  "sea"
+                ],
+                "content": "Sea"
+              }
+            ]
+          }
+        },
+        "notices": [
+          {
+            "path": "lorebook",
+            "status": "converted",
+            "reason": "Character.AI lorebook imported with 1 entries"
+          }
+        ]
+      }
+    ],
+    "assets": {}
+  },
+  {
+    "name": "cai/pasted-definition",
+    "filename": "paste.txt",
+    "base64": "TmFtZTogR3VpZGUNCkRlc2NyaXB0aW9uOiBQdWJsaWMNCkRlZmluaXRpb246IGV4YWN0DQpHcmVldGluZzogSU5TSURFIERFRklOSVRJT04NCiAgS2VlcCBzcGFjZXMuDQo=",
+    "documents": [
+      {
+        "schema_version": 1,
+        "kind": "character",
+        "name": "Guide",
+        "data": {
+          "description": "Public",
+          "first_mes": "",
+          "greeting": "",
+          "definition": "exact\r\nGreeting: INSIDE DEFINITION\r\n  Keep spaces.\r\n",
+          "personality": "",
+          "scenario": "",
+          "creator_notes": ""
+        },
+        "speaking_style": "",
+        "nsfw": false,
+        "profile": {
+          "settings": {},
+          "system_prompt": "",
+          "post_history_instructions": "",
+          "context_template": "",
+          "prompts": [],
+          "model_hint": "",
+          "variables": {}
+        },
+        "assets": [],
+        "histories": [],
+        "source_format": "characterai",
+        "source": {
+          "filename": "paste.txt",
+          "format": "characterai",
+          "original": {
+            "description": "Public",
+            "greeting": "",
+            "definition": "exact\r\nGreeting: INSIDE DEFINITION\r\n  Keep spaces.\r\n",
+            "name": "Guide"
+          },
+          "pasted": true
+        },
+        "notices": [
+          {
+            "path": "character.definition",
+            "status": "converted",
+            "reason": "Character.AI definition preserved verbatim; creator notes stay out of prompt text"
+          }
+        ]
+      }
+    ],
+    "assets": {}
+  },
+  {
+    "name": "cai/pasted-partial",
+    "filename": "partial.txt",
+    "base64": "TmFtZTogR3VpZGUKR3JlZXRpbmc6IEhpCg==",
+    "documents": [
+      {
+        "schema_version": 1,
+        "kind": "character",
+        "name": "Guide",
+        "data": {
+          "description": "",
+          "first_mes": "Hi",
+          "greeting": "Hi",
+          "definition": "",
+          "personality": "",
+          "scenario": "",
+          "creator_notes": ""
+        },
+        "speaking_style": "",
+        "nsfw": false,
+        "profile": {
+          "settings": {},
+          "system_prompt": "",
+          "post_history_instructions": "",
+          "context_template": "",
+          "prompts": [],
+          "model_hint": "",
+          "variables": {}
+        },
+        "assets": [],
+        "histories": [],
+        "source_format": "characterai",
+        "source": {
+          "filename": "partial.txt",
+          "format": "characterai",
+          "original": {
+            "description": "",
+            "greeting": "Hi",
+            "definition": "",
+            "name": "Guide"
+          },
+          "pasted": true
+        },
+        "notices": [
+          {
+            "path": "character.definition",
+            "status": "converted",
+            "reason": "Character.AI definition preserved verbatim; creator notes stay out of prompt text"
+          }
+        ]
+      }
+    ],
+    "assets": {}
+  },
+  {
+    "name": "cai/lore-text",
+    "filename": "lore.txt",
+    "base64": "TG9yZWJvb2sgTmFtZTogQm9vawpFbnRyeSBUaXRsZTogSGFyYm9yCktleXdvcmRzOiBzZWEscG9ydApDb250ZW50OiBGaXJzdApTZWNvbmQgbGluZQpFbnRyeSBUaXRsZTogTmlnaHQKQ29udGVudDogRGFyawo=",
+    "documents": [
+      {
+        "schema_version": 1,
+        "kind": "lorebook",
+        "name": "Book",
+        "data": {
+          "character_book": {
+            "name": "Book",
+            "entries": [
+              {
+                "comment": "Harbor",
+                "keys": [
+                  "sea",
+                  "port"
+                ],
+                "content": "First\nSecond line",
+                "enabled": true
+              },
+              {
+                "comment": "Night",
+                "keys": [],
+                "content": "Dark",
+                "enabled": true
+              }
+            ]
+          }
+        },
+        "speaking_style": "",
+        "nsfw": false,
+        "profile": {
+          "settings": {},
+          "system_prompt": "",
+          "post_history_instructions": "",
+          "context_template": "",
+          "prompts": [],
+          "model_hint": "",
+          "variables": {}
+        },
+        "assets": [],
+        "histories": [],
+        "source_format": "characterai_lorebook",
+        "source": {
+          "filename": "lore.txt",
+          "format": "characterai_lorebook",
+          "original": {
+            "text": "Lorebook Name: Book\nEntry Title: Harbor\nKeywords: sea,port\nContent: First\nSecond line\nEntry Title: Night\nContent: Dark\n"
+          }
+        },
+        "notices": [
+          {
+            "path": "lorebook",
+            "status": "converted",
+            "reason": "Character.AI lorebook imported with 2 entries"
+          }
+        ]
+      }
+    ],
+    "assets": {}
+  },
+  {
+    "name": "byaf/two-scenarios",
+    "filename": "pack.byaf",
+    "base64": "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",
+    "documents": [
+      {
+        "schema_version": 1,
+        "kind": "character",
+        "name": "アリス · 森",
+        "data": {
+          "name": "Alice",
+          "nickname": "Alice",
+          "description": "不思議の国の案内人。日本語で話す。",
+          "scenario": "森の入り口",
+          "first_mes": "こんにちは",
+          "mes_example": "{{char}}: 森を案内するよ。",
+          "creator": "",
+          "character_book": {
+            "entries": [
+              {
+                "keys": [
+                  "鍵"
+                ],
+                "content": "鍵は青い。",
+                "enabled": true,
+                "insertion_order": 0,
+                "use_regex": false,
+                "extensions": {}
+              }
+            ],
+            "extensions": {}
+          }
+        },
+        "speaking_style": "",
+        "nsfw": false,
+        "profile": {
+          "settings": {
+            "temperature": 0.7,
+            "repeat_penalty": 1.1,
+            "repeat_last_n": 64,
+            "top_k": 40,
+            "top_p": 0.9,
+            "min_p": 0.05
+          },
+          "system_prompt": "優しく短く話す。",
+          "post_history_instructions": "",
+          "context_template": "",
+          "prompts": [],
+          "model_hint": "",
+          "variables": {}
+        },
+        "assets": [
+          {
+            "name": "portrait",
+            "type": "icon",
+            "uri": "characters/alice/images/portrait.png",
+            "media_type": "image/png",
+            "asset_id": "e5dd92acd7d1f9550a1848c765289b33b408f0f6c002fd935696ac778965182d"
+          }
+        ],
+        "histories": [
+          {
+            "name": "森",
+            "messages": [
+              {
+                "role": "user",
+                "content": "こんにちは",
+                "created_at": "2026-01-01T00:00:00Z",
+                "origin": {
+                  "source": "byaf",
+                  "scenario": "scenarios/forest.json",
+                  "index": 0,
+                  "original": {
+                    "type": "human",
+                    "text": "こんにちは",
+                    "createdAt": "2026-01-01T00:00:00Z",
+                    "updatedAt": "2026-01-01T00:00:00Z"
+                  },
+                  "selected_active_timestamp": null
+                }
+              },
+              {
+                "role": "assistant",
+                "content": "選択された返答",
+                "created_at": "2026-01-01T00:00:00Z",
+                "origin": {
+                  "source": "byaf",
+                  "scenario": "scenarios/forest.json",
+                  "index": 1,
+                  "original": {
+                    "type": "ai",
+                    "outputs": [
+                      {
+                        "text": "前の候補",
+                        "createdAt": "2026-01-01T00:00:00Z",
+                        "updatedAt": "2026-01-01T00:00:00Z",
+                        "activeTimestamp": "2026-01-01T00:00:00Z"
+                      },
+                      {
+                        "text": "選択された返答",
+                        "createdAt": "2026-01-01T00:00:00Z",
+                        "updatedAt": "2026-01-01T00:00:00Z",
+                        "activeTimestamp": "2026-01-02T00:00:00Z"
+                      }
+                    ]
+                  },
+                  "selected_active_timestamp": "2026-01-02T00:00:00Z"
+                }
+              }
+            ]
+          }
+        ],
+        "source_format": "byaf",
+        "source": {
+          "original": {
+            "manifest": {
+              "schemaVersion": 1,
+              "createdAt": "2026-01-01T00:00:00Z",
+              "characters": [
+                "characters/alice/character.json"
+              ],
+              "scenarios": [
+                "scenarios/forest.json",
+                "scenarios/library.json"
+              ]
+            },
+            "character": {
+              "schemaVersion": 1,
+              "id": "alice",
+              "name": "Alice",
+              "displayName": "アリス",
+              "isNSFW": false,
+              "persona": "不思議の国の案内人。日本語で話す。",
+              "createdAt": "2026-01-01T00:00:00Z",
+              "updatedAt": "2026-01-01T00:00:00Z",
+              "loreItems": [
+                {
+                  "key": "鍵",
+                  "value": "鍵は青い。"
+                }
+              ],
+              "images": [
+                {
+                  "path": "images/portrait.png",
+                  "label": "portrait"
+                }
+              ]
+            },
+            "scenario": {
+              "schemaVersion": 1,
+              "title": "森",
+              "formattingInstructions": "優しく短く話す。",
+              "minP": 0.05,
+              "minPEnabled": true,
+              "temperature": 0.7,
+              "repeatPenalty": 1.1,
+              "repeatLastN": 64,
+              "topK": 40,
+              "topP": 0.9,
+              "exampleMessages": [
+                {
+                  "characterID": "alice",
+                  "text": "森を案内するよ。"
+                }
+              ],
+              "canDeleteExampleMessages": true,
+              "firstMessages": [
+                {
+                  "characterID": "alice",
+                  "text": "こんにちは"
+                }
+              ],
+              "narrative": "森の入り口",
+              "promptTemplate": "ChatML",
+              "grammar": null,
+              "messages": [
+                {
+                  "type": "human",
+                  "text": "こんにちは",
+                  "createdAt": "2026-01-01T00:00:00Z",
+                  "updatedAt": "2026-01-01T00:00:00Z"
+                },
+                {
+                  "type": "ai",
+                  "outputs": [
+                    {
+                      "text": "前の候補",
+                      "createdAt": "2026-01-01T00:00:00Z",
+                      "updatedAt": "2026-01-01T00:00:00Z",
+                      "activeTimestamp": "2026-01-01T00:00:00Z"
+                    },
+                    {
+                      "text": "選択された返答",
+                      "createdAt": "2026-01-01T00:00:00Z",
+                      "updatedAt": "2026-01-01T00:00:00Z",
+                      "activeTimestamp": "2026-01-02T00:00:00Z"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "scenario_path": "scenarios/forest.json",
+          "spec_revision": "7ebf2fdbb06a36b4f900a8de45480c4a2965df03"
+        },
+        "notices": [
+          {
+            "path": "byaf",
+            "status": "converted",
+            "reason": "BYAF v1 character and scenario combined; source retained"
+          },
+          {
+            "path": "scenario.promptTemplate",
+            "status": "preserved",
+            "reason": "Model-specific formatting is stored, not executed"
+          }
+        ]
+      },
+      {
+        "schema_version": 1,
+        "kind": "character",
+        "name": "アリス · 図書館",
+        "data": {
+          "name": "Alice",
+          "nickname": "Alice",
+          "description": "不思議の国の案内人。日本語で話す。",
+          "scenario": "本に囲まれている",
+          "first_mes": "こんにちは",
+          "mes_example": "{{char}}: 森を案内するよ。",
+          "creator": "",
+          "character_book": {
+            "entries": [
+              {
+                "keys": [
+                  "鍵"
+                ],
+                "content": "鍵は青い。",
+                "enabled": true,
+                "insertion_order": 0,
+                "use_regex": false,
+                "extensions": {}
+              }
+            ],
+            "extensions": {}
+          }
+        },
+        "speaking_style": "",
+        "nsfw": false,
+        "profile": {
+          "settings": {
+            "temperature": 0.7,
+            "repeat_penalty": 1.1,
+            "repeat_last_n": 64,
+            "top_k": 40,
+            "top_p": 0.9,
+            "min_p": 0.05
+          },
+          "system_prompt": "優しく短く話す。",
+          "post_history_instructions": "",
+          "context_template": "",
+          "prompts": [],
+          "model_hint": "",
+          "variables": {}
+        },
+        "assets": [
+          {
+            "name": "portrait",
+            "type": "icon",
+            "uri": "characters/alice/images/portrait.png",
+            "media_type": "image/png",
+            "asset_id": "e5dd92acd7d1f9550a1848c765289b33b408f0f6c002fd935696ac778965182d"
+          }
+        ],
+        "histories": [
+          {
+            "name": "図書館",
+            "messages": [
+              {
+                "role": "user",
+                "content": "こんにちは",
+                "created_at": "2026-01-01T00:00:00Z",
+                "origin": {
+                  "source": "byaf",
+                  "scenario": "scenarios/library.json",
+                  "index": 0,
+                  "original": {
+                    "type": "human",
+                    "text": "こんにちは",
+                    "createdAt": "2026-01-01T00:00:00Z",
+                    "updatedAt": "2026-01-01T00:00:00Z"
+                  },
+                  "selected_active_timestamp": null
+                }
+              },
+              {
+                "role": "assistant",
+                "content": "選択された返答",
+                "created_at": "2026-01-01T00:00:00Z",
+                "origin": {
+                  "source": "byaf",
+                  "scenario": "scenarios/library.json",
+                  "index": 1,
+                  "original": {
+                    "type": "ai",
+                    "outputs": [
+                      {
+                        "text": "前の候補",
+                        "createdAt": "2026-01-01T00:00:00Z",
+                        "updatedAt": "2026-01-01T00:00:00Z",
+                        "activeTimestamp": "2026-01-01T00:00:00Z"
+                      },
+                      {
+                        "text": "選択された返答",
+                        "createdAt": "2026-01-01T00:00:00Z",
+                        "updatedAt": "2026-01-01T00:00:00Z",
+                        "activeTimestamp": "2026-01-02T00:00:00Z"
+                      }
+                    ]
+                  },
+                  "selected_active_timestamp": "2026-01-02T00:00:00Z"
+                }
+              }
+            ]
+          }
+        ],
+        "source_format": "byaf",
+        "source": {
+          "original": {
+            "manifest": {
+              "schemaVersion": 1,
+              "createdAt": "2026-01-01T00:00:00Z",
+              "characters": [
+                "characters/alice/character.json"
+              ],
+              "scenarios": [
+                "scenarios/forest.json",
+                "scenarios/library.json"
+              ]
+            },
+            "character": {
+              "schemaVersion": 1,
+              "id": "alice",
+              "name": "Alice",
+              "displayName": "アリス",
+              "isNSFW": false,
+              "persona": "不思議の国の案内人。日本語で話す。",
+              "createdAt": "2026-01-01T00:00:00Z",
+              "updatedAt": "2026-01-01T00:00:00Z",
+              "loreItems": [
+                {
+                  "key": "鍵",
+                  "value": "鍵は青い。"
+                }
+              ],
+              "images": [
+                {
+                  "path": "images/portrait.png",
+                  "label": "portrait"
+                }
+              ]
+            },
+            "scenario": {
+              "schemaVersion": 1,
+              "title": "図書館",
+              "formattingInstructions": "優しく短く話す。",
+              "minP": 0.05,
+              "minPEnabled": true,
+              "temperature": 0.7,
+              "repeatPenalty": 1.1,
+              "repeatLastN": 64,
+              "topK": 40,
+              "topP": 0.9,
+              "exampleMessages": [
+                {
+                  "characterID": "alice",
+                  "text": "森を案内するよ。"
+                }
+              ],
+              "canDeleteExampleMessages": true,
+              "firstMessages": [
+                {
+                  "characterID": "alice",
+                  "text": "こんにちは"
+                }
+              ],
+              "narrative": "本に囲まれている",
+              "promptTemplate": "ChatML",
+              "grammar": null,
+              "messages": [
+                {
+                  "type": "human",
+                  "text": "こんにちは",
+                  "createdAt": "2026-01-01T00:00:00Z",
+                  "updatedAt": "2026-01-01T00:00:00Z"
+                },
+                {
+                  "type": "ai",
+                  "outputs": [
+                    {
+                      "text": "前の候補",
+                      "createdAt": "2026-01-01T00:00:00Z",
+                      "updatedAt": "2026-01-01T00:00:00Z",
+                      "activeTimestamp": "2026-01-01T00:00:00Z"
+                    },
+                    {
+                      "text": "選択された返答",
+                      "createdAt": "2026-01-01T00:00:00Z",
+                      "updatedAt": "2026-01-01T00:00:00Z",
+                      "activeTimestamp": "2026-01-02T00:00:00Z"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "scenario_path": "scenarios/library.json",
+          "spec_revision": "7ebf2fdbb06a36b4f900a8de45480c4a2965df03"
+        },
+        "notices": [
+          {
+            "path": "byaf",
+            "status": "converted",
+            "reason": "BYAF v1 character and scenario combined; source retained"
+          },
+          {
+            "path": "scenario.promptTemplate",
+            "status": "preserved",
+            "reason": "Model-specific formatting is stored, not executed"
+          }
+        ]
+      }
+    ],
+    "assets": {
+      "e5dd92acd7d1f9550a1848c765289b33b408f0f6c002fd935696ac778965182d": {
+        "base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNoaGgAAAMEAYFL09IQAAAAAElFTkSuQmCC",
+        "mime": "image/png"
+      }
+    }
+  },
+  {
+    "name": "byaf/microsecond-offset-order",
+    "filename": "precise.byaf",
+    "base64": "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",
+    "documents": [
+      {
+        "schema_version": 1,
+        "kind": "character",
+        "name": "アリス · 森",
+        "data": {
+          "name": "Alice",
+          "nickname": "Alice",
+          "description": "不思議の国の案内人。日本語で話す。",
+          "scenario": "森の入り口",
+          "first_mes": "こんにちは",
+          "mes_example": "{{char}}: 森を案内するよ。",
+          "creator": "",
+          "character_book": {
+            "entries": [
+              {
+                "keys": [
+                  "鍵"
+                ],
+                "content": "鍵は青い。",
+                "enabled": true,
+                "insertion_order": 0,
+                "use_regex": false,
+                "extensions": {}
+              }
+            ],
+            "extensions": {}
+          }
+        },
+        "speaking_style": "",
+        "nsfw": false,
+        "profile": {
+          "settings": {
+            "temperature": 0.7,
+            "repeat_penalty": 1.1,
+            "repeat_last_n": 64,
+            "top_k": 40,
+            "top_p": 0.9,
+            "min_p": 0.05
+          },
+          "system_prompt": "優しく短く話す。",
+          "post_history_instructions": "",
+          "context_template": "",
+          "prompts": [],
+          "model_hint": "",
+          "variables": {}
+        },
+        "assets": [
+          {
+            "name": "portrait",
+            "type": "icon",
+            "uri": "characters/alice/images/portrait.png",
+            "media_type": "image/png",
+            "asset_id": "e5dd92acd7d1f9550a1848c765289b33b408f0f6c002fd935696ac778965182d"
+          },
+          {
+            "name": "森",
+            "type": "background",
+            "uri": "characters/alice/images/portrait.png",
+            "media_type": "image/png",
+            "asset_id": "e5dd92acd7d1f9550a1848c765289b33b408f0f6c002fd935696ac778965182d"
+          }
+        ],
+        "histories": [
+          {
+            "name": "森",
+            "messages": [
+              {
+                "role": "user",
+                "content": "こんにちは",
+                "created_at": "2026-01-01T00:00:00Z",
+                "origin": {
+                  "source": "byaf",
+                  "scenario": "scenarios/forest.json",
+                  "index": 0,
+                  "original": {
+                    "type": "human",
+                    "text": "こんにちは",
+                    "createdAt": "2026-01-01T00:00:00Z",
+                    "updatedAt": "2026-01-01T00:00:00Z"
+                  },
+                  "selected_active_timestamp": null
+                }
+              },
+              {
+                "role": "assistant",
+                "content": "前の候補",
+                "created_at": "2026-01-01T00:00:00Z",
+                "origin": {
+                  "source": "byaf",
+                  "scenario": "scenarios/forest.json",
+                  "index": 1,
+                  "original": {
+                    "type": "ai",
+                    "outputs": [
+                      {
+                        "text": "前の候補",
+                        "createdAt": "2026-01-01T00:00:00Z",
+                        "updatedAt": "2026-01-01T00:00:00Z",
+                        "activeTimestamp": "2026-01-01T00:00:00.123456Z"
+                      },
+                      {
+                        "text": "選択された返答",
+                        "createdAt": "2026-01-01T00:00:00Z",
+                        "updatedAt": "2026-01-01T00:00:00Z",
+                        "activeTimestamp": "2026-01-01T09:00:00.123455+09:00"
+                      }
+                    ]
+                  },
+                  "selected_active_timestamp": "2026-01-01T00:00:00.123456Z"
+                }
+              }
+            ]
+          }
+        ],
+        "source_format": "byaf",
+        "source": {
+          "original": {
+            "manifest": {
+              "schemaVersion": 1,
+              "createdAt": "2026-01-01T00:00:00Z",
+              "characters": [
+                "characters/alice/character.json"
+              ],
+              "scenarios": [
+                "scenarios/forest.json",
+                "scenarios/library.json"
+              ]
+            },
+            "character": {
+              "schemaVersion": 1,
+              "id": "alice",
+              "name": "Alice",
+              "displayName": "アリス",
+              "isNSFW": false,
+              "persona": "不思議の国の案内人。日本語で話す。",
+              "createdAt": "2026-01-01T00:00:00Z",
+              "updatedAt": "2026-01-01T00:00:00Z",
+              "loreItems": [
+                {
+                  "key": "鍵",
+                  "value": "鍵は青い。"
+                }
+              ],
+              "images": [
+                {
+                  "path": "images/portrait.png",
+                  "label": "portrait"
+                }
+              ]
+            },
+            "scenario": {
+              "schemaVersion": 1,
+              "title": "森",
+              "formattingInstructions": "優しく短く話す。",
+              "minP": 0.05,
+              "minPEnabled": true,
+              "temperature": 0.7,
+              "repeatPenalty": 1.1,
+              "repeatLastN": 64,
+              "topK": 40,
+              "topP": 0.9,
+              "exampleMessages": [
+                {
+                  "characterID": "alice",
+                  "text": "森を案内するよ。"
+                }
+              ],
+              "canDeleteExampleMessages": true,
+              "firstMessages": [
+                {
+                  "characterID": "alice",
+                  "text": "こんにちは"
+                }
+              ],
+              "narrative": "森の入り口",
+              "promptTemplate": "ChatML",
+              "grammar": null,
+              "messages": [
+                {
+                  "type": "human",
+                  "text": "こんにちは",
+                  "createdAt": "2026-01-01T00:00:00Z",
+                  "updatedAt": "2026-01-01T00:00:00Z"
+                },
+                {
+                  "type": "ai",
+                  "outputs": [
+                    {
+                      "text": "前の候補",
+                      "createdAt": "2026-01-01T00:00:00Z",
+                      "updatedAt": "2026-01-01T00:00:00Z",
+                      "activeTimestamp": "2026-01-01T00:00:00.123456Z"
+                    },
+                    {
+                      "text": "選択された返答",
+                      "createdAt": "2026-01-01T00:00:00Z",
+                      "updatedAt": "2026-01-01T00:00:00Z",
+                      "activeTimestamp": "2026-01-01T09:00:00.123455+09:00"
+                    }
+                  ]
+                }
+              ],
+              "backgroundImage": "characters/alice/images/portrait.png"
+            }
+          },
+          "scenario_path": "scenarios/forest.json",
+          "spec_revision": "7ebf2fdbb06a36b4f900a8de45480c4a2965df03"
+        },
+        "notices": [
+          {
+            "path": "byaf",
+            "status": "converted",
+            "reason": "BYAF v1 character and scenario combined; source retained"
+          },
+          {
+            "path": "scenario.promptTemplate",
+            "status": "preserved",
+            "reason": "Model-specific formatting is stored, not executed"
+          }
+        ]
+      },
+      {
+        "schema_version": 1,
+        "kind": "character",
+        "name": "アリス · 図書館",
+        "data": {
+          "name": "Alice",
+          "nickname": "Alice",
+          "description": "不思議の国の案内人。日本語で話す。",
+          "scenario": "本に囲まれている",
+          "first_mes": "こんにちは",
+          "mes_example": "{{char}}: 森を案内するよ。",
+          "creator": "",
+          "character_book": {
+            "entries": [
+              {
+                "keys": [
+                  "鍵"
+                ],
+                "content": "鍵は青い。",
+                "enabled": true,
+                "insertion_order": 0,
+                "use_regex": false,
+                "extensions": {}
+              }
+            ],
+            "extensions": {}
+          }
+        },
+        "speaking_style": "",
+        "nsfw": false,
+        "profile": {
+          "settings": {
+            "temperature": 0.7,
+            "repeat_penalty": 1.1,
+            "repeat_last_n": 64,
+            "top_k": 40,
+            "top_p": 0.9,
+            "min_p": 0.05
+          },
+          "system_prompt": "優しく短く話す。",
+          "post_history_instructions": "",
+          "context_template": "",
+          "prompts": [],
+          "model_hint": "",
+          "variables": {}
+        },
+        "assets": [
+          {
+            "name": "portrait",
+            "type": "icon",
+            "uri": "characters/alice/images/portrait.png",
+            "media_type": "image/png",
+            "asset_id": "e5dd92acd7d1f9550a1848c765289b33b408f0f6c002fd935696ac778965182d"
+          }
+        ],
+        "histories": [
+          {
+            "name": "図書館",
+            "messages": [
+              {
+                "role": "user",
+                "content": "こんにちは",
+                "created_at": "2026-01-01T00:00:00Z",
+                "origin": {
+                  "source": "byaf",
+                  "scenario": "scenarios/library.json",
+                  "index": 0,
+                  "original": {
+                    "type": "human",
+                    "text": "こんにちは",
+                    "createdAt": "2026-01-01T00:00:00Z",
+                    "updatedAt": "2026-01-01T00:00:00Z"
+                  },
+                  "selected_active_timestamp": null
+                }
+              },
+              {
+                "role": "assistant",
+                "content": "選択された返答",
+                "created_at": "2026-01-01T00:00:00Z",
+                "origin": {
+                  "source": "byaf",
+                  "scenario": "scenarios/library.json",
+                  "index": 1,
+                  "original": {
+                    "type": "ai",
+                    "outputs": [
+                      {
+                        "text": "前の候補",
+                        "createdAt": "2026-01-01T00:00:00Z",
+                        "updatedAt": "2026-01-01T00:00:00Z",
+                        "activeTimestamp": "2026-01-01T00:00:00Z"
+                      },
+                      {
+                        "text": "選択された返答",
+                        "createdAt": "2026-01-01T00:00:00Z",
+                        "updatedAt": "2026-01-01T00:00:00Z",
+                        "activeTimestamp": "2026-01-02T00:00:00Z"
+                      }
+                    ]
+                  },
+                  "selected_active_timestamp": "2026-01-02T00:00:00Z"
+                }
+              }
+            ]
+          }
+        ],
+        "source_format": "byaf",
+        "source": {
+          "original": {
+            "manifest": {
+              "schemaVersion": 1,
+              "createdAt": "2026-01-01T00:00:00Z",
+              "characters": [
+                "characters/alice/character.json"
+              ],
+              "scenarios": [
+                "scenarios/forest.json",
+                "scenarios/library.json"
+              ]
+            },
+            "character": {
+              "schemaVersion": 1,
+              "id": "alice",
+              "name": "Alice",
+              "displayName": "アリス",
+              "isNSFW": false,
+              "persona": "不思議の国の案内人。日本語で話す。",
+              "createdAt": "2026-01-01T00:00:00Z",
+              "updatedAt": "2026-01-01T00:00:00Z",
+              "loreItems": [
+                {
+                  "key": "鍵",
+                  "value": "鍵は青い。"
+                }
+              ],
+              "images": [
+                {
+                  "path": "images/portrait.png",
+                  "label": "portrait"
+                }
+              ]
+            },
+            "scenario": {
+              "schemaVersion": 1,
+              "title": "図書館",
+              "formattingInstructions": "優しく短く話す。",
+              "minP": 0.05,
+              "minPEnabled": true,
+              "temperature": 0.7,
+              "repeatPenalty": 1.1,
+              "repeatLastN": 64,
+              "topK": 40,
+              "topP": 0.9,
+              "exampleMessages": [
+                {
+                  "characterID": "alice",
+                  "text": "森を案内するよ。"
+                }
+              ],
+              "canDeleteExampleMessages": true,
+              "firstMessages": [
+                {
+                  "characterID": "alice",
+                  "text": "こんにちは"
+                }
+              ],
+              "narrative": "本に囲まれている",
+              "promptTemplate": "ChatML",
+              "grammar": null,
+              "messages": [
+                {
+                  "type": "human",
+                  "text": "こんにちは",
+                  "createdAt": "2026-01-01T00:00:00Z",
+                  "updatedAt": "2026-01-01T00:00:00Z"
+                },
+                {
+                  "type": "ai",
+                  "outputs": [
+                    {
+                      "text": "前の候補",
+                      "createdAt": "2026-01-01T00:00:00Z",
+                      "updatedAt": "2026-01-01T00:00:00Z",
+                      "activeTimestamp": "2026-01-01T00:00:00Z"
+                    },
+                    {
+                      "text": "選択された返答",
+                      "createdAt": "2026-01-01T00:00:00Z",
+                      "updatedAt": "2026-01-01T00:00:00Z",
+                      "activeTimestamp": "2026-01-02T00:00:00Z"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "scenario_path": "scenarios/library.json",
+          "spec_revision": "7ebf2fdbb06a36b4f900a8de45480c4a2965df03"
+        },
+        "notices": [
+          {
+            "path": "byaf",
+            "status": "converted",
+            "reason": "BYAF v1 character and scenario combined; source retained"
+          },
+          {
+            "path": "scenario.promptTemplate",
+            "status": "preserved",
+            "reason": "Model-specific formatting is stored, not executed"
+          }
+        ]
+      }
+    ],
+    "assets": {
+      "e5dd92acd7d1f9550a1848c765289b33b408f0f6c002fd935696ac778965182d": {
+        "base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNoaGgAAAMEAYFL09IQAAAAAElFTkSuQmCC",
+        "mime": "image/png"
+      }
+    }
   }
 ]
