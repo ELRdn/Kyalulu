@@ -10,6 +10,7 @@ import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 import { useAdministrative, useRuntimeAccess } from './components/RuntimeGate';
 import { subscribeAppAnalyticsPageView, syncAppAnalytics } from './lib/analytics';
+import { useLanguage } from './lib/appContext';
 
 // 制作・検証向けの画面は初回表示に不要なので分割して遅延読み込みする
 const Create = lazy(() => import("./pages/Create"));
@@ -27,7 +28,8 @@ const PublishedDetail = lazy(() => import('./pages/Published').then(module=>({de
 
 const deferred = (node: ReactNode) => <Suspense fallback={<div className="k-page" aria-busy="true" />}>{node}</Suspense>;
 function AdminPage({ children }: { children: ReactNode }) {
-  return useAdministrative() ? children : <div className="k-page"><h1>サーバー側で管理する機能です</h1><p>モデルの管理・診断・比較実験は、サーバーを実行しているPCで開いてください。この端末ではキャラの作成と会話を楽しめます。</p></div>;
+  const en = useLanguage() === 'en';
+  return useAdministrative() ? children : <div className="k-page"><h1>{en ? 'This feature requires PC management access' : 'サーバー側で管理する機能です'}</h1><p>{en ? 'Open model management, diagnostics and comparison experiments on the PC running the server. Character creation and conversations are available on this device.' : 'モデルの管理・診断・比較実験は、サーバーを実行しているPCで開いてください。この端末ではキャラの作成と会話を楽しめます。'}</p></div>;
 }
 
 export default function App() {

@@ -17,8 +17,11 @@ import { RuntimeDownload } from "../components/RuntimeMedia";
 import "./research.css";
 import { useDocumentTitle } from "../lib/title";
 import { Link } from "react-router-dom";
+import { useLanguage } from "../lib/appContext";
+import { friendlyMessage } from "../lib/errors";
 
 function Stars({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  const en = useLanguage() === "en";
   return (
     <span style={{ display: "inline-flex", gap: 2 }}>
       {[1, 2, 3, 4, 5].map((n) => (
@@ -33,7 +36,8 @@ function Stars({ value, onChange }: { value: number; onChange: (n: number) => vo
             color: n <= value ? "#f59e0b" : "var(--border-strong)",
             lineHeight: 1,
           }}
-          title={`${n}`}
+          aria-label={en ? `Rate ${n} out of 5` : `5段階中${n}で評価`}
+          aria-pressed={n === value}
         >
           ★
         </button>
@@ -52,16 +56,17 @@ function JsonBlock({ value }: { value: unknown }) {
 
 type InspectorTab = "prompt" | "token" | "state" | "settings" | "telemetry" | "validation";
 
-const INSPECTOR_TABS: { id: InspectorTab; label: string }[] = [
-  { id: "prompt", label: "Prompt" },
-  { id: "token", label: "Token" },
-  { id: "state", label: "State" },
-  { id: "settings", label: "Settings" },
-  { id: "telemetry", label: "Telemetry" },
-  { id: "validation", label: "Validation" },
+const INSPECTOR_TABS: { id: InspectorTab; en: string; ja: string }[] = [
+  { id: "prompt", en: "Prompt", ja: "プロンプト" },
+  { id: "token", en: "Tokens", ja: "トークン" },
+  { id: "state", en: "State", ja: "状態" },
+  { id: "settings", en: "Settings", ja: "生成設定" },
+  { id: "telemetry", en: "Telemetry", ja: "計測" },
+  { id: "validation", en: "Validation", ja: "検証" },
 ];
 
 function TurnInspector({ turn }: { turn: ExperimentDetail["turns"][number] }) {
+  const en = useLanguage() === "en";
   const [tab, setTab] = useState<InspectorTab>("prompt");
   return (
     <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
@@ -70,6 +75,7 @@ function TurnInspector({ turn }: { turn: ExperimentDetail["turns"][number] }) {
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
+            aria-pressed={tab === t.id}
             style={{
               padding: "3px 8px",
               borderRadius: 6,
@@ -80,19 +86,19 @@ function TurnInspector({ turn }: { turn: ExperimentDetail["turns"][number] }) {
               cursor: "pointer",
             }}
           >
-            {t.label}
+            {en ? t.en : t.ja}
           </button>
         ))}
       </div>
       <div style={{ fontSize: 10, color: "var(--text-dim)" }}>
         {tab === "prompt" && (
           <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 10, lineHeight: 1.6, background: "var(--bg-subtle)", padding: 8, borderRadius: 6, margin: 0, maxHeight: 200, overflow: "auto", border: "1px solid var(--border)" }}>
-            {turn.raw_prompt || "(なし)"}
+            {turn.raw_prompt || (en ? "(none)" : "(なし)")}
           </pre>
         )}
-        {tab === "token" && <><div>推定トークン（実測値ではありません）</div><JsonBlock value={turn.token_budget ?? {compiler_tokens: turn.compiled?.token_estimate}} /></>}
+        {tab === "token" && <><div>{en ? "Estimated tokens (not measured usage)" : "推定トークン（実測値ではありません）"}</div><JsonBlock value={turn.token_budget ?? {compiler_tokens: turn.compiled?.token_estimate}} /></>}
         {tab === "state" && <JsonBlock value={{before: turn.state_before, after: turn.state}} />}
-        {tab === "settings" && <><div>requested: 要求 / applied: 適用 / unsupported: 未対応</div><JsonBlock value={turn.generation_config} /></>}
+        {tab === "settings" && <><div>{en ? "requested: requested values / applied: effective values / unsupported: unsupported settings" : "requested: 要求 / applied: 適用 / unsupported: 未対応"}</div><JsonBlock value={turn.generation_config} /></>}
         {tab === "telemetry" && <JsonBlock value={turn.telemetry} />}
         {tab === "validation" && <JsonBlock value={{validation: turn.validation, attempts: turn.attempts}} />}
       </div>
@@ -111,11 +117,12 @@ function RatingEditor({
   rating: { score: number; comment: string; rater?: string } | undefined;
   onSaved: (turn: number, r: { score: number; comment: string; rater: string }) => void;
 }) {
+  const language = useLanguage(), en = language === "en";
   const [score, setScore] = useState(rating?.score ?? 0);
   const [comment, setComment] = useState(rating?.comment ?? "");
   const [rater, setRater] = useState(rating?.rater ?? "local");
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
 
   const save = async () => {
     setSaving(true);
@@ -124,7 +131,7 @@ function RatingEditor({
       await putRating(expId, turn, score, comment, rater);
       onSaved(turn, { score, comment, rater });
     } catch (e) {
-      setError(String(e));
+      setError(e);
     } finally {
       setSaving(false);
     }
@@ -138,7 +145,8 @@ function RatingEditor({
         <input
           value={rater}
           onChange={(e) => setRater(e.target.value)}
-          placeholder="rater"
+          aria-label={en ? "Rater" : "評価者"}
+          placeholder={en ? "Rater" : "評価者"}
           style={{ width: 90, padding: "4px 6px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-input)", fontSize: 10 }}
         />
         <button
@@ -146,16 +154,17 @@ function RatingEditor({
           disabled={saving}
           style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: saving ? "var(--border)" : "var(--accent)", color: saving ? "var(--text-dim)" : "var(--accent-text)", fontSize: 10, cursor: saving ? "not-allowed" : "pointer" }}
         >
-          {saving ? "保存中..." : "保存"}
+          {saving ? (en ? "Saving…" : "保存中…") : (en ? "Save" : "保存")}
         </button>
       </div>
       <input
         value={comment}
         onChange={(e) => setComment(e.target.value)}
-        placeholder="コメント（任意）"
+        aria-label={en ? "Comment (optional)" : "コメント（任意）"}
+        placeholder={en ? "Comment (optional)" : "コメント（任意）"}
         style={{ padding: "4px 6px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-input)", fontSize: 10 }}
       />
-      {error && <div style={{ fontSize: 10, color: "var(--error-text)" }}>保存エラー: {error}</div>}
+      {error != null && <div role="alert" style={{ fontSize: 10, color: "var(--error-text)" }}>{en ? "Could not save: " : "保存エラー: "}{friendlyMessage(error, language)}</div>}
     </div>
   );
 }
@@ -179,10 +188,11 @@ function ExperimentColumn({
   showNsfw: boolean;
   onReplayed: (id: string) => void;
 }) {
+  const language = useLanguage(), en = language === "en";
   const [detail, setDetail] = useState<ExperimentDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [replaying, setReplaying] = useState(false);
-  const [replayError, setReplayError] = useState<string | null>(null);
+  const [replayError, setReplayError] = useState<unknown>(null);
 
   useEffect(() => {
     if (!expId) return;
@@ -196,9 +206,9 @@ function ExperimentColumn({
     return () => { active = false; };
   }, [expId]);
 
-  if (!expId) return <div style={{ padding: 24, color: "var(--text-dim)", fontSize: 13 }}>未選択</div>;
-  if (loading) return <div style={{ padding: 24, color: "var(--text-dim)", fontSize: 13 }}>読込中…</div>;
-  if (!detail) return <div style={{ padding: 24, color: "var(--error-text)", fontSize: 13 }}>取得失敗</div>;
+  if (!expId) return <div style={{ padding: 24, color: "var(--text-dim)", fontSize: 13 }}>{en ? "No experiment selected" : "未選択"}</div>;
+  if (loading) return <div role="status" style={{ padding: 24, color: "var(--text-dim)", fontSize: 13 }}>{en ? "Loading…" : "読込中…"}</div>;
+  if (!detail) return <div role="alert" style={{ padding: 24, color: "var(--error-text)", fontSize: 13 }}>{en ? "Could not load the experiment" : "取得失敗"}</div>;
 
   const expStatus = (detail.meta as any).status as string | undefined;
 
@@ -209,7 +219,7 @@ function ExperimentColumn({
       const results = await replayExperiment(detail.meta.experiment_id as string, showNsfw);
       if (results[0]) onReplayed(results[0].experiment_id);
     } catch (e) {
-      setReplayError(String(e));
+      setReplayError(e);
     } finally {
       setReplaying(false);
     }
@@ -221,32 +231,32 @@ function ExperimentColumn({
       <div style={{ position: "sticky", top: 0, zIndex: 1, background: "var(--bg-card)", borderBottom: "1px solid var(--border)", padding: "10px 12px", display: "grid", gap: 6 }}>
         <div style={{ fontWeight: 700, fontSize: 12, color: "var(--text)", wordBreak: "break-all" }}>{detail.meta.experiment_id}</div>
         <div style={{ fontSize: 11, color: "var(--text-dim)", display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <span>model: <code>{detail.meta.model_id}</code></span>
-          <span>scenario: <code>{detail.meta.scenario_id}</code></span>
-          <span>run#{detail.meta.run_number}</span>
+          <span>{en ? "Model: " : "モデル: "}<code>{detail.meta.model_id}</code></span>
+          <span>{en ? "Scenario: " : "シナリオ: "}<code>{detail.meta.scenario_id}</code></span>
+          <span>{en ? "Run #" : "実行 #"}{detail.meta.run_number}</span>
           <span>{detail.meta.character_id ?? "-"}/{detail.meta.world_id ?? "-"}</span>
         </div>
-        <div style={{ fontSize: 10, color: "var(--text-faint)" }}>{detail.meta.timestamp as string} · {detail.turns.length} turns · {detail.meta.prompt_version as string}</div>
+        <div style={{ fontSize: 10, color: "var(--text-faint)" }}>{detail.meta.timestamp as string} · {detail.turns.length} {en ? "turns" : "ターン"} · {detail.meta.prompt_version as string}</div>
         {expStatus && (
           <div style={{ fontSize: 10, color: expStatus === "failed" ? "var(--error-text)" : "var(--text-dim)", fontWeight: 600 }}>
-            ステータス: {expStatus}
+            {en ? "Status: " : "ステータス: "}{expStatus}
           </div>
         )}
         {((detail as any).metrics || (detail.meta as any).metrics) && (
           <div style={{ fontSize: 10, color: "var(--text-dim)", display: "flex", gap: 8, flexWrap: "wrap", background: "var(--bg-subtle)", padding: "4px 6px", borderRadius: 6, border: "1px solid var(--border)" }}>
             {(() => { const m = (detail as any).metrics || (detail.meta as any).metrics; return (
               <>
-                <span>chars {m.avg_chars} avg</span>
-                <span>fail {m.failure_rate}</span>
-                <span>empty {m.empty_rate}</span>
-                {m.repetition_score !== null && <span>rep {m.repetition_score}</span>}
-                {m.avg_elapsed_ms !== null && <span>{m.avg_elapsed_ms}ms avg</span>}
+                <span>{en ? "Average characters: " : "平均文字数: "}{m.avg_chars}</span>
+                <span>{en ? "Failure rate: " : "失敗率: "}{m.failure_rate}</span>
+                <span>{en ? "Empty rate: " : "空応答率: "}{m.empty_rate}</span>
+                {m.repetition_score !== null && <span>{en ? "Repetition: " : "反復: "}{m.repetition_score}</span>}
+                {m.avg_elapsed_ms !== null && <span>{en ? "Average latency: " : "平均時間: "}{m.avg_elapsed_ms}ms</span>}
                 {m.memory && (
                   <span title={Object.entries(m.memory.outcomes ?? {}).map(([k, v]) => `${k}: ${v}`).join(" / ")}>
-                    {(detail.meta as any).memory_enabled ? "🧠 on" : "memory off"} · recall {m.memory.recalled}/{m.memory.probes}
-                    {m.memory.stored ? ` · stored ${m.memory.stored}` : ""}
-                    {m.memory.unsupported_stored ? ` · 根拠? ${m.memory.unsupported_stored}` : ""}
-                    {m.memory.hallucinated ? ` · halluc ${m.memory.hallucinated}` : ""}
+                    {(detail.meta as any).memory_enabled ? (en ? "Memory on" : "記憶あり") : (en ? "Memory off" : "記憶なし")} · {en ? "Recall: " : "想起: "}{m.memory.recalled}/{m.memory.probes}
+                    {m.memory.stored ? ` · ${en ? "Stored" : "保存"}: ${m.memory.stored}` : ""}
+                    {m.memory.unsupported_stored ? ` · ${en ? "Unsupported memories" : "根拠のない記憶"}: ${m.memory.unsupported_stored}` : ""}
+                    {m.memory.hallucinated ? ` · ${en ? "Hallucinations" : "捏造"}: ${m.memory.hallucinated}` : ""}
                   </span>
                 )}
               </>
@@ -259,16 +269,16 @@ function ExperimentColumn({
             download
             style={{ fontSize: 10, color: "var(--accent)", textDecoration: "underline" }}
           >
-            export
+            {en ? "Export" : "書き出し"}
           </RuntimeDownload>
           <button
             onClick={handleReplay}
             disabled={replaying}
             style={{ padding: "3px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-subtle)", color: "var(--text)", fontSize: 10, cursor: replaying ? "not-allowed" : "pointer" }}
           >
-            {replaying ? "再実行中..." : "↻ replay"}
+            {replaying ? (en ? "Replaying…" : "再実行中…") : (en ? "↻ Replay" : "↻ 再実行")}
           </button>
-          {replayError && <span style={{ fontSize: 10, color: "var(--error-text)" }}>{replayError}</span>}
+          {replayError != null && <span role="alert" style={{ fontSize: 10, color: "var(--error-text)" }}>{friendlyMessage(replayError, language)}</span>}
         </div>
       </div>
       <div
@@ -309,11 +319,12 @@ function ExperimentColumn({
                   <MarkdownView content={t.assistant} />
                 </div>
                 <RatingEditor
+                  key={`${detail.meta.experiment_id}:${t.turn}`}
                   expId={detail.meta.experiment_id as string}
                   turn={t.turn}
                   rating={rating}
                   onSaved={(turn, r) => {
-                    setDetail((prev) => (prev ? { ...prev, ratings: { ...prev.ratings, [String(turn)]: { score: r.score, comment: r.comment, rater: r.rater } } } : prev));
+                    setDetail((prev) => (prev?.meta.experiment_id === detail.meta.experiment_id ? { ...prev, ratings: { ...prev.ratings, [String(turn)]: { score: r.score, comment: r.comment, rater: r.rater } } } : prev));
                   }}
                 />
                 <TurnInspector turn={t} />
@@ -327,7 +338,8 @@ function ExperimentColumn({
 }
 
 export default function ResearchPage() {
-  useDocumentTitle("Research");
+  const language = useLanguage(), en = language === "en";
+  useDocumentTitle(en ? "Research" : "研究");
   const [exps, setExps] = useState<ExperimentMeta[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [models, setModels] = useState<{ id: string }[]>([]);
@@ -342,7 +354,7 @@ export default function ResearchPage() {
   const [showNsfw, setShowNsfw] = useState(false);
   const [board, setBoard] = useState<Leaderboard | null>(null);
   const [boardScope, setBoardScope] = useState<"official" | "all">("official");
-  const [runError, setRunError] = useState<string | null>(null);
+  const [runError, setRunError] = useState<unknown>(null);
   const [mobileCol, setMobileCol] = useState(0);
   const [focus, setFocus] = useState<"A" | "B" | null>(null);
   const colScrollRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -392,7 +404,7 @@ export default function ResearchPage() {
       await load();
       if (res.length) setSelected(res.map((r: any) => r.experiment_id).slice(0, 3));
     } catch (e) {
-      setRunError(String(e));
+      setRunError(e);
     } finally {
       setRunning(false);
     }
@@ -436,11 +448,12 @@ export default function ResearchPage() {
     <div key={label} className={`k-research-col ${mobileCol === idx ? "is-mobile-active" : ""}`} style={{ display: "flex", flexDirection: "column", minHeight: 0, borderRight: idx < 2 ? "1px solid var(--border)" : "none", background: "var(--bg)" }}>
       <div style={{ padding: "6px 12px", borderBottom: "1px solid var(--border)", background: "var(--bg-card)", fontWeight: 700, fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
         <span>
-          {label} {cols[idx] ? "" : "(空)"}
+          {label} {cols[idx] ? "" : (en ? "(empty)" : "(空)")}
           {label !== "C" && (
             <button
               onClick={() => { setFocus(focus ? null : label); if (mobileCol === 2) setMobileCol(0); }}
-              title={focus ? "A/B/C表示" : "A/B Focus"}
+              title={focus ? (en ? "Show A/B/C" : "A/B/C表示") : (en ? "Focus on A/B" : "A/Bに集中")}
+              aria-label={focus ? (en ? "Show A/B/C" : "A/B/C表示") : (en ? `Focus on ${label}` : `${label}に集中`)}
               style={{ marginLeft: 6, padding: "2px 6px", borderRadius: 6, border: focus === label ? "1px solid var(--accent)" : "1px solid var(--border)", background: focus === label ? "var(--accent)" : "var(--bg-subtle)", color: focus === label ? "var(--accent-text)" : "var(--text)", fontSize: 9, cursor: "pointer" }}
             >
               {focus === label ? "✕" : "◎"}
@@ -471,44 +484,44 @@ export default function ResearchPage() {
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, background: "var(--bg)" }}>
       {/* ツールバー */}
       <div style={{ padding: 12, borderBottom: "1px solid var(--border)", background: "var(--bg-card)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <div style={{ fontWeight: 700, fontSize: 13 }}>Research — A/B/C</div>
-        <Link to="/research/benchmarks" style={{ fontSize: 12 }}>長ターン・記憶の比較実験</Link>
-        <span style={{ fontSize: 11, color: "var(--text-dim)", border: "1px solid var(--border)", padding: "2px 8px", borderRadius: 99 }}>{exps.length} experiments</span>
+        <div style={{ fontWeight: 700, fontSize: 13 }}>{en ? "Research" : "研究"} — A/B/C</div>
+        <Link to="/research/benchmarks" style={{ fontSize: 12 }}>{en ? "Long-turn and memory benchmarks" : "長ターン・記憶の比較実験"}</Link>
+        <span style={{ fontSize: 11, color: "var(--text-dim)", border: "1px solid var(--border)", padding: "2px 8px", borderRadius: 99 }}>{en ? `${exps.length} experiments` : `実験 ${exps.length}件`}</span>
         <label style={{ fontSize: 11, display: "flex", gap: 4, alignItems: "center", color: showNsfw ? "var(--error-text)" : "var(--text-dim)" }}>
-          <input type="checkbox" checked={showNsfw} onChange={(e) => setShowNsfw(e.target.checked)} /> NSFW
+          <input type="checkbox" checked={showNsfw} onChange={(e) => setShowNsfw(e.target.checked)} /> {en ? "Adult content (NSFW)" : "成人向け (NSFW)"}
         </label>
         <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          <select value={runScenario} onChange={(e) => setRunScenario(e.target.value)} style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-input)", fontSize: 12 }}>
+          <select aria-label={en ? "Scenario" : "シナリオ"} value={runScenario} onChange={(e) => setRunScenario(e.target.value)} style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-input)", fontSize: 12 }}>
             {scenarios.map((s: any) => (
-              <option key={s.id} value={s.id}>{s.id}{s.official ? " · official SFW" : ""}{s.nsfw ? " 🔞" : ""}</option>
+              <option key={s.id} value={s.id}>{s.id}{s.official ? (en ? " · official SFW" : " · 公式SFW") : ""}{s.nsfw ? " 🔞" : ""}</option>
             ))}
           </select>
-          <select value={runModel} onChange={(e) => setRunModel(e.target.value)} style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-input)", fontSize: 12 }}>
+          <select aria-label={en ? "Model" : "モデル"} value={runModel} onChange={(e) => setRunModel(e.target.value)} style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-input)", fontSize: 12 }}>
             {models.map((m: any) => (
               <option key={m.id} value={m.id}>{m.id}</option>
             ))}
           </select>
           <label style={{ fontSize: 11, display: "flex", gap: 4, alignItems: "center" }}>
-            runs <input type="number" min={1} max={3} value={runs} onChange={(e) => setRuns(Math.max(1, Math.min(3, parseInt(e.target.value) || 1)))} style={{ width: 48, padding: "4px 6px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-input)", fontSize: 12 }} />
+            {en ? "Runs" : "実行回数"} <input type="number" min={1} max={3} value={runs} onChange={(e) => setRuns(Math.max(1, Math.min(3, parseInt(e.target.value) || 1)))} style={{ width: 48, padding: "4px 6px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-input)", fontSize: 12 }} />
           </label>
-          <label style={{ fontSize: 11, display: "flex", gap: 4, alignItems: "center" }} title="実行ごとに独立した記憶領域を使い、提案された記憶を保存・検索・注入する">
-            <input type="checkbox" checked={runMemory} onChange={(e) => setRunMemory(e.target.checked)} /> Memory
+          <label style={{ fontSize: 11, display: "flex", gap: 4, alignItems: "center" }} title={en ? "Store, retrieve and inject proposed memories in a separate memory scope for each run" : "実行ごとに独立した記憶領域を使い、提案された記憶を保存・検索・注入する"}>
+            <input type="checkbox" checked={runMemory} onChange={(e) => setRunMemory(e.target.checked)} /> {en ? "Memory" : "記憶"}
           </label>
           <button onClick={handleRun} disabled={running} style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: running ? "var(--border)" : "var(--accent)", color: running ? "var(--text-dim)" : "var(--accent-text)", fontSize: 12, cursor: running ? "not-allowed" : "pointer" }}>
-            {running ? "実行中..." : "▶ 実行"}
+            {running ? (en ? "Running…" : "実行中…") : (en ? "▶ Run" : "▶ 実行")}
           </button>
-          <button onClick={load} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-card)", fontSize: 12, cursor: "pointer" }}>↻</button>
+          <button onClick={load} aria-label={en ? "Reload experiments" : "実験を再読込"} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-card)", fontSize: 12, cursor: "pointer" }}>↻</button>
           <label style={{ fontSize: 11, display: "flex", gap: 4, alignItems: "center" }}>
-            <input type="checkbox" checked={syncScroll} onChange={(e) => setSyncScroll(e.target.checked)} /> 同期
+            <input type="checkbox" checked={syncScroll} onChange={(e) => setSyncScroll(e.target.checked)} /> {en ? "Sync scrolling" : "スクロール同期"}
           </label>
         </div>
       </div>
 
       {/* 実験一覧（折りたたみ） */}
       <details open style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-subtle)" }}>
-        <summary style={{ padding: "8px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600, color: "var(--text)" }}>実験一覧（最大3件選択 → 下にA/B/Cで比較） — 選択: {selected.length}/3</summary>
+        <summary style={{ padding: "8px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600, color: "var(--text)" }}>{en ? "Experiments (select up to 3 to compare below) — Selected: " : "実験一覧（最大3件選択 → 下にA/B/Cで比較） — 選択: "}{selected.length}/3</summary>
         <div style={{ padding: "0 12px 12px", display: "grid", gap: 6, maxHeight: 220, overflowY: "auto" }}>
-          {exps.length === 0 && <div style={{ fontSize: 12, color: "var(--text-dim)", padding: 8 }}>まだ experiments がありません。上の「▶ 実行」で作成してね。</div>}
+          {exps.length === 0 && <div style={{ fontSize: 12, color: "var(--text-dim)", padding: 8 }}>{en ? "No experiments yet. Use ▶ Run above to create one." : "まだ実験がありません。上の「▶ 実行」で作成してね。"}</div>}
           {exps.map((e) => {
             const active = selected.includes(e.experiment_id);
             const isNsfw = (e as any).nsfw;
@@ -526,27 +539,27 @@ export default function ResearchPage() {
       {/* M6: 公式リーダーボード */}
       <details open style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-card)" }}>
         <summary style={{ padding: "8px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "var(--text)", display: "flex", gap: 8, alignItems: "center" }}>
-          🏆 リーダーボード <span style={{ fontWeight: 400, fontSize: 10, color: "var(--text-dim)" }}>{board ? `${board.ranking.length} models · ${board.total_experiments} exps` : "読込中..."}</span>
+          🏆 {en ? "Leaderboard" : "リーダーボード"} <span style={{ fontWeight: 400, fontSize: 10, color: "var(--text-dim)" }}>{board ? (en ? `${board.ranking.length} models · ${board.total_experiments} experiments` : `${board.ranking.length}モデル · ${board.total_experiments}実験`) : (en ? "Loading…" : "読込中…")}</span>
           <span style={{ marginLeft: "auto", display: "flex", gap: 4 }} onClick={(e) => e.preventDefault()}>
-            <button onClick={() => reloadBoard("official")} style={{ padding: "3px 8px", borderRadius: 6, border: boardScope === "official" ? "1px solid var(--accent)" : "1px solid var(--border)", background: boardScope === "official" ? "var(--accent)" : "var(--bg-subtle)", color: boardScope === "official" ? "var(--accent-text)" : "var(--text)", fontSize: 10, cursor: "pointer" }}>official (SFW)</button>
-            <button onClick={() => reloadBoard("all")} style={{ padding: "3px 8px", borderRadius: 6, border: boardScope === "all" ? "1px solid var(--accent)" : "1px solid var(--border)", background: boardScope === "all" ? "var(--accent)" : "var(--bg-subtle)", color: boardScope === "all" ? "var(--accent-text)" : "var(--text)", fontSize: 10, cursor: "pointer" }}>all (参考)</button>
+            <button onClick={() => reloadBoard("official")} style={{ padding: "3px 8px", borderRadius: 6, border: boardScope === "official" ? "1px solid var(--accent)" : "1px solid var(--border)", background: boardScope === "official" ? "var(--accent)" : "var(--bg-subtle)", color: boardScope === "official" ? "var(--accent-text)" : "var(--text)", fontSize: 10, cursor: "pointer" }}>{en ? "Official (SFW)" : "公式 (SFW)"}</button>
+            <button onClick={() => reloadBoard("all")} style={{ padding: "3px 8px", borderRadius: 6, border: boardScope === "all" ? "1px solid var(--accent)" : "1px solid var(--border)", background: boardScope === "all" ? "var(--accent)" : "var(--bg-subtle)", color: boardScope === "all" ? "var(--accent-text)" : "var(--text)", fontSize: 10, cursor: "pointer" }}>{en ? "All (reference)" : "全件 (参考)"}</button>
           </span>
         </summary>
         <div style={{ padding: "8px 12px", overflowX: "auto" }}>
           {!board || board.ranking.length === 0 ? (
-            <div style={{ fontSize: 11, color: "var(--text-dim)", padding: 8 }}>{boardScope === "official" ? "SFWデータがありません。SFWシナリオで実験を実行してね。" : "データがありません。"}</div>
+            <div style={{ fontSize: 11, color: "var(--text-dim)", padding: 8 }}>{boardScope === "official" ? (en ? "No SFW data. Run an SFW scenario to add results." : "SFWデータがありません。SFWシナリオで実験を実行してね。") : (en ? "No data." : "データがありません。")}</div>
           ) : (
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
               <thead>
                 <tr style={{ color: "var(--text-faint)", textAlign: "left", borderBottom: "1px solid var(--border)" }}>
                   <th style={{ padding: "4px 6px" }}>#</th>
-                  <th style={{ padding: "4px 6px" }}>model</th>
-                  <th style={{ padding: "4px 6px" }}>runs</th>
-                  <th style={{ padding: "4px 6px" }}>human</th>
-                  <th style={{ padding: "4px 6px" }}>auto 0-100</th>
-                  <th style={{ padding: "4px 6px" }}>avg chars</th>
-                  <th style={{ padding: "4px 6px" }}>failure</th>
-                  <th style={{ padding: "4px 6px" }}>repetition</th>
+                  <th style={{ padding: "4px 6px" }}>{en ? "Model" : "モデル"}</th>
+                  <th style={{ padding: "4px 6px" }}>{en ? "Runs" : "実行回数"}</th>
+                  <th style={{ padding: "4px 6px" }}>{en ? "Human rating" : "人手評価"}</th>
+                  <th style={{ padding: "4px 6px" }}>{en ? "Auto score (0–100)" : "自動評価 (0–100)"}</th>
+                  <th style={{ padding: "4px 6px" }}>{en ? "Average characters" : "平均文字数"}</th>
+                  <th style={{ padding: "4px 6px" }}>{en ? "Failure rate" : "失敗率"}</th>
+                  <th style={{ padding: "4px 6px" }}>{en ? "Repetition" : "反復"}</th>
                 </tr>
               </thead>
               <tbody>
@@ -570,7 +583,7 @@ export default function ResearchPage() {
               {board.generated_at.slice(0, 19).replace("T", " ")} · scope={board.scope}
               {board.excluded && Object.keys(board.excluded).length > 0 && (
                 <span style={{ marginLeft: 8 }}>
-                  · 除外: {Object.entries(board.excluded).map(([k, v]) => `${k}=${v}`).join(", ")}
+                  · {en ? "Excluded: " : "除外: "}{Object.entries(board.excluded).map(([k, v]) => `${k}=${v}`).join(", ")}
                 </span>
               )}
             </div>
@@ -578,7 +591,7 @@ export default function ResearchPage() {
         </div>
       </details>
 
-      {runError && <div role="alert" style={{padding:12,color:"var(--danger)"}}>{runError}</div>}
+      {runError != null && <div role="alert" style={{padding:12,color:"var(--danger)"}}>{friendlyMessage(runError, language)}</div>}
       <div className="k-research-mobile-tabs">
         {["A", "B", ...(focus ? [] : ["C"])].map((label, i) => <button key={label} aria-pressed={mobileCol===i} onClick={() => setMobileCol(i)}>{label}</button>)}
       </div>

@@ -43,6 +43,7 @@ jobs:
       - run: uv run --no-sync python tests/e2e_device_import.py
       - run: uv run --no-sync python tests/e2e_publications.py
       - run: uv run --no-sync python tests/e2e_memory_language.py
+      - run: uv run --no-sync python tests/e2e_research_language.py
       - run: uv run --no-sync python tests/e2e_native_restore.py
       - run: node scripts/remote_crypto_build_wrapper.mjs
       - run: uv run --no-sync python scripts/remote_crypto_wrapper_interop.py
