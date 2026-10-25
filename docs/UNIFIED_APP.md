@@ -23,6 +23,10 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 
 ## Delivered Behavior
 
+- Preset, Lorebook, pinned-revision and expression controls follow JA/EN without
+  changing saved titles or choosing newer revisions automatically. Existing error
+  detail is rendered in the current language without re-fetching the Library.
+  See [model/settings language validation](validation/2026-10-26-unified-model-language.md).
 - Restoring a legacy logical snapshot now stops Native automatic sync for affected
   namespaces and retains old outboxes as withdrawn receipts. PC settings requires
   a fresh restore review before sending an independent copy; old Cloud data stays
