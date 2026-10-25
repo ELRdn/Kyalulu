@@ -105,3 +105,6 @@ PWAの日英表示・明示更新・別タブ拒否・実ブラウザ全終了�
 PC登録・接続状態・直接接続登録の日英表示、生成中の鍵保持、PC一覧の重複解消と
 統合シェルからの実暗号化・架空Runtime検証は
 [Remote language](validation/2026-10-26-unified-remote-language.md) に記録する。
+人物像・世界観と登場人物/RPG編集の日英表示、元の版の書き出し、入力幅、
+言語切替の下書き保持とowner切替の編集分離は
+[Creator language](validation/2026-10-26-unified-creator-language.md) に記録する。
