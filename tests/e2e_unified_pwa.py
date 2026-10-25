@@ -40,6 +40,53 @@ def without_open_times(rows):
     return [{key: value for key, value in row.items() if key != 'opened'} for row in rows]
 
 
+async def check_profile_settings(page, language, before, draft, output):
+    en = language == 'en'
+    alternate = 'ja' if en else 'en'
+    chat_url = page.url
+    await page.goto(chat_url.rsplit('/chats/', 1)[0] + '/profile')
+    await page.get_by_role('textbox', name='Display name' if en else '表示名', exact=True).wait_for()
+    name = page.locator('#k-profile-name')
+    old_name = await page.evaluate("localStorage.getItem('kyalulu-display-name')")
+    old_servers = await page.evaluate("localStorage.getItem('kyalulu-server-bookmarks-v1')")
+    name_draft = '名前の下書き · profile draft'
+    await name.fill(name_draft)
+    await language_in_place(page, alternate)
+    await page.get_by_role('textbox', name='Display name' if alternate == 'en' else '表示名', exact=True).wait_for()
+    assert await name.input_value() == name_draft
+    assert await page.evaluate("localStorage.getItem('kyalulu-display-name')") == old_name
+    connection = page.locator('.k-connection').filter(has=page.locator('#connection-title'))
+    await connection.get_by_text('On-device conversations and memories are stored in this browser.' if alternate == 'en' else '端末内の会話・記憶はこのブラウザーに保存されます。', exact=False).wait_for()
+    initial_theme = await page.evaluate("localStorage.getItem('my-zeta-theme')")
+    assert initial_theme in {'light', 'dark'}
+    for theme in ['dark' if initial_theme == 'light' else 'light', initial_theme]:
+        label = ('Light' if theme == 'light' else 'Dark') if alternate == 'en' else ('ライト' if theme == 'light' else 'ダーク')
+        radio = page.get_by_role('radio', name=label, exact=True)
+        await radio.click()
+        await expect(radio).to_have_attribute('aria-checked', 'true')
+    assert await page.evaluate("localStorage.getItem('kyalulu-display-name')") == name_draft
+    await connection.get_by_role('textbox', name='Destination name' if alternate == 'en' else '接続先の名前', exact=True).wait_for()
+    await connection.get_by_role('textbox', name='Server HTTPS address' if alternate == 'en' else 'サーバーのHTTPSアドレス', exact=True).wait_for()
+    destination = connection.locator('input').nth(0)
+    address = connection.locator('input').nth(1)
+    await destination.fill('架空PC · unsaved destination')
+    await address.fill('https://example.test')
+    await language_in_place(page, language)
+    await page.get_by_role('textbox', name='Display name' if en else '表示名', exact=True).wait_for()
+    assert await name.input_value() == name_draft
+    assert await destination.input_value() == '架空PC · unsaved destination'
+    assert await address.input_value() == 'https://example.test'
+    assert await page.evaluate("localStorage.getItem('kyalulu-server-bookmarks-v1')") == old_servers
+    assert not await page.get_by_role('switch', name='Show adult content' if en else '成人向けコンテンツを表示', exact=True).count()
+    assert not await page.evaluate('document.documentElement.scrollWidth > innerWidth')
+    await page.locator('.k-profile-card').screenshot(path=str(output / f'{language}-{page.viewport_size["width"]}-profile.png'), animations='disabled')
+    await connection.screenshot(path=str(output / f'{language}-{page.viewport_size["width"]}-server-settings.png'), animations='disabled')
+    await page.locator('.k-session-row__link').click()
+    await page.locator('.k-composer textarea').wait_for()
+    assert page.url == chat_url and await page.locator('.k-composer textarea').input_value() == draft
+    assert without_open_times(await conversations(page)) == without_open_times(before)
+
+
 async def check_chat_management(page, language, before, draft, output):
     en = language == 'en'
     alternate = 'ja' if en else 'en'
@@ -108,6 +155,7 @@ async def check_chat_management(page, language, before, draft, output):
     await composer.wait_for()
     assert page.url == chat_url and await composer.input_value() == draft
     assert without_open_times(await conversations(page)) == without_open_times(before)
+    await check_profile_settings(page, language, before, draft, output)
 
     key = 'kyalulu:chat-recovery:v1:device%3Apwa-fixture:' + session_id
     original = await page.evaluate('key=>localStorage.getItem(key)', key)
@@ -369,6 +417,8 @@ async def check(dist, output):
                             'device_hub_management_hidden': True,
                             'management_cancellation_preserves_conversation_and_draft': True,
                             'erasure_disclosures_preserved': True, 'chat_list_search_pin_sort_preserved': True,
+                            'profile_name_destination_drafts_and_theme_preserved': True,
+                            'profile_device_storage_disclosure_and_adult_gate': True,
                             'uncertain_generation_language_switch_preserves_pending_without_resend': True,
                             'tutorial_language_switch_preserves_step_and_draft': True, 'tutorial_receipts': True,
                             'draft_reload': True, 'explicit_update': True, 'other_tab_update_blocked': True,
