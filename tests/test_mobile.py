@@ -334,6 +334,8 @@ async def test_native_serves_isolated_device_and_migration_documents(tmp_path):
                     assert "connect-src 'none'" in response.headers['content-security-policy']
         main = await local.get('/')
         assert main.text == 'main app' and 'cross-origin-embedder-policy' not in main.headers
+        for path in ('/device/missing', '/migration/missing'):
+            assert (await local.get(path, headers={'Accept': 'text/html'})).status_code == 404
 
 
 @pytest.mark.parametrize(

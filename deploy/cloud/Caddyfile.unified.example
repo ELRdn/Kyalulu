@@ -1,0 +1,26 @@
+# Replace only the existing APP site with this block; preserve Relay and global no-log settings.
+# The Runtime's exact origin and OAuth callback must use this same APP_DOMAIN.
+{$APP_DOMAIN} {
+    encode zstd gzip
+    request_body {
+        max_size 16MB
+    }
+    header {
+        -Server
+        Strict-Transport-Security "max-age=31536000"
+        X-Frame-Options "DENY"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
+        Permissions-Policy "camera=(self), microphone=(), geolocation=()"
+        X-Robots-Tag "noindex"
+    }
+    # Device/migration policies come from Runtime; a second CSP would break their workers/popups.
+    @main {
+        not path /device /device/ /device/index.html /migration /migration/ /migration/index.html
+    }
+    header @main Content-Security-Policy "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://{$RELAY_DOMAIN} wss://{$RELAY_DOMAIN}; worker-src 'self' blob:; manifest-src 'self'; media-src 'self' blob:; base-uri 'none'; form-action 'self'; frame-src 'none'; frame-ancestors 'none'; object-src 'none'"
+    @private path /.env* /.git/* /config.json
+    respond @private 404
+    # Proxy API, callback, source offer and static files without rewriting Host or Origin.
+    reverse_proxy {$CLOUD_UPSTREAM:kyalulu-cloud-runtime:8000}
+}

@@ -23,6 +23,12 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 
 ## Delivered Behavior
 
+- Cloud and Native now share guarded static delivery. The unified Cloud bundle
+  includes a canonical Caddy template with separate main/device/migration
+  policies, explicit worker scope and HTML transformation protection. Actual
+  loopback HTTPS/Caddy/Chromium checks pass; public cutover remains open. See
+  [proxy validation](validation/2026-10-26-unified-proxy.md) and
+  [deployment conditions](UNIFIED_DEPLOYMENT.md).
 - Portable editor details now follow JA/EN across character, lorebook and preset
   kinds. Language/tab switches retain incomplete JSON and tag drafts; invalid
   JSON blocks Library Save. Authored content and original fields stay unchanged.
@@ -242,21 +248,23 @@ still refuse missing history rather than inventing state. Older snapshots withou
 settings retain their previous current-settings fallback; past settings cannot be
 recovered from absent data. Revision/message manifests now prove a shared prefix
 when the ancestor is recorded, but do not reconstruct absent ancestor bodies or
-prove historical memory equality. Pre-enrollment Native branches still need a
-canonical identity migration. Do not enable unified production on the
+prove historical memory equality. Native branches now retain canonical identity
+before enrollment; older forks without saved identity proofs still need explicit
+recovery decisions. Do not enable unified production on the
 strength of this bounded bridge.
 Portable prompt fixtures cover the portable compiler path; they do not establish
 byte-identical prompts for every legacy YAML/template route or equivalent model
 quality. Unsupported Lore conditions stay preserved with an audit instead of
 executing source scripts or regex. Real GGUF/ONNX inference with the new prompt
 assembly and sampler overrides has not been exercised in this phase.
-Cache trimming now runs after synchronization and reopening hydrated conversations.
-Document reload with API requests unavailable has been checked on fixture data;
-this is not evidence of a full browser/process/device or PWA-shell restart.
+Cache trimming runs after synchronization and reopening hydrated conversations.
+Fixture evidence now covers explicit PWA update and a full Chromium close/reopen
+with offline traffic. It does not establish physical-device behavior or OS network
+transitions.
 
 Outstanding: canonical per-message/memory revision mapping for all old databases;
-native-PC large-scale/legacy-restore acceptance; pre-enrollment fork identity and
-restorable revision history; all browser feature parity; deployed/physical-device chunked migration;
+native-PC large-scale/legacy-restore acceptance; identity proofs for older forks and
+restorable ancestor bodies; all browser feature parity; deployed/physical-device chunked migration;
 complete English UI; moderation classifier/report/appeal/public search/image
 integration; actual adult/guardian provider adapters; a contract-approved ad
 inventory/completion adapter and settled-revenue reconciliation; source archive

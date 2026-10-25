@@ -116,3 +116,6 @@ Core全体復元時のoutbox/受領/owner保護、旧送信の本文なし照合
 PortableEditorの3種別・全タブ・設定集/挨拶/媒体/プリセット詳細の日英表示と、
 言語切替時の未完成JSON・タグ下書き保持は
 [Portable editor language](validation/2026-10-26-unified-portable-editor-language.md) に記録する。
+canonical配信のCloud/Native共通化、統合Caddy設定と実HTTPS proxy越しの画面・Worker確認は
+[Unified proxy](validation/2026-10-26-unified-proxy.md)、本番移行・復旧条件は
+[Deployment](UNIFIED_DEPLOYMENT.md) に記録する。本番のApp API・Device・移行URLはまだ404。

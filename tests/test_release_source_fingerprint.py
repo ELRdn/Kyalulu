@@ -16,6 +16,7 @@ from python.cloud.release_readiness import evidence_status, source_fingerprint
     "tests/fixtures/unified-history.json", "tests/fixtures/device-exports.json", "tests/fixtures/device-imports.json",
     "tests/fixtures/device-media.json", "tests/fixtures/device-research.json", "tests/fixtures/device-lore-values.json",
     "tests/fixtures/rp-format.json",
+    "deploy/cloud/Caddyfile.unified.example",
 ])
 def test_delivered_input_change_rejects_previous_evidence(tmp_path, name):
     source = tmp_path / name
