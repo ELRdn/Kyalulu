@@ -26,18 +26,123 @@ async def language_in_place(page, language):
     }''', language)
 
 
-async def conversations(page):
-    return await page.evaluate('''()=>new Promise((resolve,reject)=>{
+async def entities(page, kinds):
+    return await page.evaluate('''kinds=>new Promise((resolve,reject)=>{
         const open=indexedDB.open('kyalulu-app-v1',2);open.onerror=reject;open.onsuccess=()=>{
             const db=open.result,tx=db.transaction('entities'),read=tx.objectStore('entities').getAll();
-            tx.oncomplete=()=>{db.close();resolve(read.result.filter(row=>row.kind==='conversation'));};tx.onerror=reject;
+            tx.oncomplete=()=>{db.close();resolve(read.result.filter(row=>kinds.includes(row.kind)));};tx.onerror=reject;
         };
-    })''')
+    })''', kinds)
+
+
+async def conversations(page):
+    return await entities(page, ['conversation'])
 
 
 def without_open_times(rows):
     # Reopening updates only the existing offline-cache recency timestamp.
     return [{key: value for key, value in row.items() if key != 'opened'} for row in rows]
+
+
+async def check_creator_settings(page, language, before, draft, output):
+    chat_url=page.url
+    await page.goto(chat_url.rsplit('/chats/',1)[0]+'/create/settings')
+    form=page.locator('form.k-lab-form')
+    name=form.locator('input:not([type="file"])').first
+    await name.wait_for()
+    persona_name='端末の人物像 · original persona'
+    await name.fill(persona_name)
+    await form.locator('textarea').nth(0).fill('原文の人物紹介')
+    await form.locator('textarea').nth(1).fill('原文の性格・価値観')
+    alternate='ja' if language=='en' else 'en'
+    await language_in_place(page,alternate)
+    await page.get_by_role('heading',name='Personas and worlds' if alternate=='en' else 'ペルソナ・世界観',exact=True).wait_for()
+    assert await name.input_value()==persona_name
+    assert await entities(page,['persona','world'])==[]
+    await form.get_by_role('button',name='Save' if alternate=='en' else '保存',exact=True).click()
+    version_save=form.get_by_role('button',name='Save as a new version' if alternate=='en' else '新しい版として保存',exact=True)
+    await expect(version_save).to_be_enabled()
+    first=await entities(page,['persona','world'])
+    assert len(first)==1 and first[0]['payload']['current_revision']==1
+    await form.locator('textarea').nth(0).fill('原文の人物紹介 · revision two')
+    await language_in_place(page,language)
+    await page.get_by_role('heading',name='Personas and worlds' if language=='en' else 'ペルソナ・世界観',exact=True).wait_for()
+    assert await entities(page,['persona','world'])==first
+    await form.get_by_role('button',name='Save as a new version' if language=='en' else '新しい版として保存',exact=True).click()
+    await form.get_by_text('Version history' if language=='en' else '保存履歴',exact=True).wait_for()
+    second=await entities(page,['persona','world'])
+    assert second[0]['id']==first[0]['id'] and second[0]['payload']['current_revision']==2
+    assert second[0]['payload']['versions']['1']['description']=='原文の人物紹介'
+    assert second[0]['payload']['versions']['2']['description']=='原文の人物紹介 · revision two'
+    await form.locator('details summary').click()
+    old=form.locator('details li').filter(has_text='Version 1' if language=='en' else '版1')
+    async with page.expect_download() as downloading:
+        await old.get_by_role('button',name='Export' if language=='en' else '書き出す',exact=True).click()
+    exported=json.loads(Path(await (await downloading.value).path()).read_text(encoding='utf-8'))
+    assert exported['kind']=='persona' and exported['document']==second[0]['payload']['versions']['1']
+
+    await page.get_by_role('group',name='Setting type' if language=='en' else '設定の種類',exact=True).get_by_role('button',name='World' if language=='en' else '世界観',exact=True).click()
+    await expect(name).to_have_value('')
+    await name.fill('端末の世界 · original world')
+    await form.locator('textarea').nth(0).fill('原文の舞台')
+    await form.locator('textarea').nth(1).fill('原文の世界ルール')
+    await form.get_by_role('button',name='Add a character' if language=='en' else '人物を追加',exact=True).click()
+    await form.get_by_role('textbox',name='Character name' if language=='en' else '人物名',exact=True).fill('原文の登場人物')
+    await form.get_by_role('textbox',name='Knowledge only this character has' if language=='en' else 'この人物だけが知ること',exact=True).fill('本人だけの秘密 · fixture')
+    await form.get_by_role('checkbox').check()
+    rules=form.locator('textarea[aria-describedby="rpg-rule-help"]')
+    invalid='{"initial_hp":'
+    await rules.fill(invalid)
+    await expect(rules).to_have_attribute('aria-invalid','true')
+    await expect(form.get_by_role('button',name='Save' if language=='en' else '保存',exact=True)).to_be_disabled()
+    await language_in_place(page,alternate)
+    await form.get_by_role('textbox',name='RPG rules (JSON)' if alternate=='en' else 'RPGルール（JSON）',exact=True).wait_for()
+    assert await rules.input_value()==invalid
+    assert await name.input_value()=='端末の世界 · original world'
+    assert await entities(page,['persona','world'])==second
+    await expect(form.get_by_role('button',name='Save' if alternate=='en' else '保存',exact=True)).to_be_disabled()
+    valid={'initial_hp':45,'initial_inventory':['鍵'],'skills':{'探索':3},'actions':[]}
+    await rules.fill(json.dumps(valid,ensure_ascii=False))
+    await expect(rules).to_have_attribute('aria-invalid','false')
+    await form.get_by_role('button',name='Save' if alternate=='en' else '保存',exact=True).click()
+    await expect(form.get_by_role('button',name='Save as a new version' if alternate=='en' else '新しい版として保存',exact=True)).to_be_enabled()
+    saved=await entities(page,['persona','world'])
+    world=next(row for row in saved if row['kind']=='world')
+    assert world['payload']['creator']['cast'][0]['display_name']=='原文の登場人物'
+    assert world['payload']['creator']['cast'][0]['knowledge']=='本人だけの秘密 · fixture'
+    assert world['payload']['creator']['rpg']['initial_hp']==45
+    assert world['payload']['creator']['rpg']['skills']=={'探索':3}
+    assert await rules.evaluate('field=>field.getBoundingClientRect().width>=field.parentElement.getBoundingClientRect().width*.9')
+    assert not await page.evaluate('document.documentElement.scrollWidth > innerWidth')
+    await page.screenshot(path=str(output/f'{language}-{page.viewport_size["width"]}-creator.png'),full_page=True,animations='disabled')
+
+    await name.fill('PRIVATE_UNSAVED_NAME_CANARY')
+    await page.evaluate('''()=>{localStorage.setItem('kyalulu-app-owner','creator-other-owner');window.dispatchEvent(new Event('kyalulu-app-context'));}''')
+    await form.get_by_role('heading',name='New persona' if alternate=='en' else '新しいペルソナ',exact=True).wait_for()
+    await expect(name).to_have_value('')
+    assert 'PRIVATE_UNSAVED_NAME_CANARY' not in await page.locator('main').inner_text()
+    assert '本人だけの秘密 · fixture' not in await page.locator('main').inner_text()
+    assert await entities(page,['persona','world'])==saved
+    await name.fill('別のアカウントの人物像')
+    await form.get_by_role('button',name='Save' if alternate=='en' else '保存',exact=True).click()
+    await expect(form.get_by_role('button',name='Save as a new version' if alternate=='en' else '新しい版として保存',exact=True)).to_be_enabled()
+    separate=await entities(page,['persona','world'])
+    assert len(separate)==3
+    assert [row for row in separate if row['owner']=='pwa-fixture']==saved
+    other=next(row for row in separate if row['owner']=='creator-other-owner')
+    assert other['payload']['creator']['display_name']=='別のアカウントの人物像'
+    await expect(page.locator('ul.k-lab-list button')).to_have_count(1)
+    await expect(page.locator('ul.k-lab-list button')).to_contain_text('別のアカウントの人物像')
+    await page.evaluate('''()=>{localStorage.setItem('kyalulu-app-owner','pwa-fixture');window.dispatchEvent(new Event('kyalulu-app-context'));}''')
+    await page.locator('ul.k-lab-list button').filter(has_text=persona_name).click()
+    await expect(name).to_have_value(persona_name)
+    assert await form.locator('textarea').nth(0).input_value()=='原文の人物紹介 · revision two'
+    await language_in_place(page,language)
+    await page.goto(chat_url)
+    await page.locator('.k-composer textarea').wait_for()
+    assert await page.locator('.k-composer textarea').input_value()==draft
+    assert without_open_times(await conversations(page))==without_open_times(before)
+    assert await entities(page,['persona','world'])==separate
 
 
 async def check_profile_settings(page, language, before, draft, output):
@@ -156,6 +261,7 @@ async def check_chat_management(page, language, before, draft, output):
     assert page.url == chat_url and await composer.input_value() == draft
     assert without_open_times(await conversations(page)) == without_open_times(before)
     await check_profile_settings(page, language, before, draft, output)
+    await check_creator_settings(page, language, before, draft, output)
 
     key = 'kyalulu:chat-recovery:v1:device%3Apwa-fixture:' + session_id
     original = await page.evaluate('key=>localStorage.getItem(key)', key)
@@ -419,6 +525,8 @@ async def check(dist, output):
                             'erasure_disclosures_preserved': True, 'chat_list_search_pin_sort_preserved': True,
                             'profile_name_destination_drafts_and_theme_preserved': True,
                             'profile_device_storage_disclosure_and_adult_gate': True,
+                            'creator_language_drafts_version_save_and_old_export': True,
+                            'world_cast_rpg_invalid_json_and_owner_isolation': True,
                             'uncertain_generation_language_switch_preserves_pending_without_resend': True,
                             'tutorial_language_switch_preserves_step_and_draft': True, 'tutorial_receipts': True,
                             'draft_reload': True, 'explicit_update': True, 'other_tab_update_blocked': True,
