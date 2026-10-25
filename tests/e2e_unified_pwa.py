@@ -39,6 +39,45 @@ async def conversations(page):
     return await entities(page, ['conversation'])
 
 
+async def check_portable_fields(page, editor, language, output):
+    en = language == 'en'
+    alternate = 'ja' if en else 'en'
+    await editor.get_by_role('tab', name='Lorebook' if en else '設定集', exact=False).click()
+    await editor.get_by_role('button', name='＋ Add knowledge' if en else '＋ 知識を追加', exact=True).click()
+    await editor.get_by_role('textbox', name='Entry 1 keywords' if en else '設定 1のキーワード', exact=True).fill('stars, 星空')
+    await editor.get_by_role('textbox', name='Entry 1 knowledge text' if en else '設定 1の知識の本文', exact=True).fill('原文の世界設定 · original lore')
+    await editor.get_by_role('tab', name='About' if en else '紹介', exact=False).click()
+    await editor.get_by_role('textbox', name='Tag to add' if en else '追加するタグ', exact=True).fill('入力中のタグ')
+    await editor.get_by_role('tab', name='Details' if en else '詳細', exact=False).click()
+    raw = editor.locator('.k-plot-editor__json').first
+    await raw.fill('{"temperature":')
+    # The save control is outside the editor and is disabled by its validity callback.
+    save = page.locator('.k-create-editor-head').get_by_role('button', name='Save' if en else '保存', exact=True)
+    await expect(save).to_be_disabled()
+    before = await conversations(page)
+    await language_in_place(page, alternate)
+    await expect(editor.locator('.k-plot-editor__validation')).to_contain_text('Saving is blocked' if alternate == 'en' else '修正するまで保存できません')
+    await expect(raw).to_have_value('{"temperature":')
+    await expect(raw).to_have_attribute('aria-invalid', 'true')
+    await expect(page.locator('.k-create-editor-head').get_by_role('button', name='Save' if alternate == 'en' else '保存', exact=True)).to_be_disabled()
+    assert await page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1')
+    await page.screenshot(path=str(output / f'{language}-{page.viewport_size["width"]}-portable-json-review.png'), full_page=True, animations='disabled')
+    assert await conversations(page) == before
+    await editor.get_by_role('tab', name='About' if alternate == 'en' else '紹介', exact=False).click()
+    await expect(editor.get_by_role('textbox', name='Tag to add' if alternate == 'en' else '追加するタグ', exact=True)).to_have_value('入力中のタグ')
+    await editor.get_by_role('tab', name='Lorebook' if alternate == 'en' else '設定集', exact=False).click()
+    await expect(editor.get_by_role('textbox', name='Entry 1 knowledge text' if alternate == 'en' else '設定 1の知識の本文', exact=True)).to_have_value('原文の世界設定 · original lore')
+    await editor.get_by_role('tab', name='Details' if alternate == 'en' else '詳細', exact=False).click()
+    await expect(raw).to_have_value('{"temperature":')
+    await raw.fill('{"temperature":0.65}')
+    await expect(page.locator('.k-create-editor-head').get_by_role('button', name='Save' if alternate == 'en' else '保存', exact=True)).to_be_enabled()
+    await language_in_place(page, language)
+    await expect(raw).to_have_value('{"temperature":0.65}')
+    assert not await editor.locator('.k-plot-editor__validation').count()
+    await editor.get_by_role('tab', name='Intro' if en else 'イントロ', exact=False).click()
+    assert await page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1')
+
+
 def without_open_times(rows):
     # Reopening updates only the existing offline-cache recency timestamp.
     return [{key: value for key, value in row.items() if key != 'opened'} for row in rows]
@@ -51,12 +90,12 @@ async def check_library_workspace(page, language, before, draft, output):
     chooser=page.locator('dialog[open]')
     await chooser.get_by_role('button').filter(has_text='Create a plot' if language=='en' else 'プロットを作る').click()
     editor=page.locator('.k-portable-editor')
-    # Portable field labels are reviewed separately; this check targets workspace controls.
-    await editor.get_by_role('textbox',name='名前',exact=True).fill('ライブラリの原文')
-    await editor.get_by_role('textbox',name='説明',exact=True).fill('Original description · 原文')
-    await editor.get_by_role('tab',name='イントロ',exact=False).click()
-    greeting=editor.get_by_role('textbox',name='最初の挨拶',exact=True)
+    await editor.get_by_role('textbox',name='Name' if language=='en' else '名前',exact=True).fill('ライブラリの原文')
+    await editor.get_by_role('textbox',name='Description' if language=='en' else '説明',exact=True).fill('Original description · 原文')
+    await editor.get_by_role('tab',name='Intro' if language=='en' else 'イントロ',exact=False).click()
+    greeting=editor.locator('section[id$="-panel-intro"] textarea').first
     await greeting.fill('原文の挨拶 *星を見る*')
+    await check_portable_fields(page, editor, language, output)
     key='kyalulu-create-draft-v1:device%3Apwa-fixture:editor:new-character'
     await page.wait_for_function('key=>JSON.parse(sessionStorage.getItem(key)||"null")?.document.data.first_mes==="原文の挨拶 *星を見る*"',arg=key)
     stored=await page.evaluate('key=>sessionStorage.getItem(key)',key)
@@ -70,7 +109,7 @@ async def check_library_workspace(page, language, before, draft, output):
     page.on('dialog',accept)
     try:
         await page.reload()
-        await editor.get_by_role('tab',name='イントロ',exact=False).click()
+        await editor.get_by_role('tab',name='Intro' if language=='en' else 'イントロ',exact=False).click()
         await expect(greeting).to_have_value('原文の挨拶 *星を見る*')
     finally:
         page.remove_listener('dialog',accept)
@@ -87,14 +126,16 @@ async def check_library_workspace(page, language, before, draft, output):
     await page.locator('.k-page-head').get_by_role('button',name='Create new' if language=='en' else '新しく作る',exact=True).click()
     await chooser.get_by_text('Resume temporary draft' if language=='en' else '一時下書きから再開',exact=True).wait_for()
     await chooser.get_by_role('button').filter(has_text='Create a plot' if language=='en' else 'プロットを作る').click()
-    await expect(editor.get_by_role('textbox',name='名前',exact=True)).to_have_value('ライブラリの原文')
+    await expect(editor.get_by_role('textbox',name='Name' if language=='en' else '名前',exact=True)).to_have_value('ライブラリの原文')
     assert await page.evaluate('key=>sessionStorage.getItem(key)',key)==stored
     await page.locator('.k-create-editor-head').get_by_role('button',name='Save' if language=='en' else '保存',exact=True).click()
     await expect(page.locator('.k-create-editor-head').get_by_role('button',name='Save as a new version' if language=='en' else '新しい版として保存',exact=True)).to_be_enabled()
     first=await entities(page,['character'])
     assert len(first)==1 and first[0]['payload']['versions']['1']['data']['description']=='Original description · 原文'
-    await editor.get_by_role('tab',name='プロット',exact=False).click()
-    await editor.get_by_role('textbox',name='説明',exact=True).fill('Original description · revision two')
+    assert first[0]['payload']['versions']['1']['profile']['settings']=={'temperature':0.65}
+    assert first[0]['payload']['versions']['1']['data']['character_book']['entries'][0]['content']=='原文の世界設定 · original lore'
+    await editor.get_by_role('tab',name='Plot' if language=='en' else 'プロット',exact=False).click()
+    await editor.get_by_role('textbox',name='Description' if language=='en' else '説明',exact=True).fill('Original description · revision two')
     await language_in_place(page,alternate)
     await page.locator('.k-create-editor-head').get_by_role('button',name='Save as a new version' if alternate=='en' else '新しい版として保存',exact=True).click()
     await page.get_by_role('status').filter(has_text='Existing conversations keep' if alternate=='en' else 'これまでの会話は').wait_for()

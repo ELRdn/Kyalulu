@@ -8,6 +8,8 @@ export type FriendlyError = {
 };
 
 const knownEnglish: Record<string, string> = {
+  '32MiB以下の媒体を選んでください。': 'Choose media up to 32 MiB.',
+  'WAV音声・MP4動画を選んでください。': 'Choose WAV audio or MP4 video.',
   '未対応のブラウザー取得先です。': 'This browser download source is not supported.',
   '配布元がこの形式・利用条件での取得を許可していません。': 'The source does not allow downloads with this format or these usage terms.',
   '公開コンテンツが見つかりません。': 'Public content was not found.',
