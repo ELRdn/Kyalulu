@@ -33,11 +33,13 @@ jobs:
       - run: uv sync --frozen --all-packages --all-extras --no-install-workspace
       - run: pnpm typecheck
       - run: pnpm --filter web test
+      - run: uv run --no-sync python scripts/verify_device_exports.py
       - run: pnpm --filter web build
       - run: pnpm --filter desktop build
       - run: uv run --no-sync python -m pytest tests -q
       - run: uv run --no-sync python -m playwright install --with-deps chromium
       - run: uv run --no-sync python tests/e2e_outbox_guard.py
+      - run: uv run --no-sync python tests/e2e_device_export.py
       - run: node scripts/remote_crypto_build_wrapper.mjs
       - run: uv run --no-sync python scripts/remote_crypto_wrapper_interop.py
       - run: uv run --no-sync python tests/e2e_remote.py

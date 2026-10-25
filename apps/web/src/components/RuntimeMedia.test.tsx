@@ -1,14 +1,14 @@
 import { Children, type ReactElement } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { RuntimeDownload } from './RuntimeMedia';
+import { RuntimeDownload, RuntimeImage } from './RuntimeMedia';
 import { apiFetch } from '../lib/transport';
 
 const fixture = vi.hoisted(() => ({scope:'device:owner-a', epoch:1, errors:vi.fn(), language:'en', target:'device'}));
 vi.mock('react', async original => ({...await original<typeof import('react')>(),
-  useRef:(value:unknown)=>({current:value}),useState:(value:unknown)=>[value,typeof value==='string'?fixture.errors:vi.fn()]}));
+  useEffect:()=>{},useRef:(value:unknown)=>({current:value}),useState:(value:unknown)=>[value,typeof value==='string'?fixture.errors:vi.fn()]}));
 vi.mock('../lib/transport',()=>({apiFetch:vi.fn()}));
 vi.mock('../lib/remoteStore',()=>({activeRemote:()=>null,connectionScope:()=>fixture.scope}));
-vi.mock('../lib/appContext',()=>({useLanguage:()=>fixture.language,executionTarget:()=>fixture.target}));
+vi.mock('../lib/appContext',()=>({useLanguage:()=>fixture.language,executionTarget:()=>fixture.target,useExecutionTarget:()=>fixture.target,useDeviceOwner:()=>fixture.scope}));
 vi.mock('../lib/cloudMode',()=>({cloudEpoch:()=>fixture.epoch}));
 let anchor:{href:string;download:string;click:ReturnType<typeof vi.fn>;remove:ReturnType<typeof vi.fn>};
 const event=()=>({preventDefault:vi.fn(),defaultPrevented:false});
@@ -67,4 +67,15 @@ it('preserves explicit filenames and recovers from malformed UTF-8 headers',asyn
   vi.mocked(apiFetch).mockImplementation(async()=>new Response('{}',{headers:{'Content-Type':'application/json','Content-Disposition':"attachment; filename*=UTF-8''%broken"}}));
   await link().props.onClick(event());expect(anchor.download).toBe('kyalulu-export.json');
   await link({href:'/api/creator/persona/id/export',download:'../persona.json'}).props.onClick(event());expect(anchor.download).toBe('persona.json');
+});
+it('prevents imported device metadata from loading third-party images or bypassing the Runtime transport',()=>{
+  for(const src of ['https://invalid.test/tracking.png','/api/library/assets/private']){
+    const image=RuntimeImage({src,alt:'Private',srcSet:'https://invalid.test/large.png'});
+    expect(image.type).toBe('span');expect(image.props.role).toBe('img');expect(image.props['aria-label']).toBe('Private');
+  }
+  expect(apiFetch).not.toHaveBeenCalled();
+});
+it('retains bundled mascot images without honoring untrusted device srcSet',()=>{
+  const image=RuntimeImage({src:'/mascot/kyalulu.webp',srcSet:'https://invalid.test/large.png'});
+  expect(image.type).toBe('img');expect(image.props.src).toBe('/mascot/kyalulu.webp');expect(image.props.srcSet).toBeUndefined();
 });

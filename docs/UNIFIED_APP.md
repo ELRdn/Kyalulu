@@ -32,8 +32,9 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
   transfer pages. Size and SHA-256 verification precede the existing atomic push;
   paged downloads are fenced by owner/revision/deletion. Browser/Native withdrawal
   stops the next part. Existing small-request APIs and pre-upgrade receipts remain
-  supported. Multi-megabyte fixtures pass; single-JSON storage, staging cleanup and
-  250 MB/1 GB physical acceptance remain open. See
+  supported. Multi-megabyte fixtures pass; single-JSON storage and
+  250 MB/1 GB physical acceptance remain open. Staging lifecycle checks are in
+  [transfer cleanup validation](validation/2026-10-25-unified-transfer-cleanup.md). See
   [entity transfer validation](validation/2026-10-25-unified-entity-transfers.md).
 - Shared navigation, compact mascot home, recommendations before recent chats,
   three optional interest screens, and a target selector outside RuntimeGate.
@@ -56,6 +57,13 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
   referenced snapshots through the consented Cloud bridge and hydrate in browsers;
   other private works are excluded. See
   [Portable validation](validation/2026-10-24-unified-portable.md).
+- Device Library exports honor format, saved revision and preview/download for
+  CCv2/3 JSON/PNG, CHARX and backups. JSON import retains verified original bytes;
+  selected histories, revisions and fingerprinted receipts commit atomically.
+  Shared fixtures and native readers check 30 outputs, with real IndexedDB
+  rollback/concurrency/reload evidence. Imported card media requires renewed
+  rights confirmation in Native storage. See
+  [device export validation](validation/2026-10-25-unified-device-exports.md).
 - Session/request temperatures, supported sampler overrides and the output token
   reserve reach the Worker. GGUF names are mapped to the installed runtime API;
   ONNX-only limitations and stop strings are reported as unsupported. Adjacent
@@ -156,6 +164,7 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 | World/cast/RPG | Existing + creator snapshot bridge | Existing | Creator revisions, cast contract, RPG and selected Lore | Historical snapshot interchange and physical real-model acceptance |
 | Branches | Saved state/memory/settings; recorded revision/message ancestry | Synced branch UUIDs and namespace retained; explicit upload selection | Saved snapshots and independent numeric IDs; user/assistant cut points | Pre-enrollment/legacy identity gaps, restorable revision bodies and physical acceptance |
 | Character creation | Existing | Existing | Portable JSON/basic library | All creator/PNG/CHARX/history/media imports |
+| Library interchange | Existing SFW restrictions | Existing + typed card media verification/confirmation | Six export formats, saved versions, originals; atomic selected JSON/history import | Complete binary/multi-source import parsers, media upload/playback UI and physical file acceptance |
 | Research/experiments | Cloud restricted | Explicit management permission | Not implemented; not advertised as admin | Device benchmark execution/results |
 | Sync | Selected SQLite export, separate copies, confirmed erasure | Scoped entity enrollment/outbox/cancel receipts; legacy backup retained | Outbox, withdrawal receipts, version consent, library hydration, local recoveries | Complete lineage, large conversations and production migration |
 | Offline | Network generation required | Existing standalone | Recent ten, pinned, protected edits, hydration and stub identity | Real quota exhaustion, full PWA/browser/device restart acceptance |
@@ -262,7 +271,9 @@ Research exports now use the same RuntimeDownload/apiFetch path as Library and
 Creator. Late bodies are rejected after account/target changes. Shared component
 and transport fixtures are recorded in
 [Runtime downloads](validation/2026-10-25-unified-runtime-downloads.md); complete
-Browser export-format/preview parity and Browser Research execution remain open.
+Browser import/media parity and Browser Research execution remain open. Library
+export-format/preview behavior now has
+[separate validation](validation/2026-10-25-unified-device-exports.md).
 
 Current selected-sync work and browser fixture evidence are recorded separately
 in [2026-10-24-unified-sync.md](validation/2026-10-24-unified-sync.md). The historical

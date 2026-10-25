@@ -1,0 +1,2778 @@
+[
+  {
+    "name": "minimal-neutral-portrait",
+    "document": {
+      "schema_version": 1,
+      "kind": "character",
+      "name": "案内 星🌸",
+      "data": {},
+      "speaking_style": "",
+      "nsfw": false,
+      "profile": {
+        "settings": {},
+        "system_prompt": "",
+        "post_history_instructions": "",
+        "context_template": "",
+        "prompts": [],
+        "model_hint": "",
+        "variables": {}
+      },
+      "assets": [],
+      "histories": [],
+      "source_format": "kyalulu",
+      "source": {},
+      "notices": []
+    },
+    "assets": {},
+    "outputs": {
+      "ccv2-json": {
+        "mime": "application/json",
+        "filename": "案内_星_.ccv2-json.json",
+        "notices": [],
+        "json": {
+          "spec": "chara_card_v2",
+          "spec_version": "2.0",
+          "data": {
+            "name": "案内 星🌸",
+            "description": "",
+            "personality": "",
+            "scenario": "",
+            "first_mes": "",
+            "mes_example": "",
+            "creator_notes": "",
+            "system_prompt": "",
+            "post_history_instructions": "",
+            "creator": "",
+            "character_version": "",
+            "tags": [],
+            "alternate_greetings": [],
+            "extensions": {
+              "kyalulu": {
+                "schema_version": 1,
+                "speaking_style": "",
+                "nsfw": false,
+                "profile": {
+                  "settings": {},
+                  "system_prompt": "",
+                  "post_history_instructions": "",
+                  "context_template": "",
+                  "prompts": [],
+                  "model_hint": "",
+                  "variables": {}
+                },
+                "kind": "character"
+              }
+            }
+          }
+        }
+      },
+      "ccv3-json": {
+        "mime": "application/json",
+        "filename": "案内_星_.ccv3-json.json",
+        "notices": [],
+        "json": {
+          "spec": "chara_card_v3",
+          "spec_version": "3.0",
+          "data": {
+            "name": "案内 星🌸",
+            "description": "",
+            "personality": "",
+            "scenario": "",
+            "first_mes": "",
+            "mes_example": "",
+            "creator_notes": "",
+            "system_prompt": "",
+            "post_history_instructions": "",
+            "creator": "",
+            "character_version": "",
+            "tags": [],
+            "alternate_greetings": [],
+            "extensions": {
+              "kyalulu": {
+                "schema_version": 1,
+                "speaking_style": "",
+                "nsfw": false,
+                "profile": {
+                  "settings": {},
+                  "system_prompt": "",
+                  "post_history_instructions": "",
+                  "context_template": "",
+                  "prompts": [],
+                  "model_hint": "",
+                  "variables": {}
+                },
+                "kind": "character"
+              }
+            },
+            "assets": []
+          }
+        }
+      },
+      "ccv2-png": {
+        "mime": "image/png",
+        "filename": "案内_星_.ccv2-png.png",
+        "notices": [
+          {
+            "path": "assets.portrait",
+            "status": "preserved",
+            "reason": "No PNG portrait available; neutral placeholder used (original kept in backup)"
+          }
+        ],
+        "png": {
+          "texts": {
+            "chara": {
+              "json": {
+                "spec": "chara_card_v2",
+                "spec_version": "2.0",
+                "data": {
+                  "name": "案内 星🌸",
+                  "description": "",
+                  "personality": "",
+                  "scenario": "",
+                  "first_mes": "",
+                  "mes_example": "",
+                  "creator_notes": "",
+                  "system_prompt": "",
+                  "post_history_instructions": "",
+                  "creator": "",
+                  "character_version": "",
+                  "tags": [],
+                  "alternate_greetings": [],
+                  "extensions": {
+                    "kyalulu": {
+                      "schema_version": 1,
+                      "speaking_style": "",
+                      "nsfw": false,
+                      "profile": {
+                        "settings": {},
+                        "system_prompt": "",
+                        "post_history_instructions": "",
+                        "context_template": "",
+                        "prompts": [],
+                        "model_hint": "",
+                        "variables": {}
+                      },
+                      "kind": "character"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "image_chunks": [
+            {
+              "name": "IHDR",
+              "base64": "AAAAAQAAAAEIAgAAAA=="
+            },
+            {
+              "name": "IDAT",
+              "base64": "eJxjaGhoAAADBAGB"
+            },
+            {
+              "name": "IEND",
+              "base64": ""
+            }
+          ]
+        }
+      },
+      "ccv3-png": {
+        "mime": "image/png",
+        "filename": "案内_星_.ccv3-png.png",
+        "notices": [
+          {
+            "path": "assets.portrait",
+            "status": "preserved",
+            "reason": "No PNG portrait available; neutral placeholder used (original kept in backup)"
+          }
+        ],
+        "png": {
+          "texts": {
+            "ccv3": {
+              "json": {
+                "spec": "chara_card_v3",
+                "spec_version": "3.0",
+                "data": {
+                  "name": "案内 星🌸",
+                  "description": "",
+                  "personality": "",
+                  "scenario": "",
+                  "first_mes": "",
+                  "mes_example": "",
+                  "creator_notes": "",
+                  "system_prompt": "",
+                  "post_history_instructions": "",
+                  "creator": "",
+                  "character_version": "",
+                  "tags": [],
+                  "alternate_greetings": [],
+                  "extensions": {
+                    "kyalulu": {
+                      "schema_version": 1,
+                      "speaking_style": "",
+                      "nsfw": false,
+                      "profile": {
+                        "settings": {},
+                        "system_prompt": "",
+                        "post_history_instructions": "",
+                        "context_template": "",
+                        "prompts": [],
+                        "model_hint": "",
+                        "variables": {}
+                      },
+                      "kind": "character"
+                    }
+                  },
+                  "assets": []
+                }
+              }
+            },
+            "chara": {
+              "json": {
+                "spec": "chara_card_v2",
+                "spec_version": "2.0",
+                "data": {
+                  "name": "案内 星🌸",
+                  "description": "",
+                  "personality": "",
+                  "scenario": "",
+                  "first_mes": "",
+                  "mes_example": "",
+                  "creator_notes": "\nBackfilled from CCv3. Use a CCv3-compatible application for all features.",
+                  "system_prompt": "",
+                  "post_history_instructions": "",
+                  "creator": "",
+                  "character_version": "",
+                  "tags": [],
+                  "alternate_greetings": [],
+                  "extensions": {
+                    "kyalulu": {
+                      "schema_version": 1,
+                      "speaking_style": "",
+                      "nsfw": false,
+                      "profile": {
+                        "settings": {},
+                        "system_prompt": "",
+                        "post_history_instructions": "",
+                        "context_template": "",
+                        "prompts": [],
+                        "model_hint": "",
+                        "variables": {}
+                      },
+                      "kind": "character"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "image_chunks": [
+            {
+              "name": "IHDR",
+              "base64": "AAAAAQAAAAEIAgAAAA=="
+            },
+            {
+              "name": "IDAT",
+              "base64": "eJxjaGhoAAADBAGB"
+            },
+            {
+              "name": "IEND",
+              "base64": ""
+            }
+          ]
+        }
+      },
+      "charx": {
+        "mime": "application/zip",
+        "filename": "案内_星_.charx",
+        "notices": [],
+        "files": {
+          "card.json": {
+            "json": {
+              "spec": "chara_card_v3",
+              "spec_version": "3.0",
+              "data": {
+                "name": "案内 星🌸",
+                "description": "",
+                "personality": "",
+                "scenario": "",
+                "first_mes": "",
+                "mes_example": "",
+                "creator_notes": "",
+                "system_prompt": "",
+                "post_history_instructions": "",
+                "creator": "",
+                "character_version": "",
+                "tags": [],
+                "alternate_greetings": [],
+                "extensions": {
+                  "kyalulu": {
+                    "schema_version": 1,
+                    "speaking_style": "",
+                    "nsfw": false,
+                    "profile": {
+                      "settings": {},
+                      "system_prompt": "",
+                      "post_history_instructions": "",
+                      "context_template": "",
+                      "prompts": [],
+                      "model_hint": "",
+                      "variables": {}
+                    },
+                    "kind": "character"
+                  }
+                },
+                "assets": []
+              }
+            }
+          }
+        }
+      },
+      "backup": {
+        "mime": "application/zip",
+        "filename": "案内_星_.kyalulu-backup.zip",
+        "notices": [],
+        "files": {
+          "manifest.json": {
+            "json": {
+              "format": "kyalulu_backup",
+              "version": 1
+            }
+          },
+          "document.json": {
+            "json": {
+              "schema_version": 1,
+              "kind": "character",
+              "name": "案内 星🌸",
+              "data": {},
+              "speaking_style": "",
+              "nsfw": false,
+              "profile": {
+                "settings": {},
+                "system_prompt": "",
+                "post_history_instructions": "",
+                "context_template": "",
+                "prompts": [],
+                "model_hint": "",
+                "variables": {}
+              },
+              "assets": [],
+              "histories": [],
+              "source_format": "kyalulu",
+              "source": {},
+              "notices": []
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "profile-and-unknown-fields",
+    "document": {
+      "schema_version": 1,
+      "kind": "profile",
+      "name": "Preset / library",
+      "data": {
+        "personality": "calm",
+        "description": "guide",
+        "definition": "人物の定義",
+        "nickname": "Rei",
+        "creator_notes_multilingual": {
+          "ja": "注記"
+        },
+        "extensions": {
+          "future": {
+            "keep": [
+              1,
+              2
+            ]
+          }
+        },
+        "attached_profile_lore": [
+          {
+            "content": "known"
+          }
+        ],
+        "character_book": {
+          "entries": [
+            {
+              "keys": [
+                "海"
+              ],
+              "content": "港"
+            }
+          ]
+        }
+      },
+      "speaking_style": "簡潔に話す",
+      "nsfw": false,
+      "profile": {
+        "settings": {
+          "temperature": 0.5
+        },
+        "system_prompt": "PROFILE",
+        "post_history_instructions": "AFTER",
+        "context_template": "{{system}}",
+        "prompts": [
+          {
+            "id": "main"
+          }
+        ],
+        "model_hint": "",
+        "variables": {
+          "mood": "calm"
+        }
+      },
+      "assets": [],
+      "histories": [
+        {
+          "name": "private fixture",
+          "messages": [
+            {
+              "role": "user",
+              "content": "not in cards"
+            }
+          ]
+        }
+      ],
+      "source_format": "kyalulu",
+      "source": {
+        "top_unknown": {
+          "future_field": {
+            "value": 7
+          }
+        }
+      },
+      "notices": [
+        {
+          "path": "future_script",
+          "status": "preserved",
+          "reason": "Never execute source scripts"
+        }
+      ]
+    },
+    "assets": {},
+    "outputs": {
+      "ccv2-json": {
+        "mime": "application/json",
+        "filename": "Preset___library.ccv2-json.json",
+        "notices": [
+          {
+            "path": "kind",
+            "status": "converted",
+            "reason": "Standalone profile/Lore exported as a carrier card; use backup for native library restoration"
+          },
+          {
+            "path": "histories",
+            "status": "converted",
+            "reason": "CCv2/CCv3 cards exclude conversation history; use backup or original"
+          },
+          {
+            "path": "profile",
+            "status": "converted",
+            "reason": "Generation settings, prompt ordering and static variables are stored in Kyalulu extensions; destination apps may not apply them"
+          },
+          {
+            "path": "attached_profile_lore",
+            "status": "converted",
+            "reason": "Attached preset Lore is preserved as a Kyalulu field; use backup for faithful restoration"
+          },
+          {
+            "path": "future_script",
+            "status": "preserved",
+            "reason": "Never execute source scripts"
+          },
+          {
+            "path": "ccv2",
+            "status": "converted",
+            "reason": "V3-only fields preserved in extensions.kyalulu.v3_fields"
+          },
+          {
+            "path": "profile",
+            "status": "converted",
+            "reason": "Generation profile is preserved in extensions; other apps may not apply it"
+          },
+          {
+            "path": "export.top_level",
+            "status": "preserved",
+            "reason": "Unknown top-level fields preserved"
+          }
+        ],
+        "json": {
+          "future_field": {
+            "value": 7
+          },
+          "spec": "chara_card_v2",
+          "spec_version": "2.0",
+          "data": {
+            "personality": "calm\n\n簡潔に話す",
+            "description": "guide\n\n人物の定義",
+            "extensions": {
+              "future": {
+                "keep": [
+                  1,
+                  2
+                ]
+              },
+              "kyalulu": {
+                "schema_version": 1,
+                "speaking_style": "簡潔に話す",
+                "nsfw": false,
+                "profile": {
+                  "settings": {
+                    "temperature": 0.5
+                  },
+                  "system_prompt": "PROFILE",
+                  "post_history_instructions": "AFTER",
+                  "context_template": "{{system}}",
+                  "prompts": [
+                    {
+                      "id": "main"
+                    }
+                  ],
+                  "model_hint": "",
+                  "variables": {
+                    "mood": "calm"
+                  }
+                },
+                "kind": "profile",
+                "characterai_definition": "人物の定義",
+                "characterai_description": "guide",
+                "personality_without_style": "calm",
+                "v3_fields": {
+                  "nickname": "Rei",
+                  "creator_notes_multilingual": {
+                    "ja": "注記"
+                  }
+                }
+              }
+            },
+            "attached_profile_lore": [
+              {
+                "content": "known"
+              }
+            ],
+            "character_book": {
+              "entries": [
+                {
+                  "keys": [
+                    "海"
+                  ],
+                  "content": "港",
+                  "enabled": true,
+                  "insertion_order": 0,
+                  "extensions": {}
+                }
+              ],
+              "extensions": {}
+            },
+            "name": "Preset / library",
+            "scenario": "",
+            "first_mes": "",
+            "mes_example": "",
+            "creator_notes": "",
+            "system_prompt": "PROFILE",
+            "post_history_instructions": "AFTER",
+            "creator": "",
+            "character_version": "",
+            "tags": [],
+            "alternate_greetings": []
+          }
+        }
+      },
+      "ccv3-json": {
+        "mime": "application/json",
+        "filename": "Preset___library.ccv3-json.json",
+        "notices": [
+          {
+            "path": "kind",
+            "status": "converted",
+            "reason": "Standalone profile/Lore exported as a carrier card; use backup for native library restoration"
+          },
+          {
+            "path": "histories",
+            "status": "converted",
+            "reason": "CCv2/CCv3 cards exclude conversation history; use backup or original"
+          },
+          {
+            "path": "profile",
+            "status": "converted",
+            "reason": "Generation settings, prompt ordering and static variables are stored in Kyalulu extensions; destination apps may not apply them"
+          },
+          {
+            "path": "attached_profile_lore",
+            "status": "converted",
+            "reason": "Attached preset Lore is preserved as a Kyalulu field; use backup for faithful restoration"
+          },
+          {
+            "path": "future_script",
+            "status": "preserved",
+            "reason": "Never execute source scripts"
+          },
+          {
+            "path": "export.top_level",
+            "status": "preserved",
+            "reason": "Unknown top-level fields preserved"
+          }
+        ],
+        "json": {
+          "future_field": {
+            "value": 7
+          },
+          "spec": "chara_card_v3",
+          "spec_version": "3.0",
+          "data": {
+            "personality": "calm\n\n簡潔に話す",
+            "description": "guide\n\n人物の定義",
+            "nickname": "Rei",
+            "creator_notes_multilingual": {
+              "ja": "注記"
+            },
+            "extensions": {
+              "future": {
+                "keep": [
+                  1,
+                  2
+                ]
+              },
+              "kyalulu": {
+                "schema_version": 1,
+                "speaking_style": "簡潔に話す",
+                "nsfw": false,
+                "profile": {
+                  "settings": {
+                    "temperature": 0.5
+                  },
+                  "system_prompt": "PROFILE",
+                  "post_history_instructions": "AFTER",
+                  "context_template": "{{system}}",
+                  "prompts": [
+                    {
+                      "id": "main"
+                    }
+                  ],
+                  "model_hint": "",
+                  "variables": {
+                    "mood": "calm"
+                  }
+                },
+                "kind": "profile",
+                "characterai_definition": "人物の定義",
+                "characterai_description": "guide",
+                "personality_without_style": "calm"
+              }
+            },
+            "attached_profile_lore": [
+              {
+                "content": "known"
+              }
+            ],
+            "character_book": {
+              "entries": [
+                {
+                  "keys": [
+                    "海"
+                  ],
+                  "content": "港",
+                  "enabled": true,
+                  "insertion_order": 0,
+                  "extensions": {},
+                  "use_regex": false
+                }
+              ],
+              "extensions": {}
+            },
+            "name": "Preset / library",
+            "scenario": "",
+            "first_mes": "",
+            "mes_example": "",
+            "creator_notes": "",
+            "system_prompt": "PROFILE",
+            "post_history_instructions": "AFTER",
+            "creator": "",
+            "character_version": "",
+            "tags": [],
+            "alternate_greetings": [],
+            "assets": []
+          }
+        }
+      },
+      "ccv2-png": {
+        "mime": "image/png",
+        "filename": "Preset___library.ccv2-png.png",
+        "notices": [
+          {
+            "path": "kind",
+            "status": "converted",
+            "reason": "Standalone profile/Lore exported as a carrier card; use backup for native library restoration"
+          },
+          {
+            "path": "histories",
+            "status": "converted",
+            "reason": "CCv2/CCv3 cards exclude conversation history; use backup or original"
+          },
+          {
+            "path": "profile",
+            "status": "converted",
+            "reason": "Generation settings, prompt ordering and static variables are stored in Kyalulu extensions; destination apps may not apply them"
+          },
+          {
+            "path": "attached_profile_lore",
+            "status": "converted",
+            "reason": "Attached preset Lore is preserved as a Kyalulu field; use backup for faithful restoration"
+          },
+          {
+            "path": "future_script",
+            "status": "preserved",
+            "reason": "Never execute source scripts"
+          },
+          {
+            "path": "ccv2",
+            "status": "converted",
+            "reason": "V3-only fields preserved in extensions.kyalulu.v3_fields"
+          },
+          {
+            "path": "profile",
+            "status": "converted",
+            "reason": "Generation profile is preserved in extensions; other apps may not apply it"
+          },
+          {
+            "path": "export.top_level",
+            "status": "preserved",
+            "reason": "Unknown top-level fields preserved"
+          },
+          {
+            "path": "assets.portrait",
+            "status": "preserved",
+            "reason": "No PNG portrait available; neutral placeholder used (original kept in backup)"
+          }
+        ],
+        "png": {
+          "texts": {
+            "chara": {
+              "json": {
+                "future_field": {
+                  "value": 7
+                },
+                "spec": "chara_card_v2",
+                "spec_version": "2.0",
+                "data": {
+                  "personality": "calm\n\n簡潔に話す",
+                  "description": "guide\n\n人物の定義",
+                  "extensions": {
+                    "future": {
+                      "keep": [
+                        1,
+                        2
+                      ]
+                    },
+                    "kyalulu": {
+                      "schema_version": 1,
+                      "speaking_style": "簡潔に話す",
+                      "nsfw": false,
+                      "profile": {
+                        "settings": {
+                          "temperature": 0.5
+                        },
+                        "system_prompt": "PROFILE",
+                        "post_history_instructions": "AFTER",
+                        "context_template": "{{system}}",
+                        "prompts": [
+                          {
+                            "id": "main"
+                          }
+                        ],
+                        "model_hint": "",
+                        "variables": {
+                          "mood": "calm"
+                        }
+                      },
+                      "kind": "profile",
+                      "characterai_definition": "人物の定義",
+                      "characterai_description": "guide",
+                      "personality_without_style": "calm",
+                      "v3_fields": {
+                        "nickname": "Rei",
+                        "creator_notes_multilingual": {
+                          "ja": "注記"
+                        }
+                      }
+                    }
+                  },
+                  "attached_profile_lore": [
+                    {
+                      "content": "known"
+                    }
+                  ],
+                  "character_book": {
+                    "entries": [
+                      {
+                        "keys": [
+                          "海"
+                        ],
+                        "content": "港",
+                        "enabled": true,
+                        "insertion_order": 0,
+                        "extensions": {}
+                      }
+                    ],
+                    "extensions": {}
+                  },
+                  "name": "Preset / library",
+                  "scenario": "",
+                  "first_mes": "",
+                  "mes_example": "",
+                  "creator_notes": "",
+                  "system_prompt": "PROFILE",
+                  "post_history_instructions": "AFTER",
+                  "creator": "",
+                  "character_version": "",
+                  "tags": [],
+                  "alternate_greetings": []
+                }
+              }
+            }
+          },
+          "image_chunks": [
+            {
+              "name": "IHDR",
+              "base64": "AAAAAQAAAAEIAgAAAA=="
+            },
+            {
+              "name": "IDAT",
+              "base64": "eJxjaGhoAAADBAGB"
+            },
+            {
+              "name": "IEND",
+              "base64": ""
+            }
+          ]
+        }
+      },
+      "ccv3-png": {
+        "mime": "image/png",
+        "filename": "Preset___library.ccv3-png.png",
+        "notices": [
+          {
+            "path": "kind",
+            "status": "converted",
+            "reason": "Standalone profile/Lore exported as a carrier card; use backup for native library restoration"
+          },
+          {
+            "path": "histories",
+            "status": "converted",
+            "reason": "CCv2/CCv3 cards exclude conversation history; use backup or original"
+          },
+          {
+            "path": "profile",
+            "status": "converted",
+            "reason": "Generation settings, prompt ordering and static variables are stored in Kyalulu extensions; destination apps may not apply them"
+          },
+          {
+            "path": "attached_profile_lore",
+            "status": "converted",
+            "reason": "Attached preset Lore is preserved as a Kyalulu field; use backup for faithful restoration"
+          },
+          {
+            "path": "future_script",
+            "status": "preserved",
+            "reason": "Never execute source scripts"
+          },
+          {
+            "path": "export.top_level",
+            "status": "preserved",
+            "reason": "Unknown top-level fields preserved"
+          },
+          {
+            "path": "assets.portrait",
+            "status": "preserved",
+            "reason": "No PNG portrait available; neutral placeholder used (original kept in backup)"
+          }
+        ],
+        "png": {
+          "texts": {
+            "ccv3": {
+              "json": {
+                "future_field": {
+                  "value": 7
+                },
+                "spec": "chara_card_v3",
+                "spec_version": "3.0",
+                "data": {
+                  "personality": "calm\n\n簡潔に話す",
+                  "description": "guide\n\n人物の定義",
+                  "nickname": "Rei",
+                  "creator_notes_multilingual": {
+                    "ja": "注記"
+                  },
+                  "extensions": {
+                    "future": {
+                      "keep": [
+                        1,
+                        2
+                      ]
+                    },
+                    "kyalulu": {
+                      "schema_version": 1,
+                      "speaking_style": "簡潔に話す",
+                      "nsfw": false,
+                      "profile": {
+                        "settings": {
+                          "temperature": 0.5
+                        },
+                        "system_prompt": "PROFILE",
+                        "post_history_instructions": "AFTER",
+                        "context_template": "{{system}}",
+                        "prompts": [
+                          {
+                            "id": "main"
+                          }
+                        ],
+                        "model_hint": "",
+                        "variables": {
+                          "mood": "calm"
+                        }
+                      },
+                      "kind": "profile",
+                      "characterai_definition": "人物の定義",
+                      "characterai_description": "guide",
+                      "personality_without_style": "calm"
+                    }
+                  },
+                  "attached_profile_lore": [
+                    {
+                      "content": "known"
+                    }
+                  ],
+                  "character_book": {
+                    "entries": [
+                      {
+                        "keys": [
+                          "海"
+                        ],
+                        "content": "港",
+                        "enabled": true,
+                        "insertion_order": 0,
+                        "extensions": {},
+                        "use_regex": false
+                      }
+                    ],
+                    "extensions": {}
+                  },
+                  "name": "Preset / library",
+                  "scenario": "",
+                  "first_mes": "",
+                  "mes_example": "",
+                  "creator_notes": "",
+                  "system_prompt": "PROFILE",
+                  "post_history_instructions": "AFTER",
+                  "creator": "",
+                  "character_version": "",
+                  "tags": [],
+                  "alternate_greetings": [],
+                  "assets": []
+                }
+              }
+            },
+            "chara": {
+              "json": {
+                "future_field": {
+                  "value": 7
+                },
+                "spec": "chara_card_v2",
+                "spec_version": "2.0",
+                "data": {
+                  "personality": "calm\n\n簡潔に話す",
+                  "description": "guide\n\n人物の定義",
+                  "nickname": "Rei",
+                  "creator_notes_multilingual": {
+                    "ja": "注記"
+                  },
+                  "extensions": {
+                    "future": {
+                      "keep": [
+                        1,
+                        2
+                      ]
+                    },
+                    "kyalulu": {
+                      "schema_version": 1,
+                      "speaking_style": "簡潔に話す",
+                      "nsfw": false,
+                      "profile": {
+                        "settings": {
+                          "temperature": 0.5
+                        },
+                        "system_prompt": "PROFILE",
+                        "post_history_instructions": "AFTER",
+                        "context_template": "{{system}}",
+                        "prompts": [
+                          {
+                            "id": "main"
+                          }
+                        ],
+                        "model_hint": "",
+                        "variables": {
+                          "mood": "calm"
+                        }
+                      },
+                      "kind": "profile",
+                      "characterai_definition": "人物の定義",
+                      "characterai_description": "guide",
+                      "personality_without_style": "calm"
+                    }
+                  },
+                  "attached_profile_lore": [
+                    {
+                      "content": "known"
+                    }
+                  ],
+                  "character_book": {
+                    "entries": [
+                      {
+                        "keys": [
+                          "海"
+                        ],
+                        "content": "港",
+                        "enabled": true,
+                        "insertion_order": 0,
+                        "extensions": {},
+                        "use_regex": false
+                      }
+                    ],
+                    "extensions": {}
+                  },
+                  "name": "Preset / library",
+                  "scenario": "",
+                  "first_mes": "",
+                  "mes_example": "",
+                  "creator_notes": "\nBackfilled from CCv3. Use a CCv3-compatible application for all features.",
+                  "system_prompt": "PROFILE",
+                  "post_history_instructions": "AFTER",
+                  "creator": "",
+                  "character_version": "",
+                  "tags": [],
+                  "alternate_greetings": []
+                }
+              }
+            }
+          },
+          "image_chunks": [
+            {
+              "name": "IHDR",
+              "base64": "AAAAAQAAAAEIAgAAAA=="
+            },
+            {
+              "name": "IDAT",
+              "base64": "eJxjaGhoAAADBAGB"
+            },
+            {
+              "name": "IEND",
+              "base64": ""
+            }
+          ]
+        }
+      },
+      "charx": {
+        "mime": "application/zip",
+        "filename": "Preset___library.charx",
+        "notices": [
+          {
+            "path": "kind",
+            "status": "converted",
+            "reason": "Standalone profile/Lore exported as a carrier card; use backup for native library restoration"
+          },
+          {
+            "path": "histories",
+            "status": "converted",
+            "reason": "CCv2/CCv3 cards exclude conversation history; use backup or original"
+          },
+          {
+            "path": "profile",
+            "status": "converted",
+            "reason": "Generation settings, prompt ordering and static variables are stored in Kyalulu extensions; destination apps may not apply them"
+          },
+          {
+            "path": "attached_profile_lore",
+            "status": "converted",
+            "reason": "Attached preset Lore is preserved as a Kyalulu field; use backup for faithful restoration"
+          },
+          {
+            "path": "future_script",
+            "status": "preserved",
+            "reason": "Never execute source scripts"
+          },
+          {
+            "path": "export.top_level",
+            "status": "preserved",
+            "reason": "Unknown top-level fields preserved"
+          }
+        ],
+        "files": {
+          "card.json": {
+            "json": {
+              "future_field": {
+                "value": 7
+              },
+              "spec": "chara_card_v3",
+              "spec_version": "3.0",
+              "data": {
+                "personality": "calm\n\n簡潔に話す",
+                "description": "guide\n\n人物の定義",
+                "nickname": "Rei",
+                "creator_notes_multilingual": {
+                  "ja": "注記"
+                },
+                "extensions": {
+                  "future": {
+                    "keep": [
+                      1,
+                      2
+                    ]
+                  },
+                  "kyalulu": {
+                    "schema_version": 1,
+                    "speaking_style": "簡潔に話す",
+                    "nsfw": false,
+                    "profile": {
+                      "settings": {
+                        "temperature": 0.5
+                      },
+                      "system_prompt": "PROFILE",
+                      "post_history_instructions": "AFTER",
+                      "context_template": "{{system}}",
+                      "prompts": [
+                        {
+                          "id": "main"
+                        }
+                      ],
+                      "model_hint": "",
+                      "variables": {
+                        "mood": "calm"
+                      }
+                    },
+                    "kind": "profile",
+                    "characterai_definition": "人物の定義",
+                    "characterai_description": "guide",
+                    "personality_without_style": "calm"
+                  }
+                },
+                "attached_profile_lore": [
+                  {
+                    "content": "known"
+                  }
+                ],
+                "character_book": {
+                  "entries": [
+                    {
+                      "keys": [
+                        "海"
+                      ],
+                      "content": "港",
+                      "enabled": true,
+                      "insertion_order": 0,
+                      "extensions": {},
+                      "use_regex": false
+                    }
+                  ],
+                  "extensions": {}
+                },
+                "name": "Preset / library",
+                "scenario": "",
+                "first_mes": "",
+                "mes_example": "",
+                "creator_notes": "",
+                "system_prompt": "PROFILE",
+                "post_history_instructions": "AFTER",
+                "creator": "",
+                "character_version": "",
+                "tags": [],
+                "alternate_greetings": [],
+                "assets": []
+              }
+            }
+          }
+        }
+      },
+      "backup": {
+        "mime": "application/zip",
+        "filename": "Preset___library.kyalulu-backup.zip",
+        "notices": [],
+        "files": {
+          "manifest.json": {
+            "json": {
+              "format": "kyalulu_backup",
+              "version": 1
+            }
+          },
+          "document.json": {
+            "json": {
+              "schema_version": 1,
+              "kind": "profile",
+              "name": "Preset / library",
+              "data": {
+                "personality": "calm",
+                "description": "guide",
+                "definition": "人物の定義",
+                "nickname": "Rei",
+                "creator_notes_multilingual": {
+                  "ja": "注記"
+                },
+                "extensions": {
+                  "future": {
+                    "keep": [
+                      1,
+                      2
+                    ]
+                  }
+                },
+                "attached_profile_lore": [
+                  {
+                    "content": "known"
+                  }
+                ],
+                "character_book": {
+                  "entries": [
+                    {
+                      "keys": [
+                        "海"
+                      ],
+                      "content": "港"
+                    }
+                  ]
+                }
+              },
+              "speaking_style": "簡潔に話す",
+              "nsfw": false,
+              "profile": {
+                "settings": {
+                  "temperature": 0.5
+                },
+                "system_prompt": "PROFILE",
+                "post_history_instructions": "AFTER",
+                "context_template": "{{system}}",
+                "prompts": [
+                  {
+                    "id": "main"
+                  }
+                ],
+                "model_hint": "",
+                "variables": {
+                  "mood": "calm"
+                }
+              },
+              "assets": [],
+              "histories": [
+                {
+                  "name": "private fixture",
+                  "messages": [
+                    {
+                      "role": "user",
+                      "content": "not in cards"
+                    }
+                  ]
+                }
+              ],
+              "source_format": "kyalulu",
+              "source": {
+                "top_unknown": {
+                  "future_field": {
+                    "value": 7
+                  }
+                }
+              },
+              "notices": [
+                {
+                  "path": "future_script",
+                  "status": "preserved",
+                  "reason": "Never execute source scripts"
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "png-and-audio-assets",
+    "document": {
+      "schema_version": 1,
+      "kind": "character",
+      "name": "Assets",
+      "data": {
+        "extensions": {
+          "future": {
+            "face": "embeded://old.png",
+            "sound": "old-sound"
+          }
+        }
+      },
+      "speaking_style": "",
+      "nsfw": false,
+      "profile": {
+        "settings": {},
+        "system_prompt": "",
+        "post_history_instructions": "",
+        "context_template": "",
+        "prompts": [],
+        "model_hint": "",
+        "variables": {}
+      },
+      "assets": [
+        {
+          "name": "portrait",
+          "type": "icon",
+          "uri": "embeded://old.png",
+          "media_type": "image/png",
+          "asset_id": "dab0a2fab1797dc84d4492f972d5f1817dd3848d5a3551abe2543ef5d924c542"
+        },
+        {
+          "name": "music",
+          "type": "audio",
+          "uri": "old-sound",
+          "media_type": "audio/wav",
+          "asset_id": "86b5f5a4a69b226cef532cb4019df8ff0c08a804fa919af5d116e6e257cd9eac",
+          "rights_confirmed": true
+        },
+        {
+          "name": "remote-reference",
+          "type": "icon",
+          "uri": "https://invalid.test/never-fetch.png",
+          "media_type": "image/png",
+          "asset_id": null
+        }
+      ],
+      "histories": [],
+      "source_format": "kyalulu",
+      "source": {},
+      "notices": []
+    },
+    "assets": {
+      "dab0a2fab1797dc84d4492f972d5f1817dd3848d5a3551abe2543ef5d924c542": {
+        "base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNoaGgAAAMEAYFL09IQAAAADnRFWHRjaGFyYQBvbGQtY2FyZGwwn/UAAAAUdEVYdGF1dGhvcgByZXRhaW4tYXV0aG9y3M9JIgAAABt0RVh0Y2hhcmEtZXh0LWFzc2V0XzpvbGQAcmVtb3Zli0VgPwAAAABJRU5ErkJggg==",
+        "mime": "image/png"
+      },
+      "86b5f5a4a69b226cef532cb4019df8ff0c08a804fa919af5d116e6e257cd9eac": {
+        "base64": "UklGRjQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YRAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "mime": "audio/wav"
+      }
+    },
+    "outputs": {
+      "ccv2-json": {
+        "mime": "application/json",
+        "filename": "Assets.ccv2-json.json",
+        "notices": [
+          {
+            "path": "assets",
+            "status": "converted",
+            "reason": "CCv2 exposes one PNG portrait; other assets remain available in CHARX/backup"
+          }
+        ],
+        "json": {
+          "spec": "chara_card_v2",
+          "spec_version": "2.0",
+          "data": {
+            "extensions": {
+              "future": {
+                "face": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNoaGgAAAMEAYFL09IQAAAADnRFWHRjaGFyYQBvbGQtY2FyZGwwn/UAAAAUdEVYdGF1dGhvcgByZXRhaW4tYXV0aG9y3M9JIgAAABt0RVh0Y2hhcmEtZXh0LWFzc2V0XzpvbGQAcmVtb3Zli0VgPwAAAABJRU5ErkJggg==",
+                "sound": "data:audio/wav;base64,UklGRjQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YRAAAAAAAAAAAAAAAAAAAAAAAAAA"
+              },
+              "kyalulu": {
+                "schema_version": 1,
+                "speaking_style": "",
+                "nsfw": false,
+                "profile": {
+                  "settings": {},
+                  "system_prompt": "",
+                  "post_history_instructions": "",
+                  "context_template": "",
+                  "prompts": [],
+                  "model_hint": "",
+                  "variables": {}
+                },
+                "kind": "character"
+              }
+            },
+            "name": "Assets",
+            "description": "",
+            "personality": "",
+            "scenario": "",
+            "first_mes": "",
+            "mes_example": "",
+            "creator_notes": "",
+            "system_prompt": "",
+            "post_history_instructions": "",
+            "creator": "",
+            "character_version": "",
+            "tags": [],
+            "alternate_greetings": []
+          }
+        }
+      },
+      "ccv3-json": {
+        "mime": "application/json",
+        "filename": "Assets.ccv3-json.json",
+        "notices": [
+          {
+            "path": "assets",
+            "status": "converted",
+            "reason": "JSON uses data URIs; use CHARX if the destination does not support them"
+          }
+        ],
+        "json": {
+          "spec": "chara_card_v3",
+          "spec_version": "3.0",
+          "data": {
+            "extensions": {
+              "future": {
+                "face": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNoaGgAAAMEAYFL09IQAAAADnRFWHRjaGFyYQBvbGQtY2FyZGwwn/UAAAAUdEVYdGF1dGhvcgByZXRhaW4tYXV0aG9y3M9JIgAAABt0RVh0Y2hhcmEtZXh0LWFzc2V0XzpvbGQAcmVtb3Zli0VgPwAAAABJRU5ErkJggg==",
+                "sound": "data:audio/wav;base64,UklGRjQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YRAAAAAAAAAAAAAAAAAAAAAAAAAA"
+              },
+              "kyalulu": {
+                "schema_version": 1,
+                "speaking_style": "",
+                "nsfw": false,
+                "profile": {
+                  "settings": {},
+                  "system_prompt": "",
+                  "post_history_instructions": "",
+                  "context_template": "",
+                  "prompts": [],
+                  "model_hint": "",
+                  "variables": {}
+                },
+                "kind": "character"
+              }
+            },
+            "name": "Assets",
+            "description": "",
+            "personality": "",
+            "scenario": "",
+            "first_mes": "",
+            "mes_example": "",
+            "creator_notes": "",
+            "system_prompt": "",
+            "post_history_instructions": "",
+            "creator": "",
+            "character_version": "",
+            "tags": [],
+            "alternate_greetings": [],
+            "assets": [
+              {
+                "type": "icon",
+                "name": "portrait",
+                "uri": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNoaGgAAAMEAYFL09IQAAAADnRFWHRjaGFyYQBvbGQtY2FyZGwwn/UAAAAUdEVYdGF1dGhvcgByZXRhaW4tYXV0aG9y3M9JIgAAABt0RVh0Y2hhcmEtZXh0LWFzc2V0XzpvbGQAcmVtb3Zli0VgPwAAAABJRU5ErkJggg==",
+                "ext": "png"
+              },
+              {
+                "type": "audio",
+                "name": "music",
+                "uri": "data:audio/wav;base64,UklGRjQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YRAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                "ext": "bin"
+              },
+              {
+                "type": "icon",
+                "name": "remote-reference",
+                "uri": "https://invalid.test/never-fetch.png",
+                "ext": "png"
+              }
+            ]
+          }
+        }
+      },
+      "ccv2-png": {
+        "mime": "image/png",
+        "filename": "Assets.ccv2-png.png",
+        "notices": [
+          {
+            "path": "assets",
+            "status": "converted",
+            "reason": "CCv2 exposes one PNG portrait; other assets remain available in CHARX/backup"
+          }
+        ],
+        "png": {
+          "texts": {
+            "author": {
+              "text": "retain-author"
+            },
+            "chara": {
+              "json": {
+                "spec": "chara_card_v2",
+                "spec_version": "2.0",
+                "data": {
+                  "extensions": {
+                    "future": {
+                      "face": "ccdefault:",
+                      "sound": "__asset:86b5f5a4a69b226cef532cb4019df8ff0c08a804fa919af5d116e6e257cd9eac"
+                    },
+                    "kyalulu": {
+                      "schema_version": 1,
+                      "speaking_style": "",
+                      "nsfw": false,
+                      "profile": {
+                        "settings": {},
+                        "system_prompt": "",
+                        "post_history_instructions": "",
+                        "context_template": "",
+                        "prompts": [],
+                        "model_hint": "",
+                        "variables": {}
+                      },
+                      "kind": "character"
+                    }
+                  },
+                  "name": "Assets",
+                  "description": "",
+                  "personality": "",
+                  "scenario": "",
+                  "first_mes": "",
+                  "mes_example": "",
+                  "creator_notes": "",
+                  "system_prompt": "",
+                  "post_history_instructions": "",
+                  "creator": "",
+                  "character_version": "",
+                  "tags": [],
+                  "alternate_greetings": []
+                }
+              }
+            }
+          },
+          "image_chunks": [
+            {
+              "name": "IHDR",
+              "base64": "AAAAAQAAAAEIAgAAAA=="
+            },
+            {
+              "name": "IDAT",
+              "base64": "eJxjaGhoAAADBAGB"
+            },
+            {
+              "name": "IEND",
+              "base64": ""
+            }
+          ]
+        }
+      },
+      "ccv3-png": {
+        "mime": "image/png",
+        "filename": "Assets.ccv3-png.png",
+        "notices": [],
+        "png": {
+          "texts": {
+            "author": {
+              "text": "retain-author"
+            },
+            "chara-ext-asset_:86b5f5a4a69b226cef532cb4019df8ff0c08a804fa919af5d116e6e257cd9eac": {
+              "text": "UklGRjQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YRAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            },
+            "ccv3": {
+              "json": {
+                "spec": "chara_card_v3",
+                "spec_version": "3.0",
+                "data": {
+                  "extensions": {
+                    "future": {
+                      "face": "ccdefault:",
+                      "sound": "__asset:86b5f5a4a69b226cef532cb4019df8ff0c08a804fa919af5d116e6e257cd9eac"
+                    },
+                    "kyalulu": {
+                      "schema_version": 1,
+                      "speaking_style": "",
+                      "nsfw": false,
+                      "profile": {
+                        "settings": {},
+                        "system_prompt": "",
+                        "post_history_instructions": "",
+                        "context_template": "",
+                        "prompts": [],
+                        "model_hint": "",
+                        "variables": {}
+                      },
+                      "kind": "character"
+                    }
+                  },
+                  "name": "Assets",
+                  "description": "",
+                  "personality": "",
+                  "scenario": "",
+                  "first_mes": "",
+                  "mes_example": "",
+                  "creator_notes": "",
+                  "system_prompt": "",
+                  "post_history_instructions": "",
+                  "creator": "",
+                  "character_version": "",
+                  "tags": [],
+                  "alternate_greetings": [],
+                  "assets": [
+                    {
+                      "type": "icon",
+                      "name": "portrait",
+                      "uri": "ccdefault:",
+                      "ext": "png"
+                    },
+                    {
+                      "type": "audio",
+                      "name": "music",
+                      "uri": "__asset:86b5f5a4a69b226cef532cb4019df8ff0c08a804fa919af5d116e6e257cd9eac",
+                      "ext": "bin"
+                    },
+                    {
+                      "type": "icon",
+                      "name": "remote-reference",
+                      "uri": "https://invalid.test/never-fetch.png",
+                      "ext": "png"
+                    }
+                  ]
+                }
+              }
+            },
+            "chara": {
+              "json": {
+                "spec": "chara_card_v2",
+                "spec_version": "2.0",
+                "data": {
+                  "extensions": {
+                    "future": {
+                      "face": "ccdefault:",
+                      "sound": "__asset:86b5f5a4a69b226cef532cb4019df8ff0c08a804fa919af5d116e6e257cd9eac"
+                    },
+                    "kyalulu": {
+                      "schema_version": 1,
+                      "speaking_style": "",
+                      "nsfw": false,
+                      "profile": {
+                        "settings": {},
+                        "system_prompt": "",
+                        "post_history_instructions": "",
+                        "context_template": "",
+                        "prompts": [],
+                        "model_hint": "",
+                        "variables": {}
+                      },
+                      "kind": "character"
+                    }
+                  },
+                  "name": "Assets",
+                  "description": "",
+                  "personality": "",
+                  "scenario": "",
+                  "first_mes": "",
+                  "mes_example": "",
+                  "creator_notes": "\nBackfilled from CCv3. Use a CCv3-compatible application for all features.",
+                  "system_prompt": "",
+                  "post_history_instructions": "",
+                  "creator": "",
+                  "character_version": "",
+                  "tags": [],
+                  "alternate_greetings": []
+                }
+              }
+            }
+          },
+          "image_chunks": [
+            {
+              "name": "IHDR",
+              "base64": "AAAAAQAAAAEIAgAAAA=="
+            },
+            {
+              "name": "IDAT",
+              "base64": "eJxjaGhoAAADBAGB"
+            },
+            {
+              "name": "IEND",
+              "base64": ""
+            }
+          ]
+        }
+      },
+      "charx": {
+        "mime": "application/zip",
+        "filename": "Assets.charx",
+        "notices": [],
+        "files": {
+          "assets/dab0a2fab1797dc84d4492f972d5f1817dd3848d5a3551abe2543ef5d924c542.png": {
+            "base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNoaGgAAAMEAYFL09IQAAAADnRFWHRjaGFyYQBvbGQtY2FyZGwwn/UAAAAUdEVYdGF1dGhvcgByZXRhaW4tYXV0aG9y3M9JIgAAABt0RVh0Y2hhcmEtZXh0LWFzc2V0XzpvbGQAcmVtb3Zli0VgPwAAAABJRU5ErkJggg=="
+          },
+          "assets/86b5f5a4a69b226cef532cb4019df8ff0c08a804fa919af5d116e6e257cd9eac.bin": {
+            "base64": "UklGRjQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YRAAAAAAAAAAAAAAAAAAAAAAAAAA"
+          },
+          "card.json": {
+            "json": {
+              "spec": "chara_card_v3",
+              "spec_version": "3.0",
+              "data": {
+                "extensions": {
+                  "future": {
+                    "face": "embeded://assets/dab0a2fab1797dc84d4492f972d5f1817dd3848d5a3551abe2543ef5d924c542.png",
+                    "sound": "embeded://assets/86b5f5a4a69b226cef532cb4019df8ff0c08a804fa919af5d116e6e257cd9eac.bin"
+                  },
+                  "kyalulu": {
+                    "schema_version": 1,
+                    "speaking_style": "",
+                    "nsfw": false,
+                    "profile": {
+                      "settings": {},
+                      "system_prompt": "",
+                      "post_history_instructions": "",
+                      "context_template": "",
+                      "prompts": [],
+                      "model_hint": "",
+                      "variables": {}
+                    },
+                    "kind": "character"
+                  }
+                },
+                "name": "Assets",
+                "description": "",
+                "personality": "",
+                "scenario": "",
+                "first_mes": "",
+                "mes_example": "",
+                "creator_notes": "",
+                "system_prompt": "",
+                "post_history_instructions": "",
+                "creator": "",
+                "character_version": "",
+                "tags": [],
+                "alternate_greetings": [],
+                "assets": [
+                  {
+                    "type": "icon",
+                    "name": "portrait",
+                    "uri": "embeded://assets/dab0a2fab1797dc84d4492f972d5f1817dd3848d5a3551abe2543ef5d924c542.png",
+                    "ext": "png"
+                  },
+                  {
+                    "type": "audio",
+                    "name": "music",
+                    "uri": "embeded://assets/86b5f5a4a69b226cef532cb4019df8ff0c08a804fa919af5d116e6e257cd9eac.bin",
+                    "ext": "bin"
+                  },
+                  {
+                    "type": "icon",
+                    "name": "remote-reference",
+                    "uri": "https://invalid.test/never-fetch.png",
+                    "ext": "png"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "backup": {
+        "mime": "application/zip",
+        "filename": "Assets.kyalulu-backup.zip",
+        "notices": [],
+        "files": {
+          "manifest.json": {
+            "json": {
+              "format": "kyalulu_backup",
+              "version": 1
+            }
+          },
+          "document.json": {
+            "json": {
+              "schema_version": 1,
+              "kind": "character",
+              "name": "Assets",
+              "data": {
+                "extensions": {
+                  "future": {
+                    "face": "embeded://old.png",
+                    "sound": "old-sound"
+                  }
+                }
+              },
+              "speaking_style": "",
+              "nsfw": false,
+              "profile": {
+                "settings": {},
+                "system_prompt": "",
+                "post_history_instructions": "",
+                "context_template": "",
+                "prompts": [],
+                "model_hint": "",
+                "variables": {}
+              },
+              "assets": [
+                {
+                  "name": "portrait",
+                  "type": "icon",
+                  "uri": "embeded://old.png",
+                  "media_type": "image/png",
+                  "asset_id": "dab0a2fab1797dc84d4492f972d5f1817dd3848d5a3551abe2543ef5d924c542"
+                },
+                {
+                  "name": "music",
+                  "type": "audio",
+                  "uri": "old-sound",
+                  "media_type": "audio/wav",
+                  "asset_id": "86b5f5a4a69b226cef532cb4019df8ff0c08a804fa919af5d116e6e257cd9eac",
+                  "rights_confirmed": true
+                },
+                {
+                  "name": "remote-reference",
+                  "type": "icon",
+                  "uri": "https://invalid.test/never-fetch.png",
+                  "media_type": "image/png",
+                  "asset_id": null
+                }
+              ],
+              "histories": [],
+              "source_format": "kyalulu",
+              "source": {},
+              "notices": []
+            }
+          },
+          "assets/dab0a2fab1797dc84d4492f972d5f1817dd3848d5a3551abe2543ef5d924c542": {
+            "base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNoaGgAAAMEAYFL09IQAAAADnRFWHRjaGFyYQBvbGQtY2FyZGwwn/UAAAAUdEVYdGF1dGhvcgByZXRhaW4tYXV0aG9y3M9JIgAAABt0RVh0Y2hhcmEtZXh0LWFzc2V0XzpvbGQAcmVtb3Zli0VgPwAAAABJRU5ErkJggg=="
+          },
+          "assets/86b5f5a4a69b226cef532cb4019df8ff0c08a804fa919af5d116e6e257cd9eac": {
+            "base64": "UklGRjQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YRAAAAAAAAAAAAAAAAAAAAAAAAAA"
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "unknown-profile-values",
+    "document": {
+      "schema_version": 1,
+      "kind": "lorebook",
+      "name": "Lore",
+      "data": {
+        "character_book": {
+          "entries": [
+            {
+              "enabled": false,
+              "extensions": {
+                "future": "keep"
+              }
+            }
+          ]
+        }
+      },
+      "speaking_style": "",
+      "nsfw": false,
+      "profile": {
+        "settings": {},
+        "system_prompt": "",
+        "post_history_instructions": "",
+        "context_template": "",
+        "prompts": [],
+        "model_hint": "",
+        "variables": {
+          "名": "星"
+        },
+        "future": {
+          "keep": true
+        }
+      },
+      "assets": [],
+      "histories": [],
+      "source_format": "kyalulu",
+      "source": {},
+      "notices": []
+    },
+    "assets": {},
+    "outputs": {
+      "ccv2-json": {
+        "mime": "application/json",
+        "filename": "Lore.ccv2-json.json",
+        "notices": [
+          {
+            "path": "kind",
+            "status": "converted",
+            "reason": "Standalone profile/Lore exported as a carrier card; use backup for native library restoration"
+          },
+          {
+            "path": "profile",
+            "status": "converted",
+            "reason": "Generation settings, prompt ordering and static variables are stored in Kyalulu extensions; destination apps may not apply them"
+          }
+        ],
+        "json": {
+          "spec": "chara_card_v2",
+          "spec_version": "2.0",
+          "data": {
+            "character_book": {
+              "entries": [
+                {
+                  "enabled": false,
+                  "extensions": {
+                    "future": "keep"
+                  },
+                  "keys": [],
+                  "content": "",
+                  "insertion_order": 0
+                }
+              ],
+              "extensions": {}
+            },
+            "name": "Lore",
+            "description": "",
+            "personality": "",
+            "scenario": "",
+            "first_mes": "",
+            "mes_example": "",
+            "creator_notes": "",
+            "system_prompt": "",
+            "post_history_instructions": "",
+            "creator": "",
+            "character_version": "",
+            "tags": [],
+            "alternate_greetings": [],
+            "extensions": {
+              "kyalulu": {
+                "schema_version": 1,
+                "speaking_style": "",
+                "nsfw": false,
+                "profile": {
+                  "settings": {},
+                  "system_prompt": "",
+                  "post_history_instructions": "",
+                  "context_template": "",
+                  "prompts": [],
+                  "model_hint": "",
+                  "variables": {
+                    "名": "星"
+                  },
+                  "future": {
+                    "keep": true
+                  }
+                },
+                "kind": "lorebook"
+              }
+            }
+          }
+        }
+      },
+      "ccv3-json": {
+        "mime": "application/json",
+        "filename": "Lore.ccv3-json.json",
+        "notices": [
+          {
+            "path": "kind",
+            "status": "converted",
+            "reason": "Standalone profile/Lore exported as a carrier card; use backup for native library restoration"
+          },
+          {
+            "path": "profile",
+            "status": "converted",
+            "reason": "Generation settings, prompt ordering and static variables are stored in Kyalulu extensions; destination apps may not apply them"
+          }
+        ],
+        "json": {
+          "spec": "chara_card_v3",
+          "spec_version": "3.0",
+          "data": {
+            "character_book": {
+              "entries": [
+                {
+                  "enabled": false,
+                  "extensions": {
+                    "future": "keep"
+                  },
+                  "keys": [],
+                  "content": "",
+                  "insertion_order": 0,
+                  "use_regex": false
+                }
+              ],
+              "extensions": {}
+            },
+            "name": "Lore",
+            "description": "",
+            "personality": "",
+            "scenario": "",
+            "first_mes": "",
+            "mes_example": "",
+            "creator_notes": "",
+            "system_prompt": "",
+            "post_history_instructions": "",
+            "creator": "",
+            "character_version": "",
+            "tags": [],
+            "alternate_greetings": [],
+            "extensions": {
+              "kyalulu": {
+                "schema_version": 1,
+                "speaking_style": "",
+                "nsfw": false,
+                "profile": {
+                  "settings": {},
+                  "system_prompt": "",
+                  "post_history_instructions": "",
+                  "context_template": "",
+                  "prompts": [],
+                  "model_hint": "",
+                  "variables": {
+                    "名": "星"
+                  },
+                  "future": {
+                    "keep": true
+                  }
+                },
+                "kind": "lorebook"
+              }
+            },
+            "assets": []
+          }
+        }
+      },
+      "ccv2-png": {
+        "mime": "image/png",
+        "filename": "Lore.ccv2-png.png",
+        "notices": [
+          {
+            "path": "kind",
+            "status": "converted",
+            "reason": "Standalone profile/Lore exported as a carrier card; use backup for native library restoration"
+          },
+          {
+            "path": "profile",
+            "status": "converted",
+            "reason": "Generation settings, prompt ordering and static variables are stored in Kyalulu extensions; destination apps may not apply them"
+          },
+          {
+            "path": "assets.portrait",
+            "status": "preserved",
+            "reason": "No PNG portrait available; neutral placeholder used (original kept in backup)"
+          }
+        ],
+        "png": {
+          "texts": {
+            "chara": {
+              "json": {
+                "spec": "chara_card_v2",
+                "spec_version": "2.0",
+                "data": {
+                  "character_book": {
+                    "entries": [
+                      {
+                        "enabled": false,
+                        "extensions": {
+                          "future": "keep"
+                        },
+                        "keys": [],
+                        "content": "",
+                        "insertion_order": 0
+                      }
+                    ],
+                    "extensions": {}
+                  },
+                  "name": "Lore",
+                  "description": "",
+                  "personality": "",
+                  "scenario": "",
+                  "first_mes": "",
+                  "mes_example": "",
+                  "creator_notes": "",
+                  "system_prompt": "",
+                  "post_history_instructions": "",
+                  "creator": "",
+                  "character_version": "",
+                  "tags": [],
+                  "alternate_greetings": [],
+                  "extensions": {
+                    "kyalulu": {
+                      "schema_version": 1,
+                      "speaking_style": "",
+                      "nsfw": false,
+                      "profile": {
+                        "settings": {},
+                        "system_prompt": "",
+                        "post_history_instructions": "",
+                        "context_template": "",
+                        "prompts": [],
+                        "model_hint": "",
+                        "variables": {
+                          "名": "星"
+                        },
+                        "future": {
+                          "keep": true
+                        }
+                      },
+                      "kind": "lorebook"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "image_chunks": [
+            {
+              "name": "IHDR",
+              "base64": "AAAAAQAAAAEIAgAAAA=="
+            },
+            {
+              "name": "IDAT",
+              "base64": "eJxjaGhoAAADBAGB"
+            },
+            {
+              "name": "IEND",
+              "base64": ""
+            }
+          ]
+        }
+      },
+      "ccv3-png": {
+        "mime": "image/png",
+        "filename": "Lore.ccv3-png.png",
+        "notices": [
+          {
+            "path": "kind",
+            "status": "converted",
+            "reason": "Standalone profile/Lore exported as a carrier card; use backup for native library restoration"
+          },
+          {
+            "path": "profile",
+            "status": "converted",
+            "reason": "Generation settings, prompt ordering and static variables are stored in Kyalulu extensions; destination apps may not apply them"
+          },
+          {
+            "path": "assets.portrait",
+            "status": "preserved",
+            "reason": "No PNG portrait available; neutral placeholder used (original kept in backup)"
+          }
+        ],
+        "png": {
+          "texts": {
+            "ccv3": {
+              "json": {
+                "spec": "chara_card_v3",
+                "spec_version": "3.0",
+                "data": {
+                  "character_book": {
+                    "entries": [
+                      {
+                        "enabled": false,
+                        "extensions": {
+                          "future": "keep"
+                        },
+                        "keys": [],
+                        "content": "",
+                        "insertion_order": 0,
+                        "use_regex": false
+                      }
+                    ],
+                    "extensions": {}
+                  },
+                  "name": "Lore",
+                  "description": "",
+                  "personality": "",
+                  "scenario": "",
+                  "first_mes": "",
+                  "mes_example": "",
+                  "creator_notes": "",
+                  "system_prompt": "",
+                  "post_history_instructions": "",
+                  "creator": "",
+                  "character_version": "",
+                  "tags": [],
+                  "alternate_greetings": [],
+                  "extensions": {
+                    "kyalulu": {
+                      "schema_version": 1,
+                      "speaking_style": "",
+                      "nsfw": false,
+                      "profile": {
+                        "settings": {},
+                        "system_prompt": "",
+                        "post_history_instructions": "",
+                        "context_template": "",
+                        "prompts": [],
+                        "model_hint": "",
+                        "variables": {
+                          "名": "星"
+                        },
+                        "future": {
+                          "keep": true
+                        }
+                      },
+                      "kind": "lorebook"
+                    }
+                  },
+                  "assets": []
+                }
+              }
+            },
+            "chara": {
+              "json": {
+                "spec": "chara_card_v2",
+                "spec_version": "2.0",
+                "data": {
+                  "character_book": {
+                    "entries": [
+                      {
+                        "enabled": false,
+                        "extensions": {
+                          "future": "keep"
+                        },
+                        "keys": [],
+                        "content": "",
+                        "insertion_order": 0,
+                        "use_regex": false
+                      }
+                    ],
+                    "extensions": {}
+                  },
+                  "name": "Lore",
+                  "description": "",
+                  "personality": "",
+                  "scenario": "",
+                  "first_mes": "",
+                  "mes_example": "",
+                  "creator_notes": "\nBackfilled from CCv3. Use a CCv3-compatible application for all features.",
+                  "system_prompt": "",
+                  "post_history_instructions": "",
+                  "creator": "",
+                  "character_version": "",
+                  "tags": [],
+                  "alternate_greetings": [],
+                  "extensions": {
+                    "kyalulu": {
+                      "schema_version": 1,
+                      "speaking_style": "",
+                      "nsfw": false,
+                      "profile": {
+                        "settings": {},
+                        "system_prompt": "",
+                        "post_history_instructions": "",
+                        "context_template": "",
+                        "prompts": [],
+                        "model_hint": "",
+                        "variables": {
+                          "名": "星"
+                        },
+                        "future": {
+                          "keep": true
+                        }
+                      },
+                      "kind": "lorebook"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "image_chunks": [
+            {
+              "name": "IHDR",
+              "base64": "AAAAAQAAAAEIAgAAAA=="
+            },
+            {
+              "name": "IDAT",
+              "base64": "eJxjaGhoAAADBAGB"
+            },
+            {
+              "name": "IEND",
+              "base64": ""
+            }
+          ]
+        }
+      },
+      "charx": {
+        "mime": "application/zip",
+        "filename": "Lore.charx",
+        "notices": [
+          {
+            "path": "kind",
+            "status": "converted",
+            "reason": "Standalone profile/Lore exported as a carrier card; use backup for native library restoration"
+          },
+          {
+            "path": "profile",
+            "status": "converted",
+            "reason": "Generation settings, prompt ordering and static variables are stored in Kyalulu extensions; destination apps may not apply them"
+          }
+        ],
+        "files": {
+          "card.json": {
+            "json": {
+              "spec": "chara_card_v3",
+              "spec_version": "3.0",
+              "data": {
+                "character_book": {
+                  "entries": [
+                    {
+                      "enabled": false,
+                      "extensions": {
+                        "future": "keep"
+                      },
+                      "keys": [],
+                      "content": "",
+                      "insertion_order": 0,
+                      "use_regex": false
+                    }
+                  ],
+                  "extensions": {}
+                },
+                "name": "Lore",
+                "description": "",
+                "personality": "",
+                "scenario": "",
+                "first_mes": "",
+                "mes_example": "",
+                "creator_notes": "",
+                "system_prompt": "",
+                "post_history_instructions": "",
+                "creator": "",
+                "character_version": "",
+                "tags": [],
+                "alternate_greetings": [],
+                "extensions": {
+                  "kyalulu": {
+                    "schema_version": 1,
+                    "speaking_style": "",
+                    "nsfw": false,
+                    "profile": {
+                      "settings": {},
+                      "system_prompt": "",
+                      "post_history_instructions": "",
+                      "context_template": "",
+                      "prompts": [],
+                      "model_hint": "",
+                      "variables": {
+                        "名": "星"
+                      },
+                      "future": {
+                        "keep": true
+                      }
+                    },
+                    "kind": "lorebook"
+                  }
+                },
+                "assets": []
+              }
+            }
+          }
+        }
+      },
+      "backup": {
+        "mime": "application/zip",
+        "filename": "Lore.kyalulu-backup.zip",
+        "notices": [],
+        "files": {
+          "manifest.json": {
+            "json": {
+              "format": "kyalulu_backup",
+              "version": 1
+            }
+          },
+          "document.json": {
+            "json": {
+              "schema_version": 1,
+              "kind": "lorebook",
+              "name": "Lore",
+              "data": {
+                "character_book": {
+                  "entries": [
+                    {
+                      "enabled": false,
+                      "extensions": {
+                        "future": "keep"
+                      }
+                    }
+                  ]
+                }
+              },
+              "speaking_style": "",
+              "nsfw": false,
+              "profile": {
+                "settings": {},
+                "system_prompt": "",
+                "post_history_instructions": "",
+                "context_template": "",
+                "prompts": [],
+                "model_hint": "",
+                "variables": {
+                  "名": "星"
+                },
+                "future": {
+                  "keep": true
+                }
+              },
+              "assets": [],
+              "histories": [],
+              "source_format": "kyalulu",
+              "source": {},
+              "notices": []
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "supplementary-unicode-filename-limit",
+    "document": {
+      "schema_version": 1,
+      "kind": "character",
+      "name": "𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊",
+      "data": {},
+      "speaking_style": "",
+      "nsfw": false,
+      "profile": {
+        "settings": {},
+        "system_prompt": "",
+        "post_history_instructions": "",
+        "context_template": "",
+        "prompts": [],
+        "model_hint": "",
+        "variables": {}
+      },
+      "assets": [],
+      "histories": [],
+      "source_format": "kyalulu",
+      "source": {},
+      "notices": []
+    },
+    "assets": {},
+    "outputs": {
+      "ccv2-json": {
+        "mime": "application/json",
+        "filename": "𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊.ccv2-json.json",
+        "notices": [],
+        "json": {
+          "spec": "chara_card_v2",
+          "spec_version": "2.0",
+          "data": {
+            "name": "𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊",
+            "description": "",
+            "personality": "",
+            "scenario": "",
+            "first_mes": "",
+            "mes_example": "",
+            "creator_notes": "",
+            "system_prompt": "",
+            "post_history_instructions": "",
+            "creator": "",
+            "character_version": "",
+            "tags": [],
+            "alternate_greetings": [],
+            "extensions": {
+              "kyalulu": {
+                "schema_version": 1,
+                "speaking_style": "",
+                "nsfw": false,
+                "profile": {
+                  "settings": {},
+                  "system_prompt": "",
+                  "post_history_instructions": "",
+                  "context_template": "",
+                  "prompts": [],
+                  "model_hint": "",
+                  "variables": {}
+                },
+                "kind": "character"
+              }
+            }
+          }
+        }
+      },
+      "ccv3-json": {
+        "mime": "application/json",
+        "filename": "𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊.ccv3-json.json",
+        "notices": [],
+        "json": {
+          "spec": "chara_card_v3",
+          "spec_version": "3.0",
+          "data": {
+            "name": "𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊",
+            "description": "",
+            "personality": "",
+            "scenario": "",
+            "first_mes": "",
+            "mes_example": "",
+            "creator_notes": "",
+            "system_prompt": "",
+            "post_history_instructions": "",
+            "creator": "",
+            "character_version": "",
+            "tags": [],
+            "alternate_greetings": [],
+            "extensions": {
+              "kyalulu": {
+                "schema_version": 1,
+                "speaking_style": "",
+                "nsfw": false,
+                "profile": {
+                  "settings": {},
+                  "system_prompt": "",
+                  "post_history_instructions": "",
+                  "context_template": "",
+                  "prompts": [],
+                  "model_hint": "",
+                  "variables": {}
+                },
+                "kind": "character"
+              }
+            },
+            "assets": []
+          }
+        }
+      },
+      "ccv2-png": {
+        "mime": "image/png",
+        "filename": "𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊.ccv2-png.png",
+        "notices": [
+          {
+            "path": "assets.portrait",
+            "status": "preserved",
+            "reason": "No PNG portrait available; neutral placeholder used (original kept in backup)"
+          }
+        ],
+        "png": {
+          "texts": {
+            "chara": {
+              "json": {
+                "spec": "chara_card_v2",
+                "spec_version": "2.0",
+                "data": {
+                  "name": "𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊",
+                  "description": "",
+                  "personality": "",
+                  "scenario": "",
+                  "first_mes": "",
+                  "mes_example": "",
+                  "creator_notes": "",
+                  "system_prompt": "",
+                  "post_history_instructions": "",
+                  "creator": "",
+                  "character_version": "",
+                  "tags": [],
+                  "alternate_greetings": [],
+                  "extensions": {
+                    "kyalulu": {
+                      "schema_version": 1,
+                      "speaking_style": "",
+                      "nsfw": false,
+                      "profile": {
+                        "settings": {},
+                        "system_prompt": "",
+                        "post_history_instructions": "",
+                        "context_template": "",
+                        "prompts": [],
+                        "model_hint": "",
+                        "variables": {}
+                      },
+                      "kind": "character"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "image_chunks": [
+            {
+              "name": "IHDR",
+              "base64": "AAAAAQAAAAEIAgAAAA=="
+            },
+            {
+              "name": "IDAT",
+              "base64": "eJxjaGhoAAADBAGB"
+            },
+            {
+              "name": "IEND",
+              "base64": ""
+            }
+          ]
+        }
+      },
+      "ccv3-png": {
+        "mime": "image/png",
+        "filename": "𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊.ccv3-png.png",
+        "notices": [
+          {
+            "path": "assets.portrait",
+            "status": "preserved",
+            "reason": "No PNG portrait available; neutral placeholder used (original kept in backup)"
+          }
+        ],
+        "png": {
+          "texts": {
+            "ccv3": {
+              "json": {
+                "spec": "chara_card_v3",
+                "spec_version": "3.0",
+                "data": {
+                  "name": "𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊",
+                  "description": "",
+                  "personality": "",
+                  "scenario": "",
+                  "first_mes": "",
+                  "mes_example": "",
+                  "creator_notes": "",
+                  "system_prompt": "",
+                  "post_history_instructions": "",
+                  "creator": "",
+                  "character_version": "",
+                  "tags": [],
+                  "alternate_greetings": [],
+                  "extensions": {
+                    "kyalulu": {
+                      "schema_version": 1,
+                      "speaking_style": "",
+                      "nsfw": false,
+                      "profile": {
+                        "settings": {},
+                        "system_prompt": "",
+                        "post_history_instructions": "",
+                        "context_template": "",
+                        "prompts": [],
+                        "model_hint": "",
+                        "variables": {}
+                      },
+                      "kind": "character"
+                    }
+                  },
+                  "assets": []
+                }
+              }
+            },
+            "chara": {
+              "json": {
+                "spec": "chara_card_v2",
+                "spec_version": "2.0",
+                "data": {
+                  "name": "𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊",
+                  "description": "",
+                  "personality": "",
+                  "scenario": "",
+                  "first_mes": "",
+                  "mes_example": "",
+                  "creator_notes": "\nBackfilled from CCv3. Use a CCv3-compatible application for all features.",
+                  "system_prompt": "",
+                  "post_history_instructions": "",
+                  "creator": "",
+                  "character_version": "",
+                  "tags": [],
+                  "alternate_greetings": [],
+                  "extensions": {
+                    "kyalulu": {
+                      "schema_version": 1,
+                      "speaking_style": "",
+                      "nsfw": false,
+                      "profile": {
+                        "settings": {},
+                        "system_prompt": "",
+                        "post_history_instructions": "",
+                        "context_template": "",
+                        "prompts": [],
+                        "model_hint": "",
+                        "variables": {}
+                      },
+                      "kind": "character"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "image_chunks": [
+            {
+              "name": "IHDR",
+              "base64": "AAAAAQAAAAEIAgAAAA=="
+            },
+            {
+              "name": "IDAT",
+              "base64": "eJxjaGhoAAADBAGB"
+            },
+            {
+              "name": "IEND",
+              "base64": ""
+            }
+          ]
+        }
+      },
+      "charx": {
+        "mime": "application/zip",
+        "filename": "𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊.charx",
+        "notices": [],
+        "files": {
+          "card.json": {
+            "json": {
+              "spec": "chara_card_v3",
+              "spec_version": "3.0",
+              "data": {
+                "name": "𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊",
+                "description": "",
+                "personality": "",
+                "scenario": "",
+                "first_mes": "",
+                "mes_example": "",
+                "creator_notes": "",
+                "system_prompt": "",
+                "post_history_instructions": "",
+                "creator": "",
+                "character_version": "",
+                "tags": [],
+                "alternate_greetings": [],
+                "extensions": {
+                  "kyalulu": {
+                    "schema_version": 1,
+                    "speaking_style": "",
+                    "nsfw": false,
+                    "profile": {
+                      "settings": {},
+                      "system_prompt": "",
+                      "post_history_instructions": "",
+                      "context_template": "",
+                      "prompts": [],
+                      "model_hint": "",
+                      "variables": {}
+                    },
+                    "kind": "character"
+                  }
+                },
+                "assets": []
+              }
+            }
+          }
+        }
+      },
+      "backup": {
+        "mime": "application/zip",
+        "filename": "𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊.kyalulu-backup.zip",
+        "notices": [],
+        "files": {
+          "manifest.json": {
+            "json": {
+              "format": "kyalulu_backup",
+              "version": 1
+            }
+          },
+          "document.json": {
+            "json": {
+              "schema_version": 1,
+              "kind": "character",
+              "name": "𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊𝕊",
+              "data": {},
+              "speaking_style": "",
+              "nsfw": false,
+              "profile": {
+                "settings": {},
+                "system_prompt": "",
+                "post_history_instructions": "",
+                "context_template": "",
+                "prompts": [],
+                "model_hint": "",
+                "variables": {}
+              },
+              "assets": [],
+              "histories": [],
+              "source_format": "kyalulu",
+              "source": {},
+              "notices": []
+            }
+          }
+        }
+      }
+    }
+  }
+]
