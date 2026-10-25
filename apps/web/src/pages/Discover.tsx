@@ -202,7 +202,7 @@ export default function Discover() {
           <h2 className="k-section__title">
             <span className="k-section__mark">✦</span> {activeMoodLabel ? (en ? `${activeMoodLabel} characters` : `${activeMoodLabel}なキャラクター`) : (en ? 'Characters' : 'キャラクター')}
           </h2>
-          {!loading && !loadError && <span className="k-count">{en ? `${filteredCharacters.length} characters` : `${filteredCharacters.length}人`}</span>}
+          {!loading && !loadError && <span className="k-count">{en ? `${filteredCharacters.length} ${filteredCharacters.length === 1 ? 'character' : 'characters'}` : `${filteredCharacters.length}人`}</span>}
         </div>
         {loadError ? <p role="alert">{friendlyMessage(loadError.cause, language)}<Button size="sm" variant="secondary" onClick={() => setRetry(value => value + 1)}>{en ? 'Retry' : '再読込'}</Button></p> : loading ? (
           <div className="k-grid k-grid--characters">
