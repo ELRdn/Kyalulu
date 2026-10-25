@@ -99,3 +99,6 @@ PWAの日英表示・明示更新・別タブ拒否・実ブラウザ全終了�
 会話一覧・管理操作・物語設定・未確認送信の日英表示、キャンセル時の全記録保持と
 言語切替時の送信ID/下書き保持は
 [Chat management language](validation/2026-10-26-unified-chat-management-language.md) に記録する。
+プロフィール・接続先設定の日英表示、端末内の保存先説明、名前/接続先の下書きと
+テーマ切替・ピン留め会話への復帰は
+[Profile language](validation/2026-10-26-unified-profile-language.md) に記録する。
