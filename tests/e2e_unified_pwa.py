@@ -35,6 +35,112 @@ async def conversations(page):
     })''')
 
 
+def without_open_times(rows):
+    # Reopening updates only the existing offline-cache recency timestamp.
+    return [{key: value for key, value in row.items() if key != 'opened'} for row in rows]
+
+
+async def check_chat_management(page, language, before, draft, output):
+    en = language == 'en'
+    alternate = 'ja' if en else 'en'
+    composer = page.locator('.k-composer textarea')
+    actions = page.locator('.k-msg__actions').first
+    await actions.get_by_role('button', name='Edit' if en else '編集', exact=True).click()
+    await page.get_by_role('textbox', name='Message text' if en else 'メッセージ本文', exact=True).fill('fictional edit · 架空の編集')
+    await page.locator('.k-msg__editor').get_by_role('button', name='Cancel' if en else 'キャンセル', exact=True).click()
+    confirm = page.locator('dialog[open]')
+    for button, title, detail in [
+        ('Delete' if en else '削除', 'Delete this message?' if en else 'このメッセージを削除しますか？', None),
+        ('Branch here' if en else 'ここから分岐', 'Branch from this point?' if en else 'ここまでの会話から分岐しますか？',
+         'Keep the original conversation' if en else '元の会話を保持'),
+    ]:
+        await actions.get_by_role('button', name=button, exact=True).click()
+        await confirm.get_by_role('heading', name=title, exact=True).wait_for()
+        if detail:
+            await confirm.get_by_text(detail, exact=False).wait_for()
+        await confirm.get_by_role('button', name='Cancel' if en else 'キャンセル', exact=True).click()
+        assert await conversations(page) == before
+        assert await composer.input_value() == draft
+    await page.get_by_role('button', name='Open information panel' if en else '情報パネルを開く', exact=True).click()
+    panel = page.get_by_role('dialog', name='Conversation information' if en else '会話の情報', exact=True)
+    await panel.wait_for()
+    for button, fragments in [
+        ('Clear displayed history' if en else '表示履歴を削除',
+         ['Permanently erasing generation results and memories is a separate action.'] if en else ['生成結果や記憶の完全消去は別の操作です']),
+        ('Erase conversation data' if en else '会話データを完全消去',
+         ['same conversation ID', 'Conflicting updates require another review', 'unsent changes on other devices remain device only', 'Cost ledgers are retained', 'Backup retention']
+         if en else ['同じ会話ID', '更新の競合は再確認', '他の端末の未送信変更は端末限定で保持', '費用台帳は残り', 'バックアップの保持期間']),
+    ]:
+        await panel.get_by_role('button', name=button, exact=True).click()
+        for fragment in fragments:
+            await confirm.get_by_text(fragment, exact=False).wait_for()
+        if button == ('Erase conversation data' if en else '会話データを完全消去'):
+            await confirm.screenshot(path=str(output / f'{language}-{page.viewport_size["width"]}-erasure-warning.png'), animations='disabled')
+        # Never accept a destructive action in this display-language check.
+        await confirm.get_by_role('button', name='Cancel' if en else 'キャンセル', exact=True).click()
+        assert await conversations(page) == before
+        assert await composer.input_value() == draft
+    await panel.get_by_role('button', name='Close panel' if en else 'パネルを閉じる', exact=True).click()
+
+    chat_url = page.url
+    session_id = chat_url.rsplit('/', 1)[1]
+    await page.goto(chat_url.rsplit('/', 1)[0])
+    row = page.locator('.k-session-row').first
+    await row.wait_for()
+    name = await row.locator('.k-session-row__name').inner_text()
+    search = page.locator('.k-chats-tools input')
+    await search.fill(name)
+    await expect(page.locator('.k-session-row')).to_have_count(1)
+    href = await row.locator('a').get_attribute('href')
+    await row.locator('.k-session-row__pin').click()
+    await expect(row.locator('.k-session-row__pin')).to_have_attribute('aria-pressed', 'true')
+    await page.locator('.k-sort-toggle').click()
+    await language_in_place(page, alternate)
+    await page.get_by_role('textbox', name='Search chats' if alternate == 'en' else 'チャットを検索', exact=True).wait_for()
+    assert await search.input_value() == name
+    assert await row.locator('a').get_attribute('href') == href
+    await expect(row.locator('.k-session-row__pin')).to_have_attribute('aria-pressed', 'true')
+    await expect(page.locator('.k-sort-toggle')).to_contain_text('Oldest first' if alternate == 'en' else '古い順')
+    await language_in_place(page, language)
+    await page.get_by_role('textbox', name='Search chats' if en else 'チャットを検索', exact=True).wait_for()
+    assert await search.input_value() == name
+    await row.locator('a').click()
+    await composer.wait_for()
+    assert page.url == chat_url and await composer.input_value() == draft
+    assert without_open_times(await conversations(page)) == without_open_times(before)
+
+    key = 'kyalulu:chat-recovery:v1:device%3Apwa-fixture:' + session_id
+    original = await page.evaluate('key=>localStorage.getItem(key)', key)
+    assert original is not None
+    pending_record = await page.evaluate('''key=>{
+        const record=JSON.parse(localStorage.getItem(key));
+        record.pending={id:crypto.randomUUID(),draft:'fictional sent draft',regenerate:false};
+        const raw=JSON.stringify(record);localStorage.setItem(key,raw);return raw;
+    }''', key)
+    try:
+        await page.reload()
+        await page.get_by_text('It will not be resent automatically.' if en else '自動再送はしません。', exact=False).wait_for()
+        await page.get_by_text('HTTP 404', exact=False).wait_for()
+        await language_in_place(page, alternate)
+        await page.get_by_text('It will not be resent automatically.' if alternate == 'en' else '自動再送はしません。', exact=False).wait_for()
+        assert await page.evaluate('key=>localStorage.getItem(key)', key) == pending_record
+        assert without_open_times(await conversations(page)) == without_open_times(before)
+        assert await composer.input_value() == draft
+        assert not await page.evaluate('document.documentElement.scrollWidth > innerWidth')
+        await page.screenshot(path=str(output / f'{language}-{page.viewport_size["width"]}-recovery.png'), full_page=True, animations='disabled')
+    finally:
+        # Restore only this new profile's fictional pending fixture.
+        await page.evaluate('''([key,raw,language])=>{
+            localStorage.setItem(key,raw);
+            const prefs=JSON.parse(localStorage.getItem('kyalulu-app-preferences-v1'));
+            localStorage.setItem('kyalulu-app-preferences-v1',JSON.stringify({...prefs,language}));
+        }''', [key, original, language])
+        await page.reload()
+    await composer.wait_for()
+    assert await composer.input_value() == draft
+    assert without_open_times(await conversations(page)) == without_open_times(before)
+
+
 @asynccontextmanager
 async def offline_renderer(context, page, language):
     # Traffic emulation alone can leave a cached renderer's navigator.onLine true.
@@ -206,6 +312,7 @@ async def check(dist, output):
                         await tutorial.get_by_role('button', name='Skip' if language == 'en' else 'スキップ', exact=True).click()
                         assert await page.evaluate("localStorage.getItem('kyalulu-first-chat-tutorial-v1')") == 'skipped'
                         assert await conversations(page) == before
+                        await check_chat_management(page, language, before, draft, output)
                         # Simulate a new worker release without changing app assets or integrity.
                         version = '1' if language == 'ja' else '2'
                         marker.write_text(version, encoding='ascii')
@@ -260,6 +367,9 @@ async def check(dist, output):
                             'entry_language_switch_preserves_opening': True, 'tutorial_device_disclosure': True,
                             'bilingual_search_preserves_query_filter_url_and_results': True, 'palette_ime_guard': True,
                             'device_hub_management_hidden': True,
+                            'management_cancellation_preserves_conversation_and_draft': True,
+                            'erasure_disclosures_preserved': True, 'chat_list_search_pin_sort_preserved': True,
+                            'uncertain_generation_language_switch_preserves_pending_without_resend': True,
                             'tutorial_language_switch_preserves_step_and_draft': True, 'tutorial_receipts': True,
                             'draft_reload': True, 'explicit_update': True, 'other_tab_update_blocked': True,
                             'offline_browser_restart': True, 'offline_status_with_renderer_emulation': True,
