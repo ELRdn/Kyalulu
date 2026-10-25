@@ -38,4 +38,23 @@
 ## 残る受け入れ
 
 新しい配布build、Remote実験実行、実モデル品質、OS日本語IME、Android/iPhone実機は今回の証拠に含めない。
-BenchmarkLabを含む他のJA中心の画面、Device研究の実装、全体計画と本番反映は継続課題。
+他のJA中心の画面、Device研究の実装、全体計画と本番反映は継続課題。
+
+## 追加: 長ターン比較実験画面
+
+- `BenchmarkLab.tsx` の条件・上限・状態・結果表・中止・書き出しを日英対応。
+  Mockの機能検証とモデル品質の区別、キーワード判定と人手評価の区別を両言語で維持する。
+- 元のエラーを表示時に翻訳し、statusを失わない。
+  入力条件、サーバー側のジョブ管理、既存のpoll間隔・取得effect・request IDを維持する。
+- `BenchmarkLab.test.tsx`: 4 passed。
+  language変更後のseed/記憶条件保持、通信失敗後に同じrequest IDで再試行すること、
+  activeジョブ中の開始抑止、明示中止の対象ID、結果数値と状態の表示を確認。
+- フロント全体: 663 passed / 50 files。追加fixtureを含むWeb型検査成功。
+- 同じ実Chromiumの3条件で長ターン比較画面も確認。
+  言語変更だけではジョブを作らず、seed=127と記憶数=7を明示送信で維持すること、
+  選択したモデル/シナリオ、compare条件、request ID、Mockの説明、横はみ出しなしを確認。
+  通常のジョブpollは継続する。モデルを実行した証拠ではない。
+  最初の試行はRuntimeDownloadのbutton役割をlinkとして探しtimeout。
+  実際の役割へlocatorを修正して同じ3条件が全成功。
+  追加画像: `.artifacts/research-language-browser/benchmark-*.png`。
+- 新たなRemote実行・本番処理・OS日本語IME・実機検証は行っていない。
