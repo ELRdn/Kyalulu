@@ -10,7 +10,8 @@ def hosted(tmp_path):
     dist = tmp_path / 'web'
     for name, body in {'index.html': '<html>main</html>', 'device/index.html': '<html>device</html>',
                        'migration/index.html': '<html>migration</html>', 'sw.js': '// fixture worker',
-                       'main.js': '// fixture asset', '.env': 'fictional-secret'}.items():
+                       'main.js': '// fixture asset', 'assets/runtime.worker-fixture.js': '// fixture worker module',
+                       '.env': 'fictional-secret'}.items():
         target = dist / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(body, encoding='utf-8')
@@ -40,6 +41,11 @@ async def test_cloud_documents_keep_isolation_worker_scope_and_no_transform(host
         assert worker.status_code == 200 and 'javascript' in worker.headers['content-type']
         assert worker.headers['service-worker-allowed'] == '/'
         assert worker.headers['cache-control'] == 'no-store, no-transform'
+        inference = await client.get('/assets/runtime.worker-fixture.js')
+        assert inference.status_code == 200 and 'javascript' in inference.headers['content-type']
+        assert inference.headers['cross-origin-embedder-policy'] == 'require-corp'
+        assert "frame-src 'none'" in inference.headers['content-security-policy']
+        assert 'huggingface.co' in inference.headers['content-security-policy']
 
 
 @pytest.mark.asyncio

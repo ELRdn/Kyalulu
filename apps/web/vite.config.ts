@@ -26,7 +26,7 @@ function shellPrecache(mobile = false, device = false): Plugin {
         if(/^\/migration(?:\/|$)/.test(path)){
           res.setHeader('Cross-Origin-Opener-Policy','unsafe-none');res.setHeader('Cross-Origin-Embedder-Policy','unsafe-none');
           res.setHeader('Content-Security-Policy',migrationPolicy.replace("connect-src 'none'","connect-src 'self' ws://127.0.0.1:* ws://localhost:*"));
-        }else if(mobile||path.startsWith('/device/')){
+        }else if(mobile||path.startsWith('/device/')||path==='/src/mobile/runtime.worker.ts'){
           res.setHeader('Cross-Origin-Opener-Policy','same-origin');res.setHeader('Cross-Origin-Embedder-Policy','require-corp');
         }
         next();
@@ -57,7 +57,7 @@ function shellPrecache(mobile = false, device = false): Plugin {
         if(/^\/migration(?:\/|$)/.test(path)){
           res.setHeader('Cross-Origin-Opener-Policy','unsafe-none');res.setHeader('Cross-Origin-Embedder-Policy','unsafe-none');
           res.setHeader('Content-Security-Policy',migrationPolicy);
-        }else if(mobile||path.startsWith('/device/')){
+        }else if(mobile||path.startsWith('/device/')||/^\/assets\/runtime\.worker-[\w-]+\.js$/.test(path)){
           res.setHeader('Cross-Origin-Opener-Policy','same-origin');res.setHeader('Cross-Origin-Embedder-Policy','require-corp');
           res.setHeader('Content-Security-Policy',device?mobilePolicy.replace("base-uri 'none'", "base-uri 'self'"):mobilePolicy);
         }
@@ -107,7 +107,7 @@ function shellPrecache(mobile = false, device = false): Plugin {
           }
         }
         const isolated=`  Content-Security-Policy: ${device?mobilePolicy.replace("base-uri 'none'", "base-uri 'self'"):mobilePolicy}\n  Cross-Origin-Opener-Policy: same-origin\n  Cross-Origin-Embedder-Policy: require-corp\n`;
-        await writeFile(resolve(outDir, '_headers'), `/*\n  Referrer-Policy: no-referrer\n  Strict-Transport-Security: max-age=31536000\n  X-Content-Type-Options: nosniff\n  X-Robots-Tag: noindex\n  Cache-Control: no-cache, no-transform\n  Permissions-Policy: camera=(), microphone=(), geolocation=()\n${mobile?'/\n'+isolated+'/index.html\n'+isolated:'/device/*\n'+isolated}/migration/*\n  Content-Security-Policy: ${migrationPolicy}\n  Cross-Origin-Opener-Policy: unsafe-none\n  Cross-Origin-Embedder-Policy: unsafe-none\n`);
+        await writeFile(resolve(outDir, '_headers'), `/*\n  Referrer-Policy: no-referrer\n  Strict-Transport-Security: max-age=31536000\n  X-Content-Type-Options: nosniff\n  X-Robots-Tag: noindex\n  Cache-Control: no-cache, no-transform\n  Permissions-Policy: camera=(), microphone=(), geolocation=()\n${mobile?'/\n'+isolated+'/index.html\n'+isolated:'/device/*\n'+isolated}/assets/runtime.worker-*.js\n${isolated}/migration/*\n  Content-Security-Policy: ${migrationPolicy}\n  Cross-Origin-Opener-Policy: unsafe-none\n  Cross-Origin-Embedder-Policy: unsafe-none\n`);
         await writeFile(resolve(outDir, '404.html'), '<!doctype html><meta charset="utf-8"><title>Not found</title>Not found');
       }
       if(device){
@@ -126,6 +126,8 @@ function shellPrecache(mobile = false, device = false): Plugin {
       const hash = createHash("sha256");
       const template = await readFile(resolve(root, "public/sw.js"), "utf8");
       hash.update(template);
+      // Cached worker headers affect isolation; delivery-policy changes need a fresh cache.
+      if (runtime) hash.update(await readFile(resolve(outDir, '_headers')));
       const integrity: Record<string, string> = {};
       for (const file of files) {
         const content = await readFile(resolve(outDir, compressed[file]?.path ?? file));

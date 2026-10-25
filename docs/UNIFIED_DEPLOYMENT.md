@@ -22,12 +22,15 @@ launch, provider contracts, regional policies or real-device behavior.
   exact canonical HTTPS origin. Do not rewrite Host or Origin at the proxy to
   bypass Runtime validation. The callback is `/auth/callback`.
 - Proxy API, callback, static files and source offer to the same Runtime. Runtime
-  owns device/migration CSP and isolation headers; Caddy supplies the main-shell
+  owns device/inference-worker/migration CSP and isolation headers; Caddy supplies the main-shell
   policy without adding a second CSP to those documents. Main CSP retains the
   pinned Relay connection and keeps third-party frames closed pending ad review.
 - Static responses include `no-transform` to preserve Service Worker integrity
   through the edge. `/sw.js` declares `Service-Worker-Allowed: /`. Missing assets,
   private paths and missing nested device/migration paths never receive app HTML.
+- The real inference Worker response must carry its own COEP/CSP, including when
+  precached. Apply the explicit PWA update to replace old cached Worker headers;
+  the build includes the generated delivery policy in the Service Worker version.
 
 ## Before a production change
 

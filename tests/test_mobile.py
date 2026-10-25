@@ -336,6 +336,11 @@ async def test_native_serves_isolated_device_and_migration_documents(tmp_path):
         assert main.text == 'main app' and 'cross-origin-embedder-policy' not in main.headers
         for path in ('/device/missing', '/migration/missing'):
             assert (await local.get(path, headers={'Accept': 'text/html'})).status_code == 404
+        (tmp_path / 'assets').mkdir()
+        (tmp_path / 'assets/runtime.worker-fixture.js').write_text('// worker fixture', encoding='utf-8')
+        worker = await local.get('/assets/runtime.worker-fixture.js')
+        assert worker.headers['cross-origin-embedder-policy'] == 'require-corp'
+        assert "frame-src 'none'" in worker.headers['content-security-policy']
 
 
 @pytest.mark.parametrize(
