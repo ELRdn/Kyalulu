@@ -125,7 +125,10 @@ def _write(con, document, original_id=None, target_id=None, expected_revision=No
     document.data['name'] = document.name
     for asset in document.assets:
         if asset.asset_id:
-            read_asset(asset.asset_id)
+            _raw, mime = read_asset(asset.asset_id)
+            if not mime.startswith('image/') and getattr(asset, 'rights_confirmed', False) is not True:
+                raise ValueError('Confirm your right to use imported media before saving')
+            asset.media_type = mime
     item_id = target_id or 'lib_' + uuid4().hex
     old = con.execute('SELECT MAX(revision) FROM library_versions WHERE id=?', (item_id,)).fetchone()[0]
     if target_id and (old is None or expected_revision != old):
