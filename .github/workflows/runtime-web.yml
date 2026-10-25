@@ -37,6 +37,7 @@ jobs:
       - run: pnpm --filter desktop build
       - run: uv run --no-sync python -m pytest tests -q
       - run: uv run --no-sync python -m playwright install --with-deps chromium
+      - run: uv run --no-sync python tests/e2e_outbox_guard.py
       - run: node scripts/remote_crypto_build_wrapper.mjs
       - run: uv run --no-sync python scripts/remote_crypto_wrapper_interop.py
       - run: uv run --no-sync python tests/e2e_remote.py

@@ -4,7 +4,7 @@ import { deviceOwner, generationBusy } from './appContext';
 import { receiveConversation, receiveLibrarySnapshot, receiveCreatorSnapshot, rebindConversation, withLibrarySnapshots, conversationSettings } from './appSyncData';
 import { downloadEntity, uploadSync, SYNC_INLINE_BYTES } from './appTransfers';
 
-type Batch=Outbox&{revisions:Record<string,number>;withdrawn?:boolean;receipt?:{changes:Ack[]}};
+type Batch=Outbox&{revisions:Record<string,number>;withdrawn?:boolean|0;receipt?:{changes:Ack[]}};
 type Ack={id:string;source_id?:string;revision:number;deleted:boolean;branched?:boolean;lineage?:Record<string,unknown>};
 export type SyncState={phase:'off'|'syncing'|'saved'|'error';pending:number;error:string};
 let state:SyncState={phase:'off',pending:0,error:''};
@@ -18,8 +18,27 @@ let flight:Promise<void>|null=null;
 const key=(owner:string,suffix:string)=>`sync:${owner}:${suffix}`;
 
 async function transferActive(owner:string,requestId?:string) {
-  if(owner!==deviceOwner()||generationBusy()||!await getMeta(key(owner,'consent')))throw Error('Sync consent changed');
-  if(requestId){const pending=await getMeta<Batch>(key(owner,'outbox'));if(!pending||pending.request_id!==requestId||pending.withdrawn)throw Error('Sync request withdrawn');}
+  if(owner!==deviceOwner()||generationBusy())throw Error('Sync consent changed');
+  if(!requestId){if(!await getMeta(key(owner,'consent')))throw Error('Sync consent changed');return;}
+  await appTransaction<void>(['meta'],'readwrite',(tx,done)=>{
+    const meta=tx.objectStore('meta'),consent=meta.get(key(owner,'consent'));
+    const current=()=>owner===deviceOwner()&&!generationBusy()&&consent.result===true;
+    consent.onsuccess=()=>{
+      if(!current()){tx.abort();return;}
+      const probe=meta.index('sync-outbox-state').openKeyCursor(IDBKeyRange.only([requestId,0]));
+      probe.onsuccess=()=>{
+        if(!current()){tx.abort();return;}
+        if(probe.result){if(probe.result.primaryKey===key(owner,'outbox'))done();else probe.result.continue();return;}
+        const legacy=meta.get(key(owner,'outbox'));
+        legacy.onsuccess=()=>{
+          const pending=legacy.result as Batch|undefined;
+          if(!current()||!pending||pending.request_id!==requestId||pending.withdrawn){tx.abort();return;}
+          // A legacy boolean/missing flag is read once; numeric zero is an indexable false value.
+          meta.put({...pending,withdrawn:0},key(owner,'outbox'));done();
+        };
+      };
+    };
+  });
 }
 async function rawRequest(owner:string,path:string,init?:RequestInit) {
   if(owner!==deviceOwner())throw Error('Account changed');
@@ -184,7 +203,7 @@ async function updateOutbox(owner:string,batch:Batch,next:Batch|null) {
     const meta=tx.objectStore('meta'),read=meta.get(key(owner,'outbox'));
     read.onsuccess=()=>{
       if(owner!==deviceOwner()||generationBusy()||read.result?.request_id!==batch.request_id){tx.abort();return;}
-      if(next)meta.put(next,key(owner,'outbox'));else meta.delete(key(owner,'outbox'));done();
+      if(next)meta.put(next.withdrawn?next:{...next,withdrawn:0},key(owner,'outbox'));else meta.delete(key(owner,'outbox'));done();
     };
   });
 }
@@ -233,7 +252,7 @@ async function synchronize(owner:string) {
       const records=await allEntities(owner),pending=records.filter(e=>e.dirty&&e.payload.storage_policy==='sync');
       const deletion=pending.find(e=>e.deleted),dirty=deletion?[deletion]:pending.slice(0,50);
       if(dirty.length) {
-        batch={request_id:crypto.randomUUID(),revisions:Object.fromEntries(dirty.map(e=>[e.id,e.revision])),changes:dirty.map(e=>({id:e.id,kind:e.kind,base_revision:e.serverRevision,payload:e.deleted?{}:e.kind==='conversation'?withLibrarySnapshots(e.payload,records):e.payload,deleted:e.deleted,
+        batch={request_id:crypto.randomUUID(),withdrawn:0,revisions:Object.fromEntries(dirty.map(e=>[e.id,e.revision])),changes:dirty.map(e=>({id:e.id,kind:e.kind,base_revision:e.serverRevision,payload:e.deleted?{}:e.kind==='conversation'?withLibrarySnapshots(e.payload,records):e.payload,deleted:e.deleted,
           ...(e.deleted?{delete_confirmed:e.payload.delete_confirmation_revision===e.revision}:{})}))};
         const staged=batch;
         batch=await appTransaction<Batch|undefined>(['meta'],'readwrite',(tx,done)=>{
@@ -337,7 +356,7 @@ export async function reconfirmDeletion(owner:string,id:string,localRevision:num
           if(!consent.result||outbox.result?.withdrawn||outbox.result&&(outbox.result.changes.length!==1||outbox.result.changes[0].id!==id)){tx.abort();return;}
           const revision=value.revision+1;
           store.put({...value,revision,serverRevision,payload:{...value.payload,delete_confirmation_revision:revision}});
-          meta.put({request_id:crypto.randomUUID(),revisions:{[id]:revision},changes:[{id,kind:value.kind,base_revision:serverRevision,
+          meta.put({request_id:crypto.randomUUID(),withdrawn:0,revisions:{[id]:revision},changes:[{id,kind:value.kind,base_revision:serverRevision,
             payload:{},deleted:true,delete_confirmed:true}]},key(owner,'outbox'));done();
         };
       };

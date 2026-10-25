@@ -188,10 +188,10 @@ async def session_status(request:Request,session_id:str=Query(min_length=1,max_l
     sync=service(request.app)
     if not sync:return {'session_id':session_id,'selected':False,'enabled':False,'pending':False,'error':''}
     with sync.transaction(allow_generation=True) as db:
-        pending=sync.meta(db,'outbox')
+        pending=db.execute('SELECT 1 FROM runtime.native_sync_outbox_sources WHERE namespace=? AND session_id=?',(sync.namespace,session_id)).fetchone()
         return {'session_id':session_id,'selected':session_id in sync.meta(db,'selected',[]),
                 'enabled':sync.meta(db,'enabled',False),
-                'pending':any(c['native_session_id']==session_id for c in (pending or {}).get('captures',[])),
+                'pending':bool(pending),
                 'error':last['error']}
 
 

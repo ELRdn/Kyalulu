@@ -234,6 +234,9 @@ estimates, may fund new grants.
    receipts, revocations or test-budget tables to undo a release.
 5. Disable the unified flag, advertising and sales for an unaccepted environment.
    Do not erase new IndexedDB stores, Remote keys or outboxes to roll back the UI.
+   The app store now uses schema 2 with an additive outbox index. A client pinned
+   to `indexedDB.open(DB, 1)` cannot reopen it; retain the schema-2-compatible
+   client during backend rollback. Never delete the database to bypass this.
 6. `/device/` documents require COOP/COEP and a CSP excluding advertising frames;
    the main app document must remain compatible with separately isolated ads.
    A deployment using Cloudflare/static hosting must apply the generated headers.
@@ -243,6 +246,11 @@ estimates, may fund new grants.
    on overlapping COOP/CSP values being overridden.
 
 ## Bounded Validation
+
+Indexed outbox guards, additive IndexedDB migration and five real Chromium
+fixture scenarios are recorded in
+[Outbox guards](validation/2026-10-25-unified-outbox-guards.md). Chunk checks no
+longer load the entire outbox; staging and projection still materialize JSON.
 
 Current selected-sync work and browser fixture evidence are recorded separately
 in [2026-10-24-unified-sync.md](validation/2026-10-24-unified-sync.md). The historical

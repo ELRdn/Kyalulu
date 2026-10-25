@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { AppEntity } from './appStore';
 
-const fixture=vi.hoisted(()=>({entities:new Map<string,any>(),meta:new Map<string,any>(),owner:'owner-a',failAt:0}));
+const fixture=vi.hoisted(()=>({entities:new Map<string,any>(),meta:new Map<string,any>(),owner:'owner-a',failAt:0,reads:[] as string[]}));
 vi.mock('./appContext',()=>({deviceOwner:()=>fixture.owner,generationBusy:()=>false}));
 vi.mock('./transport',()=>({cloudFetch:vi.fn()}));
 // Unit transaction harness: queued requests, owner ranges, commit and abort; browser quota remains an E2E gate.
 vi.mock('./appStore',async importOriginal=>({
   ...await importOriginal<typeof import('./appStore')>(),
   allEntities:async(owner:string)=>[...fixture.entities.values()].filter(e=>e.owner===owner).map(e=>structuredClone(e)),
-  getMeta:async(key:string)=>structuredClone(fixture.meta.get(key)),
+  getMeta:async(key:string)=>{fixture.reads.push(key);return structuredClone(fixture.meta.get(key));},
   setMeta:async(key:string,value:any)=>{fixture.meta.set(key,structuredClone(value));},
   entity:async(id:string,owner:string)=>structuredClone(fixture.entities.get(JSON.stringify([owner,id]))),
   openEntity:async(id:string,owner:string)=>structuredClone(fixture.entities.get(JSON.stringify([owner,id]))),
@@ -29,7 +29,13 @@ vi.mock('./appStore',async importOriginal=>({
     };
     const tx={abort:()=>{aborted=true;},objectStore:(name:string)=>{
       const map=name==='entities'?entities:meta,key=(k:any)=>name==='entities'?JSON.stringify(k):k;
-      return {get:(k:any)=>enqueue(()=>map.get(key(k))),getAllKeys:()=>enqueue(()=>[...map.keys()]),getAll:(range:any)=>enqueue(()=>[...entities.values()].filter(e=>e.owner===range.lower[0])),
+      return {get:(k:any)=>{if(name==='meta')fixture.reads.push(String(k));return enqueue(()=>map.get(key(k)));},getAllKeys:()=>enqueue(()=>[...map.keys()]),getAll:(range:any)=>enqueue(()=>[...entities.values()].filter(e=>e.owner===range.lower[0])),
+        index:()=>({openKeyCursor:(range:any)=>{
+          const matches=[...meta.entries()].filter(([,value])=>value?.request_id===range.lower[0]&&value?.withdrawn===range.lower[1]).map(([key])=>key).sort();
+          const request:any={};let index=0;
+          const next=()=>{pending++;queueMicrotask(()=>{try{if(!aborted){request.result=index<matches.length?{primaryKey:matches[index++],continue:next}:null;request.onsuccess?.();}}catch{aborted=true;}finally{pending--;finish();}});};
+          next();return request;
+        }}),
         add:(v:any)=>{if(map.has(key([v.owner,v.id])))throw Error('Duplicate');if(fixture.failAt&&++writes===fixture.failAt)throw Error('Quota');map.set(key([v.owner,v.id]),structuredClone(v));},
         put:(v:any,k:any)=>{if(fixture.failAt&&++writes===fixture.failAt)throw Error('Quota');map.set(name==='entities'?key([v.owner,v.id]):k,structuredClone(v));},delete:(k:any)=>map.delete(key(k))};
     }};
@@ -55,8 +61,8 @@ function local(id:string,owner='owner-a'):AppEntity {
 const put=(e:AppEntity)=>fixture.entities.set(JSON.stringify([e.owner,e.id]),e);
 const get=(id:string,owner='owner-a')=>fixture.entities.get(JSON.stringify([owner,id]));
 beforeEach(()=>{
-  fixture.entities=new Map();fixture.meta=new Map([['sync:owner-a:consent',true]]);fixture.owner='owner-a';fixture.failAt=0;
-  vi.stubGlobal('IDBKeyRange',{bound:(lower:any,upper:any)=>({lower,upper})});
+  fixture.entities=new Map();fixture.meta=new Map([['sync:owner-a:consent',true]]);fixture.owner='owner-a';fixture.failAt=0;fixture.reads=[];
+  vi.stubGlobal('IDBKeyRange',{bound:(lower:any,upper:any)=>({lower,upper}),only:(value:any)=>({lower:value,upper:value})});
   vi.stubGlobal('navigator',{locks:{request:async(_name:string,action:()=>any)=>action()}});
 });
 
@@ -105,6 +111,54 @@ it('stops a large browser body at the next part after consent is withdrawn',asyn
   await syncNow('owner-a');
   expect(parts).toHaveLength(1);expect(get('chat').dirty).toBe(true);
   expect(fixture.meta.get('sync:owner-a:outbox').withdrawn).toBe(true);expect(syncState().phase).toBe('off');
+});
+
+it.each([undefined,false,0])('checks only index keys during a large upload (legacy flag=%s)',async flag=>{
+  const current=local('chat');current.dirty=true;
+  current.payload.messages=Array.from({length:28},(_,index)=>({id:index+1,uuid:'guard-'+index,role:'user',content:'large fixture '.repeat(6000)}));
+  put(current);
+  const batch={request_id:'guard-large',withdrawn:flag,revisions:{chat:1},changes:[{id:'chat',kind:'conversation',base_revision:0,payload:structuredClone(current.payload),deleted:false}]};
+  fixture.meta.set('sync:owner-a:outbox',batch);
+  fixture.meta.set('sync:owner-0:outbox',{request_id:batch.request_id,withdrawn:0,private:'OTHER ACCOUNT BODY'});
+  const counts:number[]=[],chunks:Uint8Array[]=[];let atBegin=0;
+  const bodyReads=()=>fixture.reads.filter(key=>key==='sync:owner-a:outbox').length;
+  vi.mocked(cloudFetch).mockImplementation(async(path,init)=>{
+    if(path==='/api/mobile/status')return new Response(JSON.stringify({cloud_mode:true,authenticated:true,owner_scope:'owner-a'}));
+    if(path==='/api/cloud/app/sync/transfers'){
+      expect(fixture.meta.get('sync:owner-a:outbox').withdrawn).toBe(0);atBegin=bodyReads();
+      return new Response(JSON.stringify({transfer_id:'11111111-1111-4111-8111-111111111111',next:0,chunk_bytes:1024*1024}));
+    }
+    if(path.includes('/parts/')){
+      counts.push(bodyReads());const part=JSON.parse(String(init?.body));chunks.push(Uint8Array.from(atob(part.data),c=>c.charCodeAt(0)));
+      return new Response(JSON.stringify({next:chunks.length}));
+    }
+    if(path.endsWith('/commit')){counts.push(bodyReads());return new Response(JSON.stringify({changes:[{id:'chat',revision:1,deleted:false}]}));}
+    return new Response(JSON.stringify({changes:[],cursor:0,has_more:false}));
+  });
+  await syncNow('owner-a');
+  expect(counts).toHaveLength(4);expect(counts.every(count=>count===atBegin)).toBe(true);
+  const raw=new Uint8Array(chunks.reduce((size,chunk)=>size+chunk.length,0));let offset=0;for(const chunk of chunks){raw.set(chunk,offset);offset+=chunk.length;}
+  expect(JSON.parse(new TextDecoder().decode(raw))).toEqual({request_id:batch.request_id,changes:batch.changes});
+  expect(fixture.meta.get('sync:owner-0:outbox').private).toBe('OTHER ACCOUNT BODY');
+});
+
+it.each(['withdrawn','replacement','account'])('fences a large body when an older writer changes %s between parts',async change=>{
+  const current=local('chat');current.dirty=true;
+  current.payload.messages=Array.from({length:28},(_,index)=>({id:index+1,uuid:'guard-'+index,role:'user',content:'large fixture '.repeat(6000)}));
+  put(current);let sent=0;
+  vi.mocked(cloudFetch).mockImplementation(async path=>{
+    if(path==='/api/mobile/status')return new Response(JSON.stringify({cloud_mode:true,authenticated:true,owner_scope:'owner-a'}));
+    if(path==='/api/cloud/app/sync/transfers')return new Response(JSON.stringify({transfer_id:'11111111-1111-4111-8111-111111111111',next:0,chunk_bytes:1024*1024}));
+    if(path.includes('/parts/')){
+      sent++;const pending=fixture.meta.get('sync:owner-a:outbox');
+      if(change==='account')fixture.owner='owner-b';
+      else fixture.meta.set('sync:owner-a:outbox',change==='withdrawn'?{...pending,withdrawn:true}:{...pending,request_id:'replacement'});
+      return new Response(JSON.stringify({next:sent}));
+    }
+    expect(path).not.toContain('/commit');return new Response(JSON.stringify({changes:[],cursor:0,has_more:false}));
+  });
+  await syncNow('owner-a');
+  expect(sent).toBe(1);expect(get('chat','owner-a').dirty).toBe(true);expect(fixture.meta.has('sync:owner-a:outbox')).toBe(true);
 });
 
 it.each([[false,7,0],[true,7,1],[false,8,1]] as const)('fetches referenced bytes only for missing or newer content (evicted=%s revision=%s)',async(evicted,revision,expected)=>{
