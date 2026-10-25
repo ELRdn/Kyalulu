@@ -2,8 +2,22 @@ import { connectionScope } from './remoteStore';
 import { useEffect, useRef, useState } from "react";
 import { cancelGeneration, fetchGeneration, fetchHistory, type ChatMessage } from "./api";
 import { ChatRecovery, RecoveryCheck, reconcileGeneration, type ChatDraft } from "./chatRecovery";
+import { useLanguage } from './appContext';
+import { friendlyMessage } from './errors';
+
+const notices = {
+  ja: { pending: '前の送信は処理中です。結果を確認するまで送信・会話の変更を待ってね。',
+    failed: '前の生成は完了しませんでした。下書きを確認して、必要なら送信してね。',
+    check: '送信結果を確認できません。自動再送はしません。', cancel: '停止を確認できません。送信結果の確認を続けます。' },
+  en: { pending: 'The previous send is still processing. Wait for its result before sending again or changing the conversation.',
+    failed: 'The previous generation did not finish. Review the draft and send it if needed.',
+    check: 'The send result could not be verified. It will not be resent automatically.',
+    cancel: 'Stopping could not be verified. Send-result checks will continue.' },
+};
+type RecoveryNotice = { kind: keyof typeof notices.ja; detail?: string };
 
 export function useChatRecovery(sessionId: string, onHistory: (messages: (ChatMessage & { model_id?: string })[]) => void) {
+  const language = useLanguage();
   // Access localStorage inside guarded operations: the getter itself may throw.
   const [store] = useState(() => new ChatRecovery({
     getItem: key => window.localStorage.getItem(key),
@@ -15,7 +29,7 @@ export function useChatRecovery(sessionId: string, onHistory: (messages: (ChatMe
   });
   const [value, setValue] = useState(initial.value);
   const [storageError, setStorageError] = useState<string | null>(initial.error);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<RecoveryNotice | null>(null);
   const [checking, setChecking] = useState(false);
   const [checks] = useState(() => new RecoveryCheck());
   const alive = useRef(true);
@@ -54,16 +68,16 @@ export function useChatRecovery(sessionId: string, onHistory: (messages: (ChatMe
       if (!resolved) return;
       const { outcome, history, value: next } = resolved;
       if (outcome === "pending") {
-        setNotice("前の送信は処理中です。結果を確認するまで送信・会話の変更を待ってね。");
+        setNotice({ kind: 'pending' });
         return;
       }
       historyCallback.current(history!);
       apply(next);
       dirtyDraft.current = false;
       setStorageError(null);
-      setNotice(outcome === "failed" ? "前の生成は完了しませんでした。下書きを確認して、必要なら送信してね。" : null);
+      setNotice(outcome === "failed" ? { kind: 'failed' } : null);
     } catch (e) {
-      if (alive.current) setNotice(`送信結果を確認できません。自動再送はしません。${String(e)}`);
+      if (alive.current) setNotice({ kind: 'check', detail: String(e) });
     } finally { if (alive.current) setChecking(false); }
   });
   const rejected = (id: string) => {
@@ -82,7 +96,7 @@ export function useChatRecovery(sessionId: string, onHistory: (messages: (ChatMe
       await cancelGeneration(pending.id, sessionId);
       if (alive.current) await reconcile();
     } catch (e) {
-      if (alive.current) setNotice(`停止を確認できません。送信結果の確認を続けます。${String(e)}`);
+      if (alive.current) setNotice({ kind: 'cancel', detail: String(e) });
     }
   };
   const erase = () => {
@@ -121,7 +135,9 @@ export function useChatRecovery(sessionId: string, onHistory: (messages: (ChatMe
       window.removeEventListener("storage", storage);
     };
   }, [store]);
-  return { input: value.draft, change, pending: value.pending, storageError, notice, checking,
+  return { input: value.draft, change, pending: value.pending,
+    storageError: storageError ? `${language === 'en' ? 'Draft storage failed. Sending remains blocked. ' : '下書きの保存に失敗しました。送信を停止しています。'}${friendlyMessage(storageError, language)}` : null,
+    notice: notice ? notices[language][notice.kind] + (notice.detail ? ` ${friendlyMessage(notice.detail, language)}` : '') : null, checking,
     unresolved: !!value.pending || !!storageError, blocked, begin, reconcile, rejected, cancel, erase,
     clearCommand: (text: string) => { if (inputRef.current.trim() === text) change(""); } };
 }

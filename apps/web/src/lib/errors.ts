@@ -7,20 +7,36 @@ export type FriendlyError = {
   command?: { label: string; input: string };
 };
 
-const hubEnglish: Record<string, string> = {
+const knownEnglish: Record<string, string> = {
   '未対応のブラウザー取得先です。': 'This browser download source is not supported.',
   '配布元がこの形式・利用条件での取得を許可していません。': 'The source does not allow downloads with this format or these usage terms.',
   '公開コンテンツが見つかりません。': 'Public content was not found.',
   '配布元の取得制限です。時間を置いて再試行してください。': 'The source has limited downloads. Wait before trying again.',
   'ファイルが32 MiBを超えています。': 'The file exceeds 32 MiB.',
   '取得データがありません。': 'No download data was received.',
+  '下書きの保存データを読み込めません。送信を停止しています。': 'The saved draft could not be read. Sending is blocked.',
+  '下書きを端末に保存できませんでした。': 'The draft could not be saved on this device.',
+  '前の送信結果を確認しています。': 'The previous send result is being checked.',
+  '送信IDが変わったため確認を中断しました。': 'The send ID changed, so reconciliation stopped.',
+  '送信結果のIDが一致しません。': 'The send-result IDs do not match.',
+  '送信結果をまだ確認できません。': 'The send result cannot be verified yet.',
+  '履歴への保存結果を確認できません。': 'Saving to history could not be verified.',
+  '保存された返信を履歴で確認できません。': 'The saved reply could not be verified in history.',
+  '端末の送信下書きを消去できません。': 'The send draft on this device could not be erased.',
 };
+const erasedCleanupPrefix = 'サーバーの会話データは消去しましたが、この端末の下書き・返信履歴の消去を確認できません。';
 
 /** API・ネットワーク由来のエラーを、表示言語と次の操作に合わせて説明する。 */
 export function friendlyError(raw: unknown, language: Language = typeof window === 'undefined' ? 'ja' : preferences().language): FriendlyError {
   const en = language === 'en';
   const text = String(raw ?? "").replace(/^(Type)?Error:\s*/, "").trim();
-  if (en && hubEnglish[text]) return { message: hubEnglish[text] };
+  if (text.startsWith(erasedCleanupPrefix)) {
+    const detail = text.slice(erasedCleanupPrefix.length).replace(/^(Type)?Error:\s*/, '');
+    return { message: en ? 'Server conversation data was erased, but cleanup of the draft and reply history on this device could not be verified. ' + (knownEnglish[detail] ?? detail) : text };
+  }
+  if (en && knownEnglish[text]) return { message: knownEnglish[text] };
+  const generationCheck = text.match(/^送信結果の確認に失敗しました \(HTTP (\d{3})\)$/);
+  if (generationCheck) return { message: en ? `Could not check the send result (HTTP ${generationCheck[1]}).` : text };
   const hubStatus = text.match(/^配布元のエラー（HTTP (\d{3})）$/);
   if (hubStatus) return { message: en ? `Source error (HTTP ${hubStatus[1]})` : text };
   const status = typeof raw === 'object' && raw !== null && 'status' in raw ? raw.status : undefined;
