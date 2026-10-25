@@ -55,6 +55,51 @@ describe("PWA environment", () => {
   });
 });
 
+it('blocks updates during generation and localizes explicit confirmation without automatic sending', async () => {
+  vi.resetModules();
+  vi.useFakeTimers();
+  const storage = new Map<string, string>();
+  const postMessage = vi.fn(), confirm = vi.fn(() => false), reload = vi.fn();
+  const handlers = new Map<string, (event: any) => void>();
+  const registration = { active: {}, waiting: { postMessage }, addEventListener: vi.fn() };
+  vi.stubEnv('PROD', true);
+  vi.stubEnv('BASE_URL', '/');
+  vi.stubGlobal('localStorage', { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value) });
+  vi.stubGlobal('location', { protocol: 'https:', reload });
+  vi.stubGlobal('document', { baseURI: 'https://example.test/device/', addEventListener: vi.fn() });
+  vi.stubGlobal('navigator', { language: 'en-US', userAgent: '', onLine: true, serviceWorker: {
+    register: vi.fn(async () => registration), addEventListener: (name: string, fn: (event: any) => void) => handlers.set(name, fn),
+  } });
+  vi.stubGlobal('window', { isSecureContext: true, location, confirm, matchMedia: () => ({ matches: false, addEventListener: vi.fn() }),
+    addEventListener: vi.fn(), dispatchEvent: vi.fn() });
+  try {
+    const context = await import('./appContext');
+    const pwa = await import('./pwa');
+    await pwa.startPwa();
+    context.setGenerationBusy(true);
+    pwa.applyPwaUpdate();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(postMessage).not.toHaveBeenCalled();
+    context.setGenerationBusy(false);
+    pwa.applyPwaUpdate();
+    expect(confirm).toHaveBeenLastCalledWith(pwa.pwaMessages.en.confirm);
+    expect(postMessage).not.toHaveBeenCalled();
+    context.savePreferences({ ...context.preferences(), language: 'ja' });
+    pwa.applyPwaUpdate();
+    expect(confirm).toHaveBeenLastCalledWith(pwa.pwaMessages.ja.confirm);
+    expect(postMessage).not.toHaveBeenCalled();
+    confirm.mockReturnValue(true);
+    pwa.applyPwaUpdate();
+    expect(postMessage).toHaveBeenCalledExactlyOnceWith({ type: 'APPLY_UPDATE' });
+    expect(reload).not.toHaveBeenCalled();
+    handlers.get('message')!({ data: { type: 'UPDATE_BLOCKED' } });
+    handlers.get('controllerchange')!({});
+    expect(reload).not.toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.resetModules();
+  }
+});
+
 describe("shell worker privacy and lifecycle", () => {
   it('precaches canonical document URLs without redirects and serves both aliases offline',async()=>{
     const w=worker({documents:true});await w.lifecycle('install');
