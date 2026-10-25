@@ -31,6 +31,41 @@ const knownEnglish: Record<string, string> = {
   'アドレスを確認してください。': 'Check the address.',
   'スマホから接続するサーバーにはHTTPSのアドレスを指定してください。': 'Use an HTTPS address for a server accessed from your phone.',
   '認証情報やパスを含まないアドレスを指定してください（例：https://my-pc.example.ts.net）。': 'Use an address without credentials or a path (e.g. https://my-pc.example.ts.net).',
+  '登録した接続先を読み込めません。': 'Registered destinations could not be loaded.',
+  '端末鍵を削除できません。': 'The key on this device could not be removed.',
+  '端末鍵を保存できません。ブラウザーの保存設定を確認してください。': 'Device keys could not be saved. Check browser storage settings.',
+  '端末登録を保存できませんでした。': 'Device registration could not be saved.',
+  '接続先の端末鍵が見つかりません。PCから再登録してください。': 'The destination’s device key was not found. Register again from the PC.',
+  '中継サーバーのアドレスが無効です。': 'The relay server address is invalid.',
+  'このアプリに対応しない中継サーバーです。': 'This relay server is not configured for this app.',
+  'Remote用の中継サーバーが設定されていません。': 'A relay server has not been configured for Remote.',
+  '登録用QRが無効です。': 'The registration QR code is invalid.',
+  '登録用QRの期限が切れているか、内容が無効です。PCで発行し直してください。': 'The registration QR code is expired or invalid. Issue a new one on the PC.',
+  '端末鍵が無効です。再登録してください。': 'The device key is invalid. Register again.',
+  '接続は終了しています。': 'The connection has ended.',
+  'PCとの接続を確認してください。': 'Check the connection to your PC.',
+  'PCへの接続・承認がタイムアウトしました。': 'Connecting to or approving the PC timed out.',
+  'PCに接続できません。起動状態と端末登録を確認してください。': 'Could not connect to the PC. Check that it is running and this device is registered.',
+  'PCへの接続を確認できません。PC側の登録解除も確認してください。': 'The PC connection could not be verified. Check whether this device was revoked on the PC.',
+  '通信が混雑しています。': 'The connection is busy. Try again shortly.',
+  '接続が変わりました。': 'The connection changed.',
+  '接続を更新しています。': 'The connection is being refreshed.',
+  '接続先を選んでください。': 'Choose a destination.',
+  '登録用QRの期限が切れました。': 'The registration QR code expired.',
+  '登録用QRを使用できません。PCで発行し直してください。': 'The registration QR code cannot be used. Issue a new one on the PC.',
+  '接続先が登録用QRと一致しません。': 'The destination does not match the registration QR code.',
+  '登録に失敗しました。': 'Registration failed.',
+  '登録コードが違うか、有効期限が切れています。サーバーで新しいコードを発行してください。': 'The registration code is incorrect or expired. Issue a new code on the server.',
+  '登録コードが無効になりました。サーバーで新しいコードを発行してください。': 'The registration code is locked. Issue a new code on the server.',
+  '登録できる端末数の上限に達しました。サーバーで不要な端末を解除してください。': 'The device limit was reached. Revoke unused devices on the server.',
+  '試行回数が多すぎます。1分ほど待ってから再試行してください。': 'Too many attempts. Wait about a minute before trying again.',
+  '端末の名前を確認してください。': 'Check the device name.',
+  '端末を登録してください。': 'Register this device.',
+  '8桁の登録コードと端末の名前を確認してください。': 'Check the eight-digit registration code and device name.',
+  'サーバーに接続できません。PC・サーバーの起動とネットワークを確認してください。': 'Could not connect to the server. Check the network and that your PC and server are running.',
+  '認証の有効期限が切れました。もう一度ログインしてください。': 'Authentication expired. Sign in again.',
+  '端末を登録できませんでした。': 'This device could not be registered.',
+  '登録を解除できませんでした。接続を確認して再試行してください。': 'Registration could not be revoked. Check the connection and try again.',
 };
 const erasedCleanupPrefix = 'サーバーの会話データは消去しましたが、この端末の下書き・返信履歴の消去を確認できません。';
 
@@ -45,6 +80,9 @@ export function friendlyError(raw: unknown, language: Language = typeof window =
   if (en && knownEnglish[text]) return { message: knownEnglish[text] };
   const generationCheck = text.match(/^送信結果の確認に失敗しました \(HTTP (\d{3})\)$/);
   if (generationCheck) return { message: en ? `Could not check the send result (HTTP ${generationCheck[1]}).` : text };
+  if (text === 'Stop generation and confirm its saved result before switching.') return { message: en ? text : '生成を停止し、保存結果を確認してから切り替えてください。' };
+  const connectionCheck = text.match(/^接続を確認して再試行してください（HTTP (\d{3})）。$/);
+  if (connectionCheck) return { message: en ? `Check the connection and try again (HTTP ${connectionCheck[1]}).` : text };
   const hubStatus = text.match(/^配布元のエラー（HTTP (\d{3})）$/);
   if (hubStatus) return { message: en ? `Source error (HTTP ${hubStatus[1]})` : text };
   const status = typeof raw === 'object' && raw !== null && 'status' in raw ? raw.status : undefined;

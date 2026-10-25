@@ -34,7 +34,11 @@ async function transaction<T>(mode: IDBTransactionMode, action: (store: IDBObjec
 }
 export const remoteDevices = () => transaction<RemoteDevice[]>('readonly', store => store.getAll());
 export const saveRemote = (device: RemoteDevice) => transaction('readwrite', store => store.put(device));
-export const deleteRemote = (id: string) => transaction('readwrite', store => store.delete(id));
+export async function deleteRemote(id: string) {
+  // Keep credentials intact when the subsequent connection switch would be blocked.
+  if (generationBusy()) throw Error('Stop generation and confirm its saved result before switching.');
+  return transaction('readwrite', store => store.delete(id));
+}
 export async function restoreRemote() {
   const id = localStorage.getItem('kyalulu-active-remote');
   selected = id ? (await remoteDevices()).find(d => d.id === id) ?? null : null;
