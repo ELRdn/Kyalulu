@@ -18,6 +18,7 @@ vi.mock('./appStore',async original=>({
     const records=structuredClone(fixture.records),metadata=structuredClone(fixture.meta);let aborted=false;
     const tx={abort:()=>{aborted=true;reject(Error('Transaction aborted'));},objectStore:(name:string)=>({
       get:(key:any)=>{const read={result:undefined as any,onsuccess:null as any};queueMicrotask(()=>{if(aborted)return;read.result=structuredClone((name==='entities'?records:metadata).get(name==='entities'?key.join(':'):key));try{read.onsuccess?.();}catch(error){aborted=true;reject(error);}});return read;},
+      getAll:(range:any)=>{const read={result:undefined as any,onsuccess:null as any};queueMicrotask(()=>{if(aborted)return;read.result=structuredClone([...records.values()].filter(record=>!range||record.owner===range.lower[0]&&record.id>=range.lower[1]&&record.id<=range.upper[1]));try{read.onsuccess?.();}catch(error){aborted=true;reject(error);}});return read;},
       put:(value:any,key?:string)=>{if(fixture.putFailure!==undefined&&--fixture.putFailure===0)throw Error('Device quota exceeded');(name==='entities'?records:metadata).set(name==='entities'?value.owner+':'+value.id:key!,structuredClone(value));},
     })};
     action(tx,(value:any)=>{if(!aborted){fixture.records=records;fixture.meta=metadata;resolve(value);}});
@@ -37,7 +38,7 @@ import { fromBase64 } from './portableBinary';
 const request=async(path:string,body?:unknown,method=body?'POST':'GET')=>{
   const response=await deviceFetch(path,{method,...(body?{body:JSON.stringify(body)}:{})});return {status:response.status,body:await response.json()};
 };
-beforeEach(()=>{fixture.records.clear();fixture.meta.clear();fixture.owner='owner-a';fixture.sequence=0;fixture.turns=[];fixture.putFailure=undefined;vi.stubGlobal('location',{href:'https://device.test/device/'});vi.stubGlobal('fetch',vi.fn(()=>{throw Error('No external calls allowed');}));});
+beforeEach(()=>{fixture.records.clear();fixture.meta.clear();fixture.owner='owner-a';fixture.sequence=0;fixture.turns=[];fixture.putFailure=undefined;vi.stubGlobal('IDBKeyRange',{bound:(lower:unknown,upper:unknown)=>({lower,upper})});vi.stubGlobal('location',{href:'https://device.test/device/'});vi.stubGlobal('fetch',vi.fn(()=>{throw Error('No external calls allowed');}));});
 afterEach(()=>{vi.unstubAllGlobals();});
 const form=(raw:Uint8Array)=>{const value=new FormData();value.set('file',new File([new Uint8Array(raw)],'fake.html',{type:'text/html'}));return value;};
 it('requires media rights, sniffs uploaded bytes and isolates asset retrieval by owner',async()=>{
