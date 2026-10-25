@@ -10,7 +10,6 @@ import json
 import sqlite3
 from collections.abc import Sequence, Mapping
 from pathlib import Path
-from uuid import uuid4
 from .store import CloudError, fingerprint
 
 TABLES = (
@@ -450,18 +449,8 @@ def apply_rows(db, value, *, validate_only=False):
             db.execute('DELETE FROM unified_local_links')
         else:
             db.executemany('DELETE FROM unified_local_links WHERE session_id=?', ((sid,) for sid in selected))
-    if all(db.execute("SELECT 1 FROM sqlite_master WHERE name=?", (name,)).fetchone() for name in ('native_sync_meta', 'unified_native_owners')):
-        affected = [(namespace, sid) for sid, namespace in db.execute('SELECT session_id,namespace FROM unified_native_owners') if selected is None or sid in selected]
-        for namespace, sid in affected:
-            db.execute('INSERT INTO native_sync_meta VALUES(?,?,?) ON CONFLICT(namespace,key) DO UPDATE SET value=excluded.value',
-                       (namespace, 'restore:' + sid, json.dumps(str(uuid4()))))
-        for namespace in {item[0] for item in affected}:
-            db.execute("UPDATE native_sync_meta SET value='false' WHERE namespace=? AND key='enabled'", (namespace,))
-            pending = db.execute("SELECT value FROM native_sync_meta WHERE namespace=? AND key='outbox'", (namespace,)).fetchone()
-            if pending and (pending_value := json.loads(pending[0])) is not None:
-                if not isinstance(pending_value, dict):raise CloudError('invalid_sync_outbox',409)
-                pending_value['withdrawn'] = True
-                db.execute("UPDATE native_sync_meta SET value=? WHERE namespace=? AND key='outbox'", (json.dumps(pending_value), namespace))
+    from python.storage.native_sync import fence_restored
+    fence_restored(db, selected)
     if db.execute("SELECT 1 FROM sqlite_master WHERE name='unified_runtime_links'").fetchone():
         for row in db.execute('SELECT session_id,mapping FROM unified_runtime_links').fetchall():
             if selected is None or row[0] in selected:

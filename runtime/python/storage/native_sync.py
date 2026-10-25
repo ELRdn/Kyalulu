@@ -16,6 +16,42 @@ from python.cloud.store import CloudError, fingerprint
 from . import entity_bridge as bridge
 
 
+def prepare_meta(db):
+    db.execute('CREATE TABLE IF NOT EXISTS runtime.native_sync_meta(namespace TEXT,key TEXT,value TEXT,PRIMARY KEY(namespace,key))')
+    db.execute('CREATE TABLE IF NOT EXISTS runtime.native_sync_received(namespace TEXT,id TEXT,revision INTEGER,deleted INTEGER,PRIMARY KEY(namespace,id))')
+    # SQL keeps guards current even when a legacy writer changes the original row.
+    if not db.execute("SELECT 1 FROM runtime.sqlite_master WHERE name='native_sync_outbox_sources'").fetchone():
+        db.execute('CREATE TABLE runtime.native_sync_outbox_sources(namespace TEXT,session_id TEXT,deleted INTEGER,PRIMARY KEY(namespace,session_id))')
+        db.execute("CREATE INDEX runtime.native_sync_outbox_header ON native_sync_meta(namespace,json_extract(value,'$.request_id'),COALESCE(json_extract(value,'$.withdrawn'),0),json_array_length(value,'$.captures'),json_array_length(value,'$.changes'),json_type(value)) WHERE key='outbox'")
+        sources = "SELECT json_extract(c.value,'$.native_session_id'),COALESCE(json_extract(p.value,'$.deleted'),0) FROM json_each(NEW.value,'$.captures') c JOIN json_each(NEW.value,'$.changes') p ON c.key=p.key"
+        for name, event in [('insert','INSERT'),('update','UPDATE OF value')]:
+            db.execute(f"CREATE TRIGGER runtime.native_sync_outbox_{name} AFTER {event} ON native_sync_meta WHEN NEW.key='outbox' BEGIN "
+                "DELETE FROM native_sync_outbox_sources WHERE namespace=NEW.namespace; "
+                f"INSERT INTO native_sync_outbox_sources SELECT NEW.namespace,* FROM ({sources}); END")
+        db.execute("CREATE TRIGGER runtime.native_sync_outbox_delete AFTER DELETE ON native_sync_meta WHEN OLD.key='outbox' BEGIN DELETE FROM native_sync_outbox_sources WHERE namespace=OLD.namespace; END")
+        db.execute("INSERT INTO runtime.native_sync_outbox_sources SELECT m.namespace,json_extract(c.value,'$.native_session_id'),COALESCE(json_extract(p.value,'$.deleted'),0) "
+            "FROM runtime.native_sync_meta m,json_each(m.value,'$.captures') c JOIN json_each(m.value,'$.changes') p ON c.key=p.key WHERE m.key='outbox'")
+
+
+def fence_restored(db, selected=None, *, schema='main'):
+    if schema not in {'main','runtime'}:raise ValueError('invalid restore database')
+    if not all(db.execute(f"SELECT 1 FROM {schema}.sqlite_master WHERE name=?", (name,)).fetchone() for name in ('native_sync_meta','unified_native_owners')):return
+    affected=[(namespace,sid) for sid,namespace in db.execute(f'SELECT session_id,namespace FROM {schema}.unified_native_owners') if selected is None or sid in selected]
+    for namespace,sid in affected:
+        db.execute(f'INSERT INTO {schema}.native_sync_meta VALUES(?,?,?) ON CONFLICT(namespace,key) DO UPDATE SET value=excluded.value',
+                   (namespace,'restore:'+sid,json.dumps(str(uuid4()))))
+    namespaces = {item[0] for item in affected}
+    if selected is None:
+        namespaces.update(row[0] for row in db.execute(f'SELECT DISTINCT namespace FROM {schema}.native_sync_meta'))
+    for namespace in namespaces:
+        db.execute(f"INSERT INTO {schema}.native_sync_meta VALUES(?,'enabled','false') ON CONFLICT(namespace,key) DO UPDATE SET value=excluded.value", (namespace,))
+        pending=db.execute(f"SELECT value FROM {schema}.native_sync_meta WHERE namespace=? AND key='outbox'", (namespace,)).fetchone()
+        if pending and (value:=json.loads(pending[0])) is not None:
+            if not isinstance(value,dict):raise CloudError('invalid_sync_outbox',409)
+            value['withdrawn']=True
+            db.execute(f"UPDATE {schema}.native_sync_meta SET value=? WHERE namespace=? AND key='outbox'", (json.dumps(value),namespace))
+
+
 class NativeSync:
     def __init__(self,path,origin,owner,token,*,transport=None):
         parsed=urlsplit(origin)
@@ -35,20 +71,7 @@ class NativeSync:
             db.execute('BEGIN IMMEDIATE')
             if allow_generation:bridge.Links(db,self.namespace).prepare()
             else:bridge.prepare(db,self.namespace)
-            db.execute('CREATE TABLE IF NOT EXISTS runtime.native_sync_meta(namespace TEXT,key TEXT,value TEXT,PRIMARY KEY(namespace,key))')
-            db.execute('CREATE TABLE IF NOT EXISTS runtime.native_sync_received(namespace TEXT,id TEXT,revision INTEGER,deleted INTEGER,PRIMARY KEY(namespace,id))')
-            # SQL keeps guards current even when a legacy writer changes the original row.
-            if not db.execute("SELECT 1 FROM runtime.sqlite_master WHERE name='native_sync_outbox_sources'").fetchone():
-                db.execute('CREATE TABLE runtime.native_sync_outbox_sources(namespace TEXT,session_id TEXT,deleted INTEGER,PRIMARY KEY(namespace,session_id))')
-                db.execute("CREATE INDEX runtime.native_sync_outbox_header ON native_sync_meta(namespace,json_extract(value,'$.request_id'),COALESCE(json_extract(value,'$.withdrawn'),0),json_array_length(value,'$.captures'),json_array_length(value,'$.changes'),json_type(value)) WHERE key='outbox'")
-                sources = "SELECT json_extract(c.value,'$.native_session_id'),COALESCE(json_extract(p.value,'$.deleted'),0) FROM json_each(NEW.value,'$.captures') c JOIN json_each(NEW.value,'$.changes') p ON c.key=p.key"
-                for name, event in [('insert','INSERT'),('update','UPDATE OF value')]:
-                    db.execute(f"CREATE TRIGGER runtime.native_sync_outbox_{name} AFTER {event} ON native_sync_meta WHEN NEW.key='outbox' BEGIN "
-                        "DELETE FROM native_sync_outbox_sources WHERE namespace=NEW.namespace; "
-                        f"INSERT INTO native_sync_outbox_sources SELECT NEW.namespace,* FROM ({sources}); END")
-                db.execute("CREATE TRIGGER runtime.native_sync_outbox_delete AFTER DELETE ON native_sync_meta WHEN OLD.key='outbox' BEGIN DELETE FROM native_sync_outbox_sources WHERE namespace=OLD.namespace; END")
-                db.execute("INSERT INTO runtime.native_sync_outbox_sources SELECT m.namespace,json_extract(c.value,'$.native_session_id'),COALESCE(json_extract(p.value,'$.deleted'),0) "
-                    "FROM runtime.native_sync_meta m,json_each(m.value,'$.captures') c JOIN json_each(m.value,'$.changes') p ON c.key=p.key WHERE m.key='outbox'")
+            prepare_meta(db)
             yield db
             db.commit()
         except BaseException:
