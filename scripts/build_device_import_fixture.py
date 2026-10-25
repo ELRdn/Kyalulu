@@ -60,6 +60,7 @@ def inputs():
         'st/standalone': {'name': 'Standalone', 'generation_settings': {'temp': .2, 'max_tokens': 100, 'proxy_host': 'FAKE'}, 'temperature': .8, 'system_prompt': 'SYS', 'story_string': 'Context', 'post_history_instructions': 'END'},
         'st/world-dictionary': {'name': 'World', 'entries': {'10': {'key': 'sea,port', 'content': 'Sea'}, '2': {'key': 'stars', 'content': 'Night'}}},
         'st/world-array': {'entries': [{'content': 'Always', 'constant': True}]},
+        'st/world-null-position': {'entries': {'1': {'key': ['sea'], 'content': 'Unsupported position', 'position': None}, '2': {'key': ['sea'], 'content': 'Disabled', 'enabled': []}}},
         'cai/character': {'name': 'Guide', 'description': 'Public description', 'greeting': 'Hello', 'definition': '{{char}}: Keep exact\r\n', 'creatorNotes': 'NOT PROMPT'},
         'cai/lore-array': [{'comment': 'First', 'key': 'sea,port', 'content': 'Sea'}, {'title': 'Second', 'keys': ['night'], 'content': 'Night', 'enabled': False}],
         'cai/lore-object': {'name': 'Lore', 'entries': [{'key': ['sea'], 'content': 'Sea'}]},
@@ -122,6 +123,18 @@ def main():
     path = ROOT / 'tests/fixtures/device-imports.json'
     path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     (ROOT / 'tests/fixtures/device-media.json').write_text(json.dumps(media_cases(), indent=2) + '\n', encoding='utf-8')
+    from python.core.portable_prompt import select_lore
+    books = [{'recursive_scanning': {}, 'entries': [
+        {'enabled': None, 'constant': True, 'content': 'MUST NOT INJECT'},
+        {'enabled': 0, 'constant': True, 'content': 'MUST NOT INJECT'},
+        {'constant': [], 'content': 'MUST NOT INJECT'},
+        {'keys': ['SEA'], 'case_sensitive': {}, 'content': 'Stars'},
+        {'keys': ['sea'], 'selective': {}, 'content': 'Allowed'},
+        {'constant': True, 'position': None, 'content': 'MUST NOT INJECT'},
+        {'keys': ['Stars'], 'content': 'MUST NOT RECURSE'}]}]
+    history = [{'role': 'user', 'content': 'sea'}]
+    selected, audit = select_lore(books, history)
+    (ROOT / 'tests/fixtures/device-lore-values.json').write_text(json.dumps({'books': books, 'history': history, 'expected': {'selected': selected, 'audit': audit}}, indent=2) + '\n', encoding='utf-8')
     print(f'{len(result)} deterministic native import fixtures')
 
 

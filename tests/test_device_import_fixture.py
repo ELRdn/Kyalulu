@@ -27,3 +27,11 @@ def test_native_media_reference(case):
     else:
         id, mime = accept_media(raw)
         assert {'id': id, 'mime': mime} == case['expected']
+
+
+def test_native_lore_values_reference():
+    from python.core.portable_prompt import select_lore
+    case = json.loads((FIXTURES / 'device-lore-values.json').read_text(encoding='utf-8'))
+    selected, audit = select_lore(case['books'], case['history'])
+    assert {'selected': selected, 'audit': audit} == case['expected']
+    assert [entry['content'] for entry in selected] == ['Stars', 'Allowed']

@@ -16,14 +16,16 @@ Binary/media基盤に続き、既存Nativeの他の主要入力形式をBrowser�
   character ID不一致、権限外greeting、壊れた日時/outputs/image pathを拒否する。
 - Windows CIのbase64比較試験が1MiB配列の深い比較で5秒を超えたため、同じ全bytesを
   NodeのBuffer.compareで照合する。試験対象の入力サイズや判定を減らしていない。
+- Loreの明示的なnull位置を未対応として無効化。空のdict/arrayやnull/0の条件値は
+  Pythonと同じ真偽判定にし、disabled・constant・selective・case sensitivity・再帰を照合する。
 
 ## 検証
 
-- frontend全体 **577 passed / 44 files**。Native由来の共通import fixtureは**47入力**。
+- frontend全体 **579 passed / 44 files**。Native由来の共通import fixtureは**48入力**。
   fixtureは `scripts/build_device_import_fixture.py` で再生成する。
-- Native import/media/Portable/promptの対象集合 **114 passed**。
-  `.artifacts/device-import-native-sources.xml`。
-- Chromiumのsetup/reloadとも、47入力の文書/媒体bytes・11媒体の実validationが一致。
+- Native import/media/Portable/promptの対象集合 **116 passed**。
+  `.artifacts/device-import-native-lore.xml`。
+- Chromiumのsetup/reloadとも、48入力の文書/媒体bytes・11媒体の実validationが一致。
   BYAFの2scenarioを実IndexedDBへ別々に確定し、選択済み返答・数値message IDの分離・
   同じrequestの再送を確認。既存WAV実decode/owner切替の試験も成功。
   遅延した旧ownerのresponse bodyからBlobを作らないこと、幅240pxでのplayer、
