@@ -46,7 +46,7 @@ async def main():
                     assert all(assets[id][0] == base64.b64decode(value['base64']) for id, value in fixture['assets'].items())
                     result['native_asset_roundtrip'] = True
                     result['blocked_network_requests'] = len(blocked); results.append(result)
-                    assert len(result['formats']) == 6 and not blocked
+                    assert len(result['formats']) == 6 and result['sourceDuplicateChoice'] and not blocked
                 await context.close()
             finally: await browser.close()
     finally:

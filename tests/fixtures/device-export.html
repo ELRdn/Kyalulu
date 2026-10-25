@@ -11,11 +11,41 @@ const encoder=new TextEncoder(),request=async(path,body,method=body?'POST':'GET'
   const response=await deviceFetch(path,{method,...(body?{body:JSON.stringify(body)}:{})}),value=await response.json();
   check(response.ok,JSON.stringify(value));return value;
 };
+async function verifySourceDuplicates(){
+  const source={source:'github',source_id:'fixture/card.json',sha256:'a'.repeat(64),document_index:0,content_rating:'sfw',transport:'browser'};
+  const preview=async remote=>request('/api/imports/text/preview',{text:JSON.stringify({schema_version:1,name:'Source fixture',source:{remote}})});
+  const body=(value,id,extra={})=>({request_id:id,selections:[{index:0,document:value.documents[0],...extra}]});
+  const commit=(value,input)=>deviceFetch('/api/imports/'+value.preview_id+'/commit',{method:'POST',body:JSON.stringify(input)});
+  const first=await preview(source),input=body(first,'source-first'),saved=await commit(first,input),item=(await saved.json()).items[0];
+  check(saved.ok,'Source first import failed');
+  const next=await preview(source);
+  check(next.duplicates['0'].length===1&&next.duplicates['0'][0].id===item.id,'Source duplicate missing');
+  const count=(await request('/api/library')).items.length;
+  check((await commit(next,body(next,'source-blocked'))).status===409,'Duplicate bypassed explicit choice');
+  check((await request('/api/library')).items.length===count,'Rejected duplicate changed Library');
+  const copied=await commit(next,body(next,'source-copy',{duplicate_action:'copy',document:{...next.documents[0],source:{remote:{...source,sha256:'FORGED'}}}}));
+  const copiedItem=(await copied.json()).items[0];
+  check(copied.ok&&copiedItem.id!==item.id&&copiedItem.document.source.remote.sha256===source.sha256,'Explicit copy lost provenance');
+  check((await commit(first,input)).ok,'Committed replay was rejected as a duplicate');
+  const updated=await commit(next,body(next,'source-update',{target_id:item.id,expected_revision:1}));
+  check(updated.ok&&(await updated.json()).items[0].revision===2,'Explicit source update failed');
+  const racingSource={...source,source_id:'fixture/race.json'},a=await preview(racingSource),b=await preview(racingSource);
+  const race=await Promise.all([commit(a,body(a,'source-race-a')),commit(b,body(b,'source-race-b'))]);
+  check(race.map(response=>response.status).sort().join(',')==='200,409','Concurrent source imports bypassed transactional choice');
+  const unknown=await preview({...source,source_id:'fixture/unknown.json',content_rating:'unknown'});
+  check((await commit(unknown,body(unknown,'source-unknown'))).status===400,'Unclassified source saved without a rating');
+  check((await commit(unknown,body(unknown,'source-adult',{content_rating:'nsfw'}))).status===403,'Adult source bypassed verification');
+  check((await commit(unknown,body(unknown,'source-general',{content_rating:'sfw'}))).ok,'Explicit general rating failed');
+  rememberOwner('fixture-source-other');
+  check((await preview(source)).duplicates['0'].length===0,'Source match leaked across owners');
+  rememberOwner(owner);
+}
 async function run(){
   rememberOwner(owner);localStorage.setItem('kyalulu-execution-target','device');
   const fixtureCases=await (await fetch(new URL('device-exports.json',location.href))).json(),assetCase=fixtureCases.find(item=>item.name==='png-and-audio-assets');
   const key='fixture-export-manifest';let manifest=JSON.parse(localStorage.getItem(key)||'null'),phase=manifest?'reload':'setup';
   if(!manifest){
+    await verifySourceDuplicates();
     const first=await request('/api/library',{name:'Old 日本語',data:{description:'OLD'}});
     for(const [id,asset] of Object.entries(assetCase.assets))await setMeta('asset:'+owner+':'+id,{raw:fromBase64(asset.base64),mime:asset.mime});
     const assetLibrary=await request('/api/library',assetCase.document);
@@ -48,7 +78,7 @@ async function run(){
     const recovered=await request(quotaPath,quotaBody),history=await entity(recovered.sessions[0].session_id,owner);
     check(history.payload.messages.length===2&&new Set(history.payload.messages.map(message=>message.id)).size===2,'History numeric IDs were not allocated');
     const replay=await request(quotaPath,quotaBody);check(replay.sessions[0].session_id===history.id,'History replay duplicated a conversation');
-    manifest={library:first.id,assetLibrary:assetLibrary.id,original:saved.items[0].id,sourceHash:preview.source_hash,history:history.id,atomicRollback:true,concurrentReplay:true,revisionConflict:true};localStorage.setItem(key,JSON.stringify(manifest));
+    manifest={library:first.id,assetLibrary:assetLibrary.id,original:saved.items[0].id,sourceHash:preview.source_hash,history:history.id,atomicRollback:true,concurrentReplay:true,revisionConflict:true,sourceDuplicateChoice:true};localStorage.setItem(key,JSON.stringify(manifest));
   }
   const results=[];
   for(const format of ['ccv2-json','ccv3-json','ccv2-png','ccv3-png','charx','backup']){
@@ -70,7 +100,7 @@ async function run(){
   check((await deviceFetch('/api/library/'+manifest.original+'/export?format=original&download=true')).status===404,'Another account could read the original');
   check((await deviceFetch('/api/library/'+manifest.library+'/export?download=true')).status===404,'Another account could read the Library');
   check((await deviceFetch('/api/library/'+manifest.assetLibrary+'/export?format=charx&download=true')).status===404,'Another account could export assets');
-  return {ok:true,phase,formats:results,originalBytes:raw.length,foreignReadsDenied:3,assetExportBase64:base64(assetRaw),atomicRollback:manifest.atomicRollback,concurrentReplay:manifest.concurrentReplay,revisionConflict:manifest.revisionConflict};
+  return {ok:true,phase,formats:results,originalBytes:raw.length,foreignReadsDenied:3,assetExportBase64:base64(assetRaw),atomicRollback:manifest.atomicRollback,concurrentReplay:manifest.concurrentReplay,revisionConflict:manifest.revisionConflict,sourceDuplicateChoice:manifest.sourceDuplicateChoice};
 }
 run().then(result=>{window.__EXPORT_RESULT__=result;document.body.innerText=JSON.stringify(result);}).catch(error=>window.__EXPORT_RESULT__={ok:false,error:String(error),stack:error.stack});
 </script>
