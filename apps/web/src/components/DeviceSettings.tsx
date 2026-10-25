@@ -20,6 +20,7 @@ export default function DeviceSettings() {
     {interests&&<Interests onDone={()=>setInterests(false)}/>}
     {target==='pc'&&<RemoteConnections/>}
     {target==='device'&&<RuntimeSyncSettings/>}
+    {target==='device'&&<p><Link to="/research">{en?'On-device research and ratings':'端末内の比較・評価'}</Link></p>}
     {target==='device'&&<><p><Link to="/migration">{t.migration}</Link></p><h3>{t.prepare}</h3><div className="k-unified-models">{MODELS.map(model=><div className="k-unified-model" key={model.id}>
       <div><strong>{model.name}</strong><small>{formatBytes(modelBytes(model))} · {ready.has(model.id)?en?'Ready':'保存済み':model.runtime}</small></div>
       {busy===model.id?<Button variant="secondary" onClick={()=>abort.current?.abort()}>{en?'Cancel':'中止'}</Button>:<div className="k-unified-actions">

@@ -12,7 +12,7 @@ import "./shell.css";
 import { useAdministrative, useRuntimeAccess } from '../components/RuntimeGate';
 import { isCloudGuest, loginPath } from '../lib/cloudGuest';
 import CreditOptions, { AdBanner } from '../components/CreditOptions';
-import { labels, useLanguage } from '../lib/appContext';
+import { labels, useLanguage, useExecutionTarget } from '../lib/appContext';
 import { UnifiedSync } from '../components/SessionPolicy';
 
 const LS_SIDEBAR_COMPACT = "kyalulu-sidebar-compact";
@@ -49,6 +49,7 @@ export default function AppShell() {
   const language=useLanguage(),t=labels[language];
   const navLabel=(path:string)=>({'/':t.home,'/chats':t.chats,'/discover':t.discover,'/create':t.create,'/profile':t.profile}[path]);
   const administrative = useAdministrative();
+  const target = useExecutionTarget();
   const guest = isCloudGuest(useRuntimeAccess());
   const navigate = useNavigate();
   const [compact, setCompact] = useState(() => localStorage.getItem(LS_SIDEBAR_COMPACT) === "1");
@@ -122,6 +123,7 @@ export default function AppShell() {
               <NavItem key={item.to} to={item.to} icon={<Icon name={item.icon} size={19} />} label={navLabel(item.to)||item.label} compact={rail} end={item.end} />
             ))}
           </div>
+          {target==='device'&&<div className="k-shell__nav-group"><NavItem to="/research" icon={<Icon name="sparkle" size={17} />} label={language==='en'?'Research':'研究'} secondary compact={rail} /></div>}
           {administrative && <><div className="k-shell__sidebar-divider" />
           <div className="k-shell__nav-group">
             <NavItem to="/studio" icon={<Icon name="sparkle" size={17} />} label="スタジオ" secondary compact={rail} badge={<span className="k-nav-item__badge">上級者向け</span>} />

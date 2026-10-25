@@ -1,0 +1,591 @@
+{
+  "metrics": [
+    {
+      "turns": [],
+      "expected": {
+        "turn_count": 0,
+        "char_count": 0,
+        "avg_chars": 0,
+        "max_chars": 0,
+        "repetition_score": null,
+        "failure_rate": 0.0,
+        "empty_rate": 0.0,
+        "avg_elapsed_ms": null
+      }
+    },
+    {
+      "turns": [
+        {
+          "assistant": "🌸日本語",
+          "elapsed_ms": 1.25
+        }
+      ],
+      "expected": {
+        "turn_count": 1,
+        "char_count": 4,
+        "avg_chars": 4.0,
+        "max_chars": 4,
+        "repetition_score": null,
+        "failure_rate": 0.0,
+        "empty_rate": 0.0,
+        "avg_elapsed_ms": 1.2,
+        "first_reply_ms_median": null,
+        "first_reply_ms_p95": null,
+        "tokens_per_second_median": null,
+        "first_attempt_success_rate": null,
+        "validation_retries": 0,
+        "peak_estimated_prompt_tokens": null
+      }
+    },
+    {
+      "turns": [
+        {
+          "assistant": "同じ日本語の長い文章を何度も繰り返す。",
+          "elapsed_ms": 0.25,
+          "status": "completed",
+          "telemetry": {
+            "first_reply_ms": 0,
+            "tokens_per_second": 0.0
+          },
+          "validation": {
+            "ok": true,
+            "retries": 0
+          },
+          "token_budget": {
+            "total_prompt_tokens": 10
+          }
+        },
+        {
+          "assistant": "同じ日本語の長い文章を何度も繰り返す。",
+          "elapsed_ms": 1.25,
+          "status": "completed",
+          "telemetry": {
+            "first_reply_ms": 1,
+            "tokens_per_second": 0.5
+          },
+          "validation": {
+            "ok": true,
+            "retries": 1
+          },
+          "token_budget": {
+            "total_prompt_tokens": 11
+          }
+        },
+        {
+          "assistant": "同じ日本語の長い文章を何度も繰り返す。",
+          "elapsed_ms": 2.25,
+          "status": "failed",
+          "telemetry": {
+            "first_reply_ms": 2,
+            "tokens_per_second": 1.0
+          },
+          "validation": {
+            "ok": false,
+            "retries": 0
+          },
+          "token_budget": {
+            "total_prompt_tokens": 12
+          }
+        },
+        {
+          "assistant": "同じ日本語の長い文章を何度も繰り返す。",
+          "elapsed_ms": 3.25,
+          "status": "completed",
+          "telemetry": {
+            "first_reply_ms": 3,
+            "tokens_per_second": 1.5
+          },
+          "validation": {
+            "ok": true,
+            "retries": 1
+          },
+          "token_budget": {
+            "total_prompt_tokens": 13
+          }
+        },
+        {
+          "assistant": "同じ日本語の長い文章を何度も繰り返す。",
+          "elapsed_ms": 4.25,
+          "status": "completed",
+          "telemetry": {
+            "first_reply_ms": 4,
+            "tokens_per_second": 2.0
+          },
+          "validation": {
+            "ok": true,
+            "retries": 0
+          },
+          "token_budget": {
+            "total_prompt_tokens": 14
+          }
+        },
+        {
+          "assistant": "同じ日本語の長い文章を何度も繰り返す。",
+          "elapsed_ms": 5.25,
+          "status": "completed",
+          "telemetry": {
+            "first_reply_ms": 5,
+            "tokens_per_second": 2.5
+          },
+          "validation": {
+            "ok": true,
+            "retries": 1
+          },
+          "token_budget": {
+            "total_prompt_tokens": 15
+          }
+        }
+      ],
+      "expected": {
+        "turn_count": 6,
+        "char_count": 114,
+        "avg_chars": 19.0,
+        "max_chars": 19,
+        "repetition_score": 0.831,
+        "failure_rate": 0.167,
+        "empty_rate": 0.0,
+        "avg_elapsed_ms": 2.8,
+        "first_reply_ms_median": 2.5,
+        "first_reply_ms_p95": 5,
+        "tokens_per_second_median": 1.25,
+        "first_attempt_success_rate": 0.333,
+        "validation_retries": 3,
+        "peak_estimated_prompt_tokens": 15
+      }
+    },
+    {
+      "turns": [
+        {
+          "assistant": ""
+        },
+        {
+          "assistant": "[error: failed]"
+        },
+        {
+          "assistant": "OK"
+        }
+      ],
+      "expected": {
+        "turn_count": 3,
+        "char_count": 17,
+        "avg_chars": 5.7,
+        "max_chars": 15,
+        "repetition_score": null,
+        "failure_rate": 0.333,
+        "empty_rate": 0.333,
+        "avg_elapsed_ms": null,
+        "first_reply_ms_median": null,
+        "first_reply_ms_p95": null,
+        "tokens_per_second_median": null,
+        "first_attempt_success_rate": null,
+        "validation_retries": 0,
+        "peak_estimated_prompt_tokens": null
+      }
+    }
+  ],
+  "probes": [
+    {
+      "input": {
+        "expect": [
+          "紅茶"
+        ],
+        "forbid": [],
+        "reply": "紅茶が好き",
+        "context": "",
+        "stored": [],
+        "trace": null
+      },
+      "expected": {
+        "expect": [
+          "紅茶"
+        ],
+        "recalled": true,
+        "in_context": false,
+        "stored": false,
+        "injected": false,
+        "hallucinated": false,
+        "outcome": "recalled"
+      }
+    },
+    {
+      "input": {
+        "expect": [
+          "紅茶"
+        ],
+        "forbid": [],
+        "reply": "分からない",
+        "context": "",
+        "stored": [],
+        "trace": null
+      },
+      "expected": {
+        "expect": [
+          "紅茶"
+        ],
+        "recalled": false,
+        "in_context": false,
+        "stored": false,
+        "injected": false,
+        "hallucinated": false,
+        "outcome": "no_memory"
+      }
+    },
+    {
+      "input": {
+        "expect": [
+          "紅茶"
+        ],
+        "forbid": [],
+        "reply": "分からない",
+        "context": "紅茶が好き",
+        "stored": [],
+        "trace": null
+      },
+      "expected": {
+        "expect": [
+          "紅茶"
+        ],
+        "recalled": false,
+        "in_context": true,
+        "stored": false,
+        "injected": false,
+        "hallucinated": false,
+        "outcome": "missed_in_context"
+      }
+    },
+    {
+      "input": {
+        "expect": [
+          "紅茶"
+        ],
+        "forbid": [],
+        "reply": "分からない",
+        "context": "",
+        "stored": [
+          {
+            "content": "紅茶が好き"
+          }
+        ],
+        "trace": {
+          "candidates": []
+        }
+      },
+      "expected": {
+        "expect": [
+          "紅茶"
+        ],
+        "recalled": false,
+        "in_context": false,
+        "stored": true,
+        "injected": false,
+        "hallucinated": false,
+        "outcome": "not_retrieved"
+      }
+    },
+    {
+      "input": {
+        "expect": [
+          "紅茶"
+        ],
+        "forbid": [],
+        "reply": "分からない",
+        "context": "",
+        "stored": [],
+        "trace": {
+          "candidates": [
+            {
+              "content": "紅茶が好き",
+              "decision": "recent_fill"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "expect": [
+          "紅茶"
+        ],
+        "recalled": false,
+        "in_context": false,
+        "stored": false,
+        "injected": true,
+        "hallucinated": false,
+        "outcome": "retrieved_but_ignored"
+      }
+    },
+    {
+      "input": {
+        "expect": [],
+        "forbid": [
+          "宇宙飛行士"
+        ],
+        "reply": "宇宙飛行士だったね",
+        "context": "",
+        "stored": [],
+        "trace": null
+      },
+      "expected": {
+        "expect": [],
+        "recalled": false,
+        "in_context": false,
+        "stored": false,
+        "injected": false,
+        "hallucinated": true,
+        "outcome": null
+      }
+    },
+    {
+      "input": {
+        "expect": [
+          "カフェ"
+        ],
+        "forbid": [],
+        "reply": "分からない",
+        "context": "",
+        "stored": [],
+        "trace": {
+          "candidates": []
+        }
+      },
+      "expected": {
+        "expect": [
+          "カフェ"
+        ],
+        "recalled": false,
+        "in_context": false,
+        "stored": false,
+        "injected": false,
+        "hallucinated": false,
+        "outcome": "not_stored"
+      }
+    }
+  ],
+  "summary": {
+    "turns": [
+      {
+        "probe": {
+          "expect": [
+            "紅茶"
+          ],
+          "recalled": true,
+          "in_context": false,
+          "stored": false,
+          "injected": false,
+          "hallucinated": false,
+          "outcome": "recalled"
+        }
+      },
+      {
+        "probe": {
+          "expect": [
+            "紅茶"
+          ],
+          "recalled": false,
+          "in_context": false,
+          "stored": false,
+          "injected": false,
+          "hallucinated": false,
+          "outcome": "no_memory"
+        }
+      },
+      {
+        "probe": {
+          "expect": [
+            "紅茶"
+          ],
+          "recalled": false,
+          "in_context": true,
+          "stored": false,
+          "injected": false,
+          "hallucinated": false,
+          "outcome": "missed_in_context"
+        }
+      },
+      {
+        "probe": {
+          "expect": [
+            "紅茶"
+          ],
+          "recalled": false,
+          "in_context": false,
+          "stored": true,
+          "injected": false,
+          "hallucinated": false,
+          "outcome": "not_retrieved"
+        }
+      },
+      {
+        "probe": {
+          "expect": [
+            "紅茶"
+          ],
+          "recalled": false,
+          "in_context": false,
+          "stored": false,
+          "injected": true,
+          "hallucinated": false,
+          "outcome": "retrieved_but_ignored"
+        }
+      },
+      {
+        "probe": {
+          "expect": [],
+          "recalled": false,
+          "in_context": false,
+          "stored": false,
+          "injected": false,
+          "hallucinated": true,
+          "outcome": null
+        }
+      },
+      {
+        "probe": {
+          "expect": [
+            "カフェ"
+          ],
+          "recalled": false,
+          "in_context": false,
+          "stored": false,
+          "injected": false,
+          "hallucinated": false,
+          "outcome": "not_stored"
+        }
+      },
+      {
+        "memory": {
+          "injected_tokens": 10,
+          "retrieval_ms": 1.25,
+          "decisions": [
+            {
+              "action": "store",
+              "supported": false
+            },
+            {
+              "action": "skip"
+            }
+          ]
+        }
+      }
+    ],
+    "expected": {
+      "probes": 6,
+      "recalled": 1,
+      "recall_rate": 0.167,
+      "outcomes": {
+        "recalled": 1,
+        "no_memory": 1,
+        "missed_in_context": 1,
+        "not_retrieved": 1,
+        "retrieved_but_ignored": 1,
+        "not_stored": 1
+      },
+      "hallucinated": 1,
+      "stored": 1,
+      "unsupported_stored": 1,
+      "skipped_proposals": 1,
+      "avg_injected_tokens": 10.0,
+      "avg_retrieval_ms": 1.25
+    }
+  },
+  "rounding": [
+    {
+      "value": 1.25,
+      "digits": 0,
+      "expected": 1.0
+    },
+    {
+      "value": 1.25,
+      "digits": 1,
+      "expected": 1.2
+    },
+    {
+      "value": 1.25,
+      "digits": 2,
+      "expected": 1.25
+    },
+    {
+      "value": 1.25,
+      "digits": 3,
+      "expected": 1.25
+    },
+    {
+      "value": 2.675,
+      "digits": 0,
+      "expected": 3.0
+    },
+    {
+      "value": 2.675,
+      "digits": 1,
+      "expected": 2.7
+    },
+    {
+      "value": 2.675,
+      "digits": 2,
+      "expected": 2.67
+    },
+    {
+      "value": 2.675,
+      "digits": 3,
+      "expected": 2.675
+    },
+    {
+      "value": 0.125,
+      "digits": 0,
+      "expected": 0.0
+    },
+    {
+      "value": 0.125,
+      "digits": 1,
+      "expected": 0.1
+    },
+    {
+      "value": 0.125,
+      "digits": 2,
+      "expected": 0.12
+    },
+    {
+      "value": 0.125,
+      "digits": 3,
+      "expected": 0.125
+    },
+    {
+      "value": -0.125,
+      "digits": 0,
+      "expected": -0.0
+    },
+    {
+      "value": -0.125,
+      "digits": 1,
+      "expected": -0.1
+    },
+    {
+      "value": -0.125,
+      "digits": 2,
+      "expected": -0.12
+    },
+    {
+      "value": -0.125,
+      "digits": 3,
+      "expected": -0.125
+    },
+    {
+      "value": 123.455,
+      "digits": 0,
+      "expected": 123.0
+    },
+    {
+      "value": 123.455,
+      "digits": 1,
+      "expected": 123.5
+    },
+    {
+      "value": 123.455,
+      "digits": 2,
+      "expected": 123.45
+    },
+    {
+      "value": 123.455,
+      "digits": 3,
+      "expected": 123.455
+    }
+  ]
+}
