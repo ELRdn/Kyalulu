@@ -6,6 +6,7 @@
  * 複数の tag が同じ mood に集約される（cat / beastkin / wolf → 獣人）。
  * 難易度などの技術的な tag は consumer 画面に出さない。
  */
+import type { Language } from './appContext';
 
 export type MoodTag = {
   /** mood の安定キー（URL の ?mood= に使う） */
@@ -32,6 +33,12 @@ const MOODS: Record<string, { label: string; icon?: string }> = {
   sweet: { label: "甘々", icon: "♡" },
   school: { label: "学園", icon: "✎" },
   fantasy: { label: "異世界", icon: "☾" },
+};
+
+const ENGLISH: Record<string, string> = {
+  yandere: 'Yandere', beastkin: 'Beastkin', 'onee-san': 'Big sister', tsundere: 'Tsundere',
+  butler: 'Butler', senior: 'Senior', cool: 'Cool', night: 'Late night', healing: 'Comfort',
+  mysterious: 'Mysterious', polite: 'Polite', smart: 'Intellectual', sweet: 'Sweet', school: 'School', fantasy: 'Fantasy',
 };
 
 /** 生 tag → mood キー。同義語はここで集約する。 */
@@ -62,27 +69,27 @@ function moodKey(tag: string): string | null {
 }
 
 /** 未知の tag は ASCII の技術語なら隠し、それ以外（日本語タグ等）はそのまま出す */
-export function moodLabelFor(tag: string): MoodTag | null {
+export function moodLabelFor(tag: string, language: Language = 'ja'): MoodTag | null {
   const key = moodKey(tag);
   if (!key) return null;
   const known = MOODS[key];
-  if (known) return { tag: key, ...known };
+  if (known) return { tag: key, ...known, label: language === 'en' ? ENGLISH[key] ?? known.label : known.label };
   if (/^[a-z0-9 _-]+$/i.test(key)) return null;
   return { tag: key, label: tag.trim() };
 }
 
 /** 1キャラの tags を重複なしの mood 一覧へ */
-export function moodsOf(tags: string[] = []): MoodTag[] {
-  return collectMoods([tags]);
+export function moodsOf(tags: string[] = [], language: Language = 'ja'): MoodTag[] {
+  return collectMoods([tags], language);
 }
 
 /** 複数キャラクターの tags からユニークな mood chip 一覧を作る（出現順） */
-export function collectMoods(allTags: string[][]): MoodTag[] {
+export function collectMoods(allTags: string[][], language: Language = 'ja'): MoodTag[] {
   const seen = new Set<string>();
   const result: MoodTag[] = [];
   for (const tags of allTags) {
     for (const t of tags) {
-      const m = moodLabelFor(t);
+      const m = moodLabelFor(t, language);
       if (!m || seen.has(m.tag)) continue;
       seen.add(m.tag);
       result.push(m);

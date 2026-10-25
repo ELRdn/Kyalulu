@@ -26,6 +26,48 @@ function findButton(tree: ReactNode, label: string): ReactElement<any> {
 }
 
 describe('first-chat tutorial', () => {
+  it('keeps the full English guide, Cloud consent and PC/BYOK boundaries', () => {
+    for (let step = 0; step < 4; step++) {
+      for (const cloud of [true, false]) {
+        const html = renderToStaticMarkup(<FirstChatTutorial {...props({ step, cloud, language: 'en', storageFailed: true })} />);
+        expect(html).not.toMatch(/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u);
+        expect(html).toContain('recorded in this browser');
+      }
+    }
+    const cloud = renderToStaticMarkup(<FirstChatTutorial {...props({ step: 1, cloud: true, language: 'en' })} />);
+    expect(cloud).toContain('before every send');
+    expect(cloud).toContain('cost cap');
+    expect(cloud).toContain('Canceling or expiry does not start generation');
+    expect(cloud).toContain('separate from K-Credits');
+    const pc = renderToStaticMarkup(<FirstChatTutorial {...props({ step: 1, language: 'en' })} />);
+    expect(pc).toContain('connected PC');
+    expect(pc).toContain('external provider');
+    expect(pc).toContain('do not show Cloud’s per-send quote');
+    const memory = renderToStaticMarkup(<FirstChatTutorial {...props({ step: 2, language: 'en' })} />);
+    expect(memory).toContain('Word matches do not prove a fact');
+    expect(memory).toContain('separate operations');
+  });
+
+  it.each(['ja', 'en'] as const)('describes device execution without PC/BYOK instructions in %s', language => {
+    const p = props({ step: 1, device: true, language });
+    const html = renderToStaticMarkup(<FirstChatTutorial {...p} />);
+    expect(html).toContain(language === 'en' ? 'this browser on this device' : 'このブラウザーの端末内');
+    expect(html).toContain(language === 'en' ? 'not sent to Cloud or external AI' : 'Cloudや外部AIへ送りません');
+    expect(html).not.toContain('BYOK');
+    expect(html).not.toContain('接続先のPC');
+    expect(p.onOpenModels).not.toHaveBeenCalled();
+  });
+
+  it('keeps English Inspector disabled and completion explicit after switching language', () => {
+    const p = props({ step: 3, language: 'en', inspectorAvailable: false });
+    const tree = FirstChatTutorial(p);
+    expect(findButton(tree, 'Open Inspector').props.disabled).toBe(true);
+    expect(findButton(tree, 'Open Inspector').props.onClick).toBeUndefined();
+    expect(p.onComplete).not.toHaveBeenCalled();
+    findButton(tree, 'Finish guide').props.onClick();
+    expect(p.onComplete).toHaveBeenCalledOnce();
+  });
+
   it.each(['completed', 'skipped'] as const)('records %s on this browser, with no conversation data', receipt => {
     const values = new Map<string, string>();
     const storage = { getItem: (key: string) => values.get(key) ?? null,

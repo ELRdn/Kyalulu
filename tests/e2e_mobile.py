@@ -38,7 +38,7 @@ def main():
             device_name = f'Test Android {width} {uuid.uuid4().hex[:8]}'
             context = browser.new_context(viewport={'width': width, 'height': 851},
                 is_mobile=width < 768, has_touch=width < 768, ignore_https_errors=True,
-                color_scheme=theme, device_scale_factor=1)
+                color_scheme=theme, device_scale_factor=1, locale='ja-JP')
             context.add_init_script(f"localStorage.setItem('my-zeta-theme','{theme}');")
             page = context.new_page()
             errors = []

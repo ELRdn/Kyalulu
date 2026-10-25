@@ -30,7 +30,7 @@ def main():
         for width in (1440, 390):
             for theme in ('light', 'dark'):
                 name = f'Cyan-{width}-{theme}-{uuid.uuid4().hex[:6]}'
-                context = browser.new_context(viewport={'width': width, 'height': 1000}, color_scheme=theme)
+                context = browser.new_context(viewport={'width': width, 'height': 1000}, color_scheme=theme, locale='ja-JP')
                 context.add_init_script(f"localStorage.setItem('my-zeta-theme','{theme}');localStorage.setItem('my-zeta-model','mock-echo');localStorage.setItem('my-zeta-researcher','1');localStorage.setItem('kyalulu-context-panel-open','0');")
                 page = context.new_page(); errors = []
                 page.on('pageerror', lambda error: errors.append(str(error)))

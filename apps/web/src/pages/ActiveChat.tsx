@@ -75,7 +75,7 @@ import { useCapabilities } from '../lib/capabilities';
 import { branchSession, deleteSessionData } from '../lib/api';
 import CloudQuoteConfirmation, { useQuoteConfirmation } from '../components/CloudQuoteConfirmation';
 import type { CloudQuote } from '../lib/quoteConsent';
-import { setGenerationBusy, executionTarget } from '../lib/appContext';
+import { setGenerationBusy, executionTarget, useLanguage } from '../lib/appContext';
 import { AdBanner } from '../components/CreditOptions';
 import SessionPolicy from '../components/SessionPolicy';
 import ConversationContext from '../components/ConversationContext';
@@ -144,6 +144,7 @@ export default function ActiveChat() {
 }
 
 function ActiveChatSession() {
+  const language = useLanguage(), en = language === 'en';
   const { capabilities, error: capabilitiesError, reload: reloadCapabilities } = useCapabilities();
   const { quote, consent } = useQuoteConfirmation();
   const [lastQuote, setLastQuote] = useState<CloudQuote | null>(null);
@@ -906,7 +907,7 @@ function ActiveChatSession() {
     }
   };
 
-  const friendly = error ? friendlyError(error) : null;
+  const friendly = error ? friendlyError(error, language) : null;
   const knownSessions = sessions.filter((s) => s.count > 0 || s.session_id === "default" || s.session_id === sessionId);
   const railNeedle = railQuery.trim().toLowerCase();
   const railSessions = railNeedle ? knownSessions.filter((s) => `${sessionTitle(s)} ${cleanPreview(s.last_preview, 300)}`.toLowerCase().includes(railNeedle)) : knownSessions;
@@ -914,11 +915,11 @@ function ActiveChatSession() {
   const railRecent = railSessions.filter((s) => !pinned.includes(s.session_id));
   const worldNameOf = (id?: string | null) => worlds.find((w) => w.id === id)?.display_name;
   const canRegenerate = !!capabilities?.features.regenerate && !mutationLocked && messages.at(-1)?.role === "assistant" && !!messages.at(-1)?.id && messages.at(-2)?.role === "user";
-  const chatStatus = !online ? "接続待ち" : quote ? '保存・学習利用への同意待ち' : streaming ? REPLY_WAIT_LABEL : recovery.unresolved ? "送信結果を確認中…"
-    : settingsReady && historyReady && modelAvailable ? "会話の準備完了" : "会話を準備中…";
+  const chatStatus = !online ? (en ? 'Waiting for connection' : '接続待ち') : quote ? (en ? 'Waiting for storage and training consent' : '保存・学習利用への同意待ち') : streaming ? (en ? 'Waiting for a reply…' : REPLY_WAIT_LABEL) : recovery.unresolved ? (en ? 'Checking the send result…' : '送信結果を確認中…')
+    : settingsReady && historyReady && modelAvailable ? (en ? 'Ready to chat' : '会話の準備完了') : (en ? 'Preparing conversation…' : '会話を準備中…');
   const starters = hasCharacter
-    ? ["こんにちは！はじめまして", "今日はどんな一日だった？", "きみのこと、もっと教えて", "*そっと隣に座る*"]
-    : ["こんにちは！", "おすすめの話題はある？", "物語をいっしょに作ろう"];
+    ? (en ? ['Hello! Nice to meet you.', 'How was your day?', 'Tell me more about yourself.', '*sits down quietly beside you*'] : ["こんにちは！はじめまして", "今日はどんな一日だった？", "きみのこと、もっと教えて", "*そっと隣に座る*"])
+    : (en ? ['Hello!', 'What would you like to talk about?', 'Let’s make a story together.'] : ["こんにちは！", "おすすめの話題はある？", "物語をいっしょに作ろう"]);
 
   const contextPanel = (
     <ChatContextPanel
@@ -990,20 +991,20 @@ function ActiveChatSession() {
         </form>
       </Dialog>
       {/* 左: セッションレール */}
-      <aside className="k-chat-rail" aria-label="会話リスト">
+      <aside className="k-chat-rail" aria-label={en ? 'Conversations' : '会話リスト'}>
         <div className="k-chat-rail__head">
           <Button variant="primary" onClick={handleNewSession} className="k-chat-rail__new">
-            <Icon name="plus" size={16} /> 新しいチャット
+            <Icon name="plus" size={16} /> {en ? 'New chat' : '新しいチャット'}
           </Button>
           <div className="k-chat-rail__search">
             <Icon name="search" size={15} />
-            <input value={railQuery} onChange={(e) => setRailQuery(e.target.value)} placeholder="チャットを検索…" aria-label="チャットを検索" />
+            <input value={railQuery} onChange={(e) => setRailQuery(e.target.value)} placeholder={en ? 'Search chats…' : 'チャットを検索…'} aria-label={en ? 'Search chats' : 'チャットを検索'} />
           </div>
         </div>
         <div className="k-chat-rail__list">
-          {sessionsError ? <p role="alert">{sessionsError}<Button size="sm" variant="ghost" onClick={() => void loadSessions()}>再読込</Button></p> : railSessions.length === 0 && <EmptyState motif="✧" title={railNeedle ? "見つかりませんでした" : "チャットがありません"} />}
-          {railGroup("ピン留め", railPinned)}
-          {railGroup("最近のチャット", railRecent)}
+          {sessionsError ? <p role="alert">{sessionsError}<Button size="sm" variant="ghost" onClick={() => void loadSessions()}>{en ? 'Retry' : '再読込'}</Button></p> : railSessions.length === 0 && <EmptyState motif="✧" title={railNeedle ? (en ? 'No results' : '見つかりませんでした') : (en ? 'No chats yet' : 'チャットがありません')} />}
+          {railGroup(en ? 'Pinned' : 'ピン留め', railPinned)}
+          {railGroup(en ? 'Recent chats' : '最近のチャット', railRecent)}
         </div>
       </aside>
 
@@ -1012,10 +1013,10 @@ function ActiveChatSession() {
         <AdBanner/>
         <SessionPolicy sessionId={sessionId} model={currentModel?.display_name??modelId??''} disabled={mutationLocked}/>
         <div className="k-chat-header">
-          <Link to="/chats" className="k-chat-header__back" aria-label="チャット一覧へ戻る">
+          <Link to="/chats" className="k-chat-header__back" aria-label={en ? 'Back to chats' : 'チャット一覧へ戻る'}>
             <Icon name="back" size={18} />
           </Link>
-          <button type="button" className="k-chat-header__who" onClick={() => ctxPanel.setOpen(!ctxPanel.open)} aria-label={`${headerName}の情報を表示`}>
+          <button type="button" className="k-chat-header__who" onClick={() => ctxPanel.setOpen(!ctxPanel.open)} aria-label={en ? `Show information for ${headerName}` : `${headerName}の情報を表示`}>
             <span className="k-chat-header__avatar">
               <Avatar name={headerName} seed={characterId ?? sessionId} size="md" src={portrait} mascot={!hasCharacter} />
               <span className="k-chat-header__status" aria-hidden="true" />
@@ -1026,25 +1027,25 @@ function ActiveChatSession() {
             </span>
           </button>
           <div className="k-chat-header__actions">
-            <button ref={tutorialButtonRef} type="button" aria-label="初トークの案内" title="初トークの案内"
+            <button ref={tutorialButtonRef} type="button" aria-label={en ? 'First chat guide' : '初トークの案内'} title={en ? 'First chat guide' : '初トークの案内'}
               className={`k-icon-btn ${tutorial.open ? 'k-icon-btn--active' : ''}`} aria-expanded={tutorial.open}
               onClick={() => { tutorial.reopen(); setTutorialFocusRequest(value => value + 1); }}>?</button>
-            <Button size="sm" variant="ghost" aria-pressed={visualNovel} onClick={() => setVisualNovel(value => !value)}>{visualNovel ? '会話履歴を表示' : 'VN表示'}</Button>
-            <IconButton label="キャラ・プリセット" active={portableOpen} onClick={() => setPortableOpen((v) => !v)}>
+            <Button size="sm" variant="ghost" aria-pressed={visualNovel} onClick={() => setVisualNovel(value => !value)}>{visualNovel ? (en ? 'Show chat history' : '会話履歴を表示') : (en ? 'Visual novel' : 'VN表示')}</Button>
+            <IconButton label={en ? 'Character & preset' : 'キャラ・プリセット'} active={portableOpen} onClick={() => setPortableOpen((v) => !v)}>
               <Icon name="book" size={17} />
             </IconButton>
             {researcher && (
-              <IconButton label="詳細設定（Studio）" active={studioOpen} onClick={() => setStudioOpen((v) => !v)}>
+              <IconButton label={en ? 'Advanced settings (Studio)' : '詳細設定（Studio）'} active={studioOpen} onClick={() => setStudioOpen((v) => !v)}>
                 <Icon name="settings" size={17} />
               </IconButton>
             )}
             {researcher && (
-              <IconButton label="デバッグ (Ctrl+Shift+D)" active={debugOpen} onClick={() => setDebugOpen((v) => !v)}>
+              <IconButton label={en ? 'Debug (Ctrl+Shift+D)' : 'デバッグ (Ctrl+Shift+D)'} active={debugOpen} onClick={() => setDebugOpen((v) => !v)}>
                 <Icon name="bug" size={17} />
               </IconButton>
             )}
             {!panelDocked && (
-              <IconButton label={ctxPanel.open ? "情報パネルを閉じる" : "情報パネルを開く"} active={ctxPanel.open} onClick={() => ctxPanel.setOpen(!ctxPanel.open)}>
+              <IconButton label={ctxPanel.open ? (en ? 'Close information panel' : '情報パネルを閉じる') : (en ? 'Open information panel' : '情報パネルを開く')} active={ctxPanel.open} onClick={() => ctxPanel.setOpen(!ctxPanel.open)}>
                 <Icon name="panel" size={17} />
               </IconButton>
             )}
@@ -1052,7 +1053,7 @@ function ActiveChatSession() {
         </div>
 
         <div ref={listRef} className="k-chat-messages">
-          {tutorial.open && <FirstChatTutorial step={tutorial.step} cloud={!!cloud_mode} inspectorAvailable={administrative}
+          {tutorial.open && <FirstChatTutorial step={tutorial.step} cloud={!!cloud_mode} device={executionTarget() === 'device'} language={language} inspectorAvailable={administrative}
             storageFailed={tutorial.storageFailed} panelRef={tutorialRef} onNext={tutorial.next} onBack={tutorial.back}
             onSkip={() => dismissTutorial('skipped')} onComplete={() => dismissTutorial('completed')}
             onFocusComposer={() => composerRef.current?.querySelector<HTMLTextAreaElement>('textarea')?.focus()}
@@ -1066,9 +1067,9 @@ function ActiveChatSession() {
                 <div className="k-chat-welcome__art">
                   <Avatar name={headerName} seed={characterId ?? sessionId} size="xl" src={portrait} mascot={!hasCharacter} />
                 </div>
-                <h2 className="k-chat-welcome__title">{hasCharacter ? `${headerName}と話してみよう` : "なにを話そうか？"}</h2>
+                <h2 className="k-chat-welcome__title">{hasCharacter ? (en ? `Chat with ${headerName}` : `${headerName}と話してみよう`) : (en ? 'What shall we talk about?' : 'なにを話そうか？')}</h2>
                 <p className="k-chat-welcome__desc">
-                  {hasCharacter ? "最初のひとことを送ってみて。会話は自動で保存されるよ。" : "キャラクターを選ぶと、その子らしい会話ができるよ。"}
+                  {hasCharacter ? (en ? 'Send your first message. Your conversation is saved automatically.' : '最初のひとことを送ってみて。会話は自動で保存されるよ。') : (en ? 'Choose a character to start a conversation in their style.' : 'キャラクターを選ぶと、その子らしい会話ができるよ。')}
                 </p>
                 <div className="k-chat-welcome__starters">
                   {starters.map((t) => (
@@ -1209,7 +1210,7 @@ function ActiveChatSession() {
             今回：{lastQuote.route.display_name} · {lastQuote.route.upstream || lastQuote.route.provider}
             {lastQuote.route.upstream && `（${lastQuote.route.provider}経由）`} · 上限 {lastQuote.max_credits.toLocaleString()} K-Credits（予約なし・完了後に実費精算）
           </p>}
-          {streaming && !quote && <KyaluluWaiting progress={progress} researcher={researcher} />}
+          {streaming && !quote && <KyaluluWaiting progress={progress} researcher={researcher} language={language} />}
           {clientTimings && debugOpen && <details className="k-context-section"><summary>今回の待ち時間</summary>
             <dl>{([['文脈取得', clientTimings.context_fetch_ms], ['見積取得', clientTimings.quote_fetch_ms], ['同意待ち', clientTimings.quote_consent_ms], ['送信から最初の本文通知', clientTimings.post_to_first_body_ms], ['送信から全文完了通知', clientTimings.post_to_full_ms]] as const).map(([label, value]) => value !== null && <div key={label}><dt>{label}</dt><dd>{(value / 1000).toFixed(2)}秒</dd></div>)}</dl>
             <p className="k-context-note">本文通知は画面への引き渡し時刻です。Cloudで保存後に一括表示する場合は、最初の本文と全文完了が同時になります。</p>
@@ -1241,9 +1242,9 @@ function ActiveChatSession() {
                 onClick={() => void handleSuggest()}
                 disabled={!capabilities?.features.suggestions || !modelId || !settingsReady || mutationLocked || suggesting || !messages.some((m) => m.role === "assistant")}
                 aria-pressed={!!suggestions}
-                title={capabilities?.features.suggestions ? '次に送る返事の候補を出す' : 'この接続先では返事の候補に対応していません'}
+                title={capabilities?.features.suggestions ? (en ? 'Suggest possible replies to send next' : '次に送る返事の候補を出す') : (en ? 'Reply suggestions are unavailable on this connection' : 'この接続先では返事の候補に対応していません')}
               >
-                <Icon name="sparkle" size={13} className={suggesting ? "k-spin" : undefined} /> {suggesting ? "考え中…" : "返事の候補"}
+                <Icon name="sparkle" size={13} className={suggesting ? "k-spin" : undefined} /> {suggesting ? (en ? 'Thinking…' : '考え中…') : (en ? 'Reply suggestions' : '返事の候補')}
               </button>
             }
             value={input}
@@ -1253,8 +1254,8 @@ function ActiveChatSession() {
             streaming={streaming}
             sendBlocked={!capabilities || sessionAction || recovery.unresolved || commandRunning || !online || (!modelAvailable && !input.trim().startsWith("/"))}
             disabled={!settingsReady || !historyReady}
-            disabledText={!modelId ? (modelsFailed ? "サーバーに接続できません。アプリの起動状態を確認してね" : "会話エンジンを準備中…") : "会話を準備中…"}
-            placeholder={hasCharacter ? `${headerName}への言葉を入力してね…` : "きみの言葉を入力してね…"}
+            disabledText={!modelId ? (modelsFailed ? (en ? 'Cannot connect to the server. Check that the app is running.' : 'サーバーに接続できません。アプリの起動状態を確認してね') : (en ? 'Preparing the conversation model…' : '会話エンジンを準備中…')) : (en ? 'Preparing conversation…' : '会話を準備中…')}
+            placeholder={hasCharacter ? (en ? `Write a message to ${headerName}…` : `${headerName}への言葉を入力してね…`) : (en ? 'Write your message…' : 'きみの言葉を入力してね…')}
           />
         </div>
       </div>
@@ -1268,10 +1269,10 @@ function ActiveChatSession() {
         </Sheet>
       )}
 
-      <Sheet open={portableOpen} onClose={() => setPortableOpen(false)} side="right" topOffset={64} label="キャラ・プリセット">
+      <Sheet open={portableOpen} onClose={() => setPortableOpen(false)} side="right" topOffset={64} label={en ? 'Character & preset' : 'キャラ・プリセット'}>
         <div className="k-sheet-head">
-          <div className="k-sheet-head__title">キャラ・プリセット</div>
-          <IconButton label="閉じる" size="sm" onClick={() => setPortableOpen(false)}>
+          <div className="k-sheet-head__title">{en ? 'Character & preset' : 'キャラ・プリセット'}</div>
+          <IconButton label={en ? 'Close' : '閉じる'} size="sm" onClick={() => setPortableOpen(false)}>
             <Icon name="close" size={15} />
           </IconButton>
         </div>

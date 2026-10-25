@@ -17,7 +17,7 @@ def main():
         browser = p.chromium.launch(headless=True)
         for width in (1440, 390):
             for theme in ('light', 'dark'):
-                context = browser.new_context(viewport={'width': width, 'height': 1000}, color_scheme=theme)
+                context = browser.new_context(viewport={'width': width, 'height': 1000}, color_scheme=theme, locale='ja-JP')
                 context.add_init_script(f"localStorage.setItem('my-zeta-theme','{theme}');localStorage.setItem('my-zeta-model','mock-echo');localStorage.setItem('my-zeta-researcher','1');localStorage.setItem('kyalulu-context-panel-open','0');")
                 page = context.new_page(); errors = []; requests = []
                 page.on('pageerror', lambda e: errors.append(str(e)))
