@@ -32,3 +32,10 @@
 
 [data-theme="dark"] .k-memory__type--episodic { color: #fbbf24; }
 [data-theme="dark"] .k-memory__type--relationship { color: #f472b6; }
+
+@media (max-width: 600px) {
+  .k-memory__item { grid-template-columns: minmax(0, 1fr) auto; }
+  .k-memory__type { width: fit-content; max-width: 100%; white-space: normal; }
+  .k-memory__item > .k-memory__content, .k-memory__item .k-memory__form { grid-column: 1 / -1; grid-row: 2; }
+  .k-memory__tools { grid-column: 2; grid-row: 1; }
+}

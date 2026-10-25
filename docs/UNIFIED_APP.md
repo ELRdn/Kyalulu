@@ -1,6 +1,6 @@
 # Unified App Implementation Status
 
-2026-10-23 to 2026-10-25. **Partial implementation, not release acceptance.** No production
+2026-10-23 to 2026-10-26. **Partial implementation, not release acceptance.** No production
 deployment, provider application, purchase, contract or DNS change has been performed.
 Work is now committed incrementally on `codex/unified-app-integration`; merging is
 reserved for the owner. Pre-existing Mobile changes remain in place.
@@ -23,6 +23,11 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 
 ## Delivered Behavior
 
+- Memory controls, provenance, inspection and summary corrections now follow JA/EN,
+  including cross-world sharing and irreversible scope-erasure warnings. Small
+  screens place memory type labels above content. Real device-storage UI checks
+  cover canceled erasure and saved edits; OS IME composition remains unverified.
+  See [memory language validation](validation/2026-10-26-unified-memory-language.md).
 - Cloud settings and legacy backup-sync labels, consent/confirmation copy and
   dates follow the selected JA/EN language. Subscription choices show their
   monthly credit quantity before secondary top-ups; closed billing stays closed.
@@ -132,8 +137,11 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 - Regional eligibility tickets are issued and checked server-side for unified
   login. Unknown policies and unverified guardian consent fail closed. This is
   not adult verification; an independent provider receipt is required for that.
-- A private publication queue stores allowlisted fixed snapshots and moderator
-  CAS decisions. It is not yet a complete public moderation workflow.
+- Publication snapshots have revision/hash-bound human review, public search and
+  shared links, reporting, hiding, appeals and withdrawal. Region/age/adult consent
+  and author blocks precede ranking; legacy approvals without current evidence
+  stay private. Classification/media adapters and operational acceptance remain
+  open. See [publication validation](validation/2026-10-26-unified-publication-workflow.md).
 - Old Mobile has `?migrate=1`; App has `#/migration`. The fallback file checks
   revision, byte length and SHA-256 before an atomic, replay-safe local copy.
   Originals remain intact; failed quota transactions do not replace existing data.
