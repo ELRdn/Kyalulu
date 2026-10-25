@@ -34,19 +34,19 @@ const CONSUMER_NAV: { to: string; icon: IconName; label: string; end?: boolean }
 ];
 
 const DAILY_WORDS = [
-  "きみの物語が、だれかの世界を照らすかも…？",
-  "今日はどんな世界をのぞいてみる？",
-  "ちょっと寄り道。それも立派な冒険だよ。",
-  "話したいことがあったら、いつでもおいで。",
-  "星がきれいな夜は、物語が生まれやすいんだって。",
-  "きみの「好き」を、ぼくにも教えてほしいな。",
-  "迷ったら、気分でえらんでみよう。",
+  ["きみの物語が、だれかの世界を照らすかも…？", "Your story could light up someone else's world."],
+  ["今日はどんな世界をのぞいてみる？", "What world would you like to explore today?"],
+  ["ちょっと寄り道。それも立派な冒険だよ。", "A little detour can be an adventure too."],
+  ["話したいことがあったら、いつでもおいで。", "Come by whenever you feel like talking."],
+  ["星がきれいな夜は、物語が生まれやすいんだって。", "Starry nights are a lovely time for stories."],
+  ["きみの「好き」を、ぼくにも教えてほしいな。", "I'd love to hear about the things you enjoy."],
+  ["迷ったら、気分でえらんでみよう。", "If you're undecided, follow your mood."],
 ];
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
 export default function AppShell() {
-  const language=useLanguage(),t=labels[language];
+  const language=useLanguage(),t=labels[language],en=language==='en';
   const navLabel=(path:string)=>({'/':t.home,'/chats':t.chats,'/discover':t.discover,'/create':t.create,'/profile':t.profile}[path]);
   const administrative = useAdministrative();
   const target = useExecutionTarget();
@@ -59,7 +59,7 @@ export default function AppShell() {
   const accountSync = useAccountProfile();
   const location = useLocation();
   const mainRef = useRef<HTMLElement>(null);
-  const dailyWord = DAILY_WORDS[Math.floor(Date.now() / 86_400_000) % DAILY_WORDS.length];
+  const dailyWord = DAILY_WORDS[Math.floor(Date.now() / 86_400_000) % DAILY_WORDS.length][en ? 1 : 0];
 
   useEffect(() => {
     localStorage.setItem(LS_SIDEBAR_COMPACT, compact ? "1" : "0");
@@ -91,33 +91,33 @@ export default function AppShell() {
   return (
     <div className={`k-shell ${inChat ? "k-shell--chat" : ""} ${location.pathname.startsWith("/characters/") ? "k-shell--immersive" : ""}`}>
       <header className="k-shell__header">
-        <Link to="/" className="k-shell__logo" aria-label="Kyalulu ホーム">
+        <Link to="/" className="k-shell__logo" aria-label={en ? 'Kyalulu Home' : 'Kyalulu ホーム'}>
           <img className="k-shell__logo-mark" src={`${import.meta.env.BASE_URL}mascot/v1.2/face-default.png`} alt="" aria-hidden="true" width={34} height={34} />
           <span className="k-shell__wordmark">
             Kyalulu<span aria-hidden="true">✦</span>
           </span>
         </Link>
-        <button type="button" className="k-shell__search" onClick={() => guest ? navigate('/discover') : setPaletteOpen(true)} aria-label="キャラクターやワールドを検索">
+        <button type="button" className="k-shell__search" onClick={() => guest ? navigate('/discover') : setPaletteOpen(true)} aria-label={en ? 'Search characters and worlds' : 'キャラクターやワールドを検索'}>
           <Icon name="search" size={16} />
-          <span className="k-shell__search-text">キャラクターやワールドを検索…</span>
+          <span className="k-shell__search-text">{en ? 'Search characters and worlds…' : 'キャラクターやワールドを検索…'}</span>
           <kbd>{isMac ? "⌘" : "Ctrl"} K</kbd>
         </button>
         <div className="k-shell__header-actions">
-          <IconButton label="キャラクターやワールドを検索" className="k-shell__search-mobile" onClick={() => guest ? navigate('/discover') : setPaletteOpen(true)} size="sm">
+          <IconButton label={en ? 'Search characters and worlds' : 'キャラクターやワールドを検索'} className="k-shell__search-mobile" onClick={() => guest ? navigate('/discover') : setPaletteOpen(true)} size="sm">
             <Icon name="search" size={16} />
           </IconButton>
-          <IconButton label={theme === "dark" ? "ライトモードに切替" : "ダークモードに切替"} onClick={toggle} size="sm">
+          <IconButton label={theme === "dark" ? (en ? 'Switch to light mode' : 'ライトモードに切替') : (en ? 'Switch to dark mode' : 'ダークモードに切替')} onClick={toggle} size="sm">
             <Icon name={theme === "dark" ? "sun" : "moon"} size={16} />
           </IconButton>
           <Link to={guest ? loginPath(location.pathname + location.search) : '/profile'} className="k-shell__profile-chip">
-            <Avatar name={guest ? 'ゲスト' : displayName} size="sm" />
-            <span className="k-shell__profile-name">{guest ? 'ログイン / 新規登録' : displayName}</span>
+            <Avatar name={guest ? (en ? 'Guest' : 'ゲスト') : displayName} size="sm" />
+            <span className="k-shell__profile-name">{guest ? (en ? 'Sign in / Sign up' : 'ログイン / 新規登録') : displayName}</span>
           </Link>
         </div>
       </header>
 
       <div className="k-shell__body">
-        <nav className={`k-shell__sidebar ${rail ? "k-shell__sidebar--compact" : ""}`} aria-label="メインナビゲーション">
+        <nav className={`k-shell__sidebar ${rail ? "k-shell__sidebar--compact" : ""}`} aria-label={en ? 'Main navigation' : 'メインナビゲーション'}>
           <div className="k-shell__nav-group">
             {CONSUMER_NAV.map((item) => (
               <NavItem key={item.to} to={item.to} icon={<Icon name={item.icon} size={19} />} label={navLabel(item.to)||item.label} compact={rail} end={item.end} />
@@ -126,21 +126,21 @@ export default function AppShell() {
           {target==='device'&&<div className="k-shell__nav-group"><NavItem to="/research" icon={<Icon name="sparkle" size={17} />} label={language==='en'?'Research':'研究'} secondary compact={rail} /></div>}
           {administrative && <><div className="k-shell__sidebar-divider" />
           <div className="k-shell__nav-group">
-            <NavItem to="/studio" icon={<Icon name="sparkle" size={17} />} label="スタジオ" secondary compact={rail} badge={<span className="k-nav-item__badge">上級者向け</span>} />
+            <NavItem to="/studio" icon={<Icon name="sparkle" size={17} />} label={en ? 'Studio' : 'スタジオ'} secondary compact={rail} badge={<span className="k-nav-item__badge">{en ? 'Advanced' : '上級者向け'}</span>} />
           </div></>}
 
           {!rail && (
             <div className="k-shell__companion">
               <img src={`${import.meta.env.BASE_URL}mascot/v1.2/nap.png`} alt="" className="k-shell__companion-art" width={160} height={160} decoding="async" />
               <div className="k-shell__daily">
-                <div className="k-shell__daily-title">✦ 今日のひとこと</div>
+                <div className="k-shell__daily-title">✦ {en ? 'A thought for today' : '今日のひとこと'}</div>
                 <p>{dailyWord}</p>
               </div>
             </div>
           )}
 
           {!inChat && (<div className="k-shell__sidebar-collapse">
-            <IconButton label={compact ? "サイドバーを展開" : "サイドバーを折りたたむ"} onClick={() => setCompact((v) => !v)} size="sm">
+            <IconButton label={compact ? (en ? 'Expand sidebar' : 'サイドバーを展開') : (en ? 'Collapse sidebar' : 'サイドバーを折りたたむ')} onClick={() => setCompact((v) => !v)} size="sm">
               <Icon name="chevron" size={15} style={{ transform: compact ? undefined : "rotate(180deg)" }} />
             </IconButton>
           </div>)}
@@ -148,12 +148,12 @@ export default function AppShell() {
 
         <main className="k-shell__main" id="main" ref={mainRef}>
           {['/','/discover'].includes(location.pathname)&&<AdBanner/>}
-          {accountSync.error && location.pathname!=='/profile' && <div className="k-shell__sync-alert" role="alert">{accountSync.error} <Link to="/profile">プロフィールで確認</Link></div>}
+          {accountSync.error && location.pathname!=='/profile' && <div className="k-shell__sync-alert" role="alert">{accountSync.error} <Link to="/profile">{en ? 'Review in Settings' : 'プロフィールで確認'}</Link></div>}
           <Outlet />
         </main>
       </div>
 
-      <nav className="k-shell__bottomnav" aria-label="モバイルナビゲーション">
+      <nav className="k-shell__bottomnav" aria-label={en ? 'Mobile navigation' : 'モバイルナビゲーション'}>
         <div className="k-shell__bottomnav-row">
           {MOBILE_NAV.map((item) => {
             const active = location.pathname === item.to || location.pathname.startsWith(`${item.to}/`) ||
