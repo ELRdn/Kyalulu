@@ -1,5 +1,8 @@
 # JA/EN Create workspace and transactional source-import choices
 
+Subsequent PortableEditor detail localization and draft-retention evidence are in
+[Portable editor language](2026-10-26-unified-portable-editor-language.md).
+
 Product changes: `c31a6e8`, then `a65b493`; mock-store fixture: `3eaa0a6`.
 Validation began with a clean Git export/collection of `c31a6e8`. The changed
 source/tests from the subsequent commits were copied directly from Git into that

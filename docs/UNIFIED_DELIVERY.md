@@ -113,3 +113,6 @@ Deviceの出典重複を保存時にも照合する処理と再送/同時実行�
 [Create workspace language](validation/2026-10-26-unified-create-workspace-language.md) に記録する。
 Core全体復元時のoutbox/受領/owner保護、旧送信の本文なし照合、Cloud確認と失敗時の復元前アーカイブは
 [Core restore](validation/2026-10-26-unified-core-restore.md) に記録する。
+PortableEditorの3種別・全タブ・設定集/挨拶/媒体/プリセット詳細の日英表示と、
+言語切替時の未完成JSON・タグ下書き保持は
+[Portable editor language](validation/2026-10-26-unified-portable-editor-language.md) に記録する。
