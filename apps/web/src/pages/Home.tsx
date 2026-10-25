@@ -23,13 +23,13 @@ import { useSavedCharacters, toggleSaved } from '../lib/saved';
 export default function Home() {
   const guest=isCloudGuest(useRuntimeAccess()),navigate=useNavigate(),language=useLanguage(),t=labels[language],en=language==='en';
   const [sessions,setSessions]=useState<SessionInfo[]>([]),[worlds,setWorlds]=useState<WorldInfo[]>([]),[characters,setCharacters]=useState<CharacterInfo[]>([]);
-  const [loading,setLoading]=useState(true),[error,setError]=useState(''),[retry,setRetry]=useState(0);
+  const [loading,setLoading]=useState(true),[error,setError]=useState<{cause:unknown}|null>(null),[retry,setRetry]=useState(0);
   const [prefs,setPrefs]=useState(preferences),[adult]=useAdultContent(),name=useDisplayName();
   useDocumentTitle(null);
   useEffect(()=>{
-    let active=true;setLoading(true);setError('');
+    let active=true;setLoading(true);setError(null);
     fetchBrowseCatalog(guest,adult).then(([c,w,s])=>{if(active){setCharacters(c);setWorlds(w);setSessions(s);}})
-      .catch(e=>{if(active)setError(friendlyMessage(e));}).finally(()=>{if(active)setLoading(false);});
+      .catch(e=>{if(active)setError({cause:e});}).finally(()=>{if(active)setLoading(false);});
     return()=>{active=false;};
   },[adult,guest,retry]);
   useEffect(()=>{const refresh=()=>setPrefs(preferences());window.addEventListener('kyalulu-app-context',refresh);return()=>window.removeEventListener('kyalulu-app-context',refresh);},[]);
@@ -38,7 +38,7 @@ export default function Home() {
   const choose=(id:string,key:'favorites'|'dismissed')=>{const next={...prefs,[key]:prefs[key].includes(id)?prefs[key].filter(v=>v!==id):[...prefs[key],id]};savePreferences(next);setPrefs(next);};
   return <div className="k-page k-page--home">
     <header className="k-home-identity"><img src={`${import.meta.env.BASE_URL}mascot/v1.2/sit.png`} alt="" width={72} height={72}/><div><h1>Kyalulu</h1><p>{en?`Welcome, ${name}`:`${name}、今日は誰と話す？`}</p></div></header>
-    {error&&<p role="alert">{error} <Button variant="secondary" onClick={()=>setRetry(v=>v+1)}>{en?'Retry':'再読み込み'}</Button></p>}
+    {error&&<p role="alert">{friendlyMessage(error.cause,language)} <Button variant="secondary" onClick={()=>setRetry(v=>v+1)}>{en?'Retry':'再読み込み'}</Button></p>}
     <section className="k-section" aria-labelledby="home-recommendations">
       <div className="k-section__head"><h2 id="home-recommendations" className="k-section__title">{t.recommended}</h2><Link to="/discover">{t.discover}</Link></div>
       {loading?<div className="k-grid k-grid--characters" aria-busy="true">{[0,1,2,3].map(i=><div className="k-skeleton-card" key={i}/>)}</div>:
@@ -52,7 +52,7 @@ export default function Home() {
     {!!recent.length&&<section className="k-section" aria-labelledby="home-recent">
       <div className="k-section__head"><h2 id="home-recent" className="k-section__title">{t.resume}</h2><Link to="/chats">{t.chats}</Link></div>
       <div className="k-resume-grid">{recent.map(s=><Link key={s.session_id} to={`/chats/${encodeURIComponent(s.session_id)}`} className="k-resume-card">
-        <div className="k-resume-card__top"><Avatar name={sessionTitle(s)} size="lg" src={s.portrait_url} mascot={!s.character_name}/><div className="k-resume-card__who"><span className="k-resume-card__name">{sessionTitle(s)}</span><span className="k-resume-card__time">{formatRelative(s.last_at, language)}</span></div></div>
+        <div className="k-resume-card__top"><Avatar name={sessionTitle(s,language)} size="lg" src={s.portrait_url} mascot={!s.character_name}/><div className="k-resume-card__who"><span className="k-resume-card__name">{sessionTitle(s,language)}</span><span className="k-resume-card__time">{formatRelative(s.last_at, language)}</span></div></div>
         <p className="k-resume-card__preview">{cleanPreview(s.last_preview,90)}</p>
       </Link>)}</div>
     </section>}

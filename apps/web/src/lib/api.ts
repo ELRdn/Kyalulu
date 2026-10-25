@@ -1,4 +1,5 @@
 import { apiFetch as fetch } from './transport';
+import type { Language } from './appContext';
 import { SSEDecoder } from "./sse";
 import { cloudJson, isCloud } from './cloud';
 import type { GenerationRecord } from "../../../../packages/schemas/src";
@@ -212,9 +213,9 @@ export type SessionInfo = {
 };
 
 /** 一覧表示用の会話名。キャラ未設定の会話は「新しい会話」として扱い、生IDは出さない。 */
-export function sessionTitle(s: Pick<SessionInfo, "session_id" | "character_name">): string {
+export function sessionTitle(s: Pick<SessionInfo, "session_id" | "character_name">, language: Language = 'ja'): string {
   if (s.character_name) return s.character_name;
-  return s.session_id === "default" ? "きゃるる" : "フリートーク";
+  return s.session_id === "default" ? (language === 'en' ? 'Kyalulu' : 'きゃるる') : (language === 'en' ? 'Free chat' : 'フリートーク');
 }
 
 const API_BASE_STREAM = ""; // Same-origin SSE through the tested Vite proxy.

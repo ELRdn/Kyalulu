@@ -19,8 +19,8 @@ export default function SessionRow({
   pinned?: boolean;
   onTogglePin?: () => void;
 }) {
-  const name = sessionTitle(session);
   const language = useLanguage(), en = language === 'en';
+  const name = sessionTitle(session, language);
   const preview = cleanPreview(session.last_preview);
   return (
     <div className={`k-session-row ${active ? "k-session-row--active" : ""}`}>

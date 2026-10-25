@@ -278,7 +278,7 @@ function ActiveChatSession() {
   const activeCharacter = characters.find((c: any) => c.id === characterId) as any;
   const activeWorld = worlds.find((w) => w.id === worldId);
   const sessionInfo = sessions.find((s) => s.session_id === sessionId);
-  const headerName = portableCharacter?.document.name ?? activeCharacter?.display_name ?? sessionInfo?.character_name ?? sessionTitle({ session_id: sessionId, character_name: null });
+  const headerName = portableCharacter?.document.name ?? activeCharacter?.display_name ?? sessionInfo?.character_name ?? sessionTitle({ session_id: sessionId, character_name: null }, language);
   const portrait = assetUrl(libraryBinding?.expression_asset_id) ?? assetUrl(portableCharacter?.document.assets.find(a => a.type === 'icon')?.asset_id) ?? activeCharacter?.portrait_url ?? sessionInfo?.portrait_url;
   const hasCharacter = !!(characterId || portableCharacter);
   const [railQuery, setRailQuery] = useState("");
@@ -910,7 +910,7 @@ function ActiveChatSession() {
   const friendly = error ? friendlyError(error, language) : null;
   const knownSessions = sessions.filter((s) => s.count > 0 || s.session_id === "default" || s.session_id === sessionId);
   const railNeedle = railQuery.trim().toLowerCase();
-  const railSessions = railNeedle ? knownSessions.filter((s) => `${sessionTitle(s)} ${cleanPreview(s.last_preview, 300)}`.toLowerCase().includes(railNeedle)) : knownSessions;
+  const railSessions = railNeedle ? knownSessions.filter((s) => `${sessionTitle(s, 'ja')} ${sessionTitle(s, 'en')} ${cleanPreview(s.last_preview, 300)}`.toLowerCase().includes(railNeedle)) : knownSessions;
   const railPinned = railSessions.filter((s) => pinned.includes(s.session_id));
   const railRecent = railSessions.filter((s) => !pinned.includes(s.session_id));
   const worldNameOf = (id?: string | null) => worlds.find((w) => w.id === id)?.display_name;

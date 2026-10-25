@@ -7,10 +7,22 @@ export type FriendlyError = {
   command?: { label: string; input: string };
 };
 
+const hubEnglish: Record<string, string> = {
+  '未対応のブラウザー取得先です。': 'This browser download source is not supported.',
+  '配布元がこの形式・利用条件での取得を許可していません。': 'The source does not allow downloads with this format or these usage terms.',
+  '公開コンテンツが見つかりません。': 'Public content was not found.',
+  '配布元の取得制限です。時間を置いて再試行してください。': 'The source has limited downloads. Wait before trying again.',
+  'ファイルが32 MiBを超えています。': 'The file exceeds 32 MiB.',
+  '取得データがありません。': 'No download data was received.',
+};
+
 /** API・ネットワーク由来のエラーを、表示言語と次の操作に合わせて説明する。 */
 export function friendlyError(raw: unknown, language: Language = typeof window === 'undefined' ? 'ja' : preferences().language): FriendlyError {
   const en = language === 'en';
   const text = String(raw ?? "").replace(/^(Type)?Error:\s*/, "").trim();
+  if (en && hubEnglish[text]) return { message: hubEnglish[text] };
+  const hubStatus = text.match(/^配布元のエラー（HTTP (\d{3})）$/);
+  if (hubStatus) return { message: en ? `Source error (HTTP ${hubStatus[1]})` : text };
   const status = typeof raw === 'object' && raw !== null && 'status' in raw ? raw.status : undefined;
   if (/history.*revision|summary.*revision|context_conflict|summary_conflict/i.test(text)) return { message: (en ? "The conversation or summary changed in another operation. Reload and review the latest version before trying again." : '会話または要約が別の操作で更新されました。再読込して内容を確認してから、もう一度操作してください。') };
   if (/community_awaiting_acceptance/.test(text)) return { message: (en ? "Public works and community features are not available on this connection yet." : 'この接続先の公開作品・交流は未提供です。') };
