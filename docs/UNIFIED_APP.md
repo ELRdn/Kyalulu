@@ -23,6 +23,10 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 
 ## Delivered Behavior
 
+- Portable editor details now follow JA/EN across character, lorebook and preset
+  kinds. Language/tab switches retain incomplete JSON and tag drafts; invalid
+  JSON blocks Library Save. Authored content and original fields stay unchanged.
+  See [Portable editor language validation](validation/2026-10-26-unified-portable-editor-language.md).
 - Whole-Core restores now preserve current Native delivery/owner state, merge
   erasures and require separate-copy review for Native and Cloud links. Local
   recovery archives are created under the Runtime lock; the existing Cloud
