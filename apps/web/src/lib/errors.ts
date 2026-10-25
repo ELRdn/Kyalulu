@@ -72,13 +72,21 @@ const knownEnglish: Record<string, string> = {
   '世界観のKyalulu設定ファイルを選んでください。': 'Choose a Kyalulu world settings file.',
   '設定ファイルの形式が正しくありません。': 'The settings file format is invalid.',
   '登場人物は12人までです。': 'The cast is limited to 12 characters.',
+  'アカウントを確認できないため、一時下書きを保存できません。ログイン状態を確認してください。': 'Your account could not be verified, so the temporary draft cannot be saved. Check your login status.',
+  'アカウントを確認できないため、一時下書きを保存できません。': 'Your account could not be verified, so the temporary draft cannot be saved.',
+  '一時下書きを保存できませんでした。画面を閉じずに再試行するか、内容を保存してください。': 'The temporary draft could not be saved. Keep this screen open and retry, or save the content.',
+  '一時下書きを保存できませんでした。入力はこの画面に残っています。': 'The temporary draft could not be saved. Your input remains on this screen.',
+  '一時下書きを保存できませんでした。画面を閉じずに再試行してください。': 'The temporary draft could not be saved. Keep this screen open and try again.',
 };
 const erasedCleanupPrefix = 'サーバーの会話データは消去しましたが、この端末の下書き・返信履歴の消去を確認できません。';
+const uncertainSaveSuffix = ' この下書きと保存IDは残っています。内容を変えずに再保存すると同じ保存IDで結果を確認します。内容を変える前にライブラリの保存結果を確認してください。';
 
 /** API・ネットワーク由来のエラーを、表示言語と次の操作に合わせて説明する。 */
 export function friendlyError(raw: unknown, language: Language = typeof window === 'undefined' ? 'ja' : preferences().language): FriendlyError {
   const en = language === 'en';
   const text = String(raw ?? "").replace(/^(Type)?Error:\s*/, "").trim();
+  if (text.endsWith(uncertainSaveSuffix)) return { message: friendlyError(text.slice(0,-uncertainSaveSuffix.length),language).message + (en
+    ? ' This draft and its save ID are retained. Saving again without changes checks the result using the same ID. Check the saved library result before changing the content.' : uncertainSaveSuffix) };
   if (text.startsWith(erasedCleanupPrefix)) {
     const detail = text.slice(erasedCleanupPrefix.length).replace(/^(Type)?Error:\s*/, '');
     return { message: en ? 'Server conversation data was erased, but cleanup of the draft and reply history on this device could not be verified. ' + (knownEnglish[detail] ?? detail) : text };
