@@ -563,17 +563,37 @@ class WebDist(StaticFiles):
             or any(p.startswith(".") for p in Path(path).parts)
         ):
             raise HTTPException(404)
+        document = next((name for name in ('device', 'migration')
+                         if path in {name, name + '/', name + '/index.html'}), None)
         try:
-            response = await super().get_response(path, scope)
+            response = await super().get_response(document + '/index.html' if document else path, scope)
         except HTTPException as exc:
             if (
                 exc.status_code != 404
+                or document
                 or Path(path).suffix
                 or "text/html" not in Request(scope).headers.get("accept", "")
             ):
                 raise
             response = await super().get_response("index.html", scope)
         response.headers["Cache-Control"] = "no-cache"
+        if document == 'device':
+            response.headers.update({
+                'Cross-Origin-Opener-Policy': 'same-origin',
+                'Cross-Origin-Embedder-Policy': 'require-corp',
+                'Content-Security-Policy': "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; "
+                    "worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+                    "connect-src 'self' https://huggingface.co https://*.huggingface.co https://*.hf.co; "
+                    "frame-src 'none'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'",
+            })
+        elif document == 'migration':
+            response.headers.update({
+                'Cross-Origin-Opener-Policy': 'unsafe-none',
+                'Cross-Origin-Embedder-Policy': 'unsafe-none',
+                'Content-Security-Policy': "default-src 'none'; script-src 'self'; "
+                    "style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; "
+                    "connect-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",
+            })
         if Path(path).name in {"sw.js", "service-worker.js"}:
             response.headers["Cache-Control"] = "no-store"
             response.headers["Service-Worker-Allowed"] = "/"
