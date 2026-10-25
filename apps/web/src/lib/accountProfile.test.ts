@@ -5,6 +5,7 @@ import {setCloud,setCloudOwner} from './cloudMode';
 afterEach(()=>{setCloud(false);vi.unstubAllGlobals();});
 function setup(owner:string) {
   setCloud(true);setCloudOwner(owner);vi.stubGlobal('window',{dispatchEvent:vi.fn()});
+  vi.stubGlobal('localStorage',{getItem:(key:string)=>key==='kyalulu-app-preferences-v1'?JSON.stringify({version:1,language:'en'}):null});
 }
 const profile=(revision:number,name='Owner')=>({revision,display_name:name,saved_characters:[],pinned_sessions:[]});
 it('serializes changes against confirmed revisions and clears data for a different account',async()=>{
@@ -25,7 +26,8 @@ it('refreshes a conflict without overwriting the other device change',async()=>{
     .mockResolvedValueOnce(new Response(JSON.stringify({error:'profile_conflict'}),{status:409}))
     .mockResolvedValueOnce(new Response(JSON.stringify(profile(1,'Other device'))));
   vi.stubGlobal('fetch',fetch);await refreshAccountProfile();
-  await expect(changeAccountProfile({display_name:'My edit'})).rejects.toThrow('別の端末');
+  await expect(changeAccountProfile({display_name:'My edit'})).rejects.toMatchObject({code:'profile_conflict'});
+  expect(accountProfileState().error).toContain('another device');
   expect(accountProfile()?.display_name).toBe('Other device');
   expect(fetch).toHaveBeenCalledTimes(3);
 });
@@ -51,7 +53,7 @@ it('does not leak an old owner conflict or events after switching during conflic
     .mockImplementationOnce(()=>new Promise<Response>(resolve=>{respondA=resolve;}))
     .mockImplementationOnce(()=>new Promise<Response>(resolve=>{respondB=resolve;}));
   vi.stubGlobal('fetch',fetch);await refreshAccountProfile();
-  const failed=expect(changeAccountProfile({display_name:'A edit'})).rejects.toThrow('別の端末');
+  const failed=expect(changeAccountProfile({display_name:'A edit'})).rejects.toMatchObject({code:'profile_conflict'});
   await vi.waitFor(()=>expect(fetch).toHaveBeenCalledTimes(3));
   setCloudOwner('conflict-reload-b');
   const loadingB=refreshAccountProfile();

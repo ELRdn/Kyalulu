@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ModelSelector from './ModelSelector';
 import ReasoningSummary from './ReasoningSummary';
 import CloudQuoteConfirmation from './CloudQuoteConfirmation';
@@ -8,6 +8,10 @@ import CloudRouteControls, { defaultCloudRoute } from './CloudRouteControls';
 import VisualNovelScene from './VisualNovelScene';
 import type { ModelInfo } from '../lib/api';
 import { QuoteConsent, type PendingQuote } from '../lib/quoteConsent';
+
+const language = vi.hoisted(() => ({ value: 'ja' }));
+vi.mock('../lib/appContext', async original => ({ ...await original<typeof import('../lib/appContext')>(), useLanguage: () => language.value }));
+beforeEach(() => { language.value = 'ja'; });
 
 const ids = ['cloud-deepseek-baidu', 'cloud-deepseek-decart', 'cloud-deepseek-inferencenet',
   'cloud-glm-inferencenet', 'cloud-gpt-luna-flex', 'cloud-claude-haiku'];
@@ -219,4 +223,47 @@ it('keeps an expired Baidu quote unsendable even after checking consent', () => 
   expect(html).toMatch(/<button[^>]*disabled=""[^>]*>送信する/);
   expect(html).toContain('Baiduは会話・設定・記憶・生成結果を保存し、AIの学習・改善');
   expect(accept).not.toHaveBeenCalled();
+});
+
+it('keeps English model retention and training disclosures above closed technical details', () => {
+  language.value = 'en';
+  const change = vi.fn(), model = { ...models[0], retains_prompts: true, training: true, available: false,
+    unavailable_reason: 'provider_endpoint_unavailable', service_tier: 'flex', reasoning_effort: 'disabled', reasoning_summary_supported: false,
+    pricing: { input_per_million: '0.05' }, privacy_note: 'Provider supplied note' };
+  const html = renderToStaticMarkup(<ModelSelector models={[model]} value={model.id} onChange={change} />);
+  const primary = html.split('<details')[0];
+  expect(primary).toContain('This provider retains your input.');
+  expect(primary).toContain('Conversations, settings, memories and generated results');
+  expect(primary).toContain('Explicit consent is required for each send.');
+  expect(primary).toContain('This provider endpoint is currently unavailable.');
+  expect(html).toContain('Reasoning: Disabled');
+  expect(html).toContain('Input 0.05 / Output Unpublished');
+  expect(html).toContain('Provider supplied note');
+  expect(html).not.toMatch(/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u);
+  expect(html).not.toMatch(/<details[^>]*\bopen=/);
+  expect(change).not.toHaveBeenCalled();
+});
+
+it.each([{ consent: false, expired: false }, { consent: true, expired: false }, { consent: true, expired: true }])('keeps English consent and expiry gates for $consent / $expired', ({ consent, expired }) => {
+  language.value = 'en';
+  const accept = vi.fn(), html = renderToStaticMarkup(<CloudQuoteConfirmation quote={{ quote_id: 'en-fixture', max_credits: 12500,
+    expiresAt: Date.now() + (expired ? -1000 : 30000), trainingConsent: false, providerTrainingConsent: consent,
+    route: { display_name: 'Baidu', provider: 'openrouter', upstream: 'Baidu', model: 'fixture' } }} onAccept={accept} onCancel={vi.fn()} />);
+  expect(html).toContain('12,500 K-Credits');
+  expect(html).toContain('Credits are not reserved.');
+  expect(html).toContain('Failed generation costs 0 credits.');
+  expect(html).toContain('Baidu may retain conversations, settings, memories and generated results');
+  expect(html).not.toMatch(/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u);
+  expect(/<button[^>]*disabled=""[^>]*>Send/.test(html)).toBe(!consent || expired);
+  expect(accept).not.toHaveBeenCalled();
+});
+
+it('explains English route behavior and absence of an official summary without inventing one', () => {
+  language.value = 'en';
+  const route = renderToStaticMarkup(<CloudRouteControls currentModel={models[0]} value={defaultCloudRoute} onChange={vi.fn()} disabled={false} />);
+  expect(route).toContain('Models and providers do not switch automatically.');
+  const summary = renderToStaticMarkup(<ReasoningSummary cloud message={{ role: 'assistant', content: 'Reply', reasoning_summary_status: 'not_provided', reasoning_summary: 'must not show' }} />);
+  expect(summary).toContain('The provider did not supply an official reasoning summary');
+  expect(summary).not.toContain('must not show');
+  expect(route + summary).not.toMatch(/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u);
 });
