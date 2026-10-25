@@ -74,6 +74,7 @@ it('keeps Japanese and English mood searches and stable filter IDs across langua
       expect(html).toContain('/characters/hero');
       expect(html).not.toContain('/characters/school');
       expect(html).toContain(language === 'en' ? 'Filter by mood' : '気分で絞り込む');
+      if (language === 'en') expect(html).toContain('>1 character</span>');
       expect(fixture.params.get('mood')).toBe('butler');
     }
   }
