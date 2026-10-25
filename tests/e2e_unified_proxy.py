@@ -52,7 +52,7 @@ async def check(args):
     policy = (ROOT / 'deploy/cloud/Caddyfile.unified.example').read_text(encoding='utf-8')
     config = '{\n admin off\n auto_https disable_redirects\n skip_install_trust\n log default {\n output discard\n }\n}\n'
     config += policy.replace('{$APP_DOMAIN} {', f'localhost:{proxy_port} {{\n bind 127.0.0.1\n tls internal')
-    config = config.replace('{$RELAY_DOMAIN}', 'relay.invalid').replace('{$CLOUD_UPSTREAM:kyalulu-cloud-runtime:8000}', f'127.0.0.1:{upstream_port}')
+    config = config.replace('{$RELAY_DOMAIN}', 'relay.kyalulu.com').replace('{$CLOUD_UPSTREAM:kyalulu-cloud-runtime:8000}', f'127.0.0.1:{upstream_port}')
     caddyfile = args.output / 'Caddyfile'
     caddyfile.write_text(config, encoding='utf-8')
     env = {**os.environ, 'XDG_DATA_HOME': str(args.output / 'caddy-data'), 'XDG_CONFIG_HOME': str(args.output / 'caddy-config')}
@@ -94,7 +94,7 @@ async def check(args):
                         assert "connect-src 'none'" in response.headers['content-security-policy']
                     else:
                         assert 'cross-origin-embedder-policy' not in response.headers
-                        assert 'wss://relay.invalid' in response.headers['content-security-policy']
+                        assert 'wss://relay.kyalulu.com' in response.headers['content-security-policy']
                 worker = await client.get('/sw.js')
                 assert worker.content == (args.dist / 'sw.js').read_bytes()
                 assert worker.headers['service-worker-allowed'] == '/' and 'no-transform' in worker.headers['cache-control']
