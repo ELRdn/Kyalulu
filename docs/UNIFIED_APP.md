@@ -176,6 +176,14 @@ When unified mode is enabled, the legacy Community routes also stay closed,
 including reads, so legacy publication cannot bypass the unfinished unified
 age/moderation workflow. Existing Community rows are retained. See
 [Community gate](validation/2026-10-25-unified-community-gate.md).
+Unified publication now uses separate reviewed snapshots at `/api/cloud/app/works`
+and a private author/moderator queue at `/api/cloud/app/publications`. Approval
+requires explicit human checks and a matching immutable hash. Reports, hidden
+states, appeals, withdrawal and adult-specific enablement have revision checks;
+general discovery excludes adult works. See
+[publication workflow](validation/2026-10-26-unified-publication-workflow.md).
+Public media and automatic classification remain unconnected; production age
+verification and operating acceptance remain required.
 
 ## Not Complete
 

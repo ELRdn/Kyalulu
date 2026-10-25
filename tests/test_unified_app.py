@@ -156,6 +156,7 @@ def test_sync_conflicts_branch_and_deletions_never_resurrect(service):
 
 def test_age_policy_and_publication_boundaries(service):
     user = owner(service)
+    service.store.secret(user, 'app-eligibility', json.dumps(service.general_eligibility('JP', 20)))
     with pytest.raises(CloudError, match="region_policy_pending"):
         service.general_eligibility("XX", 20)
     with pytest.raises(CloudError, match="minimum_age_required"):
@@ -168,6 +169,7 @@ def test_age_policy_and_publication_boundaries(service):
         service.submit(user, doc, "adult")
     service.record_age_result(user, country="JP", adult=True, expires=time.time() + 60,
                               receipt="provider-receipt", policy="test-1")
+    service.publications.consent(user, True)
     submission = service.submit(user, doc, "adult")
     assert submission["status"] == "pending"
     with service.store.transaction() as db:

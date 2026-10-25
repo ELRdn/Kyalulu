@@ -3,6 +3,13 @@ import { apiFetch, serverAddress } from './transport';
 import { setCloud, setCloudOwner } from './cloudMode';
 import * as remoteStore from './remoteStore';
 afterEach(() => { setCloud(false); vi.unstubAllGlobals();vi.restoreAllMocks(); });
+it.each(['pc','device','local'])('does not revoke %s pairing on a Cloud publication login error',async target=>{
+  vi.stubGlobal('localStorage',{getItem:(key:string)=>key==='kyalulu-execution-target'?target:null});
+  const dispatchEvent=vi.fn();vi.stubGlobal('window',{dispatchEvent});
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response('{}',{status:401})));
+  expect((await apiFetch('/api/cloud/app/publications')).status).toBe(401);
+  expect(dispatchEvent).not.toHaveBeenCalled();
+});
 it.each(['cloud','pc','device'])('blocks PC-only sync credentials before dispatch to %s',async target=>{
   vi.stubGlobal('localStorage',{getItem:(key:string)=>key==='kyalulu-execution-target'?target:null});
   vi.spyOn(remoteStore,'activeRemote').mockReturnValue({id:'selected'} as any);

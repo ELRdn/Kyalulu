@@ -195,3 +195,4 @@ export const GenerationRecordSchema = z.object({
 });
 export type GenerationRecord = z.infer<typeof GenerationRecordSchema>;
 export * from './hub';
+export * from './publications';

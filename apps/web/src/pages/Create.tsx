@@ -1,4 +1,5 @@
 import PublishWorkButton from '../components/PublishWorkButton';
+import PublicationSubmit from '../components/PublicationSubmit';
 import { useCapabilities } from '../lib/capabilities';
 import { RuntimeDownload } from '../components/RuntimeMedia';
 import { useEffect, useRef, useState } from 'react';
@@ -331,7 +332,7 @@ function CreateWorkspace() {
             {item.document.kind === 'character' && <Button size="sm" onClick={() => navigate(`/characters/${item.id}`)}><Icon name="chat" size={13} /> 話す</Button>}
             <Button variant="secondary" size="sm" onClick={() => openEditor(item.id)}><Icon name="edit" size={13} /> 編集</Button>
             <Button variant="ghost" size="sm" onClick={() => setExportItem(item)}><Icon name="download" size={13} /> 書き出し</Button>
-            <PublishWorkButton item={item} enabled={!!capabilities?.features.community} />
+            {capabilities?.features.publication_review?<PublicationSubmit item={item}/>:<PublishWorkButton item={item} enabled={!!capabilities?.features.community} />}
           </div>
         </article>)}</div>}
     </section>

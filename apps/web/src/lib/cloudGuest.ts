@@ -2,8 +2,8 @@ import { fetchCharacters, fetchSessions, fetchWorlds } from './api';
 
 type Access = { cloud_mode?: boolean; authenticated: boolean };
 export const isCloudGuest = (access: Access) => access.cloud_mode === true && !access.authenticated;
-export const guestReadableRoute = (path: string) => path === '/' || path === '/discover' ||
-  /^\/(?:characters|works|authors)\/[^/]+$/.test(path);
+export const guestReadableRoute = (path: string) => path === '/' || path === '/discover' || path === '/published' ||
+  /^\/(?:characters|works|authors|published)\/[^/]+$/.test(path);
 
 export async function fetchBrowseCatalog(guest: boolean, adult = false) {
   return Promise.all([fetchCharacters(adult), fetchWorlds(), guest ? Promise.resolve([]) : fetchSessions()]);
@@ -13,7 +13,7 @@ const RETURN_KEY = 'kyalulu-cloud-login-return';
 export function safeLoginReturn(value: string | null | undefined): string {
   if (!value || value.length > 2048 || /[\\\u0000-\u001f#]/.test(value) || !value.startsWith('/') || value.startsWith('//')) return '/';
   const path = value.split('?')[0];
-  return guestReadableRoute(path) || /^\/(?:chats|create|profile|studio|research|status|benchmarks)(?:\/[^/]+)*$/.test(path) ? value : '/';
+  return guestReadableRoute(path) || /^\/(?:chats|create|profile|studio|research|status|benchmarks|publications)(?:\/[^/]+)*$/.test(path) ? value : '/';
 }
 export function rememberLoginReturn(value: string) {
   const safe = safeLoginReturn(value);

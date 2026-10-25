@@ -8,6 +8,7 @@ export const CapabilitiesSchema = z.object({
     progress: z.boolean(), branch: z.boolean(), permanent_delete: z.boolean(),
     summaries: z.boolean(), world_memory: z.boolean(), story_rules: z.boolean(),
     community: z.boolean(), media_playback: z.boolean(), media_generation: z.boolean(),
+    publications: z.boolean().optional(), publication_review: z.boolean().optional(),
   }),
   model_selection: z.enum(['local', 'cloud-routes']),
 });

@@ -13,7 +13,7 @@ export async function cloudJson(path: string, init: RequestInit = {}) {
     signal });
   const result = response.status === 204 ? {} : response.ok ? await response.json() : await response.json().catch(() => null);
   if (epoch !== null && cloudEpoch() !== epoch) throw Error('アカウントが切り替わりました。');
-  if (!response.ok) throw Error(friendlyMessage(result?.error || result?.detail || `HTTP ${response.status}`));
+  if (!response.ok) throw Object.assign(Error(friendlyMessage(result?.error || result?.detail || `HTTP ${response.status}`)),{code:typeof result?.error==='string'?result.error:undefined});
   if (!result || typeof result !== 'object' || Array.isArray(result)) throw Error('サーバーの応答を確認できません。再試行してください。');
   if(path==='auth/logout') clearDeviceOwner();
   return result;
