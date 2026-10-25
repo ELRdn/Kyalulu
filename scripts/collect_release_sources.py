@@ -55,6 +55,13 @@ FILES = (
     "scripts/publish_mobile.ps1",
     "tests/fixtures/unified-core.json",
     "tests/fixtures/portable-prompt.json",
+    "tests/fixtures/unified-history.json",
+    "tests/fixtures/device-exports.json",
+    "tests/fixtures/device-imports.json",
+    "tests/fixtures/device-media.json",
+    "tests/fixtures/device-research.json",
+    "tests/fixtures/device-lore-values.json",
+    "tests/fixtures/rp-format.json",
     "docs/MOBILE.md",
     "docs/UNIFIED_APP.md",
     "docs/UNIFIED_DELIVERY.md",
@@ -146,6 +153,7 @@ def collect(destination):
         "# Corresponding source\n\nNode 22+, pnpm 10.30.1, uv 0.8.22.\n"
         "`pnpm install --frozen-lockfile` then `pnpm --filter web build`.\n"
         "For the unified app, regenerate the catalog with `python scripts/build_app_catalog.py`, build pinned WASM using `scripts/mobile_wasm/bootstrap.py`, `prepare.py` and `build.sh`, then run `pnpm --filter web build:app`. See `docs/MOBILE.md` and `docs/UNIFIED_APP.md`.\n"
+        "For the legacy Mobile app, use the same catalog/WASM preparation and `pnpm --filter web build:mobile`.\n"
         "`uv sync --frozen --all-packages --all-extras --no-install-workspace` for Python.\n"
         "On the native target: `uv run --no-sync python scripts/build_local_bundle.py --output .artifacts/npm-beta --target win32-x64` (or darwin-arm64).\n"
         "Operator keys/data/model weights are excluded. Artifacts are not published by these steps.\n",

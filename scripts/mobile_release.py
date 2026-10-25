@@ -8,7 +8,10 @@ import gzip
 import hashlib
 import json
 import re
+import tempfile
 import zipfile
+
+from collect_release_sources import collect
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / '.artifacts/mobile-pages'
@@ -37,17 +40,6 @@ def main():
         raise RuntimeError('All four model distributions must be pinned before publication')
     if 'Kyalulu Mobile' not in (OUT/'index.html').read_text(encoding='utf-8'):
         raise RuntimeError('Wrong application entry point')
-    # Only explicit build source roots; never include env files, local data or credentials.
-    sources = [ROOT/n for n in ['package.json','pnpm-lock.yaml','pnpm-workspace.yaml','tsconfig.json','LICENSE']]
-    sources += [ROOT/'apps/web'/n for n in ['package.json','tsconfig.json','vite.config.ts','index.html']]
-    sources += [ROOT/f'packages/{package}/{name}' for package in ['schemas','ui'] for name in ['package.json','tsconfig.json']]
-    for folder in ['apps/web/src','apps/web/public','packages/schemas/src','packages/ui/src','packages/analytics','scripts/mobile_wasm']:
-        sources += [p for p in (ROOT/folder).rglob('*') if p.is_file() and p.suffix not in ['.pyc','.map'] and '__pycache__' not in p.parts]
-    sources += [ROOT/'scripts'/n for n in ['mobile_models.py','mobile_release.py','verify_mobile.py','publish_mobile.ps1','build_app_catalog.py']]
-    sources += [ROOT/'tests/fixtures/unified-core.json']
-    sources += [ROOT/'docs/MOBILE.md']
-    sources += [ROOT/'docs/validation/2026-10-23-mobile.md']
-    sources += list((ROOT/'docs/licenses').glob('*.txt'))
     for name, origin in [('wllama-MIT.txt', ROOT/'.artifacts/mobile-wasm/wllama/LICENCE'),
                          ('llama-MIT.txt',ROOT/'.artifacts/mobile-wasm/wllama/llama.cpp/LICENSE'),
                          ('transformers-Apache-2.0.txt',ROOT/'apps/web/node_modules/@huggingface/transformers/LICENSE'),
@@ -60,11 +52,13 @@ def main():
         (OUT/'licenses'/name).write_bytes(origin.read_bytes())
     (OUT/'source').mkdir(exist_ok=True)
     archive = OUT/'source/kyalulu-mobile-source.zip'
-    with zipfile.ZipFile(archive,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=9) as z:
-        for p in sorted(set(sources)):
-            if p.name.startswith('.env') or p.suffix in ['.key','.pem','.db','.sqlite','.vault']:
-                raise RuntimeError('Unexpected private file in source allowlist')
-            z.write(p,p.relative_to(ROOT).as_posix())
+    with tempfile.TemporaryDirectory(dir=OUT) as temporary:
+        source = Path(temporary) / 'source'
+        collect(source)
+        with zipfile.ZipFile(archive,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=9) as z:
+            for p in sorted(source.rglob('*')):
+                if p.is_file():
+                    z.write(p,p.relative_to(source).as_posix())
     manifest = {'application':'Kyalulu Mobile','source_sha256':hashlib.sha256(archive.read_bytes()).hexdigest(),
                 'wasm_sources':{'wllama':'3.8.1','llama.cpp':'46ca246de9bb1c35269722a6240d37d9dfd79cad','emscripten':'4.0.20'},
                 'models':[{k:m[k] for k in ['id','repo','revision','files']} for m in catalog],
