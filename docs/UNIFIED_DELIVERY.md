@@ -15,7 +15,7 @@
 | 認証・課金経路とRuntime通信の分離、Cloud鍵をRemoteへ送らない | 実装・限定検証 | 認証切替・Remote通信捕捉・所有者分離試験 |
 | 安定ID/revisionと数値ID互換、永続outbox、自動同期 | Cloud/device/Native-PCを隔離検証。2MB超の分割転送・再開・競合・撤回と断片確認の索引化、実Chromium v1→v2移行を追加 | 分割保存/ストリーム化、250MB/1GB実容量・旧DB復元の全面照合、全方式の統合証拠 |
 | 競合の共通履歴分岐、記憶を自動混合せず出典保持 | state/記憶/作品設定snapshot往復、記録済みrevisionの共通message列、同期済み/登録前のNative分岐のUUID継承と初回受領前のowner継承を隔離検証。証跡なしの旧分岐は推測で結合しない | 証跡のない旧分岐の扱い、祖先本文の復元、旧設定欠落、3方式の実UI確認 |
-| 同期削除・復元、未送信変更の保護 | 条件付き承認でNative-PC/Browserのowner/revision・撤回fence・永続受領を検証。Native論理復元は自動同期を停止し、旧受領を照合後、復元単位の確認IDで別コピーにする日英画面/APIを検証 | DB全体のCore復元はoutbox/受領/ownerの巻戻りが残るため未受入れ。実端末スケール確認も必要 |
+| 同期削除・復元、未送信変更の保護 | 条件付き承認でNative-PC/Browserのowner/revision・撤回fence・永続受領を検証。Native論理復元とCore全体復元は現在outbox/受領/ownerを保護し、自動同期停止・旧受領照合・復元単位の別コピー確認を適用。Core/既存同期の関連132件で検証 | 強制終了時のDB/媒体の一括耐久性、配布版をまたぐ全面復旧、実容量・実機・本番復旧の確認が必要 |
 | 端末限定の外部送信禁止・共有記憶分離 | 部分検証 | 生成/記憶/同期/広告/外部AIの通信否定試験 |
 | 最近10件＋固定会話のオフライン保存、容量不足とアカウント分離 | 再取得・保持を実装、fixture検証 | 未送信保持と文書再読込を確認。PWA/ブラウザ/実機の再起動と実容量試験は残る |
 | Remote端末別の管理権限、失効、対象PCでの管理・診断・実験 | 実装・限定検証 | 既存Remote接続を使った権限/失効/全機能確認 |
@@ -111,3 +111,5 @@ PC登録・接続状態・直接接続登録の日英表示、生成中の鍵保
 Create操作・取込み/保存/競合/書き出しの日英表示、同一IDの下書き再開、
 Deviceの出典重複を保存時にも照合する処理と再送/同時実行は
 [Create workspace language](validation/2026-10-26-unified-create-workspace-language.md) に記録する。
+Core全体復元時のoutbox/受領/owner保護、旧送信の本文なし照合、Cloud確認と失敗時の復元前アーカイブは
+[Core restore](validation/2026-10-26-unified-core-restore.md) に記録する。

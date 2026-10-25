@@ -23,6 +23,12 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 
 ## Delivered Behavior
 
+- Whole-Core restores now preserve current Native delivery/owner state, merge
+  erasures and require separate-copy review for Native and Cloud links. Local
+  recovery archives are created under the Runtime lock; the existing Cloud
+  tenant lock/encrypted recovery archive remains in use. Fictional DB/media
+  failures and related sync checks passed; production recovery remains open.
+  See [Core restore validation](validation/2026-10-26-unified-core-restore.md).
 - Preset, Lorebook, pinned-revision and expression controls follow JA/EN without
   changing saved titles or choosing newer revisions automatically. Existing error
   detail is rendered in the current language without re-fetching the Library.
