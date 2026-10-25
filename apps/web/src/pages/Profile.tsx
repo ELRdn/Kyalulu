@@ -30,7 +30,7 @@ import DeviceSettings from '../components/DeviceSettings';
 import { executionTarget, isUnifiedEntry, useLanguage } from '../lib/appContext';
 
 export default function Profile() {
-  const publicationEn=useLanguage()==='en';
+  const language=useLanguage(),en=language==='en';
   const administrative = useAdministrative();
   const {cloud_mode,remote_mode} = useRuntimeAccess();
   const displayName = useDisplayName();
@@ -43,12 +43,12 @@ export default function Profile() {
   const [adult, setAdult] = useAdultContent();
   const savedIds = useSavedCharacters();
   const [characters, setCharacters] = useState<CharacterInfo[]>([]);
-  const [loadError, setLoadError] = useState('');
+  const [loadError, setLoadError] = useState<{cause:unknown}|null>(null);
   const [loading, setLoading] = useState(true);
   const [retry, setRetry] = useState(0);
   const [confirmDialog, confirm] = useConfirm();
   const location = useLocation();
-  useDocumentTitle("プロフィール");
+  useDocumentTitle(en ? 'Profile' : 'プロフィール');
 
   useEffect(() => {
     if (location.hash !== "#adult") return;
@@ -62,10 +62,10 @@ export default function Profile() {
   const toggleAdult = async (next: boolean) => {
     if (next) {
       const ok = await confirm({
-        title: "あなたは18歳以上ですか？",
-        description: "成人向けのキャラクターや会話が表示されるようになります。いつでもここからOFFにできます。",
-        confirmLabel: "18歳以上です",
-        cancelLabel: "いいえ",
+        title: en ? 'Are you at least 18?' : 'あなたは18歳以上ですか？',
+        description: en ? 'Adult characters and conversations will be shown. You can turn this off here at any time.' : '成人向けのキャラクターや会話が表示されるようになります。いつでもここからOFFにできます。',
+        confirmLabel: en ? 'I am at least 18' : '18歳以上です',
+        cancelLabel: en ? 'No' : 'いいえ',
       });
       if (!ok) return;
     }
@@ -77,10 +77,10 @@ export default function Profile() {
   }, [displayName]);
 
   useEffect(() => {
-    let active = true; setLoadError(''); setLoading(true);
+    let active = true; setLoadError(null); setLoading(true);
     Promise.all([fetchSessions(), fetchCharacters(adult)]).then(([sessions, characters]) => {
       if (active) { setSessions(sessions); setCharacters(characters); }
-    }).catch(error => { if (active) setLoadError(friendlyMessage(error)); })
+    }).catch(error => { if (active) setLoadError({cause:error}); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [adult, retry]);
@@ -95,8 +95,8 @@ export default function Profile() {
     <div className="k-page" style={{ maxWidth: 780 }}>
       {confirmDialog}
       <DeviceSettings />
-      {isUnifiedEntry()&&<p><Link to="/publications">{publicationEn?'Publication review and appeals':'公開作品の審査・異議申立て'}</Link> · <Link to="/published">{publicationEn?'Approved works':'承認済み作品'}</Link></p>}
-      {loadError && <p role="alert">{loadError}<Button size="sm" variant="secondary" onClick={() => setRetry(value => value + 1)}>再読込</Button></p>}
+      {isUnifiedEntry()&&<p><Link to="/publications">{en?'Publication review and appeals':'公開作品の審査・異議申立て'}</Link> · <Link to="/published">{en?'Approved works':'承認済み作品'}</Link></p>}
+      {loadError && <p role="alert">{friendlyMessage(loadError.cause,language)}<Button size="sm" variant="secondary" onClick={() => setRetry(value => value + 1)}>{en?'Reload':'再読込'}</Button></p>}
       {!cloud_mode && <ConnectionSettings />}
       {administrative && executionTarget() === 'local' && <RemoteHostSettings />}
       <DeviceRegistration />
@@ -104,7 +104,7 @@ export default function Profile() {
         <Avatar name={displayName} size="xl" />
         <div className="k-profile-card__main">
           <label className="k-profile-card__label" htmlFor="k-profile-name">
-            表示名
+            {en ? 'Display name' : '表示名'}
           </label>
           <Input
             id="k-profile-name"
@@ -112,23 +112,23 @@ export default function Profile() {
             onChange={(e) => setNameDraft(e.target.value)}
             onBlur={() => {if(!cloud_mode) setDisplayName(nameDraft);}}
             onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229 && e.currentTarget.blur()}
-            placeholder="表示名"
+            placeholder={en ? 'Display name' : '表示名'}
             className="k-profile-card__name"
             maxLength={80}
             disabled={cloud_mode && !accountSync.profile}
           />
           {cloud_mode && <Button size="sm" variant="secondary" disabled={!accountSync.profile || accountSync.pending>0 || nameDraft.trim()===displayName}
-            onClick={()=>void Promise.resolve(setDisplayName(nameDraft)).catch(()=>{})}>{accountSync.pending?'保存中…':'表示名を保存'}</Button>}
+            onClick={()=>void Promise.resolve(setDisplayName(nameDraft)).catch(()=>{})}>{accountSync.pending?(en?'Saving…':'保存中…'):(en?'Save display name':'表示名を保存')}</Button>}
           <div className="k-profile-card__note" role="status">{cloud_mode
-            ? accountSync.pending?'アカウントに保存しています…':'表示名・保存したキャラ・ピン留めは、同じアカウントの端末で共有されます。'
-            : '表示名はこのデバイスに保存されます。'}</div>
-          {cloud_mode && accountSync.error && <div className="k-profile-card__note" role="alert">{accountSync.error}
-            <Button size="sm" variant="ghost" onClick={()=>void refreshAccountProfile()}>再読み込み</Button></div>}
+            ? accountSync.pending?(en?'Saving to your account…':'アカウントに保存しています…'):(en?'Your display name, saved characters and pins are shared across devices using the same account.':'表示名・保存したキャラ・ピン留めは、同じアカウントの端末で共有されます。')
+            : (en?'Your display name is saved on this device.':'表示名はこのデバイスに保存されます。')}</div>
+          {cloud_mode && accountSync.error && <div className="k-profile-card__note" role="alert">{friendlyMessage(accountSync.error,language)}
+            <Button size="sm" variant="ghost" onClick={()=>void refreshAccountProfile()}>{en?'Reload':'再読み込み'}</Button></div>}
         </div>
-        {loading ? <p role="status">会話の集計を読み込んでいます…</p> : !loadError && <div className="k-profile-stats">
-          <Stat value={talked.length} label="会話" />
-          <Stat value={characterCount} label="出会ったキャラ" />
-          <Stat value={messageCount} label="メッセージ" />
+        {loading ? <p role="status">{en?'Loading conversation counts…':'会話の集計を読み込んでいます…'}</p> : !loadError && <div className="k-profile-stats">
+          <Stat value={talked.length} label={en?'Conversations':'会話'} />
+          <Stat value={characterCount} label={en?'Characters met':'出会ったキャラ'} />
+          <Stat value={messageCount} label={en?'Messages':'メッセージ'} />
         </div>}
       </section>
 
@@ -136,39 +136,39 @@ export default function Profile() {
 
       <section className="k-section">
         <h2 className="k-section__title">
-          <span className="k-section__mark">✦</span> 表示
+          <span className="k-section__mark">✦</span> {en?'Appearance':'表示'}
         </h2>
         <Card>
           <div style={{ display: "grid", gap: 16 }}>
-            <Row label="テーマ" desc="昼のやわらかな光か、月夜の紫か。">
-              <div className="k-segmented" role="radiogroup" aria-label="テーマ">
+            <Row label={en?'Theme':'テーマ'} desc={en?'Soft daylight or moonlit purple.':'昼のやわらかな光か、月夜の紫か。'}>
+              <div className="k-segmented" role="radiogroup" aria-label={en?'Theme':'テーマ'}>
                 <button role="radio" aria-checked={theme === "light"} className={theme === "light" ? "is-active" : ""} onClick={() => setTheme("light")}>
-                  <Icon name="sun" size={14} /> ライト
+                  <Icon name="sun" size={14} /> {en?'Light':'ライト'}
                 </button>
                 <button role="radio" aria-checked={theme === "dark"} className={theme === "dark" ? "is-active" : ""} onClick={() => setTheme("dark")}>
-                  <Icon name="moon" size={14} /> ダーク
+                  <Icon name="moon" size={14} /> {en?'Dark':'ダーク'}
                 </button>
               </div>
             </Row>
             {!cloud_mode && !isUnifiedEntry() && <div id="adult" className="k-setting-anchor">
-              <Row label="成人向けコンテンツ" desc="18歳以上の方のみ。成人向けのキャラクターと会話を表示します。">
-                <Switch checked={adult} onChange={(v) => void toggleAdult(v)} label="成人向けコンテンツを表示" />
+              <Row label={en?'Adult content':'成人向けコンテンツ'} desc={en?'For adults aged 18 and over. Shows adult characters and conversations.':'18歳以上の方のみ。成人向けのキャラクターと会話を表示します。'}>
+                <Switch checked={adult} onChange={(v) => void toggleAdult(v)} label={en?'Show adult content':'成人向けコンテンツを表示'} />
               </Row>
             </div>}
           </div>
         </Card>
       </section>
 
-      {administrative && !remote_mode && executionTarget()==='local' && <><NativeSyncSettings/><details><summary>以前のバックアップ同期</summary><LocalCloudSync/></details></>}
+      {administrative && !remote_mode && executionTarget()==='local' && <><NativeSyncSettings/><details><summary>{en?'Legacy backup sync':'以前のバックアップ同期'}</summary><LocalCloudSync/></details></>}
 
       {savedCharacters.length > 0 && (
         <section className="k-section">
           <h2 className="k-section__title">
-            <span className="k-section__mark">✦</span> 保存したキャラクター
+            <span className="k-section__mark">✦</span> {en?'Saved characters':'保存したキャラクター'}
           </h2>
           <div className="k-grid k-grid--characters">
             {savedCharacters.map((c) => (
-              <CharacterCard key={c.id} id={c.id} displayName={c.display_name} hook={c.description} creator={c.official ? "Kyalulu Official" : "マイライブラリ"} tags={c.tags ?? []} portraitUrl={c.portrait_url} />
+              <CharacterCard key={c.id} id={c.id} displayName={c.display_name} hook={c.description} creator={c.official ? "Kyalulu Official" : (en?'My library':'マイライブラリ')} tags={c.tags ?? []} portraitUrl={c.portrait_url} />
             ))}
           </div>
         </section>
@@ -177,7 +177,7 @@ export default function Profile() {
       {pinnedSessions.length > 0 && (
         <section className="k-section">
           <h2 className="k-section__title">
-            <span className="k-section__mark">✦</span> ピン留めしたチャット
+            <span className="k-section__mark">✦</span> {en?'Pinned chats':'ピン留めしたチャット'}
           </h2>
           <div className="k-chat-list">
             {pinnedSessions.map((s) => (
@@ -189,17 +189,17 @@ export default function Profile() {
 
       {administrative && <section className="k-section">
         <h2 className="k-section__title">
-          <span className="k-section__mark">✦</span> 上級者向け
+          <span className="k-section__mark">✦</span> {en?'Advanced':'上級者向け'}
         </h2>
         <Card>
           <div style={{ display: "grid", gap: 16 }}>
-            <Row label="Researcherモード" desc="チャット画面にモデル選択・プロンプト確認・デバッグを表示します。">
-              <Switch checked={researcher} onChange={setResearcher} label="Researcherモード" />
+            <Row label={en?'Researcher mode':'Researcherモード'} desc={en?'Show model selection, prompt inspection and debugging in chats.':'チャット画面にモデル選択・プロンプト確認・デバッグを表示します。'}>
+              <Switch checked={researcher} onChange={setResearcher} label={en?'Researcher mode':'Researcherモード'} />
             </Row>
             <div className="k-advanced-links">
-              <AdvancedLink to="/studio" icon="sparkle" label="スタジオ" desc="会話エンジン・詳細設定" />
-              <AdvancedLink to="/research" icon="flask" label="Research" desc="A/B/C比較・評価" />
-              <AdvancedLink to="/status" icon="globe" label="Status" desc="接続状況" />
+              <AdvancedLink to="/studio" icon="sparkle" label={en?'Studio':'スタジオ'} desc={en?'Conversation models and advanced settings':'会話エンジン・詳細設定'} />
+              <AdvancedLink to="/research" icon="flask" label="Research" desc={en?'A/B/C comparison and ratings':'A/B/C比較・評価'} />
+              <AdvancedLink to="/status" icon="globe" label="Status" desc={en?'Connection status':'接続状況'} />
             </div>
           </div>
         </Card>
