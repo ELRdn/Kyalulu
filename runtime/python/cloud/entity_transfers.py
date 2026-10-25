@@ -1,10 +1,14 @@
 """Resumable entity bytes use the existing encrypted transfer-page store."""
 import base64
+import asyncio
 import hashlib
 import json
+import logging
 import math
 import re
 import shutil
+import time
+from uuid import UUID
 
 from .store import CloudError
 from .transfers import Transfers, connection
@@ -17,6 +21,69 @@ class EntityTransfers:
     def __init__(self, service):
         self.service, self.store = service, service.store
         self.pages = Transfers(self.store, None, entity=True)
+
+    def cleanup(self):
+        """Reap disposable ciphertext only; durable requests/entities/outboxes stay intact."""
+        counts = {'removed': 0, 'retained': 0, 'unreadable': 0}
+        root = self.store.config.root / self.pages.root
+        try:
+            if not root.exists(): return counts
+            if root.is_symlink() or root.resolve() != self.store.config.root.resolve() / self.pages.root:
+                raise ValueError('Linked transfer root')
+            for directory in root.iterdir():
+                if not directory.is_dir(): continue
+                try:
+                    if str(UUID(directory.name)) != directory.name or directory.is_symlink() or directory.resolve() != root.resolve() / directory.name:
+                        raise ValueError('Invalid transfer directory')
+                except ValueError:
+                    counts['unreadable'] += 1
+                    continue
+                for file in directory.glob('*.db'):
+                    try:
+                        if str(UUID(file.stem)) != file.stem or file.is_symlink() or file.resolve() != directory.resolve() / file.name:
+                            raise ValueError('Invalid transfer file')
+                        # Serialize expiry inspection with page writers before removing a closed DB.
+                        with connection(file) as db:
+                            db.execute('BEGIN IMMEDIATE')
+                            row = db.execute('SELECT payload FROM meta').fetchone()
+                            meta = json.loads(self.store.decrypt(row[0]))
+                            direction, expires = meta['direction'], meta['expires']
+                            if (not isinstance(direction, str) or not direction.startswith(('app-upload:', 'app-download:'))
+                                or type(expires) not in (int, float) or not math.isfinite(expires)):
+                                raise ValueError('Invalid stage metadata')
+                            obsolete = expires <= time.time() or self._obsolete(directory.name, meta)
+                        if obsolete:
+                            self.pages.delete(directory.name, file.stem)
+                            counts['removed'] += 1
+                        else: counts['retained'] += 1
+                    except Exception:
+                        # Unknown/corrupt stages need operator recovery, never guessed deletion.
+                        counts['unreadable'] += 1
+        except Exception:
+            counts['unreadable'] += 1
+        if counts['unreadable']:
+            logging.getLogger(__name__).warning('entity_transfer_cleanup_unreadable count=%s', counts['unreadable'])
+        if counts['removed']:
+            logging.getLogger(__name__).info('entity_transfer_cleanup_removed count=%s', counts['removed'])
+        return counts
+
+    def _obsolete(self, owner, meta):
+        if meta['direction'].startswith('app-upload:'):
+            try: return self._receipt(owner, meta['request_id']) is not None
+            except CloudError as exc:
+                if exc.code != 'sync_request_canceled': raise
+                return True
+        if meta['direction'].startswith('app-download:'):
+            with self.store.transaction() as db:
+                current = db.execute('SELECT revision,deleted FROM app_entities WHERE owner=? AND id=?',
+                                     (owner, meta['direction'][len('app-download:'):])).fetchone()
+                return not current or bool(current['deleted']) or current['revision'] != meta['revision']
+        raise ValueError('Unknown entity transfer direction')
+
+    async def worker(self):
+        while True:
+            await asyncio.sleep(60)
+            self.cleanup()
 
     def _receipt(self, owner, request_id):
         with self.store.transaction() as db:

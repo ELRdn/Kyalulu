@@ -244,6 +244,12 @@ estimates, may fund new grants.
    with `connect-src 'none'`. A reverse proxy must not add a conflicting global
    policy. Generated Pages headers use distinct document paths, without relying
    on overlapping COOP/CSP values being overridden.
+7. Entity-transfer staging is disposable ciphertext. Startup and a 60-second
+   worker reap expired/applied/canceled uploads and obsolete downloads. Retain
+   source outboxes and request IDs: a missing stage restarts at part zero, while
+   durable receipts and cancellation fences remain authoritative. Unreadable or
+   linked stages are retained with count-only warnings. See
+   [staging recovery](validation/2026-10-25-unified-transfer-cleanup.md).
 
 ## Bounded Validation
 

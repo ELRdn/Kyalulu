@@ -57,3 +57,6 @@ Cloud設定と旧バックアップ同期の日英表示は
 この表は公開合格や全計画完了の宣言ではない。
 分割送信中の本文再読込除去と旧outbox/DBの互換性・復旧条件は
 [Outbox guards](validation/2026-10-25-unified-outbox-guards.md) に記録する。
+転送一時データの起動時/定期清掃、期限切れ後のNative outbox再開、
+確定/撤回の永続受領保持は
+[Transfer cleanup](validation/2026-10-25-unified-transfer-cleanup.md) に記録する。
