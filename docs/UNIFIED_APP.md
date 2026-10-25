@@ -258,6 +258,12 @@ fixture scenarios are recorded in
 [Outbox guards](validation/2026-10-25-unified-outbox-guards.md). Chunk checks no
 longer load the entire outbox; staging and projection still materialize JSON.
 
+Research exports now use the same RuntimeDownload/apiFetch path as Library and
+Creator. Late bodies are rejected after account/target changes. Shared component
+and transport fixtures are recorded in
+[Runtime downloads](validation/2026-10-25-unified-runtime-downloads.md); complete
+Browser export-format/preview parity and Browser Research execution remain open.
+
 Current selected-sync work and browser fixture evidence are recorded separately
 in [2026-10-24-unified-sync.md](validation/2026-10-24-unified-sync.md). The historical
 counts below describe the preceding implementation phase, not the final tree.

@@ -60,3 +60,5 @@ Cloud設定と旧バックアップ同期の日英表示は
 転送一時データの起動時/定期清掃、期限切れ後のNative outbox再開、
 確定/撤回の永続受領保持は
 [Transfer cleanup](validation/2026-10-25-unified-transfer-cleanup.md) に記録する。
+Research/Library/Creatorの共通Runtime書き出し経路と切替中の結果拒否は
+[Runtime downloads](validation/2026-10-25-unified-runtime-downloads.md) に記録する。

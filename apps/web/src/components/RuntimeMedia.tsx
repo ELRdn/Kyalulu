@@ -1,6 +1,8 @@
-import { useEffect, useState, type ImgHTMLAttributes, type AnchorHTMLAttributes } from 'react';
+import { useEffect, useRef, useState, type ImgHTMLAttributes, type AnchorHTMLAttributes } from 'react';
 import { apiFetch } from '../lib/transport';
-import { activeRemote } from '../lib/remoteStore';
+import { activeRemote, connectionScope } from '../lib/remoteStore';
+import { executionTarget, useLanguage } from '../lib/appContext';
+import { cloudEpoch } from '../lib/cloudMode';
 
 /** Runtime-owned images must go through the same encrypted transport as chat. */
 export function RuntimeImage({ src, ...props }: ImgHTMLAttributes<HTMLImageElement>) {
@@ -26,22 +28,37 @@ export function RuntimeImage({ src, ...props }: ImgHTMLAttributes<HTMLImageEleme
 }
 
 export function RuntimeDownload({ href, children, ...props }: AnchorHTMLAttributes<HTMLAnchorElement>) {
+  const en = useLanguage() === 'en';
+  const runtime = href?.startsWith('/api/');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  return <><a {...props} href={activeRemote() ? undefined : href} role="button" tabIndex={0}
-    aria-disabled={busy} onClick={async event => {
-      if (!activeRemote()) return;
-      event.preventDefault(); if (busy || !href?.startsWith('/api/')) return;
+  const flight = useRef(false);
+  return <><a {...props} href={runtime ? undefined : href} role={runtime ? 'button' : props.role} tabIndex={props.tabIndex ?? 0}
+    aria-disabled={busy} onKeyDown={event => {
+      props.onKeyDown?.(event);
+      if (runtime && !event.defaultPrevented && ['Enter', ' '].includes(event.key)) { event.preventDefault(); event.currentTarget.click(); }
+    }} onClick={async event => {
+      props.onClick?.(event);
+      if (!runtime || event.defaultPrevented) return;
+      event.preventDefault(); if (flight.current) return;
+      flight.current = true;
       setBusy(true); setError('');
+      const scope = connectionScope(), epoch = cloudEpoch(), target = executionTarget();
       try {
-        const response = await apiFetch(href, { signal: AbortSignal.timeout(60000) });
-        if (!response.ok) throw new Error('書き出しを取得できませんでした。');
-        const url = URL.createObjectURL(await response.blob());
+        const response = await apiFetch(href!, { signal: AbortSignal.timeout(60000) });
+        if (!response.ok) throw new Error(en ? 'Could not retrieve the export.' : '書き出しを取得できませんでした。');
+        const blob = await response.blob();
+        if (connectionScope() !== scope || cloudEpoch() !== epoch || executionTarget() !== target) throw new Error(en ? 'Account or execution target changed. Export again.' : 'アカウントまたは実行先が変わりました。書き出し直してください。');
+        const disposition = response.headers.get('Content-Disposition') ?? '';
+        const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+        let name = disposition.match(/filename="([^"]+)"/i)?.[1] ?? (blob.type.includes('json') ? 'kyalulu-export.json' : 'kyalulu-export');
+        if (encoded) { try { name = decodeURIComponent(encoded); } catch { /* Keep a usable fallback for a malformed header. */ } }
+        name = (typeof props.download === 'string' ? props.download : name).split(/[\\/]/).at(-1)!.replace(/[\u0000-\u001f\u007f]/g, '') || 'kyalulu-export';
+        const url = URL.createObjectURL(blob);
         const a = document.createElement('a'); a.href = url;
-        a.download = typeof props.download === 'string' ? props.download : 'kyalulu-export';
-        document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 60000);
-      } catch (e) { setError(e instanceof Error ? e.message : '書き出しに失敗しました。'); }
-      finally { setBusy(false); }
-    }}>{busy ? '取得中…' : children}</a>{error && <span role="alert">{error}</span>}</>;
+        a.download = name;
+        try { document.body.appendChild(a); a.click(); } finally { a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000); }
+      } catch (e) { setError(e instanceof Error ? e.message : en ? 'Export failed.' : '書き出しに失敗しました。'); }
+      finally { flight.current = false; setBusy(false); }
+    }}>{busy ? en ? 'Downloading…' : '取得中…' : children}</a>{error && <span role="alert">{error}</span>}</>;
 }
