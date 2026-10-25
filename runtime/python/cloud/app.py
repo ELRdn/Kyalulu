@@ -43,7 +43,8 @@ def create_app(config=None, *, transport=None, ad_provider=None):
     transfers = Transfers(store, sync)
     from .community import Community, public_document
     community = Community(config.root / "community.db")
-    app_community_enabled = config.community_enabled and config.legal_approved and not config.private_test
+    # Legacy publication cannot bypass the unified age/moderation workflow.
+    app_community_enabled = config.community_enabled and config.legal_approved and not config.private_test and not config.unified_enabled
 
     @asynccontextmanager
     async def lifespan(app):

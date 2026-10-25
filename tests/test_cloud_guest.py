@@ -132,6 +132,32 @@ async def test_guest_read_does_not_enable_unaccepted_community(isolated):
         assert response.json()["code"] == "community_awaiting_acceptance"
 
 
+@pytest.mark.parametrize('signed_in', [False, True])
+async def test_unified_mode_closes_legacy_publication_bypass_and_preserves_rows(isolated, signed_in):
+    cfg = replace(config(isolated), private_test=False, legal_approved=True,
+                  community_enabled=True, unified_enabled=True)
+    app = create_app(cfg, transport=httpx.MockTransport(lambda _: pytest.fail('No external API calls')))
+    community = Community(cfg.root / 'community.db')
+    work = community.publish('creator', 'Creator', 'legacy', 1, PortableDocument(name='Existing legacy snapshot'))
+    async with client(app) as c:
+        if signed_in:
+            owner = str(uuid4())
+            app.state.store.account(owner, consent=provider_consent_version(cfg))
+            app.state.auth.save('browser', owner, {'access_token': 'fixture', 'refresh_token': 'fixture', 'expires_in': 3600})
+            c.cookies.set(SESSION_COOKIE, 'browser')
+        assert (await c.get('/api/capabilities')).json()['features']['community'] is False
+        for path in ('/api/community/works', '/api/community/works?q=Existing',
+                     '/api/community/works/' + work['id'], '/api/community/works/' + work['id'] + '/comments',
+                     '/api/community/authors/' + work['author_id']):
+            response = await c.get(path)
+            assert response.status_code == 503 and response.json()['code'] == 'community_awaiting_acceptance'
+            assert 'Existing legacy snapshot' not in response.text
+        if signed_in:
+            response = await c.post('/api/community/works', headers={'Origin': cfg.origin}, json={'item_id': 'legacy', 'revision': 1})
+            assert response.status_code == 503 and response.json()['code'] == 'community_awaiting_acceptance'
+    assert community.detail('creator', work['id'])['name'] == 'Existing legacy snapshot'
+
+
 async def test_authenticated_catalog_retains_private_library_and_visibility(isolated):
     app = hosted(isolated, community=True)
     owner = str(uuid4())

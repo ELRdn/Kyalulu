@@ -172,6 +172,11 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 | Localization | Existing screens mainly JA | Same | New controls JA/EN | Complete existing screen translation |
 | Adult publication | Closed | Existing local controls retained | Closed | Vendor acceptance and public APIs/media gates |
 
+When unified mode is enabled, the legacy Community routes also stay closed,
+including reads, so legacy publication cannot bypass the unfinished unified
+age/moderation workflow. Existing Community rows are retained. See
+[Community gate](validation/2026-10-25-unified-community-gate.md).
+
 ## Not Complete
 
 The new entity store has a **limited consented Cloud SQLite bridge**. New uploads
