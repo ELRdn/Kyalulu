@@ -46,6 +46,7 @@ async def ready(url, process, *, verify=True):
 async def check(args):
     args.output.mkdir(parents=True, exist_ok=False)
     assert args.caddy.is_file() and (args.dist / 'device/index.html').is_file()
+    inference_file = next((args.dist / 'assets').glob('runtime.worker-*.js'))
     upstream_port, proxy_port = free_port(), free_port()
     assert upstream_port != proxy_port
     origin = f'https://localhost:{proxy_port}'
@@ -98,6 +99,11 @@ async def check(args):
                 worker = await client.get('/sw.js')
                 assert worker.content == (args.dist / 'sw.js').read_bytes()
                 assert worker.headers['service-worker-allowed'] == '/' and 'no-transform' in worker.headers['cache-control']
+                inference_response = await client.get('/assets/' + inference_file.name)
+                assert inference_response.content == inference_file.read_bytes()
+                assert inference_response.headers['cross-origin-embedder-policy'] == 'require-corp'
+                assert len(inference_response.headers.get_list('content-security-policy')) == 1
+                assert 'huggingface.co' in inference_response.headers['content-security-policy']
                 for path in ('/missing.js', '/assets/missing.png', '/device/missing', '/migration/missing', '/.env', '/.git/config'):
                     response = await client.get(path, headers={'Accept': 'text/html'})
                     assert response.status_code == 404 and response.content != (args.dist / 'index.html').read_bytes(), (path, response.status_code)
@@ -145,6 +151,12 @@ async def check(args):
                     await page.goto(origin + '/device/#/')
                     await page.locator('.k-char-card').first.wait_for()
                     assert await page.evaluate('crossOriginIsolated && navigator.serviceWorker.controller !== null')
+                    async with page.expect_worker() as started:
+                        await page.evaluate('path => { window.__fixtureInferenceWorker = new Worker(path, {type:"module"}); }', '/assets/' + inference_file.name)
+                    inference = await started.value
+                    worker_state = await asyncio.wait_for(inference.evaluate('({isolated:crossOriginIsolated,shared:typeof SharedArrayBuffer === "function"})'), 10)
+                    await page.evaluate('window.__fixtureInferenceWorker.terminate()')
+                    assert worker_state == {'isolated': True, 'shared': True}, worker_state
                     assert await page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1')
                     await page.screenshot(path=str(args.output / 'device.png'), animations='disabled')
                     violations.extend(await page.evaluate('window.__fixtureCsp'))
@@ -165,7 +177,8 @@ async def check(args):
                 'exact_html_and_worker_bytes': True, 'one_csp_per_document': True, 'device_isolated': True,
                 'migration_neutral': True, 'explicit_worker_scope_and_no_transform': True,
                 'missing_asset_private_path_and_nested_document_denials': True, 'commercial_and_unaccepted_regions_closed': True,
-                'browser_shell_device_and_migration': True, 'no_accounts_or_funding_created': True,
+                'browser_shell_device_and_migration': True, 'inference_worker_isolated_with_shared_memory': True,
+                'no_accounts_or_funding_created': True,
                 'page_errors': len(errors), 'csp_violations': len(violations),
                 'external_requests': len(external), 'caddy_version': version,
                 'caddy_sha256': hashlib.sha256(args.caddy.read_bytes()).hexdigest()}

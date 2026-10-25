@@ -27,6 +27,11 @@ preservation must be accepted before a real cutover.
   Missing JS/images and private paths no longer receive the main application.
   Missing nested `/device/` or `/migration/` paths cannot fall back to that shell.
   Both runtimes retain the deliberate document-specific isolation policies.
+- An additional real inference-Worker startup check exposed missing worker COEP
+  and a conflicting main CSP. Runtime now isolates the exact built worker entry;
+  Caddy leaves its CSP to Runtime. Pages, Vite development and preview also apply
+  the worker policy. Header changes contribute to the Service Worker cache version
+  so explicit update replaces previously cached unisolated worker responses.
 - Cloud preserves default private `no-store` API behavior and adds `no-transform`
   to non-API responses, including HTML and the worker. Worker scope is explicit.
   Missing device/migration builds still return the existing closed 503 errors.
@@ -59,6 +64,11 @@ preservation must be accepted before a real cutover.
   isolated Device UI and then the neutral migration page. English 393px has no
   document-width overflow. **Page errors, CSP violations and external requests
   are all 0**. The Device screenshot was visually inspected.
+- The actual built inference Worker now starts without a model and reports
+  `crossOriginIsolated=true` with `SharedArrayBuffer` available. The previous
+  candidate's document-only success was insufficient; the added startup probe
+  failed before the worker-header fix. Updated Native/Cloud static suites:
+  **48 passed** (overlapping the regression set).
 - Caddy's private fixture CA stays in the new output directory. OS trust is never
   installed. Chromium pins only the verified leaf public key for that test
   process; it does not use a general ignore-certificate-errors flag.

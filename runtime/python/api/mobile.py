@@ -578,7 +578,8 @@ class WebDist(StaticFiles):
                 raise
             response = await super().get_response("index.html", scope)
         response.headers["Cache-Control"] = "no-cache"
-        if document == 'device':
+        inference_worker = re.fullmatch(r'assets/runtime\.worker-[a-zA-Z0-9_-]+\.js', path) is not None
+        if document == 'device' or inference_worker:
             response.headers.update({
                 'Cross-Origin-Opener-Policy': 'same-origin',
                 'Cross-Origin-Embedder-Policy': 'require-corp',
