@@ -54,7 +54,7 @@ export default function App() {
         <Route path="/chats/:sessionId" element={<ActiveChat />} />
         <Route path="/characters/:characterId" element={<CharacterEntry />} />
         <Route path="/create" element={deferred(<Create />)} />
-        <Route path="/create/settings" element={deferred(<CreatorSettings />)} />
+        <Route path="/create/settings" element={deferred(<CreatorSettings key={owner} />)} />
         <Route path="/research/benchmarks" element={target==='device'?deferred(<BenchmarkLab key={owner} />):<AdminPage>{deferred(<BenchmarkLab />)}</AdminPage>} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/migration" element={deferred(<Migration />)} />
