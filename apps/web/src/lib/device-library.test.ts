@@ -72,6 +72,19 @@ it('discards image uploads and binary previews if the owner changes during decod
   fixture.owner='owner-a';const card=importCases.find(item=>item.name==='png-and-audio-assets/ccv3-png')!;
   expect((await deviceFetch('/api/imports/preview',{method:'POST',body:form(fromBase64(card.base64))})).status).toBe(409);expect(fixture.meta.size).toBe(0);expect(fetch).not.toHaveBeenCalled();
 });
+it('imports BYAF scenarios and their chosen histories separately with original provenance',async()=>{
+  vi.stubGlobal('createImageBitmap',vi.fn(async()=>({width:1,height:1,close(){}})));
+  const source=importCases.find(item=>item.name==='byaf/microsecond-offset-order')!,raw=fromBase64(source.base64),response=await deviceFetch('/api/imports/preview',{method:'POST',body:form(raw)}),preview=await response.json();
+  expect(response.status).toBe(200);expect(preview.documents).toHaveLength(2);
+  const selections=preview.documents.map((document:any,index:number)=>({index,document,history_indices:[0]})),saved=await request('/api/imports/'+preview.preview_id+'/commit',{request_id:'byaf-scenarios',selections});
+  expect(saved.status).toBe(200);expect(saved.body.items).toHaveLength(2);expect(saved.body.sessions).toHaveLength(2);
+  const histories=saved.body.sessions.map((item:any)=>fixture.records.get('owner-a:'+item.session_id));
+  expect(histories[0].payload.messages[1].content).toBe('前の候補');expect(histories[1].payload.messages[1].content).toBe('選択された返答');
+  expect(histories[0].payload.messages[1].imported_from.origin.selected_active_timestamp).toBe('2026-01-01T00:00:00.123456Z');
+  expect(new Set(histories.flatMap((record:any)=>record.payload.messages.map((message:any)=>message.id))).size).toBe(4);
+  expect(saved.body.items[0].document.source.original.scenario.narrative).toBe('森の入り口');expect(saved.body.items[1].document.source.original.scenario.narrative).toBe('本に囲まれている');
+  expect(fetch).not.toHaveBeenCalled();
+});
 async function works(){
   const character=(await request('/api/library',{name:'Rei',data:{description:'Rei desc'}})).body;
   const profile=(await request('/api/library',{kind:'profile',name:'Profile',profile:{system_prompt:'Profile main',settings:{top_k:7,stop:['NO']}}})).body;

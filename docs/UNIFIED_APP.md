@@ -276,7 +276,9 @@ export-format/preview behavior now has
 [separate validation](validation/2026-10-25-unified-device-exports.md).
 JSON/PNG/CHARX/backup imports and owner-scoped inert media APIs/playback now have
 [native-reference and real-decoder checks](validation/2026-10-25-unified-device-imports.md).
-Other source adapters and complete upload/editor journeys remain open.
+SillyTavern presets/WorldInfo, Character.AI JSON/text and BYAF scenarios/histories
+also have [shared source fixtures](validation/2026-10-25-unified-device-source-imports.md).
+Additional real-world layouts and complete upload/editor journeys remain open.
 
 Current selected-sync work and browser fixture evidence are recorded separately
 in [2026-10-24-unified-sync.md](validation/2026-10-24-unified-sync.md). The historical

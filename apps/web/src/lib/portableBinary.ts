@@ -19,7 +19,7 @@ export function base64(raw:Uint8Array) {
 export const fromBase64=(value:string)=>Uint8Array.from(atob(value),character=>character.charCodeAt(0));
 export function strictBase64(value:string) {
   if(value.length>4*Math.ceil(MAX_PORTABLE_BYTES/3)||value.length%4||!/^[A-Za-z0-9+/]*={0,2}$/.test(value))throw Error('Invalid or oversized base64');
-  return fromBase64(value);
+  const raw=fromBase64(value);if(raw.length>MAX_PORTABLE_BYTES)throw Error('Decoded base64 exceeds limit');return raw;
 }
 function latin1(raw:Uint8Array) {
   const parts=[];for(let offset=0;offset<raw.length;offset+=32768)parts.push(String.fromCharCode(...raw.subarray(offset,offset+32768)));return parts.join('');

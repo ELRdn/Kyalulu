@@ -1,5 +1,5 @@
 <!doctype html><meta charset="utf-8"><title>Disposable device import and media fixture</title>
-<div id="media"></div><pre id="result">Running fake local data</pre>
+<div id="media" style="width:240px"></div><pre id="result">Running fake local data</pre>
 <script type="module">
 import RefreshRuntime from '/@react-refresh';
 import {deviceFetch} from '/src/lib/deviceApi.ts';
@@ -51,6 +51,14 @@ async function run(){
     const original=(await getMeta('original:'+owner+':'+saved.hash));check(same([...original.raw],[...raw]),'Failed preview changed original');
   }
   const library=await entity(saved.id,owner);check(library?.payload.document.name==='Assets','Reload lost imported Library');
+  const byaf=imports.find(item=>item.name==='byaf/microsecond-offset-order'),byafPreview=await request('/api/imports/preview',fileForm(byaf.filename,fromBase64(byaf.base64)));
+  check(byafPreview.status===200&&byafPreview.value.documents.length===2,'Multi-scenario preview failed');
+  const byafPath='/api/imports/'+byafPreview.value.preview_id+'/commit',byafBody={request_id:'byaf-'+phase,selections:byafPreview.value.documents.map((document,index)=>({index,document,history_indices:[0]}))};
+  const byafCommit=await request(byafPath,byafBody);check(byafCommit.status===200&&byafCommit.value.sessions.length===2,'Multi-scenario commit failed');
+  const byafHistories=await Promise.all(byafCommit.value.sessions.map(item=>entity(item.session_id,owner)));
+  check(byafHistories[0].payload.messages[1].content==='前の候補'&&byafHistories[1].payload.messages[1].content==='選択された返答','Scenarios mixed selected history');
+  check(new Set(byafHistories.flatMap(record=>record.payload.messages.map(message=>message.id))).size===4,'BYAF numeric message IDs collided');
+  check(same((await request(byafPath,byafBody)).value,byafCommit.value),'BYAF replay duplicated scenarios');
   const originalResponse=await deviceFetch('/api/library/'+saved.id+'/export?format=original&download=true');
   check(originalResponse.ok&&base64(new Uint8Array(await originalResponse.arrayBuffer()))===imports.find(item=>item.name===saved.card).base64,'Original binary changed');
   const root=mountPortableMedia(document.getElementById('media'),[saved.audio]);
@@ -60,14 +68,26 @@ async function run(){
   await wait(()=>document.querySelector('audio')?.getAttribute('src')?.startsWith('blob:'));
   const player=document.querySelector('audio');player.load();await wait(()=>player.readyState>=1||player.error);check(!player.error&&player.duration>0,'Real WAV decoder failed');
   check(player.paused&&!player.autoplay,'Media autoplayed');
+  check(player.getBoundingClientRect().width<=document.getElementById('media').clientWidth,'Player overflows a narrow container');
   const blob=player.src;rememberOwner('fixture-unrelated-owner');
   await wait(()=>!document.querySelector('audio')?.getAttribute('src'));
   check((await request('/api/library/assets/'+saved.audio.asset_id,undefined,'GET')).status===409,'Another account read media');
   check((await request('/api/library/'+saved.id,undefined,'GET')).status===404,'Another account read Library');
   check(!![...document.querySelectorAll('button')].find(button=>button.textContent==='Load for playback'),'Account change retained pending playback');
   let revoked=false;try{await fetch(blob);}catch{revoked=true;}check(revoked,'Old owner Blob URL was retained');
+  rememberOwner(owner);await wait(()=>[...document.querySelectorAll('button')].some(button=>button.textContent==='Load for playback'));
+  const originalBlob=Response.prototype.blob,createUrl=URL.createObjectURL;let release,bodyPending=false,created=0;
+  const gate=new Promise(resolve=>{release=resolve;});
+  try{
+    Response.prototype.blob=async function(){const blob=await originalBlob.call(this);if(blob.type==='audio/wav'){bodyPending=true;await gate;}return blob;};
+    URL.createObjectURL=function(blob){created++;return createUrl.call(URL,blob);};
+    [...document.querySelectorAll('button')].find(button=>button.textContent==='Load for playback').click();await wait(()=>bodyPending);
+    rememberOwner('fixture-unrelated-owner');await wait(()=>!document.querySelector('audio')?.getAttribute('src'));release();await new Promise(resolve=>setTimeout(resolve,50));
+    check(created===0&&!document.querySelector('audio')?.getAttribute('src'),'Late previous-owner body exposed a Blob');
+  }finally{release();Response.prototype.blob=originalBlob;URL.createObjectURL=createUrl;}
+  savePreferences({...preferences(),language:'ja'});await wait(()=>[...document.querySelectorAll('button')].some(button=>button.textContent==='再生用に取得'));
   root.unmount();rememberOwner(owner);
-  return {ok:true,phase,imports:imports.length,realMedia:media.length,wavDecoded:true,accountIsolation:true,originalPreserved:true,noAutoplay:true};
+  return {ok:true,phase,imports:imports.length,realMedia:media.length,wavDecoded:true,accountIsolation:true,originalPreserved:true,noAutoplay:true,byafHistoriesSeparate:true,lateBodyDiscarded:true,narrowPlayer:true,jaEn:true};
 }
 run().then(value=>{window.__IMPORT_RESULT__=value;document.getElementById('result').textContent=JSON.stringify(value);}).catch(error=>{window.__IMPORT_RESULT__={ok:false,error:String(error),stack:error.stack};document.getElementById('result').textContent=String(error);});
 </script>

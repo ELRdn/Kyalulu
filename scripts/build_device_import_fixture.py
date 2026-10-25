@@ -5,6 +5,7 @@ import json
 import zipfile
 import zlib
 import struct
+import sys
 
 from build_device_export_fixture import cases, ROOT
 from python.core.portable_export import export_document, FORMATS
@@ -49,6 +50,38 @@ def inputs():
     basic = b'{"spec":"chara_card_v3","data":{"name":"Zip variants"}}'
     yield 'zip/cp437', 'cp437.charx', fixed_zip({'card.json': basic, 'cafe.txt': b'keep'}).replace(b'cafe.txt', b'caf\x82.txt')
     yield 'zip/directory-count', 'directories.charx', fixed_zip({**{f'dir{i}/': b'' for i in range(513)}, 'card.json': basic})
+    preset = {'name': 'Ordered preset', 'prompts': [{'identifier': 'main', 'content': 'MAIN'}, {'identifier': 'custom', 'role': 'unsupported', 'content': 'Keep me'}, {'identifier': 'unused', 'content': 'OFF'}],
+              'prompt_order': [{'character_id': 50, 'order': [{'identifier': 'main'}]}, {'character_id': 100, 'order': [{'identifier': 'custom', 'enabled': False}, {'identifier': 'main'}, {'identifier': 'missing'}]}],
+              'temperature': .7, 'rep_pen': 1.1, 'api_key': 'FAKE-DO-NOT-IMPORT', 'api_url': 'https://invalid.test', 'model': 'display-only', 'unknown': 3,
+              'worldinfo': {'name': 'World', 'entries': {'2': {'key': 'sea,port', 'content': 'Sea'}, '1': {'key': ['night'], 'content': 'Disabled', 'useProbability': True}}}}
+    samples = {
+        'st/ordered': preset,
+        'st/first-block-fallback': {**preset, 'prompt_order': [{'character_id': 50, 'order': [{'identifier': 'main'}]}]},
+        'st/standalone': {'name': 'Standalone', 'generation_settings': {'temp': .2, 'max_tokens': 100, 'proxy_host': 'FAKE'}, 'temperature': .8, 'system_prompt': 'SYS', 'story_string': 'Context', 'post_history_instructions': 'END'},
+        'st/world-dictionary': {'name': 'World', 'entries': {'10': {'key': 'sea,port', 'content': 'Sea'}, '2': {'key': 'stars', 'content': 'Night'}}},
+        'st/world-array': {'entries': [{'content': 'Always', 'constant': True}]},
+        'cai/character': {'name': 'Guide', 'description': 'Public description', 'greeting': 'Hello', 'definition': '{{char}}: Keep exact\r\n', 'creatorNotes': 'NOT PROMPT'},
+        'cai/lore-array': [{'comment': 'First', 'key': 'sea,port', 'content': 'Sea'}, {'title': 'Second', 'keys': ['night'], 'content': 'Night', 'enabled': False}],
+        'cai/lore-object': {'name': 'Lore', 'entries': [{'key': ['sea'], 'content': 'Sea'}]},
+    }
+    for name, value in samples.items():
+        yield name, name.replace('/', '-') + '.json', json.dumps(value, ensure_ascii=False).encode()
+    yield 'cai/pasted-definition', 'paste.txt', b'Name: Guide\r\nDescription: Public\r\nDefinition: exact\r\nGreeting: INSIDE DEFINITION\r\n  Keep spaces.\r\n'
+    yield 'cai/pasted-partial', 'partial.txt', b'Name: Guide\nGreeting: Hi\n'
+    yield 'cai/lore-text', 'lore.txt', b'Lorebook Name: Book\nEntry Title: Harbor\nKeywords: sea,port\nContent: First\nSecond line\nEntry Title: Night\nContent: Dark\n'
+    sys.path.insert(0, str(ROOT / 'tests'))
+    from portable_samples import byaf_sample
+    byaf, _ = byaf_sample()
+    with zipfile.ZipFile(io.BytesIO(byaf)) as archive:
+        entries = {name: archive.read(name) for name in archive.namelist()}
+    yield 'byaf/two-scenarios', 'pack.byaf', fixed_zip(entries)
+    scenario = json.loads(entries['scenarios/forest.json'])
+    scenario['messages'][1]['outputs'][0]['activeTimestamp'] = '2026-01-01T00:00:00.123456Z'
+    scenario['messages'][1]['outputs'][1]['activeTimestamp'] = '2026-01-01T09:00:00.123455+09:00'
+    # Native uses exact stored archive names for backgrounds, never filesystem traversal.
+    scenario['backgroundImage'] = 'characters/alice/images/portrait.png'
+    entries['scenarios/forest.json'] = json.dumps(scenario).encode()
+    yield 'byaf/microsecond-offset-order', 'precise.byaf', fixed_zip(entries)
 
 
 def media_cases():
