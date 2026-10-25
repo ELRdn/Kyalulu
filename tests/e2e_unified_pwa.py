@@ -18,6 +18,23 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'runtime'))
 
 
+async def language_in_place(page, language):
+    await page.evaluate('''language=>{
+        const key='kyalulu-app-preferences-v1', prefs=JSON.parse(localStorage.getItem(key));
+        localStorage.setItem(key,JSON.stringify({...prefs,language}));
+        window.dispatchEvent(new Event('kyalulu-app-context'));
+    }''', language)
+
+
+async def conversations(page):
+    return await page.evaluate('''()=>new Promise((resolve,reject)=>{
+        const open=indexedDB.open('kyalulu-app-v1',2);open.onerror=reject;open.onsuccess=()=>{
+            const db=open.result,tx=db.transaction('entities'),read=tx.objectStore('entities').getAll();
+            tx.oncomplete=()=>{db.close();resolve(read.result.filter(row=>row.kind==='conversation'));};tx.onerror=reject;
+        };
+    })''')
+
+
 @asynccontextmanager
 async def offline_renderer(context, page, language):
     # Traffic emulation alone can leave a cached renderer's navigator.onLine true.
@@ -60,7 +77,7 @@ async def check(dist, output):
                 else:
                     raise AssertionError('Owned static fixture did not start')
             async with async_playwright() as playwright:
-                for language, width, theme in [('ja', 393, 'light'), ('en', 1280, 'dark')]:
+                for language, width, theme in [('ja', 393, 'light'), ('en', 393, 'dark'), ('ja', 1280, 'dark'), ('en', 1280, 'light')]:
                     profile = tempfile.mkdtemp(prefix='profile-', dir=output)
                     settings = {'headless': True, 'viewport': {'width': width, 'height': 852},
                         'locale': 'ja-JP' if language == 'ja' else 'en-US', 'color_scheme': theme}
@@ -104,12 +121,53 @@ async def check(dist, output):
                             await WebAssembly.compile(new Uint8Array([0,97,115,109,1,0,0,0]));return true;
                         }''')
                         await page.locator('.k-char-card').first.click()
-                        await page.get_by_role('button', name='会話をはじめる', exact=True).click()
+                        start = page.get_by_role('button', name='Start conversation' if language == 'en' else '会話をはじめる', exact=True)
+                        await start.wait_for()
+                        assert not await page.evaluate('document.documentElement.scrollWidth > innerWidth')
+                        await page.screenshot(path=str(output / f'{language}-{width}-{theme}-entry.png'), full_page=True)
+                        opening = await page.locator('.k-scene-preview').inner_text()
+                        alternate_language = 'ja' if language == 'en' else 'en'
+                        await language_in_place(page, alternate_language)
+                        await page.get_by_role('button', name='Start conversation' if alternate_language == 'en' else '会話をはじめる', exact=True).wait_for()
+                        assert await page.locator('.k-scene-preview').inner_text() == opening
+                        assert await conversations(page) == []
+                        await language_in_place(page, language)
+                        await page.get_by_role('button', name='Start conversation' if language == 'en' else '会話をはじめる', exact=True).click()
                         composer = page.locator('.k-composer textarea')
                         await composer.wait_for()
                         draft = 'オフラインの下書き · draft'
                         await composer.fill(draft)
                         await page.wait_for_function('text=>Object.values(localStorage).some(value=>value.includes(text))', arg=draft)
+                        await page.get_by_role('button', name='Choose a model' if language == 'en' else '会話エンジンを選ぶ', exact=True).click()
+                        model_panel = page.get_by_role('dialog', name='Character & preset' if language == 'en' else 'キャラ・プリセット', exact=True)
+                        await model_panel.wait_for()
+                        await model_panel.locator('.k-sheet-head').get_by_role('button', name='Close' if language == 'en' else '閉じる', exact=True).click()
+                        assert await composer.input_value() == draft
+                        tutorial = page.locator('.k-first-chat-tutorial')
+                        await tutorial.wait_for()
+                        await tutorial.get_by_role('button', name='Next' if language == 'en' else '次へ', exact=True).click()
+                        expected = 'not sent to Cloud or external AI' if language == 'en' else 'Cloudや外部AIへ送りません'
+                        await tutorial.get_by_text(expected, exact=False).wait_for()
+                        assert 'BYOK' not in await tutorial.inner_text()
+                        assert not await page.evaluate('document.documentElement.scrollWidth > innerWidth')
+                        await tutorial.screenshot(path=str(output / f'{language}-{width}-{theme}-guide.png'))
+                        before = await conversations(page)
+                        assert len(before) == 1
+                        await language_in_place(page, alternate_language)
+                        expected = 'not sent to Cloud or external AI' if alternate_language == 'en' else 'Cloudや外部AIへ送りません'
+                        await tutorial.get_by_text(expected, exact=False).wait_for()
+                        assert await composer.input_value() == draft
+                        assert await conversations(page) == before
+                        await language_in_place(page, language)
+                        for _ in range(2):
+                            await tutorial.get_by_role('button', name='Next' if language == 'en' else '次へ', exact=True).click()
+                        assert await tutorial.get_by_role('button', name='Open Inspector' if language == 'en' else 'Inspectorを開く', exact=True).is_disabled()
+                        await tutorial.get_by_role('button', name='Finish guide' if language == 'en' else '案内を完了', exact=True).click()
+                        assert await page.evaluate("localStorage.getItem('kyalulu-first-chat-tutorial-v1')") == 'completed'
+                        await page.get_by_role('button', name='First chat guide' if language == 'en' else '初トークの案内', exact=True).click()
+                        await tutorial.get_by_role('button', name='Skip' if language == 'en' else 'スキップ', exact=True).click()
+                        assert await page.evaluate("localStorage.getItem('kyalulu-first-chat-tutorial-v1')") == 'skipped'
+                        assert await conversations(page) == before
                         # Simulate a new worker release without changing app assets or integrity.
                         version = '1' if language == 'ja' else '2'
                         marker.write_text(version, encoding='ascii')
@@ -161,6 +219,8 @@ async def check(dist, output):
                         assert not api, api
                         results.append({'language': language, 'width': width, 'theme': theme,
                             'device_isolated_online_and_offline': True, 'wasm_csp': True,
+                            'entry_language_switch_preserves_opening': True, 'tutorial_device_disclosure': True,
+                            'tutorial_language_switch_preserves_step_and_draft': True, 'tutorial_receipts': True,
                             'draft_reload': True, 'explicit_update': True, 'other_tab_update_blocked': True,
                             'offline_browser_restart': True, 'offline_status_with_renderer_emulation': True,
                             'uncached_network_blocked': True, 'migration_not_isolated': True,
