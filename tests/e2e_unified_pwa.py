@@ -12,7 +12,7 @@ import tempfile
 from urllib.parse import urlsplit
 
 import httpx
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright, expect
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'runtime'))
@@ -116,6 +116,44 @@ async def check(dist, output):
                         await page.locator('.k-mobile-status summary').click()
                         await page.get_by_role('button', name='Check for updates' if language == 'en' else '更新を確認', exact=True).wait_for()
                         await page.locator('.k-mobile-status summary').click()
+                        await page.get_by_role('button', name='Search characters and worlds' if language == 'en' else 'キャラクターやワールドを検索', exact=True).click()
+                        palette_input = page.locator('.k-cmd input')
+                        palette_options = page.locator('.k-cmd').get_by_role('option')
+                        await palette_input.wait_for()
+                        assert await palette_options.filter(has_text='Studio').count() == 0
+                        assert await palette_options.filter(has_text='スタジオ').count() == 0
+                        await palette_input.fill('butler')
+                        await palette_options.nth(1).wait_for()
+                        palette_results = await page.locator('.k-cmd__label').all_text_contents()
+                        alternate_language = 'ja' if language == 'en' else 'en'
+                        await language_in_place(page, alternate_language)
+                        await page.get_by_role('combobox', name='Search' if alternate_language == 'en' else '検索', exact=True).wait_for()
+                        assert await palette_input.input_value() == 'butler'
+                        assert (await page.locator('.k-cmd__label').all_text_contents())[1:] == palette_results[1:]
+                        previous_url = page.url
+                        await palette_input.dispatch_event('keydown', {'key': 'Enter', 'code': 'Enter', 'isComposing': True, 'keyCode': 229})
+                        assert page.url == previous_url
+                        await palette_input.press('Enter')
+                        search = page.locator('.k-discover-search input')
+                        await search.wait_for()
+                        assert await search.input_value() == 'butler'
+                        await page.get_by_role('group', name='Filter by mood' if alternate_language == 'en' else '気分で絞り込む').get_by_role('button', name='Butler' if alternate_language == 'en' else '執事', exact=True).click()
+                        mood_group = page.get_by_role('group', name='Filter by mood' if alternate_language == 'en' else '気分で絞り込む')
+                        await expect(mood_group.get_by_role('button', name='All' if alternate_language == 'en' else 'すべて', exact=True)).to_have_attribute('aria-pressed', 'false')
+                        await expect(mood_group.get_by_role('button', name='Butler' if alternate_language == 'en' else '執事', exact=True)).to_have_attribute('aria-pressed', 'true')
+                        assert 'mood=butler' in page.url and 'q=butler' in page.url
+                        links = await page.locator('.k-char-card').evaluate_all('(cards)=>cards.map(c=>c.getAttribute("href"))')
+                        assert len(links) == 1 and 'butler' in links[0]
+                        previous_url = page.url
+                        await language_in_place(page, language)
+                        await page.get_by_role('textbox', name='Search characters' if language == 'en' else 'キャラクターを検索', exact=True).wait_for()
+                        assert page.url == previous_url and await search.input_value() == 'butler'
+                        assert await page.locator('.k-char-card').evaluate_all('(cards)=>cards.map(c=>c.getAttribute("href"))') == links
+                        await search.fill('執事')
+                        assert await page.locator('.k-char-card').evaluate_all('(cards)=>cards.map(c=>c.getAttribute("href"))') == links
+                        assert await page.get_by_role('tab').count() == 0
+                        assert not await page.evaluate('document.documentElement.scrollWidth > innerWidth')
+                        await page.screenshot(path=str(output / f'{language}-{width}-{theme}-explore.png'), full_page=True, animations='disabled')
                         assert await page.evaluate('crossOriginIsolated && typeof SharedArrayBuffer !== "undefined"')
                         assert await page.evaluate('''async()=>{
                             await WebAssembly.compile(new Uint8Array([0,97,115,109,1,0,0,0]));return true;
@@ -124,7 +162,7 @@ async def check(dist, output):
                         start = page.get_by_role('button', name='Start conversation' if language == 'en' else '会話をはじめる', exact=True)
                         await start.wait_for()
                         assert not await page.evaluate('document.documentElement.scrollWidth > innerWidth')
-                        await page.screenshot(path=str(output / f'{language}-{width}-{theme}-entry.png'), full_page=True)
+                        await page.screenshot(path=str(output / f'{language}-{width}-{theme}-entry.png'), full_page=True, animations='disabled')
                         opening = await page.locator('.k-scene-preview').inner_text()
                         alternate_language = 'ja' if language == 'en' else 'en'
                         await language_in_place(page, alternate_language)
@@ -150,7 +188,7 @@ async def check(dist, output):
                         await tutorial.get_by_text(expected, exact=False).wait_for()
                         assert 'BYOK' not in await tutorial.inner_text()
                         assert not await page.evaluate('document.documentElement.scrollWidth > innerWidth')
-                        await tutorial.screenshot(path=str(output / f'{language}-{width}-{theme}-guide.png'))
+                        await tutorial.screenshot(path=str(output / f'{language}-{width}-{theme}-guide.png'), animations='disabled')
                         before = await conversations(page)
                         assert len(before) == 1
                         await language_in_place(page, alternate_language)
@@ -196,7 +234,7 @@ async def check(dist, output):
                         assert await page.evaluate('crossOriginIsolated')
                         async with offline_renderer(context, page, language):
                             assert not await page.evaluate('document.documentElement.scrollWidth > innerWidth')
-                            await page.screenshot(path=str(output / f'{language}-{width}-{theme}-offline.png'), full_page=True)
+                            await page.screenshot(path=str(output / f'{language}-{width}-{theme}-offline.png'), full_page=True, animations='disabled')
                         chat_url = page.url
                         await context.close()
                         context = await playwright.chromium.launch_persistent_context(profile, offline=True, **settings)
@@ -210,7 +248,7 @@ async def check(dist, output):
                         assert await composer.input_value() == draft
                         assert await page.evaluate('crossOriginIsolated && navigator.serviceWorker.controller !== null')
                         async with offline_renderer(context, page, language):
-                            await page.screenshot(path=str(output / f'{language}-{width}-{theme}-offline-restart.png'), full_page=True)
+                            await page.screenshot(path=str(output / f'{language}-{width}-{theme}-offline-restart.png'), full_page=True, animations='disabled')
                         await context.set_offline(False)
                         await page.goto(origin + '/migration/')
                         assert not await page.evaluate('crossOriginIsolated')
@@ -220,6 +258,8 @@ async def check(dist, output):
                         results.append({'language': language, 'width': width, 'theme': theme,
                             'device_isolated_online_and_offline': True, 'wasm_csp': True,
                             'entry_language_switch_preserves_opening': True, 'tutorial_device_disclosure': True,
+                            'bilingual_search_preserves_query_filter_url_and_results': True, 'palette_ime_guard': True,
+                            'device_hub_management_hidden': True,
                             'tutorial_language_switch_preserves_step_and_draft': True, 'tutorial_receipts': True,
                             'draft_reload': True, 'explicit_update': True, 'other_tab_update_blocked': True,
                             'offline_browser_restart': True, 'offline_status_with_renderer_emulation': True,
