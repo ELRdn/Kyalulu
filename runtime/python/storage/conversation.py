@@ -235,7 +235,7 @@ async def purge(session_id, *, cloud_revision=None):
         await db.execute("DELETE FROM memory_events WHERE generation_id IN (SELECT generation_id FROM generations WHERE session_id=?)",
                          (session_id,))
         await db.execute("DELETE FROM imported_history WHERE message_id IN (SELECT id FROM chat_history WHERE session_id=?)", (session_id,))
-        for table in ("chat_history", "generations", "runtime_states", "conversation_summaries", "session_settings", "session_memory", "session_scopes"):
+        for table in ("chat_history", "generations", "runtime_states", "conversation_summaries", "session_settings", "session_memory", "session_scopes", "unified_local_links"):
             await db.execute(f"DELETE FROM {table} WHERE session_id=?", (session_id,))
         # Cloud sync/restore must carry this tombstone so old backups cannot resurrect conversation data.
         await db.execute("INSERT OR REPLACE INTO session_deletions(session_id) VALUES(?)", (session_id,))

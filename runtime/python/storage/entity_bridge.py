@@ -129,6 +129,7 @@ class Links:
         self.args=(namespace,) if namespace else ()
 
     def prepare(self):
+        self.db.execute('CREATE TABLE IF NOT EXISTS runtime.unified_local_links(session_id TEXT PRIMARY KEY,entity_id TEXT NOT NULL UNIQUE,mapping TEXT NOT NULL)')
         if self.namespace:
             self.db.execute('CREATE TABLE IF NOT EXISTS runtime.unified_native_links(namespace TEXT,session_id TEXT,entity_id TEXT,revision INTEGER,baseline TEXT,mapping TEXT,PRIMARY KEY(namespace,session_id),UNIQUE(namespace,entity_id,revision))')
             self.db.execute('CREATE TABLE IF NOT EXISTS runtime.unified_native_owners(session_id TEXT PRIMARY KEY,namespace TEXT NOT NULL)')
@@ -210,48 +211,60 @@ def creator_references(settings):
 
 async def copy_branch_links(db, source, target, message_ids, memory_ids, summary_ids):
     """Retain canonical identities without enrolling a new branch for upload."""
-    for table in ('unified_runtime_links', 'unified_native_links'):
+    linked = []
+    for table in ('unified_runtime_links', 'unified_native_links', 'unified_local_links'):
         if not await (await db.execute("SELECT 1 FROM sqlite_master WHERE name=?", (table,))).fetchone():
             continue
-        rows = await (await db.execute(f'SELECT * FROM {table} WHERE session_id=?', (source,))).fetchall()
-        for row in rows:
-            parent = json.loads(row['mapping'])
-            mapped = parent.setdefault('messages', {})
-            next_id = max((item['id'] for item in mapped.values()), default=0)
-            for old in message_ids:
-                if str(old) not in mapped:
-                    message = await (await db.execute('SELECT role,content,model_id FROM chat_history WHERE id=? AND session_id=?', (old, source))).fetchone()
-                    next_id += 1
-                    mapped[str(old)] = {'id': next_id, 'uuid': str(uuid4()), 'revision': 1, 'digest': fingerprint(list(message))}
-            mapped_memories = parent.setdefault('memories', {})
-            for old in memory_ids:
-                if old in mapped_memories:
-                    continue
-                memory = await (await db.execute('SELECT source_revision FROM memories WHERE id=?', (old,))).fetchone()
-                try: provenance = json.loads(memory[0] or 'null') if memory else None
-                except (ValueError, TypeError): provenance = None
-                provenance = provenance if isinstance(provenance, dict) else {}
-                stable = provenance.get('memory_uuid') or provenance.get('memory_id') or str(uuid4())
-                mapped_memories[old] = {'id': provenance.get('memory_id', stable), 'uuid': stable,
-                    'source_session_id': provenance.get('source_session_id', row['entity_id'])}
-            mapped_summaries = parent.setdefault('summaries', {})
-            for old in summary_ids:
-                mapped_summaries.setdefault(old, str(uuid4()))
-            copied = deepcopy(parent)
-            copied['messages'] = {str(new): deepcopy(mapped[str(old)]) for old, new in message_ids.items()}
-            copied['memories'] = {new: deepcopy(mapped_memories[old]) for old, new in memory_ids.items()}
-            copied['summaries'] = {new: mapped_summaries[old] for old, new in summary_ids.items()}
-            copied['lineage'] = {'branch_of': row['entity_id'], 'fork_revision': row['revision'],
-                'fork_message_uuid': mapped[str(next(reversed(message_ids)))]['uuid']}
-            namespace = row['namespace'] if table == 'unified_native_links' else None
-            clause, args = (' AND namespace=?', (namespace,)) if namespace else ('', ())
-            await db.execute(f'UPDATE {table} SET mapping=? WHERE session_id=?' + clause, (json.dumps(parent), source) + args)
-            entity_id = str(uuid4())
-            if namespace:
-                await db.execute('INSERT INTO unified_native_owners VALUES(?,?)', (target, namespace))
-                await db.execute(f'INSERT INTO {table} VALUES(?,?,?,?,?,?)', (namespace, target, entity_id, 0, '', json.dumps(copied)))
-            else:
-                await db.execute(f'INSERT INTO {table} VALUES(?,?,?,?,?)', (target, entity_id, 0, '', json.dumps(copied)))
+        columns = '*,0 AS revision' if table == 'unified_local_links' else '*'
+        linked.extend((table, row) for row in await (await db.execute(f'SELECT {columns} FROM {table} WHERE session_id=?', (source,))).fetchall())
+    if not linked:
+        identity = str(uuid4())
+        await db.execute('INSERT INTO unified_local_links VALUES(?,?,?)', (source, identity, '{}'))
+        linked.append(('unified_local_links', {'entity_id': identity, 'revision': 0, 'mapping': '{}'}))
+    for table, row in linked:
+        parent = json.loads(row['mapping'])
+        mapped = parent.setdefault('messages', {})
+        next_id = max((item['id'] for item in mapped.values()), default=0)
+        for old in message_ids:
+            if str(old) not in mapped:
+                message = await (await db.execute('SELECT role,content,model_id FROM chat_history WHERE id=? AND session_id=?', (old, source))).fetchone()
+                next_id += 1
+                mapped[str(old)] = {'id': next_id, 'uuid': str(uuid4()), 'revision': 1, 'digest': fingerprint(list(message))}
+        mapped_memories = parent.setdefault('memories', {})
+        for old in memory_ids:
+            if old in mapped_memories:
+                continue
+            memory = await (await db.execute('SELECT source_revision FROM memories WHERE id=?', (old,))).fetchone()
+            try: provenance = json.loads(memory[0] or 'null') if memory else None
+            except (ValueError, TypeError): provenance = None
+            provenance = provenance if isinstance(provenance, dict) else {}
+            stable = provenance.get('memory_uuid') or provenance.get('memory_id') or str(uuid4())
+            mapped_memories[old] = {'id': provenance.get('memory_id', stable), 'uuid': stable,
+                'source_session_id': provenance.get('source_session_id', row['entity_id'])}
+        mapped_summaries = parent.setdefault('summaries', {})
+        for old in summary_ids:
+            mapped_summaries.setdefault(old, str(uuid4()))
+        copied = deepcopy(parent)
+        copied['messages'] = {str(new): deepcopy(mapped[str(old)]) for old, new in message_ids.items()}
+        copied['memories'] = {new: deepcopy(mapped_memories[old]) for old, new in memory_ids.items()}
+        copied['summaries'] = {new: mapped_summaries[old] for old, new in summary_ids.items()}
+        copied['lineage'] = {'branch_of': row['entity_id'], 'fork_revision': row['revision'],
+            'fork_message_uuid': mapped[str(next(reversed(message_ids)))]['uuid']}
+        if table == 'unified_local_links': copied['local_parent_session'] = source
+        namespace = row['namespace'] if table == 'unified_native_links' else None
+        clause, args = (' AND namespace=?', (namespace,)) if namespace else ('', ())
+        await db.execute(f'UPDATE {table} SET mapping=? WHERE session_id=?' + clause, (json.dumps(parent), source) + args)
+        entity_id = str(uuid4())
+        if table == 'unified_local_links':
+            await db.execute('INSERT INTO unified_local_links VALUES(?,?,?)', (target, entity_id, json.dumps(copied)))
+        elif namespace:
+            await db.execute('INSERT INTO unified_native_owners VALUES(?,?)', (target, namespace))
+            await db.execute(f'INSERT INTO {table} VALUES(?,?,?,?,?,?)', (namespace, target, entity_id, 0, '', json.dumps(copied)))
+        else:
+            await db.execute(f'INSERT INTO {table} VALUES(?,?,?,?,?)', (target, entity_id, 0, '', json.dumps(copied)))
+    if await (await db.execute("SELECT 1 FROM sqlite_master WHERE name='unified_native_owners'")).fetchone():
+        # Enrollment claims ownership before its first upload receipt exists.
+        await db.execute('INSERT OR IGNORE INTO unified_native_owners SELECT ?,namespace FROM unified_native_owners WHERE session_id=?', (target, source))
 
 
 def creator_document(snapshot, kind):
@@ -505,11 +518,19 @@ def capture(db, selected,namespace=None):
             raise CloudError('sync_selected_session_missing', 409)
         Links(db,namespace).claim(sid)
         link = Links(db,namespace).session(sid)
-        entity_id, revision = (link['entity_id'], link['revision']) if link else (str(uuid4()), 0)
-        mapping = json.loads(link['mapping']) if link else {}
+        local = None if link else db.execute('SELECT * FROM runtime.unified_local_links WHERE session_id=?', (sid,)).fetchone()
+        entity_id, revision = (link['entity_id'], link['revision']) if link else (local['entity_id'] if local else str(uuid4()), 0)
+        mapping = json.loads((link or local)['mapping']) if link or local else {}
+        if not link and mapping.get('local_parent_session'):
+            parent = Links(db,namespace).session(mapping['local_parent_session'])
+            if parent and parent['revision'] > 0:
+                mapping['lineage'].update(branch_of=parent['entity_id'], fork_revision=parent['revision'])
         if mapping.get('restored_from_snapshot'):
             raise CloudError('sync_restored_session_confirmation_required', 409)
         payload = export_session(db, sid, entity_id, mapping)
+        if not link:
+            db.execute('INSERT INTO runtime.unified_local_links VALUES(?,?,?) ON CONFLICT(session_id) DO UPDATE SET mapping=excluded.mapping',
+                       (sid, entity_id, json.dumps(mapping)))
         digest = fingerprint(payload)
         if not link or digest != link['baseline']:
             result.append({'id': entity_id, 'base_revision': revision, 'kind': 'conversation', 'payload': payload,

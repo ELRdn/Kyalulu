@@ -138,6 +138,7 @@ async def run():
                 browser = await p.chromium.launch(headless=True)
                 try:
                     context = await browser.new_context(
+                        locale="ja-JP",
                         viewport={"width": 393, "height": 851},
                         is_mobile=True,
                         has_touch=True,
