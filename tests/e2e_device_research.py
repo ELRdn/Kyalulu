@@ -1,14 +1,16 @@
 """Device Research through the real app/API/IDB, synthetic readiness and Worker only."""
 import asyncio
 import json
+import sys
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 from playwright.async_api import async_playwright
 from browser_fixture_server import local_vite
-from python.core.schemas import ExperimentMeta
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'runtime'))
+from python.core.schemas import ExperimentMeta
 OUTPUT = ROOT / '.artifacts/device-research-browser'
 
 
