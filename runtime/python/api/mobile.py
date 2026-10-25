@@ -571,6 +571,7 @@ class WebDist(StaticFiles):
             if (
                 exc.status_code != 404
                 or document
+                or path.split('/')[0] in {'device', 'migration'}
                 or Path(path).suffix
                 or "text/html" not in Request(scope).headers.get("accept", "")
             ):

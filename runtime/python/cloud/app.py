@@ -180,7 +180,7 @@ def create_app(config=None, *, transport=None, ad_provider=None):
                             if k.lower() != b"cache-control"
                         ]
                         headers += [
-                            (b"cache-control", b"no-store"),
+                            (b"cache-control", b"no-store" if request.url.path.startswith('/api/') else b"no-store, no-transform"),
                             (b"x-content-type-options", b"nosniff"),
                             (b"referrer-policy", b"no-referrer"),
                         ]
@@ -1006,40 +1006,14 @@ def create_app(config=None, *, transport=None, ad_provider=None):
             app.router.routes.append(copy)
 
     if config.web_dist:
+        from python.api.mobile import WebDist
+        static = WebDist(directory=str(config.web_dist), html=True)
 
         @app.get("/{path:path}")
-        async def web(path: str):
-            if path in {'migration', 'migration/', 'migration/index.html'}:
-                candidate = config.web_dist / 'migration/index.html'
-                if not candidate.is_file():
-                    raise CloudError('migration_shell_not_built', 503)
-                return FileResponse(candidate, headers={
-                    'Cross-Origin-Opener-Policy': 'unsafe-none',
-                    'Cross-Origin-Embedder-Policy': 'unsafe-none',
-                    'Cache-Control': 'no-cache',
-                    'Referrer-Policy': 'no-referrer',
-                    'Content-Security-Policy': "default-src 'none'; script-src 'self'; "
-                        "style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; "
-                        "connect-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",
-                })
-            isolated = path in {'device', 'device/', 'device/index.html'}
-            if isolated:
-                candidate = config.web_dist / 'device/index.html'
-                if not candidate.is_file():
-                    raise CloudError('device_shell_not_built', 503)
-                return FileResponse(candidate, headers={
-                    'Cross-Origin-Opener-Policy': 'same-origin',
-                    'Cross-Origin-Embedder-Policy': 'require-corp',
-                    'Content-Security-Policy': "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; "
-                        "worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
-                        "connect-src 'self' https://huggingface.co https://*.huggingface.co https://*.hf.co; "
-                        "frame-src 'none'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'",
-                })
-            candidate = (config.web_dist / path).resolve()
-            if candidate.is_relative_to(config.web_dist.resolve()) and candidate.is_file():
-                return FileResponse(candidate)
-            if path.startswith("api/"):
-                raise CloudError("not_found", 404)
-            return FileResponse(config.web_dist / "index.html")
+        async def web(path: str, request: Request):
+            for document in ('device', 'migration'):
+                if path in {document, document + '/', document + '/index.html'} and not (config.web_dist / document / 'index.html').is_file():
+                    raise CloudError(document + '_shell_not_built', 503)
+            return await static.get_response(path, request.scope)
 
     return app
