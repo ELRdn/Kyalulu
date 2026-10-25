@@ -13,6 +13,7 @@ import {
   type Leaderboard,
 } from "../lib/api";
 import MarkdownView from "../components/MarkdownView";
+import { RuntimeDownload } from "../components/RuntimeMedia";
 import "./research.css";
 import { useDocumentTitle } from "../lib/title";
 import { Link } from "react-router-dom";
@@ -253,14 +254,13 @@ function ExperimentColumn({
           </div>
         )}
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-          <a
+          <RuntimeDownload
             href={`/api/experiments/${encodeURIComponent(detail.meta.experiment_id as string)}/export`}
-            target="_blank"
-            rel="noopener noreferrer"
+            download
             style={{ fontSize: 10, color: "var(--accent)", textDecoration: "underline" }}
           >
             export
-          </a>
+          </RuntimeDownload>
           <button
             onClick={handleReplay}
             disabled={replaying}

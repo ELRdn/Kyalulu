@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
+import { RuntimeDownload } from "../components/RuntimeMedia";
 import { fetchModels, fetchScenarios, type ModelInfo } from "../lib/api";
 import { labRequest, type BenchmarkJob } from "../lib/lab";
 import { useDocumentTitle } from "../lib/title";
@@ -86,7 +87,7 @@ export default function BenchmarkLab() {
     {!jobs.length && <p>まだ比較実験はありません。</p>}
     {jobs.map(job => <Card key={job.id}>
       <div className="k-lab-actions"><strong>{statusLabels[job.status] ?? job.status}</strong><span>{job.results.length}/{job.planned_runs} 実験 · {job.planned_turns} ターン予定</span>
-        <a href={`/api/benchmarks/${job.id}/export`} download>結果JSON</a>
+        <RuntimeDownload href={`/api/benchmarks/${encodeURIComponent(job.id)}/export`} download>結果JSON</RuntimeDownload>
         {active(job) && <Button disabled={busy} variant="secondary" onClick={() => void run(async () => {
           const updated = await labRequest<BenchmarkJob>(`benchmarks/${job.id}/cancel`, { method: "POST" });
           jobsVersion.current++;
