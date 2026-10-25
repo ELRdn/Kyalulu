@@ -20,6 +20,8 @@ def accept_image(raw: bytes):
                 if not mime or im.width * im.height > 32_000_000:
                     raise ValueError('Unsupported image or too many pixels')
                 im.verify()
+            with Image.open(io.BytesIO(raw)) as decoded:
+                decoded.load()
     except Exception as exc:
         raise ValueError('Invalid or unsupported image') from exc
     return hashlib.sha256(raw).hexdigest(), mime

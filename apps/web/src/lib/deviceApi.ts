@@ -12,6 +12,8 @@ import { sampling } from '../mobile/sampling';
 import { exportPortable, type ExportAsset } from './deviceExport';
 import { Sha256 } from '../mobile/sha256';
 import { commitDeviceImport } from './deviceImport';
+import { parseDeviceImport } from './deviceParseImport';
+import { acceptDeviceMedia, readDeviceAsset, saveDeviceAsset, validateDeviceDocumentAssets } from './deviceAssets';
 
 let runtime:MobileRuntime|undefined, loaded='';
 let running:string|null=null;
@@ -184,11 +186,25 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
   const url=new URL(input,'https://device.invalid'),path=decodeURIComponent(url.pathname),method=(init.method??'GET').toUpperCase();
   let body:Record<string,any>={};
   if(typeof init.body==='string'){if(init.body.length>32*1024*1024)throw fail('Request too large',413);body=JSON.parse(init.body);}
+  if(path==='/api/library/assets'&&method==='POST') {
+    if(!(init.body instanceof FormData))throw fail('Choose a media file');
+    const file=init.body.get('file');if(!(file instanceof File)||file.size>32*1024*1024)throw fail('Choose a file up to 32 MiB');
+    const asset=await acceptDeviceMedia(new Uint8Array(await file.arrayBuffer()));
+    if(!asset.mime.startsWith('image/')&&init.body.get('rights_confirmed')!=='true')throw fail('Media requires rights confirmation');
+    await saveDeviceAsset(owner,asset);
+    return json({name:file.name,type:asset.mime.startsWith('video/')?'video':asset.mime.startsWith('audio/')?'audio':'icon',uri:'',media_type:asset.mime,asset_id:asset.id,rights_confirmed:init.body.get('rights_confirmed')==='true'});
+  }
+  const media=path.match(/^\/api\/library\/assets\/([a-f0-9]{64})$/);
+  if(media){
+    if(method!=='GET')throw fail('Media requires GET',405);
+    const asset=await readDeviceAsset(owner,media[1]);
+    return new Response(new Uint8Array(asset.raw),{headers:{'Content-Type':asset.mime,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+  }
   const records=(await allEntities(owner)).filter(e=>!e.deleted),sessions=records.filter(e=>e.kind==='conversation');
   if(owner!==deviceOwner())throw fail('Account changed',409);
   if(path==='/api/mobile/status')return json({cloud_mode:false,remote_mode:false,authenticated:true,administrative:false,device_mode:true});
   if(path==='/api/health')return json({status:'ok',version:'0.1.0',runtime:'browser'});
-  if(path==='/api/capabilities')return json({schema_version:1,mode:'local',model_selection:'local',features:{regenerate:true,suggestions:false,stored_context:false,progress:true,branch:true,permanent_delete:true,summaries:true,world_memory:true,story_rules:true,community:false,media_playback:false,media_generation:false}});
+  if(path==='/api/capabilities')return json({schema_version:1,mode:'local',model_selection:'local',features:{regenerate:true,suggestions:false,stored_context:false,progress:true,branch:true,permanent_delete:true,summaries:true,world_memory:true,story_rules:true,community:false,media_playback:true,media_generation:false}});
   if(path==='/api/models') {const ready=await readyModels();return json({models:MODELS.map(m=>({id:m.id,display_name:m.name,provider_type:'browser',provider_model:m.id,quantization:m.runtime,context_length:2048,available:ready.has(m.id),unavailable_reason:ready.has(m.id)?null:'Download required'}))});}
   if(path==='/api/providers/health')return json({health:[{id:'browser',provider:'browser',status:'ok'}]});
   if(path==='/api/diagnostics')return json({ready:true,checks:[{id:'browser',ok:true,message:'On-device runtime',hint:null,detail:null}]});
@@ -355,6 +371,7 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
   if(path==='/api/library') {
     if(method==='GET')return json({items:records.filter(e=>['character','preset'].includes(e.kind)&&e.payload.document).map(e=>libraryView(e))});
     const d=PortableDocumentSchema.parse(body);if(d.nsfw)throw fail('Adult verification required',403);
+    await validateDeviceDocumentAssets(d,owner);
     const id=crypto.randomUUID(),value=newEntity(d.kind==='character'?'character':'preset',id,{storage_policy:'local',document:d,versions:{'1':d}},owner);
     const saved=await saveEntity(value);return json(libraryView(saved));
   }
@@ -366,6 +383,7 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
       if(value.payload.snapshot_only)throw fail('Synced revisions are immutable; import a separate editable copy',409);
       if((value.payload.current_revision??value.revision)!==body.expected_revision)throw fail('Library revision changed',409);
       const d=PortableDocumentSchema.parse(body.document);if(d.nsfw)throw fail('Adult verification required',403);
+      await validateDeviceDocumentAssets(d,owner);
       const revision=(value.payload.current_revision??value.revision)+1;
       if(value.payload.versions?.[revision])throw fail('A synchronized version already exists; create a separate copy',409);
       const saved=await saveEntity({...value,payload:{...value.payload,document:d,current_revision:revision,versions:{...value.payload.versions,[String(revision)]:d}}},value.revision);
@@ -386,11 +404,7 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
       }else{
         const assets=new Map<string,ExportAsset>();
         for(const asset of item.document.assets??[])if(asset.asset_id&&!assets.has(asset.asset_id)){
-          if(!/^[a-f0-9]{64}$/.test(asset.asset_id))throw fail('Invalid asset identity');
-          const stored=await getMeta<ExportAsset>('asset:'+owner+':'+asset.asset_id);
-          if(!stored||!(stored.raw instanceof Uint8Array)||typeof stored.mime!=='string')throw fail('Missing asset bytes; export cannot preserve the document',409);
-          if(contentHash(stored.raw)!==asset.asset_id)throw fail('Stored asset checksum mismatch',409);
-          assets.set(asset.asset_id,stored);
+          assets.set(asset.asset_id,await readDeviceAsset(owner,asset.asset_id));
         }
         result=exportPortable(item.document,format,assets);
       }
@@ -403,15 +417,19 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
     return json(libraryView(value,url.searchParams.has('revision')?Number(url.searchParams.get('revision')):undefined));
   }
   if(path==='/api/imports/text/preview'||path==='/api/imports/preview') {
-    let text=body.text,filename=typeof body.filename==='string'?body.filename:'character.txt',raw:Uint8Array|undefined;
-    if(init.body instanceof FormData){const file=init.body.get('file');if(!(file instanceof File)||file.size>32*1024*1024)throw fail('Choose a file up to 32 MiB');raw=new Uint8Array(await file.arrayBuffer());text=new TextDecoder('utf-8',{fatal:true}).decode(raw);filename=file.name;}
-    if(typeof text!=='string'||text.length>32*1024*1024)throw fail('Invalid import');
-    const parsed=JSON.parse(text),d=PortableDocumentSchema.parse(parsed.spec?{name:parsed.data?.name??'Character',data:parsed.data}:parsed);
-    if(d.nsfw)throw fail('Adult verification required',403);
-    raw??=encoder.encode(text);
-    const preview_id=crypto.randomUUID(),preview={preview_id,filename,source_hash:contentHash(raw),documents:[d],duplicates:{}};
-    if(owner!==deviceOwner())throw fail('Account changed',409);
-    await setMeta('preview:'+owner+':'+preview_id,{...preview,original:{filename,raw}});return json(preview);
+    if(method!=='POST')throw fail('Preview requires POST',405);
+    let filename=typeof body.filename==='string'?body.filename:'character.txt',raw:Uint8Array;
+    if(init.body instanceof FormData){const file=init.body.get('file');if(!(file instanceof File)||file.size>32*1024*1024)throw fail('Choose a file up to 32 MiB');raw=new Uint8Array(await file.arrayBuffer());filename=file.name;}
+    else {if(typeof body.text!=='string'||Array.from(body.text).length>2000000)throw fail('Invalid import text');raw=encoder.encode(body.text);}
+    const {documents,assets}=await parseDeviceImport(filename,raw);
+    if(documents.some(doc=>doc.nsfw))throw fail('Adult verification required',403);
+    const preview_id=crypto.randomUUID(),preview={preview_id,filename,source_hash:contentHash(raw),documents,duplicates:{}};
+    await appTransaction<void>(['meta'],'readwrite',(tx,done)=>{
+      if(owner!==deviceOwner())throw fail('Account changed',409);
+      const store=tx.objectStore('meta');
+      for(const [id,asset] of assets)store.put(asset,'asset:'+owner+':'+id);
+      store.put({...preview,original:{filename,raw}},'preview:'+owner+':'+preview_id);done();
+    });return json(preview);
   }
   const commit=path.match(/^\/api\/imports\/([^/]+)\/commit$/);
   if(commit){if(method!=='POST')throw fail('Import requires POST',405);return json(await commitDeviceImport(owner,commit[1],body,records));}

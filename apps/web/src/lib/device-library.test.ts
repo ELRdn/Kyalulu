@@ -31,12 +31,47 @@ vi.mock('./appStore',async original=>({
 }));
 import { deviceFetch } from './deviceApi';
 import exportCases from '../../../../tests/fixtures/device-exports.json';
+import importCases from '../../../../tests/fixtures/device-imports.json';
+import mediaCases from '../../../../tests/fixtures/device-media.json';
 import { fromBase64 } from './portableBinary';
 const request=async(path:string,body?:unknown,method=body?'POST':'GET')=>{
   const response=await deviceFetch(path,{method,...(body?{body:JSON.stringify(body)}:{})});return {status:response.status,body:await response.json()};
 };
 beforeEach(()=>{fixture.records.clear();fixture.meta.clear();fixture.owner='owner-a';fixture.sequence=0;fixture.turns=[];fixture.putFailure=undefined;vi.stubGlobal('location',{href:'https://device.test/device/'});vi.stubGlobal('fetch',vi.fn(()=>{throw Error('No external calls allowed');}));});
 afterEach(()=>{vi.unstubAllGlobals();});
+const form=(raw:Uint8Array)=>{const value=new FormData();value.set('file',new File([new Uint8Array(raw)],'fake.html',{type:'text/html'}));return value;};
+it('requires media rights, sniffs uploaded bytes and isolates asset retrieval by owner',async()=>{
+  const sample=mediaCases.find(item=>item.name==='wav')!,raw=fromBase64(sample.base64),upload=form(raw);
+  expect((await deviceFetch('/api/library/assets',{method:'POST',body:upload})).status).toBe(400);
+  expect(fixture.meta.size).toBe(0);upload.set('rights_confirmed','true');
+  const result=await deviceFetch('/api/library/assets',{method:'POST',body:upload}),asset=await result.json();
+  expect(result.status).toBe(200);expect(asset).toMatchObject({media_type:'audio/wav',asset_id:sample.expected!.id,rights_confirmed:true,type:'audio'});
+  const response=await deviceFetch('/api/library/assets/'+asset.asset_id);
+  expect(new Uint8Array(await response.arrayBuffer())).toEqual(raw);expect(response.headers.get('Content-Type')).toBe('audio/wav');expect(response.headers.get('Cache-Control')).toBe('no-store');
+  expect((await deviceFetch('/api/library/assets/'+asset.asset_id,{method:'DELETE'})).status).toBe(405);
+  fixture.owner='owner-b';expect((await deviceFetch('/api/library/assets/'+asset.asset_id)).status).toBe(409);expect(fetch).not.toHaveBeenCalled();
+});
+it('saves binary previews and assets together, requires fresh rights at commit, and retains exact original bytes',async()=>{
+  vi.stubGlobal('createImageBitmap',vi.fn(async()=>({width:1,height:1,close(){}})));
+  const sample=importCases.find(item=>item.name==='png-and-audio-assets/charx')!,raw=fromBase64(sample.base64);
+  fixture.putFailure=2;
+  expect((await deviceFetch('/api/imports/preview',{method:'POST',body:form(raw)})).status).toBe(400);expect(fixture.meta.size).toBe(0);
+  fixture.putFailure=undefined;
+  const response=await deviceFetch('/api/imports/preview',{method:'POST',body:form(raw)}),preview=await response.json();expect(response.status).toBe(200);
+  expect(preview).not.toHaveProperty('original');expect(preview).not.toHaveProperty('assets');
+  const doc=preview.documents[0],audio=doc.assets.find((item:any)=>item.type==='audio');expect(audio.rights_confirmed).toBe(false);
+  const body={request_id:'binary-fixture',selections:[{index:0,document:doc}]},path='/api/imports/'+preview.preview_id+'/commit';
+  expect((await request(path,body)).status).toBe(400);expect(fixture.records.size).toBe(0);
+  audio.rights_confirmed=true;const saved=await request(path,body);expect(saved.status).toBe(200);
+  const original=await deviceFetch('/api/library/'+saved.body.items[0].id+'/export?format=original&download=true');expect(new Uint8Array(await original.arrayBuffer())).toEqual(raw);
+});
+it('discards image uploads and binary previews if the owner changes during decoding',async()=>{
+  vi.stubGlobal('createImageBitmap',vi.fn(async()=>{fixture.owner='owner-b';return {width:1,height:1,close(){}};}));
+  const sample=mediaCases.find(item=>item.name==='png')!;
+  expect((await deviceFetch('/api/library/assets',{method:'POST',body:form(fromBase64(sample.base64))})).status).toBe(409);expect(fixture.meta.size).toBe(0);
+  fixture.owner='owner-a';const card=importCases.find(item=>item.name==='png-and-audio-assets/ccv3-png')!;
+  expect((await deviceFetch('/api/imports/preview',{method:'POST',body:form(fromBase64(card.base64))})).status).toBe(409);expect(fixture.meta.size).toBe(0);expect(fetch).not.toHaveBeenCalled();
+});
 async function works(){
   const character=(await request('/api/library',{name:'Rei',data:{description:'Rei desc'}})).body;
   const profile=(await request('/api/library',{kind:'profile',name:'Profile',profile:{system_prompt:'Profile main',settings:{top_k:7,stop:['NO']}}})).body;
@@ -65,9 +100,9 @@ it('previews and downloads six real formats from the requested immutable Library
 });
 it('exports only verified owner-scoped asset bytes and preserves originals after later edits',async()=>{
   const example=exportCases[2],assets=Object.entries(example.assets);
-  const created=(await request('/api/library',example.document)).body;
-  expect((await request('/api/library/'+created.id+'/export?format=charx')).status).toBe(409);
+  expect((await request('/api/library',example.document)).status).toBe(409);
   for(const [id,asset] of assets)fixture.meta.set('asset:owner-a:'+id,{raw:fromBase64(asset.base64!),mime:asset.mime});
+  const created=(await request('/api/library',example.document)).body;
   expect((await request('/api/library/'+created.id+'/export?format=charx')).status).toBe(200);
   const [id,asset]=assets[0];fixture.meta.set('asset:owner-a:'+id,{raw:fromBase64(asset.base64!).subarray(1),mime:asset.mime});
   expect((await request('/api/library/'+created.id+'/export?format=charx')).body.error).toContain('checksum');
