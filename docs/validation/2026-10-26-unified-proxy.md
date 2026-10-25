@@ -89,3 +89,50 @@ existing Remote key fingerprints, target-VPS resources and financial/erasure
 state reconciliation are not proven by this loopback test. No production
 deployment or full-plan completion is claimed. Regional/guardian/ad/payment
 approvals and complete runtime/device/recovery acceptance remain separate gates.
+
+## Final retained candidates
+
+Final application/build-policy source is `a6cbd98`; `7c9e8c0` aligned the test
+Relay hostname beforehand. The earlier `1d021fc` candidate is superseded because
+it lacked inference-worker isolation. No candidate was deployed.
+
+- Clean final-source Web suite: **755 passed / 62 files**. Typecheck, unified
+  App and legacy Mobile builds passed with the existing build warnings.
+- The existing managed Relay origin is fixed to `https://relay.kyalulu.com` in
+  the candidate build. Existing WASM outputs were reused, not rebuilt.
+- Cloud candidate SHA-256:
+  `3369452dfc163321abc91327f4140153f21eba695d0fab0060528c2275a09a49`.
+  All **222** manifest entries, **747** corresponding-source files by inventory,
+  and **61** precache entries, including three explicitly compressed runtime
+  assets, were inspected. Each manifest/precache hash was independently checked;
+  the selected Runtime, proxy, Vite and runbook files match the Git export.
+- Exported source bytes preserve Windows CRLF. Raw export/package checks and
+  LF-normalized comparisons against the Git blobs were kept separate; the first
+  strict blob-byte comparison failed only on that line-ending difference.
+- The actual tar contents were extracted into a new directory and passed the
+  final Caddy/HTTPS/Chromium check, including the real inference Worker with
+  shared memory. No accounts, credit lots, funding, operations or secrets were
+  created in the disposable control store. Errors/CSP violations/external
+  requests remained zero.
+- The same extracted Web passed all four JA/EN, 393/1280px, light/dark PWA cases,
+  including explicit update, Library/draft flows and offline browser restart.
+  API/external/page-error counts were zero in every condition.
+- The final and superseded builds have identical precache asset bytes and
+  compressed-asset hashes, but the delivery-policy change updates cache version
+  `43498873a862a1d01ee3` to `c06eec95044c658cffbc`. Both unified and Mobile `_headers`
+  contain the isolated inference-worker rule.
+- The legacy Mobile candidate includes **78** files, **40** verified precache
+  entries, the four pinned model descriptors, source and license texts. All file
+  hashes and corresponding-source ZIP hashes were independently checked; the
+  largest file is **16,811,691 bytes**, below the Pages file limit. Model weights
+  are not included. Source ZIP SHA-256:
+  `53af2f678b043a12b68e90d0ce0a226577069737748ed37cf8e25a4ce715d04d`.
+
+Candidates and hash reports are retained locally under
+`.artifacts/unified-canonical-a6cbd98/`; the copy back from isolated staging was
+hash-verified. Browser summaries are
+`.artifacts/unified-proxy-browser-results.json` and
+`.artifacts/unified-canonical-pwa-browser-results.json`.
+Docker image creation, signatures, Windows candidate refresh, WASM recompilation,
+public delivery/OAuth, physical devices and production-state reconciliation
+remain unverified. Copied license texts and manifests are not legal acceptance.
