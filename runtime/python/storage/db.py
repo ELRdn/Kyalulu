@@ -162,6 +162,9 @@ CREATE TABLE IF NOT EXISTS conversation_summaries (
 CREATE TABLE IF NOT EXISTS session_deletions (
     session_id TEXT PRIMARY KEY, deleted_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS unified_local_links (
+    session_id TEXT PRIMARY KEY, entity_id TEXT NOT NULL UNIQUE, mapping TEXT NOT NULL
+);
 """
 
 

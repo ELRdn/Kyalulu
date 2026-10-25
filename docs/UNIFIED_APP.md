@@ -23,6 +23,11 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 
 ## Delivered Behavior
 
+- Native branches made before enrollment now retain a local canonical identity
+  map for messages, memories and summaries. Explicit selection adopts the map;
+  enrollment alone never uploads a branch. Ownership also propagates before the
+  first upload receipt. Equal text in legacy branches is not ancestry evidence.
+  See [local identity validation](validation/2026-10-26-unified-native-local-identity.md).
 - Memory controls, provenance, inspection and summary corrections now follow JA/EN,
   including cross-world sharing and irreversible scope-erasure warnings. Small
   screens place memory type labels above content. Real device-storage UI checks
@@ -178,7 +183,7 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 | Memory/provenance | Existing | Existing | Retrieval/proposals/manual CRUD | Full identity/shared-scope parity |
 | Summaries | Existing | Existing | Extractive chapters/arcs/manual edits | Long-context/end-to-end fixtures |
 | World/cast/RPG | Existing + creator snapshot bridge | Existing | Creator revisions, cast contract, RPG and selected Lore | Historical snapshot interchange and physical real-model acceptance |
-| Branches | Saved state/memory/settings; recorded revision/message ancestry | Synced branch UUIDs and namespace retained; explicit upload selection | Saved snapshots and independent numeric IDs; user/assistant cut points | Pre-enrollment/legacy identity gaps, restorable revision bodies and physical acceptance |
+| Branches | Saved state/memory/settings; recorded revision/message ancestry | Synced and pre-enrollment branch UUIDs retained; owner claims precede receipts; explicit upload selection | Saved snapshots and independent numeric IDs; user/assistant cut points | Legacy branches without saved proofs, restorable revision bodies and physical acceptance |
 | Character creation | Existing | Existing | Portable editing, verified inert media upload and imported cards | Complete editor journeys, real-model/physical-file acceptance |
 | Library interchange | Existing SFW restrictions | Existing + typed card media verification/confirmation | Six export formats, saved versions/originals; JSON/PNG/CHARX/backup/ST/CAI/BYAF import, atomic selected histories, explicit media playback | Additional real-world layouts, full editor/media journeys, supported codec differences and physical-file acceptance |
 | Research/experiments | Cloud restricted | Explicit management permission | Not implemented; not advertised as admin | Device benchmark execution/results |

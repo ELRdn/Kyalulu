@@ -36,7 +36,7 @@ def erase_conversations(db, sessions, *, schema='main'):
             db.execute(f"DELETE FROM {schema}.memory_events WHERE generation_id IN (SELECT generation_id FROM {schema}.generations WHERE session_id=?)", (sid,))
         if {"imported_history","chat_history"} <= tables:
             db.execute(f"DELETE FROM {schema}.imported_history WHERE message_id IN (SELECT id FROM {schema}.chat_history WHERE session_id=?)", (sid,))
-        for table in ("chat_history","generations","runtime_states","session_settings","session_memory","conversation_summaries","session_scopes"):
+        for table in ("chat_history","generations","runtime_states","session_settings","session_memory","conversation_summaries","session_scopes","unified_local_links"):
             if table in tables:
                 db.execute(f"DELETE FROM {schema}.{table} WHERE session_id=?",(sid,))
         db.execute(f"INSERT OR IGNORE INTO {schema}.session_deletions(session_id) VALUES(?)",(sid,))
