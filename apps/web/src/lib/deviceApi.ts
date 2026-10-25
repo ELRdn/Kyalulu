@@ -101,7 +101,13 @@ async function generate(body:Record<string,any>,signal?:AbortSignal,scope?:Resea
   running=generationId;setGenerationBusy(true);
   try {
     runtime??=new MobileRuntime();
-    if(loaded!==model.id){await runtime.load(model.id,false,new URL('/',location.href).href);loaded=model.id;}
+    if(loaded!==model.id){
+      const engine=runtime;loaded='';const stopLoad=()=>engine.reset('Generation stopped while loading the model');
+      signal?.throwIfAborted();signal?.addEventListener('abort',stopLoad,{once:true});
+      try{await engine.load(model.id,false,new URL('/',location.href).href);signal?.throwIfAborted();loaded=model.id;}
+      catch(error){engine.reset('Model loading failed or stopped');throw error;}
+      finally{signal?.removeEventListener('abort',stopLoad);}
+    }
     currentOwner();
     const session=scope?.session??await conversation(id,owner),p=session.payload;
     if(session.owner!==owner||session.id!==id)throw fail('Invalid generation scope',409);
@@ -196,7 +202,7 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
   const url=new URL(input,'https://device.invalid'),path=decodeURIComponent(url.pathname),method=(init.method??'GET').toUpperCase();
   let body:Record<string,any>={};
   if(typeof init.body==='string'){if(init.body.length>32*1024*1024)throw fail('Request too large',413);body=JSON.parse(init.body);}
-  if(/^\/api\/(experiments|ratings|leaderboard)(?:\/|$)/.test(path))return deviceResearchRoute(path,method,body,url,owner,init.signal??undefined,generate,compiled);
+  if(/^\/api\/(experiments|ratings|leaderboard|benchmarks)(?:\/|$)/.test(path))return deviceResearchRoute(path,method,body,url,owner,init.signal??undefined,generate,compiled);
   if(path==='/api/library/assets'&&method==='POST') {
     if(!(init.body instanceof FormData))throw fail('Choose a media file');
     const file=init.body.get('file');if(!(file instanceof File)||file.size>32*1024*1024)throw fail('Choose a file up to 32 MiB');

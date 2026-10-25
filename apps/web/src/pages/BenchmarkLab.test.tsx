@@ -4,7 +4,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import BenchmarkLab from './BenchmarkLab';
 import { labRequest, type BenchmarkJob } from '../lib/lab';
 
-const hooks=vi.hoisted(()=>({language:'en',states:[] as unknown[],refs:[] as {current:any}[],cursor:0,refCursor:0,active:false,effects:[] as unknown[][]}));
+const hooks=vi.hoisted(()=>({language:'en',target:'local',generating:false,states:[] as unknown[],refs:[] as {current:any}[],cursor:0,refCursor:0,active:false,effects:[] as unknown[][]}));
 vi.mock('react',async original=>({...await original<typeof import('react')>(),
   useState:(initial:unknown)=>{
     if(!hooks.active)return [initial,()=>{}];
@@ -15,7 +15,7 @@ vi.mock('react',async original=>({...await original<typeof import('react')>(),
   useRef:(initial:unknown)=>hooks.refs[hooks.refCursor++]??(hooks.refs[hooks.refCursor-1]={current:initial}),
   useEffect:(_effect:unknown,deps:unknown[])=>{if(hooks.active)hooks.effects.push(deps);},
 }));
-vi.mock('../lib/appContext',()=>({useLanguage:()=>hooks.language}));
+vi.mock('../lib/appContext',()=>({useLanguage:()=>hooks.language,useExecutionTarget:()=>hooks.target,useGenerationBusy:()=>hooks.generating}));
 vi.mock('../lib/title',()=>({useDocumentTitle:vi.fn()}));
 vi.mock('../lib/api',()=>({fetchModels:vi.fn(),fetchScenarios:vi.fn()}));
 vi.mock('../lib/lab',()=>({labRequest:vi.fn()}));
@@ -39,7 +39,7 @@ function find(tree:ReactNode,predicate:(node:ReactElement<any>)=>boolean):ReactE
 const button=(tree:ReactNode,text:string)=>find(tree,node=>node.props.children===text);
 const submit=(tree:ReactNode)=>find(tree,n=>n.type==='form').props.onSubmit({preventDefault:()=>{}});
 beforeEach(()=>{
-  hooks.language='en';hooks.refs=[];
+  hooks.language='en';hooks.target='local';hooks.generating=false;hooks.refs=[];
   hooks.states=[[{id:'model_original',display_name:'元のモデル名'}],[{id:'scenario_original',turns:20}],['model_original'],'scenario_original','compare',2,123,7,600,false,4,[job],false,null];
   vi.mocked(labRequest).mockReset().mockResolvedValue(job);
 });
@@ -77,4 +77,16 @@ it('retains active-job admission and cancels only the chosen job after explicit 
   hooks.language='ja';tree=render();expect(labRequest).not.toHaveBeenCalled();
   await button(tree,'実験を中止').props.onClick();
   expect(labRequest).toHaveBeenCalledExactlyOnceWith('benchmarks/job_original/cancel',{method:'POST'});
+});
+it('describes Device tab lifetime accurately and does not present unavailable models as ready',()=>{
+  hooks.target='device';hooks.generating=true;hooks.states[0]=[{id:'missing',display_name:'Unavailable model',available:false}];
+  const tree=render(),html=renderToStaticMarkup(tree);
+  expect(html).toContain('Closing or reloading the tab interrupts the job');expect(html).not.toContain('continue after you close this page');
+  expect(find(tree,n=>n.type==='input'&&n.props.type==='checkbox'&&n.props.checked===false).props.disabled).toBe(true);
+  expect(find(tree,n=>n.props.type==='submit').props.disabled).toBe(true);expect(labRequest).not.toHaveBeenCalled();
+});
+it('shows a persisted stop request without claiming that the engine has already stopped',()=>{
+  hooks.target='device';hooks.states[11]=[{...job,status:'running',cancel_requested:true}];
+  const tree=render();expect(renderToStaticMarkup(tree)).toContain('Stopping…');
+  expect(button(tree,'Cancel benchmark').props.disabled).toBe(true);expect(labRequest).not.toHaveBeenCalled();
 });

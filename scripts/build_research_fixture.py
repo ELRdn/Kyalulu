@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'runtime'))
 from python.core.metrics import compute_metrics
 from python.core.memory import probe, summarize
+from python.core.benchmark import BenchmarkRequest, prepare_job
 
 
 def fixture():
@@ -29,7 +30,14 @@ def fixture():
         probes.append({'input': args, 'expected': probe(**args)})
     summary_turns = [{'probe': row['expected']} for row in probes] + [
         {'memory': {'injected_tokens': 10, 'retrieval_ms': 1.25, 'decisions': [{'action': 'store', 'supported': False}, {'action': 'skip'}]}}]
-    return {'metrics': [{'turns': turns, 'expected': compute_metrics(turns)} for turns in cases],
+    request = BenchmarkRequest(model_ids=['mock-echo'], scenarios=['mocha_memory_001'], runs=2, seed=17,
+                               memory_options={'top_k': 1, 'budget_tokens': 80, 'fill_recent': False},
+                               history_turn_limit=1, request_id='20000000-0000-4000-8000-000000000002')
+    job, matrix = prepare_job(request)
+    return {'benchmark': {'request': request.model_dump(mode='json'), 'planned_runs': job['planned_runs'],
+                          'planned_turns': job['planned_turns'],
+                          'matrix': [[m, s.id, n, enabled, request.seed + n - 1] for m, s, n, enabled in matrix]},
+            'metrics': [{'turns': turns, 'expected': compute_metrics(turns)} for turns in cases],
             'probes': probes, 'summary': {'turns': summary_turns, 'expected': summarize(summary_turns)},
             'rounding': [{'value': n, 'digits': d, 'expected': round(n, d)} for n in [1.25, 2.675, .125, -.125, 123.455] for d in [0, 1, 2, 3]]}
 

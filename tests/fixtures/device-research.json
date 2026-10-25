@@ -1,4 +1,59 @@
 {
+  "benchmark": {
+    "request": {
+      "model_ids": [
+        "mock-echo"
+      ],
+      "scenarios": [
+        "mocha_memory_001"
+      ],
+      "runs": 2,
+      "seed": 17,
+      "temperature": 0.8,
+      "memory": "compare",
+      "memory_options": {
+        "top_k": 1,
+        "budget_tokens": 80,
+        "min_score": 0.12,
+        "fill_recent": false
+      },
+      "history_turn_limit": 1,
+      "run_timeout_seconds": 3600,
+      "request_id": "20000000-0000-4000-8000-000000000002"
+    },
+    "planned_runs": 4,
+    "planned_turns": 32,
+    "matrix": [
+      [
+        "mock-echo",
+        "mocha_memory_001",
+        1,
+        false,
+        17
+      ],
+      [
+        "mock-echo",
+        "mocha_memory_001",
+        1,
+        true,
+        17
+      ],
+      [
+        "mock-echo",
+        "mocha_memory_001",
+        2,
+        true,
+        18
+      ],
+      [
+        "mock-echo",
+        "mocha_memory_001",
+        2,
+        false,
+        18
+      ]
+    ]
+  },
   "metrics": [
     {
       "turns": [],
