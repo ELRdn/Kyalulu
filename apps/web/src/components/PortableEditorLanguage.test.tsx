@@ -131,6 +131,19 @@ it('retains the upload Error and its HTTP status for language changes', async ()
   }
 });
 
+it('does not display an old upload rejection after the connection scope changes', async () => {
+  let reject!: (error: Error) => void;
+  fixture.upload.mockImplementation(() => new Promise((_, fail) => { reject = fail; }));
+  const change = vi.fn();
+  const image = nodes(editor(change), node => node.props.type === 'file' && node.props.accept.includes('image/png'))[0];
+  const pending = image.props.onChange({ target: { files: [{ name: 'fixture.png' }], value: 'fixture.png' } });
+  fixture.scope = 'another-fixture-owner';
+  reject(Error('previous-owner-error'));
+  await pending;
+  expect(fixture.updates.filter(update => update.index === 4)).toEqual([{ index: 4, value: '' }]);
+  expect(change).not.toHaveBeenCalled();
+});
+
 it('requires media rights and validates size before reading or uploading a file', async () => {
   const change = vi.fn();
   const field = (tree: ReactNode) => nodes(tree, node => node.props.type === 'file' && node.props.accept.includes('audio/wav'))[0];
