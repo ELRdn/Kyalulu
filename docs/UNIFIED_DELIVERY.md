@@ -102,3 +102,6 @@ PWAの日英表示・明示更新・別タブ拒否・実ブラウザ全終了�
 プロフィール・接続先設定の日英表示、端末内の保存先説明、名前/接続先の下書きと
 テーマ切替・ピン留め会話への復帰は
 [Profile language](validation/2026-10-26-unified-profile-language.md) に記録する。
+PC登録・接続状態・直接接続登録の日英表示、生成中の鍵保持、PC一覧の重複解消と
+統合シェルからの実暗号化・架空Runtime検証は
+[Remote language](validation/2026-10-26-unified-remote-language.md) に記録する。
