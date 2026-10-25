@@ -505,7 +505,7 @@ export default function ResearchPage() {
       {/* ツールバー */}
       <div style={{ padding: 12, borderBottom: "1px solid var(--border)", background: "var(--bg-card)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <div style={{ fontWeight: 700, fontSize: 13 }}>{en ? "Research" : "研究"} — A/B/C</div>
-        {!device&&<Link to="/research/benchmarks" style={{ fontSize: 12 }}>{en ? "Long-turn and memory benchmarks" : "長ターン・記憶の比較実験"}</Link>}
+        <Link to="/research/benchmarks" style={{ fontSize: 12 }}>{en ? "Long-turn and memory benchmarks" : "長ターン・記憶の比較実験"}</Link>
         <span style={{ fontSize: 11, color: "var(--text-dim)", border: "1px solid var(--border)", padding: "2px 8px", borderRadius: 99 }}>{en ? `${exps.length} experiments` : `実験 ${exps.length}件`}</span>
         <label style={{ fontSize: 11, display: "flex", gap: 4, alignItems: "center", color: showNsfw ? "var(--error-text)" : "var(--text-dim)" }}>
           <input type="checkbox" checked={showNsfw} onChange={(e) => setShowNsfw(e.target.checked)} /> {en ? "Adult content (NSFW)" : "成人向け (NSFW)"}

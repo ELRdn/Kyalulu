@@ -55,7 +55,7 @@ export default function App() {
         <Route path="/characters/:characterId" element={<CharacterEntry />} />
         <Route path="/create" element={deferred(<Create />)} />
         <Route path="/create/settings" element={deferred(<CreatorSettings />)} />
-        <Route path="/research/benchmarks" element={<AdminPage>{deferred(<BenchmarkLab />)}</AdminPage>} />
+        <Route path="/research/benchmarks" element={target==='device'?deferred(<BenchmarkLab key={owner} />):<AdminPage>{deferred(<BenchmarkLab />)}</AdminPage>} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/migration" element={deferred(<Migration />)} />
         <Route path="/studio" element={<AdminPage>{deferred(<Studio />)}</AdminPage>} />

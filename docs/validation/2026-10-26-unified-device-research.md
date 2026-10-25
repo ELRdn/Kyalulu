@@ -72,3 +72,8 @@ DeviceのBenchmarkLabジョブ行列・progress/poll/timeout/中止、実モデ�
 Android/iPhone、ロック復帰・回線切替・OS IME、商用接続、本番ドメイン反映は未受入れ。
 研究はDevice画面で実行し、Nativeのバックグラウンドジョブと同じ継続性はまだ提供しない。
 新しい配布buildと最新CIの成功は別に確認する。通常会話・同期・既存DBを移行/削除する変更ではない。
+
+後続のBenchmarkLab実装・期限・別タブ停止・100ターンの証拠は
+[Device benchmarks](2026-10-26-unified-device-benchmarks.md) を参照。
+`fefbaa0` のUbuntu CIは試験起動時の `ModuleNotFoundError: python` で停止した。
+後続でブラウザdriver自身が `runtime/` をsys.pathへ加え、環境変数に依存しない起動へ修正した。

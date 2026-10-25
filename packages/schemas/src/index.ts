@@ -152,6 +152,20 @@ export const MemoryOptionsSchema = z.object({
   fill_recent: z.boolean().default(true),
 }).strict();
 
+export const BenchmarkRequestSchema = z.object({
+  model_ids: z.array(z.string().min(1)).min(1).max(3),
+  scenarios: z.array(z.string().regex(/^[A-Za-z0-9_-]{1,128}$/)).min(1).max(12),
+  runs: z.number().int().min(1).max(3).default(1),
+  seed: z.number().int().default(42),
+  temperature: z.number().min(0).max(2).default(.8),
+  memory: z.enum(['off','on','compare']).default('compare'),
+  memory_options: MemoryOptionsSchema.default({}),
+  history_turn_limit: z.number().int().min(1).max(100).nullable().default(null),
+  run_timeout_seconds: z.number().int().min(10).max(21600).default(3600),
+  request_id: z.string().uuid().default(()=>crypto.randomUUID()),
+}).strict().refine(value=>new Set(value.model_ids).size===value.model_ids.length&&new Set(value.scenarios).size===value.scenarios.length,'Models and scenarios must be unique');
+export type BenchmarkRequest = z.infer<typeof BenchmarkRequestSchema>;
+
 export const ExperimentMetaSchema = z.object({
   experiment_id: z.string().min(1),
   runtime_version: z.string().default("0.1.0"),

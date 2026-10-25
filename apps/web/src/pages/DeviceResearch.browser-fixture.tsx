@@ -11,12 +11,13 @@ import { MODELS, fingerprint } from '../mobile/models';
 import { saveModelStatus } from '../mobile/store';
 import '../index.css';
 
-let calls=0,paused=false;
+let calls=0,paused=false,pausedLoad=false,loading=false,terminations=0;
 export const pause=(value:boolean)=>{paused=value;};
+export const pauseLoad=(value:boolean)=>{pausedLoad=value;};
 export const owner=(value:string)=>rememberOwner(value);
 export const language=(value:'ja'|'en')=>savePreferences({...preferences(),language:value});
 export const state=async()=>({calls,busy:generationBusy(),entities:await allEntities()});
-export const status=()=>({calls,busy:generationBusy()});
+export const status=()=>({calls,busy:generationBusy(),loading,terminations});
 export async function api(path:string,body?:unknown){
   const response=await deviceFetch(path,body===undefined?{}:{method:'POST',body:JSON.stringify(body)});
   return {status:response.status,data:await response.json()};
@@ -35,6 +36,7 @@ export async function mount(node:HTMLElement,lang:'ja'|'en',theme:'light'|'dark'
     pending:any=null;
     emit(data:any){queueMicrotask(()=>this.onmessage?.(new MessageEvent('message',{data})));}
     postMessage(data:any){
+      if(data.type==='load'&&pausedLoad){loading=true;this.pending=data;return;}
       if(data.type==='stop'){
         if(this.pending){this.emit({id:this.pending.id,type:'done',stopped:true,measurement:{}});this.pending=null;}return;
       }
@@ -45,7 +47,7 @@ export async function mount(node:HTMLElement,lang:'ja'|'en',theme:'light'|'dark'
         this.emit({id:data.id,type:'done',measurement:{firstTokenMs:2,generationMs:5,tokensPerSecond:10,backend:'synthetic'}});
       }else this.emit({id:data.id,type:'done'});
     }
-    terminate(){this.pending=null;}
+    terminate(){terminations++;loading=false;this.pending=null;}
   }});
   const root=createRoot(node);root.render(<ThemeProvider><HashRouter><RuntimeGate><App /></RuntimeGate></HashRouter></ThemeProvider>);
   return ()=>root.unmount();
