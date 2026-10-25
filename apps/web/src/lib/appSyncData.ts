@@ -103,7 +103,7 @@ export function withLibrarySnapshots(payload: AppEntity['payload'], records: App
   return result;
 }
 
-function canonical(value: any): string {
+export function canonical(value: any): string {
   return JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item)
     ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
 }

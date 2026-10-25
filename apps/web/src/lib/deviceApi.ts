@@ -9,10 +9,14 @@ import { receiveConversation, rebindConversation } from './appSyncData';
 import { hydrateConversation } from './appSync';
 import { compilePortable, assemblePortable } from './devicePrompt';
 import { sampling } from '../mobile/sampling';
+import { exportPortable, type ExportAsset } from './deviceExport';
+import { Sha256 } from '../mobile/sha256';
+import { commitDeviceImport } from './deviceImport';
 
 let runtime:MobileRuntime|undefined, loaded='';
 let running:string|null=null;
 const encoder=new TextEncoder();
+const contentHash=(raw:Uint8Array)=>new Sha256().update(raw).digest();
 const outputSchema=DeviceGenerationOutputSchema;
 const json=(value:unknown,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
 const fail=(message:string,status=400)=>Object.assign(Error(message),{status});
@@ -41,7 +45,7 @@ function libraryView(e:AppEntity,revision?:number) {
   if(revision!==undefined&&(!Number.isSafeInteger(revision)||revision<1))throw fail('Invalid library revision');
   const item=revision!==undefined?e.payload.versions?.[String(revision)]:e.payload.document;
   if(!item)throw fail('Saved revision not found',409);
-  return {id:e.id,revision:revision??e.payload.current_revision??e.revision,document:item,original_id:null};
+  return {id:e.id,revision:revision??e.payload.current_revision??e.revision,document:item,original_id:e.payload.original_id??null};
 }
 async function libraryDocument(ref:{id:string;revision:number},kind:string,owner:string) {
   const e=await entity(ref.id,owner);
@@ -356,7 +360,8 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
   }
   const library=path.match(/^\/api\/library\/([^/]+)(?:\/(revisions|export))?$/);
   if(library) {
-    const value=await entity(library[1]);if(!value||value.deleted)throw fail('Library item not found',404);
+    if(library[2]&&method!=='GET'||!['GET','PUT','DELETE'].includes(method))throw fail('Invalid Library operation',405);
+    const value=await entity(library[1],owner);if(!value||value.deleted||!value.payload.document)throw fail('Library item not found',404);
     if(method==='PUT') {
       if(value.payload.snapshot_only)throw fail('Synced revisions are immutable; import a separate editable copy',409);
       if((value.payload.current_revision??value.revision)!==body.expected_revision)throw fail('Library revision changed',409);
@@ -368,31 +373,48 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
     }
     if(method==='DELETE'){await saveEntity({...value,deleted:true},value.revision);return json({ok:true});}
     if(library[2]==='revisions')return json({items:Object.keys(value.payload.versions).map(r=>libraryView(value,Number(r)))});
-    if(library[2]==='export')return json(value.payload.document);
+    if(library[2]==='export'){
+      const item=libraryView(value,url.searchParams.has('revision')?Number(url.searchParams.get('revision')):undefined);
+      if(item.document.nsfw)throw fail('Adult verification required',403);
+      const format=url.searchParams.get('format')??'ccv3-json';
+      let result:{raw:Uint8Array;mime:string;filename:string;notices:{path:string;reason:string}[]};
+      if(format==='original'){
+        const original=item.original_id?await getMeta<{filename:string;raw:Uint8Array}>('original:'+owner+':'+item.original_id):undefined;
+        if(!original||!(original.raw instanceof Uint8Array))throw fail('Original file is unavailable',404);
+        if(contentHash(original.raw)!==item.original_id)throw fail('Original file checksum mismatch',409);
+        result={raw:original.raw,mime:'application/octet-stream',filename:original.filename,notices:[]};
+      }else{
+        const assets=new Map<string,ExportAsset>();
+        for(const asset of item.document.assets??[])if(asset.asset_id&&!assets.has(asset.asset_id)){
+          if(!/^[a-f0-9]{64}$/.test(asset.asset_id))throw fail('Invalid asset identity');
+          const stored=await getMeta<ExportAsset>('asset:'+owner+':'+asset.asset_id);
+          if(!stored||!(stored.raw instanceof Uint8Array)||typeof stored.mime!=='string')throw fail('Missing asset bytes; export cannot preserve the document',409);
+          if(contentHash(stored.raw)!==asset.asset_id)throw fail('Stored asset checksum mismatch',409);
+          assets.set(asset.asset_id,stored);
+        }
+        result=exportPortable(item.document,format,assets);
+      }
+      const download=(url.searchParams.get('download')??'false').toLowerCase();
+      if(!['true','1','yes','on','false','0','no','off'].includes(download))throw fail('Invalid download flag');
+      if(['false','0','no','off'].includes(download))return json({filename:result.filename,media_type:result.mime,bytes:result.raw.byteLength,notices:result.notices});
+      return new Response(new Uint8Array(result.raw),{headers:{'Content-Type':result.mime,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',
+        'Content-Disposition':"attachment; filename*=UTF-8''"+encodeURIComponent(result.filename).replace(/[!'()*]/g,character=>'%'+character.charCodeAt(0).toString(16).toUpperCase())}});
+    }
     return json(libraryView(value,url.searchParams.has('revision')?Number(url.searchParams.get('revision')):undefined));
   }
   if(path==='/api/imports/text/preview'||path==='/api/imports/preview') {
-    let text=body.text,filename='character.json';
-    if(init.body instanceof FormData){const file=init.body.get('file');if(!(file instanceof File)||file.size>32*1024*1024)throw fail('Choose a file up to 32 MiB');text=await file.text();filename=file.name;}
+    let text=body.text,filename=typeof body.filename==='string'?body.filename:'character.txt',raw:Uint8Array|undefined;
+    if(init.body instanceof FormData){const file=init.body.get('file');if(!(file instanceof File)||file.size>32*1024*1024)throw fail('Choose a file up to 32 MiB');raw=new Uint8Array(await file.arrayBuffer());text=new TextDecoder('utf-8',{fatal:true}).decode(raw);filename=file.name;}
     if(typeof text!=='string'||text.length>32*1024*1024)throw fail('Invalid import');
     const parsed=JSON.parse(text),d=PortableDocumentSchema.parse(parsed.spec?{name:parsed.data?.name??'Character',data:parsed.data}:parsed);
     if(d.nsfw)throw fail('Adult verification required',403);
-    const preview_id=crypto.randomUUID(),preview={preview_id,filename,source_hash:Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',encoder.encode(text)))).map(x=>x.toString(16).padStart(2,'0')).join(''),documents:[d],duplicates:{}};
+    raw??=encoder.encode(text);
+    const preview_id=crypto.randomUUID(),preview={preview_id,filename,source_hash:contentHash(raw),documents:[d],duplicates:{}};
     if(owner!==deviceOwner())throw fail('Account changed',409);
-    await setMeta('preview:'+owner+':'+preview_id,preview);return json(preview);
+    await setMeta('preview:'+owner+':'+preview_id,{...preview,original:{filename,raw}});return json(preview);
   }
   const commit=path.match(/^\/api\/imports\/([^/]+)\/commit$/);
-  if(commit) {
-    const key='import:'+owner+':'+body.request_id,previous=await getMeta<any>(key);if(previous)return json(previous);
-    const preview=await getMeta<any>('preview:'+owner+':'+commit[1]);if(!preview)throw fail('Preview not found',404);
-    if(!Array.isArray(body.selections)||!body.selections.length)throw fail('Choose a document');
-    const items=[];
-    for(const selection of body.selections) {
-      const d=PortableDocumentSchema.parse(selection.document);if(d.nsfw)throw fail('Adult verification required',403);
-      const id=crypto.randomUUID(),e=await saveEntity(newEntity(d.kind==='character'?'character':'preset',id,{storage_policy:'local',document:d,versions:{'1':d}},owner));items.push(libraryView(e));
-    }
-    const result={items,sessions:[]};await setMeta(key,result);return json(result);
-  }
+  if(commit){if(method!=='POST')throw fail('Import requires POST',405);return json(await commitDeviceImport(owner,commit[1],body,records));}
   if(path==='/api/prompts/presets') {
     if(method==='GET')return json({presets:records.filter(e=>e.kind==='preset'&&e.payload.content).map(e=>({id:e.id,...e.payload}))});
     if(typeof body.content!=='string'||body.content.length>128000||typeof body.name!=='string')throw fail('Invalid preset');

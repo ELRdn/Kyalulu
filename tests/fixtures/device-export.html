@@ -1,0 +1,76 @@
+<!doctype html><meta charset="utf-8"><title>Disposable device export fixture</title>
+<p>Fake Library documents in a fresh browser context; no model or provider.</p>
+<script type="module">
+import {deviceFetch} from '/src/lib/deviceApi.ts';
+import {rememberOwner} from '/src/lib/appContext.ts';
+import {getMeta,setMeta,entity,saveEntity} from '/src/lib/appStore.ts';
+import {base64,fromBase64} from '/src/lib/portableBinary.ts';
+const check=(value,message)=>{if(!value)throw Error(message);};
+const owner='fixture-export-owner',text=' \n'+JSON.stringify({name:'原本',data:{description:'UNCHANGED ORIGINAL'}})+'\n';
+const encoder=new TextEncoder(),request=async(path,body,method=body?'POST':'GET')=>{
+  const response=await deviceFetch(path,{method,...(body?{body:JSON.stringify(body)}:{})}),value=await response.json();
+  check(response.ok,JSON.stringify(value));return value;
+};
+async function run(){
+  rememberOwner(owner);localStorage.setItem('kyalulu-execution-target','device');
+  const fixtureCases=await (await fetch(new URL('device-exports.json',location.href))).json(),assetCase=fixtureCases.find(item=>item.name==='png-and-audio-assets');
+  const key='fixture-export-manifest';let manifest=JSON.parse(localStorage.getItem(key)||'null'),phase=manifest?'reload':'setup';
+  if(!manifest){
+    const first=await request('/api/library',{name:'Old 日本語',data:{description:'OLD'}});
+    const assetLibrary=await request('/api/library',assetCase.document);
+    for(const [id,asset] of Object.entries(assetCase.assets))await setMeta('asset:'+owner+':'+id,{raw:fromBase64(asset.base64),mime:asset.mime});
+    await request('/api/library/'+first.id,{expected_revision:1,document:{...first.document,name:'New',data:{description:'NEW'}}},'PUT');
+    const form=new FormData();form.set('file',new File([encoder.encode(text)],"original's.json",{type:'application/json'}));
+    const previewResponse=await deviceFetch('/api/imports/preview',{method:'POST',body:form}),preview=await previewResponse.json();
+    check(previewResponse.ok,'File preview failed');
+    const commitPath='/api/imports/'+preview.preview_id+'/commit',body={request_id:'fixture-original',selections:[{index:0,document:preview.documents[0]}]};
+    const [saved,duplicate]=await Promise.all([request(commitPath,body),request(commitPath,body)]);
+    check(JSON.stringify(saved)===JSON.stringify(duplicate),'Concurrent replay wrote twice');
+    const replacement={request_id:'replace-one',selections:[{index:0,document:preview.documents[0],target_id:first.id,expected_revision:2}]};
+    const race=await Promise.all([replacement,{...replacement,request_id:'replace-two'}].map(async value=>{
+      const response=await deviceFetch(commitPath,{method:'POST',body:JSON.stringify(value)});return response.status;
+    }));
+    check(race.sort().join(',')==='200,409','Concurrent Library edit did not use revision checks');
+    check((await request('/api/library/'+first.id)).revision===3,'Concurrent edit allocated a duplicate revision');
+    await request('/api/chat/settings',{session_id:'fixture-unsent',system_prompt:'KEEP',temperature:.8},'PUT');
+    const unsent=await entity('fixture-unsent',owner);unsent.payload.storage_policy='sync';await saveEntity(unsent,unsent.revision);
+    const quotaPreview=await request('/api/imports/text/preview',{text:JSON.stringify({name:'Quota',histories:[{name:'fixture-quota',messages:[{role:'user',content:'First'},{role:'assistant',content:'Second'}]}]})});
+    const quotaPath='/api/imports/'+quotaPreview.preview_id+'/commit',quotaBody={request_id:'quota-retry',selections:[{index:0,document:quotaPreview.documents[0],history_indices:[0]}]};
+    const before=(await request('/api/library')).items.map(item=>item.id).sort().join(','),originalPut=IDBObjectStore.prototype.put;
+    let failed;
+    try{
+      IDBObjectStore.prototype.put=function(value,...args){if(this.name==='entities'&&value.kind==='conversation'&&value.payload.title==='fixture-quota')throw new DOMException('Fixture quota','QuotaExceededError');return originalPut.call(this,value,...args);};
+      failed=await deviceFetch(quotaPath,{method:'POST',body:JSON.stringify(quotaBody)});
+    }finally{IDBObjectStore.prototype.put=originalPut;}
+    check(!failed.ok&&(await request('/api/library')).items.map(item=>item.id).sort().join(',')===before,'Quota left a partial Library write');
+    check(!await getMeta('import:'+owner+':quota-retry')&&!await getMeta('original:'+owner+':'+quotaPreview.source_hash),'Quota left a partial receipt/original');
+    check((await entity('fixture-unsent',owner)).dirty,'Quota removed an unsent edit');
+    const recovered=await request(quotaPath,quotaBody),history=await entity(recovered.sessions[0].session_id,owner);
+    check(history.payload.messages.length===2&&new Set(history.payload.messages.map(message=>message.id)).size===2,'History numeric IDs were not allocated');
+    const replay=await request(quotaPath,quotaBody);check(replay.sessions[0].session_id===history.id,'History replay duplicated a conversation');
+    manifest={library:first.id,assetLibrary:assetLibrary.id,original:saved.items[0].id,sourceHash:preview.source_hash,history:history.id,atomicRollback:true,concurrentReplay:true,revisionConflict:true};localStorage.setItem(key,JSON.stringify(manifest));
+  }
+  const results=[];
+  for(const format of ['ccv2-json','ccv3-json','ccv2-png','ccv3-png','charx','backup']){
+    const path='/api/library/'+manifest.library+'/export?revision=1&format='+format,preview=await request(path);
+    check(Array.isArray(preview.notices)&&preview.filename.startsWith('Old_日本語.'),'Preview/version contract failed');
+    const response=await deviceFetch(path+'&download=true'),raw=new Uint8Array(await response.arrayBuffer());
+    check(response.ok&&raw.length===preview.bytes&&response.headers.get('Content-Type')===preview.media_type,'Binary response failed');
+    if(format.endsWith('json')){const value=JSON.parse(new TextDecoder().decode(raw));check(value.data.name==='Old 日本語'&&value.data.description==='OLD','Exported current version instead of pinned version');}
+    else check(raw[0]===(format.endsWith('png')?137:80),'Container signature failed');
+    results.push({format,bytes:raw.length});
+  }
+  const original=await deviceFetch('/api/library/'+manifest.original+'/export?format=original&download=true'),raw=new Uint8Array(await original.arrayBuffer()),expected=encoder.encode(text);
+  check(original.ok&&raw.length===expected.length&&raw.every((byte,index)=>byte===expected[index]),'Original bytes changed');
+  check(original.headers.get('Content-Disposition').includes('original%27s.json'),'RFC5987 filename failed');
+  check((await entity(manifest.history,owner)).payload.messages.length===2&&(await entity('fixture-unsent',owner)).dirty,'Reload lost imported history or unsent data');
+  const assetResponse=await deviceFetch('/api/library/'+manifest.assetLibrary+'/export?format=charx&download=true'),assetRaw=new Uint8Array(await assetResponse.arrayBuffer());
+  check(assetResponse.ok&&assetRaw[0]===80,'Real IndexedDB asset export failed');
+  rememberOwner('fixture-unrelated-owner');
+  check((await deviceFetch('/api/library/'+manifest.original+'/export?format=original&download=true')).status===404,'Another account could read the original');
+  check((await deviceFetch('/api/library/'+manifest.library+'/export?download=true')).status===404,'Another account could read the Library');
+  check((await deviceFetch('/api/library/'+manifest.assetLibrary+'/export?format=charx&download=true')).status===404,'Another account could export assets');
+  return {ok:true,phase,formats:results,originalBytes:raw.length,foreignReadsDenied:3,assetExportBase64:base64(assetRaw),atomicRollback:manifest.atomicRollback,concurrentReplay:manifest.concurrentReplay,revisionConflict:manifest.revisionConflict};
+}
+run().then(result=>{window.__EXPORT_RESULT__=result;document.body.innerText=JSON.stringify(result);}).catch(error=>window.__EXPORT_RESULT__={ok:false,error:String(error),stack:error.stack});
+</script>

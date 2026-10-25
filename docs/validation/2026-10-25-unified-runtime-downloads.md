@@ -25,8 +25,9 @@
 - 統合App・Desktopビルド成功。既存の非module script・WASM externalization・chunk-size警告あり。
 - 新規試験の`apiFetch`/scope/DOMはmockであり、実ブラウザの保存ダイアログ、実Relayの権限、
   Android/iPhoneのファイル保存の証拠ではない。直前のoutbox実Chromium5ケースとも区別する。
-- Browser Researchの実験runnerと、Browser Libraryの全export形式/版/preview契約の互換性は
-  依然未完。今回の部品変更でそれらを実装済みとは扱わない。
+- Browser Researchの実験runnerは依然未完。Libraryの6形式/版/preview契約は
+  [後続の実装・検証](2026-10-25-unified-device-exports.md)で対応した。
+  この共通部品の試験だけでそれらを実装済みとは扱わない。
 
 ```powershell
 pnpm --filter web test -- --pool threads --maxWorkers 1

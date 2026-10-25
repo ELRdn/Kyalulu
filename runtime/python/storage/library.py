@@ -225,7 +225,7 @@ def commit(preview_id: str, body: ImportCommit):
                     cur = con.execute("INSERT INTO chat_history (session_id,role,content,model_id,created_at) VALUES (?,?,?,?,COALESCE(?,datetime('now')))",
                                       (sid, message['role'], message['content'], 'imported', message.get('created_at')))
                     con.execute('INSERT INTO imported_history VALUES (?,?)',
-                                (cur.lastrowid, encode({'original_id': row['original_id'], 'history_index': idx, **message})))
+                                (cur.lastrowid, encode({**message, 'original_id': row['original_id'], 'history_index': idx, 'format': 'portable'})))
                 sessions.append({'session_id': sid, 'name': history.name, 'character_id': item.id})
         result = {'items': items, 'sessions': sessions}
         con.execute('INSERT INTO library_commits VALUES (?,?,?)', (body.request_id, fingerprint, encode(result)))
