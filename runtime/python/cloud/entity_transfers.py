@@ -1,0 +1,179 @@
+"""Resumable entity bytes use the existing encrypted transfer-page store."""
+import base64
+import hashlib
+import json
+import math
+import re
+import shutil
+
+from .store import CloudError
+from .transfers import Transfers, connection
+
+CHUNK_BYTES = 1024 * 1024
+INLINE_BYTES = 1_500_000
+
+
+class EntityTransfers:
+    def __init__(self, service):
+        self.service, self.store = service, service.store
+        self.pages = Transfers(self.store, None, entity=True)
+
+    def _receipt(self, owner, request_id):
+        with self.store.transaction() as db:
+            row = db.execute('SELECT result FROM app_sync_requests WHERE owner=? AND id=?', (owner, request_id)).fetchone()
+            if row: return json.loads(self.store.decrypt(row[0]))
+            if db.execute('SELECT 1 FROM app_sync_cancellations WHERE owner=? AND id=?', (owner, request_id)).fetchone():
+                raise CloudError('sync_request_canceled', 409)
+
+    def discard_upload(self, owner, request_id):
+        for file in self.pages.directory(owner).glob('*.db'):
+            try: meta = self.pages.inspect(owner, file.stem)
+            except CloudError as exc:
+                if exc.code != 'transfer_expired': raise
+                self.pages.delete(owner, file.stem)
+                continue
+            if meta['direction'].startswith('app-upload') and meta['request_id'] == request_id:
+                self.pages.delete(owner, file.stem)
+
+    def begin(self, owner, request_id, size, sha256):
+        self.service.available()
+        if (not isinstance(request_id, str) or not 0 < len(request_id) <= 100
+            or type(size) is not int or size < 1 or not isinstance(sha256, str) or not re.fullmatch('[a-f0-9]{64}', sha256)):
+            raise CloudError('invalid_entity_transfer')
+        capacity = self.store.entitlements(owner).storage_bytes
+        with self.store.transaction() as db:
+            prior = db.execute('SELECT size,sha256 FROM app_transfer_manifests WHERE owner=? AND request_id=?', (owner, request_id)).fetchone()
+            if prior and tuple(prior) != (size, sha256): raise CloudError('sync_request_conflict', 409)
+            if not prior and db.execute('SELECT 1 FROM app_sync_requests WHERE owner=? AND id=?', (owner, request_id)).fetchone():
+                return {'inline_receipt_required': True}
+            if not prior and size > capacity: raise CloudError('cloud_storage_full', 413)
+            db.execute('INSERT OR IGNORE INTO app_transfer_manifests VALUES(?,?,?,?)', (owner, request_id, size, sha256))
+        receipt = self._receipt(owner, request_id)
+        if receipt:
+            self.discard_upload(owner, request_id)
+            return {'result': receipt}
+        if size > capacity: raise CloudError('cloud_storage_full', 413)
+        reserved = 0
+        for file in self.pages.directory(owner).glob('*.db'):
+            try: meta = self.pages.inspect(owner, file.stem)
+            except CloudError as exc:
+                if exc.code != 'transfer_expired': raise
+                self.pages.delete(owner, file.stem)
+                continue
+            if meta['direction'].startswith('app-upload'):
+                try: applied = self._receipt(owner, meta['request_id'])
+                except CloudError as exc:
+                    if exc.code != 'sync_request_canceled': raise
+                    applied = True
+                if applied:
+                    self.pages.delete(owner, file.stem)
+                    continue
+            if meta['direction'].startswith('app-upload') and meta['request_id'] == request_id:
+                if meta.get('raw_size') != size or meta.get('raw_sha256') != sha256:
+                    self.pages.delete(owner, file.stem)
+                    continue
+                return {'transfer_id': file.stem, 'next': meta['next'], 'chunk_bytes': CHUNK_BYTES}
+            if meta['direction'].startswith('app-upload'): reserved += meta.get('raw_size', 0)
+        if reserved + size > capacity * 2:
+            raise CloudError('transfer_capacity_not_available', 503)
+        transfer = self.pages.create(owner, direction='app-upload:' + request_id, selected=[], revision=0, request_id=request_id)
+        with connection(self.pages.file(owner, transfer)) as db:
+            meta = self.pages.meta(db)
+            meta.update(raw_size=size, raw_sha256=sha256)
+            self.pages.update_meta(db, meta)
+        return {'transfer_id': transfer, 'next': 0, 'chunk_bytes': CHUNK_BYTES}
+
+    def append(self, owner, transfer, index, data, sha256):
+        self.service.available()
+        meta = self.pages.inspect(owner, transfer)
+        if not meta['direction'].startswith('app-upload'): raise CloudError('invalid_transfer_direction', 409)
+        self._receipt(owner, meta['request_id'])
+        if meta['raw_size'] > self.store.entitlements(owner).storage_bytes: raise CloudError('cloud_storage_full', 413)
+        if type(index) is not int or not 0 <= index < math.ceil(meta['raw_size'] / CHUNK_BYTES):
+            raise CloudError('invalid_transfer_page')
+        expected = min(CHUNK_BYTES, meta['raw_size'] - index * CHUNK_BYTES)
+        if not isinstance(data, str) or len(data) > 4 * math.ceil(CHUNK_BYTES / 3): raise CloudError('invalid_transfer_page')
+        try: raw = base64.b64decode(data, validate=True)
+        except ValueError as exc: raise CloudError('invalid_transfer_page') from exc
+        if len(raw) != expected or hashlib.sha256(raw).hexdigest() != sha256: raise CloudError('transfer_hash_mismatch', 409)
+        self.pages.append(owner, transfer, index, {'table': 'app_entity_bytes', 'rows': [{'data': data, 'sha256': sha256}]})
+        return {'next': self.pages.inspect(owner, transfer)['next']}
+
+    def commit(self, owner, transfer, *, runtime_path=None):
+        self.service.available()
+        meta = self.pages.inspect(owner, transfer)
+        if not meta['direction'].startswith('app-upload'): raise CloudError('invalid_transfer_direction', 409)
+        receipt = self._receipt(owner, meta['request_id'])
+        if receipt:
+            self.discard_upload(owner, meta['request_id'])
+            return receipt
+        if meta['next'] != math.ceil(meta['raw_size'] / CHUNK_BYTES): raise CloudError('transfer_incomplete', 409)
+        # shortcut: commit assembles one JSON batch; stream entity projection before accepting 1 GB single-batch workloads.
+        raw = bytearray()
+        with connection(self.pages.file(owner, transfer)) as db:
+            for (encoded,) in db.execute('SELECT payload FROM pages ORDER BY seq'):
+                part = json.loads(self.store.decrypt(encoded))['rows'][0]
+                raw.extend(base64.b64decode(part['data'], validate=True))
+        if len(raw) != meta['raw_size'] or hashlib.sha256(raw).hexdigest() != meta['raw_sha256']:
+            raise CloudError('transfer_hash_mismatch', 409)
+        try: body = json.loads(raw)
+        except (ValueError, UnicodeError) as exc: raise CloudError('invalid_sync_request') from exc
+        if not isinstance(body, dict) or set(body) != {'request_id', 'changes'} or body['request_id'] != meta['request_id']:
+            raise CloudError('invalid_sync_request')
+        result = self.service.push(owner, body['request_id'], body['changes'], runtime_path=runtime_path, verified_transfer=True)
+        self.pages.delete(owner, transfer)
+        return result
+
+    def download(self, owner, entity, *, inline_limit=INLINE_BYTES):
+        self.service.available()
+        payload = json.dumps(entity['payload'], ensure_ascii=False, separators=(',', ':')).encode()
+        if len(payload) <= inline_limit: return entity
+        if len(payload) > 1_000_000_000: raise CloudError('transfer_too_large', 413)
+        direction = 'app-download:' + entity['id']
+        for file in self.pages.directory(owner).glob('*.db'):
+            try: meta = self.pages.inspect(owner, file.stem)
+            except CloudError as exc:
+                if exc.code != 'transfer_expired': raise
+                self.pages.delete(owner, file.stem)
+                continue
+            if meta['direction'] == direction:
+                if meta['revision'] == entity['revision'] and meta['ready']:
+                    return {key: value for key, value in entity.items() if key != 'payload'} | {'payload_ref': meta['entity_ref'], 'message_count': len(entity['payload'].get('messages', []))}
+                self.pages.delete(owner, file.stem)
+        if shutil.disk_usage(self.pages.directory(owner)).free < len(payload) * 3:
+            raise CloudError('transfer_capacity_not_available', 503)
+        transfer = self.pages.create(owner, direction=direction, selected=[], revision=entity['revision'])
+        ref = {'transfer_id': transfer, 'size': len(payload), 'sha256': hashlib.sha256(payload).hexdigest(),
+               'chunk_bytes': CHUNK_BYTES, 'chunks': math.ceil(len(payload) / CHUNK_BYTES), 'id': entity['id'], 'revision': entity['revision']}
+        try:
+            with connection(self.pages.file(owner, transfer)) as db:
+                meta = self.pages.meta(db)
+                meta['download_size'] = len(payload)
+                self.pages.update_meta(db, meta)
+            for index, offset in enumerate(range(0, len(payload), CHUNK_BYTES)):
+                raw = payload[offset:offset + CHUNK_BYTES]
+                self.pages.append(owner, transfer, index, {'table': 'app_entity_bytes', 'rows': [
+                    {'data': base64.b64encode(raw).decode(), 'sha256': hashlib.sha256(raw).hexdigest()}]})
+            with connection(self.pages.file(owner, transfer)) as db:
+                meta = self.pages.meta(db)
+                meta.update(ready=True, entity_ref=ref)
+                self.pages.update_meta(db, meta)
+        except BaseException:
+            self.pages.delete(owner, transfer)
+            raise
+        return {key: value for key, value in entity.items() if key != 'payload'} | {'payload_ref': ref, 'message_count': len(entity['payload'].get('messages', []))}
+
+    def part(self, owner, transfer, index):
+        self.service.available()
+        meta = self.pages.inspect(owner, transfer)
+        if not meta['direction'].startswith('app-download:') or not meta['ready']: raise CloudError('invalid_transfer_direction', 409)
+        ref = meta['entity_ref']
+        if type(index) is not int or not 0 <= index < ref['chunks']: raise CloudError('invalid_transfer_page')
+        with self.store.transaction() as control:
+            current = control.execute('SELECT revision,deleted FROM app_entities WHERE owner=? AND id=?', (owner, ref['id'])).fetchone()
+            if not current or current['deleted'] or current['revision'] != ref['revision']:
+                raise CloudError('transfer_source_changed_restart_download', 409)
+            with connection(self.pages.file(owner, transfer)) as db:
+                row = db.execute('SELECT payload FROM pages WHERE seq=?', (index,)).fetchone()
+                if not row: raise CloudError('transfer_incomplete', 409)
+                return json.loads(self.store.decrypt(row[0]))['rows'][0]

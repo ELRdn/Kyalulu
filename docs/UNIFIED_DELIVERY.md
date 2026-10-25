@@ -13,7 +13,7 @@
 | 実行先/モデル/保存/同期の表示、生成中切替の停止・保存確認 | 実装・限定検証 | 3方式での停止/保存/再開・自動転送なしのE2E |
 | Portable再利用、ブラウザ記憶/物語とPython共通fixture | World/cast/Lore・プリセット・固定版を実装、共通fixtureと同期往復を検証 | 履歴snapshot interchange、実モデル・実機を含むパリティ試験は残る |
 | 認証・課金経路とRuntime通信の分離、Cloud鍵をRemoteへ送らない | 実装・限定検証 | 認証切替・Remote通信捕捉・所有者分離試験 |
-| 安定ID/revisionと数値ID互換、永続outbox、自動同期 | Cloud/deviceに加えNative-PCの登録・namespace・outboxを隔離検証 | 大容量/旧DB復元の全面照合、全方式の統合証拠 |
+| 安定ID/revisionと数値ID互換、永続outbox、自動同期 | Cloud/device/Native-PCを隔離検証。2MB超の分割転送・再開・競合・撤回を追加 | 分割保存/ストリーム化、250MB/1GB実容量・旧DB復元の全面照合、全方式の統合証拠 |
 | 競合の共通履歴分岐、記憶を自動混合せず出典保持 | state/記憶/作品設定snapshot往復、記録済みrevisionの共通message列、同期済みNative分岐のUUID継承を隔離検証 | 同期前/旧ID移行、祖先本文の復元、旧設定欠落、3方式の実UI確認 |
 | 同期削除・復元、未送信変更の保護 | 条件付き承認でNative-PCとBrowserのowner/revision・撤回fence・永続受領を隔離検証 | 旧復元/実端末スケール確認 |
 | 端末限定の外部送信禁止・共有記憶分離 | 部分検証 | 生成/記憶/同期/広告/外部AIの通信否定試験 |
@@ -52,4 +52,6 @@ revision/messageの共通列証明と同期済みNative分岐のID継承は
 [Lineage](validation/2026-10-25-unified-lineage.md) に記録する。
 Cloud設定と旧バックアップ同期の日英表示は
 [Settings language](validation/2026-10-25-unified-cloud-settings-language.md) に記録する。
+2MB超の統合会話・永続outboxの分割転送と再開は
+[Entity transfers](validation/2026-10-25-unified-entity-transfers.md) に記録する。
 この表は公開合格や全計画完了の宣言ではない。

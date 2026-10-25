@@ -2,6 +2,7 @@ import { allEntities, appTransaction, entity, getMeta, scrubGenerationRecords, t
 import { cloudFetch } from './transport';
 import { deviceOwner, generationBusy } from './appContext';
 import { receiveConversation, receiveLibrarySnapshot, receiveCreatorSnapshot, rebindConversation, withLibrarySnapshots, conversationSettings } from './appSyncData';
+import { downloadEntity, uploadSync, SYNC_INLINE_BYTES } from './appTransfers';
 
 type Batch=Outbox&{revisions:Record<string,number>;withdrawn?:boolean;receipt?:{changes:Ack[]}};
 type Ack={id:string;source_id?:string;revision:number;deleted:boolean;branched?:boolean;lineage?:Record<string,unknown>};
@@ -16,11 +17,31 @@ const report=(next:SyncState,owner=deviceOwner())=>{state=next;stateOwner=owner;
 let flight:Promise<void>|null=null;
 const key=(owner:string,suffix:string)=>`sync:${owner}:${suffix}`;
 
-async function request(owner:string,path:string,init?:RequestInit) {
+async function transferActive(owner:string,requestId?:string) {
+  if(owner!==deviceOwner()||generationBusy()||!await getMeta(key(owner,'consent')))throw Error('Sync consent changed');
+  if(requestId){const pending=await getMeta<Batch>(key(owner,'outbox'));if(!pending||pending.request_id!==requestId||pending.withdrawn)throw Error('Sync request withdrawn');}
+}
+async function rawRequest(owner:string,path:string,init?:RequestInit) {
   if(owner!==deviceOwner())throw Error('Account changed');
   const headers=new Headers(init?.headers);headers.set('X-Kyalulu-Owner',owner);
   const response=await cloudFetch('/api/cloud/app/sync'+path,{...init,headers,signal:AbortSignal.timeout(20000)});
   const body=await response.json();if(!response.ok)throw Error(body.error??`HTTP ${response.status}`);return body;
+}
+async function request(owner:string,path:string,init?:RequestInit) {
+  const call=(suffix:string,options?:RequestInit)=>rawRequest(owner,suffix,options);
+  if(path===''&&init?.method==='POST'&&typeof init.body==='string'&&new TextEncoder().encode(init.body).length>SYNC_INLINE_BYTES){
+    const requestId=JSON.parse(init.body).request_id;
+    return uploadSync(init.body,call,()=>transferActive(owner,requestId));
+  }
+  const result=await rawRequest(owner,path.startsWith('?cursor=')?path+'&paged=1':path,init);
+  if(Array.isArray(result.changes))for(let index=0;index<result.changes.length;index++){
+    if(result.changes[index]?.payload_ref){
+      const remote=result.changes[index],local=await entity(remote.id,owner);
+      if(local&&local.kind===remote.kind&&!local.payload.cache_evicted&&Number.isSafeInteger(remote.revision)&&local.serverRevision>=remote.revision){result.changes.splice(index--,1);continue;}
+    }
+    result.changes[index]=await downloadEntity(result.changes[index],call,()=>transferActive(owner));
+  }
+  return result;
 }
 export type RuntimeConsent={revision:number;selected:string[];accepted:boolean};
 export async function runtimeConsent(owner:string, update?:{revision:number;selected:string[];consent:boolean}):Promise<RuntimeConsent> {
@@ -292,10 +313,11 @@ export function syncNow(owner=deviceOwner()) {
 }
 export async function hydrateConversation(id:string,owner=deviceOwner()) {
   if(owner==='guest'||owner!==deviceOwner()||!await getMeta(key(owner,'consent')))throw Error('Connect and enable sync to reopen this conversation / 接続して同期を有効にすると、この会話を再取得できます');
-  const response=await cloudFetch('/api/cloud/app/entities/'+encodeURIComponent(id),{headers:{'X-Kyalulu-Owner':owner},signal:AbortSignal.timeout(20000)});
-  const remote=await response.json();
+  const response=await cloudFetch('/api/cloud/app/entities/'+encodeURIComponent(id)+'?paged=1',{headers:{'X-Kyalulu-Owner':owner},signal:AbortSignal.timeout(20000)});
+  let remote=await response.json();
   if(!response.ok)throw Error(remote.error??`HTTP ${response.status}`);
   if(remote.id!==id||remote.kind!=='conversation')throw Error('Invalid hydration identity');
+  remote=await downloadEntity(remote,(path,init)=>rawRequest(owner,path,init),()=>transferActive(owner));
   await receiveSyncPage(owner,[remote],await getMeta<number>(key(owner,'cursor'))??0);
   const result=await entity(id,owner);
   if(owner!==deviceOwner()||!result||result.payload.cache_evicted)throw Error('Conversation could not be loaded');

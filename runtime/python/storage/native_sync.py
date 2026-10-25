@@ -1,6 +1,10 @@
 """Durable entity synchronization for an explicitly enrolled native PC."""
 import json
 import sqlite3
+import base64
+import hashlib
+import math
+import re
 from copy import deepcopy
 from contextlib import contextmanager
 from pathlib import Path
@@ -71,7 +75,28 @@ class NativeSync:
             return {'enabled':self.meta(db,'enabled',False),'selected':self.meta(db,'selected',[]),'pending':bool(self.meta(db,'outbox')),'cursor':self.meta(db,'cursor',0)}
 
     async def remote(self,path,*,body=None):
-        if not (path in {'/sync','/sync/device'} or path.startswith('/sync?cursor=') or path.startswith('/sync/cancel/') or path.startswith('/entities/')):raise ValueError('Invalid sync path')
+        if path == '/sync' and body is not None:
+            raw = json.dumps(body, ensure_ascii=False, separators=(',', ':')).encode()
+            if len(raw) > 1_500_000: return await self._upload(body['request_id'], raw)
+        if path.startswith('/sync?cursor=') or path.startswith('/entities/'):
+            path += '&paged=1' if '?' in path else '?paged=1'
+        result = await self._request(path, body=body)
+        if path.startswith('/sync?cursor=') and isinstance(result.get('changes'), list):
+            for entity in result['changes']:
+                if isinstance(entity, dict) and 'payload_ref' in entity:
+                    if entity.get('kind') != 'conversation': continue
+                    if not isinstance(entity.get('id'), str) or type(entity.get('revision')) is not int or entity['revision'] < 1:
+                        raise CloudError('invalid_sync_response')
+                    with self.transaction() as db:
+                        known = db.execute('SELECT revision FROM runtime.native_sync_received WHERE namespace=? AND id=?', (self.namespace, entity.get('id'))).fetchone()
+                        if entity.get('id') in self.meta(db, 'excluded', []) or known and type(entity.get('revision')) is int and known[0] >= entity['revision']:
+                            continue
+                    await self._expand(entity)
+        return result
+
+    async def _request(self,path,*,body=None):
+        if not (path in {'/sync','/sync/device','/sync/transfers'} or path.startswith('/sync?cursor=') or path.startswith('/sync/cancel/') or path.startswith('/entities/')
+                or re.fullmatch(r'/sync/transfers/[0-9a-f-]{36}/(?:parts/\d+|commit)', path)):raise ValueError('Invalid sync path')
         if not self.owner and path!='/sync/device':raise CloudError('sync_not_enrolled',403)
         headers={'Authorization':'Bearer '+self.token,'Origin':self.origin}
         if self.owner:headers['X-Kyalulu-Owner']=self.owner
@@ -84,6 +109,65 @@ class NativeSync:
         if not response.is_success:raise CloudError(value.get('error','sync_request_failed') if isinstance(value,dict) else 'sync_request_failed',response.status_code)
         if not isinstance(value,dict):raise CloudError('invalid_sync_response')
         return value
+
+    def _transfer_active(self, request_id=None):
+        if request_id is not None:
+            pending = self.stage()
+            if not pending or pending.get('withdrawn') or pending['request_id'] != request_id:
+                raise CloudError('sync_request_canceled', 409)
+        else:
+            with self.transaction() as db:
+                if not self.meta(db, 'enabled', False): raise CloudError('sync_consent_required', 409)
+
+    async def _upload(self, request_id, raw):
+        from python.cloud.entity_transfers import CHUNK_BYTES
+        self._transfer_active(request_id)
+        opened = await self._request('/sync/transfers', body={'request_id': request_id, 'size': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()})
+        if opened.get('inline_receipt_required') is True:
+            self._transfer_active(request_id)
+            return await self._request('/sync', body=json.loads(raw))
+        if 'result' in opened: return opened['result']
+        transfer, next_part = opened.get('transfer_id'), opened.get('next')
+        if (not isinstance(transfer, str) or not re.fullmatch('[0-9a-f-]{36}', transfer) or type(next_part) is not int
+            or not 0 <= next_part <= math.ceil(len(raw) / CHUNK_BYTES) or opened.get('chunk_bytes') != CHUNK_BYTES):
+            raise CloudError('invalid_sync_response')
+        for index in range(next_part, math.ceil(len(raw) / CHUNK_BYTES)):
+            self._transfer_active(request_id)
+            chunk = raw[index * CHUNK_BYTES:(index + 1) * CHUNK_BYTES]
+            received = await self._request(f'/sync/transfers/{transfer}/parts/{index}', body={
+                'data': base64.b64encode(chunk).decode(), 'sha256': hashlib.sha256(chunk).hexdigest()})
+            if type(received.get('next')) is not int or received['next'] != index + 1: raise CloudError('invalid_sync_response')
+        self._transfer_active(request_id)
+        return await self._request(f'/sync/transfers/{transfer}/commit', body={})
+
+    async def _expand(self, entity):
+        from python.cloud.entity_transfers import CHUNK_BYTES
+        ref = entity['payload_ref']
+        if (not isinstance(ref, dict) or ref.get('id') != entity.get('id') or ref.get('revision') != entity.get('revision')
+            or type(ref.get('size')) is not int or not 0 < ref['size'] <= 1_000_000_000
+            or not isinstance(ref.get('transfer_id'), str) or not re.fullmatch('[0-9a-f-]{36}', ref['transfer_id'])
+            or ref.get('chunk_bytes') != CHUNK_BYTES or type(ref.get('chunks')) is not int or ref['chunks'] != math.ceil(ref['size'] / CHUNK_BYTES)
+            or not isinstance(ref.get('sha256'), str) or not re.fullmatch('[a-f0-9]{64}', ref['sha256'])):
+            raise CloudError('invalid_sync_response')
+        raw = bytearray()
+        for index in range(ref['chunks']):
+            self._transfer_active()
+            part = await self._request(f"/sync/transfers/{ref['transfer_id']}/parts/{index}")
+            data = part.get('data')
+            if not isinstance(data, str) or len(data) > 4 * math.ceil(CHUNK_BYTES / 3): raise CloudError('invalid_sync_response')
+            try: chunk = base64.b64decode(data, validate=True)
+            except ValueError as exc: raise CloudError('invalid_sync_response') from exc
+            if len(chunk) != min(CHUNK_BYTES, ref['size'] - len(raw)) or hashlib.sha256(chunk).hexdigest() != part.get('sha256'):
+                raise CloudError('transfer_hash_mismatch', 409)
+            raw.extend(chunk)
+        if len(raw) != ref['size'] or hashlib.sha256(raw).hexdigest() != ref['sha256']:
+            raise CloudError('transfer_hash_mismatch', 409)
+        try: payload = json.loads(raw)
+        except (ValueError, UnicodeError) as exc: raise CloudError('invalid_sync_response') from exc
+        if not isinstance(payload, dict): raise CloudError('invalid_sync_response')
+        self._transfer_active()
+        entity['payload'] = payload
+        entity.pop('payload_ref')
 
     async def verify(self):
         value=await self.remote('/sync/device')
@@ -100,7 +184,7 @@ class NativeSync:
             if not change.get('deleted'):continue
             current=await self.remote('/entities/'+quote(change['id'],safe=''))
             if current.get('id')!=change['id'] or type(current.get('revision')) is not int or current['revision']<1:raise CloudError('invalid_sync_entity')
-            result.append({'id':change['id'],'revision':current['revision'],'deleted':current.get('deleted') is True,'count':len(current.get('payload',{}).get('messages',[]))})
+            result.append({'id':change['id'],'revision':current['revision'],'deleted':current.get('deleted') is True,'count':current.get('message_count',len(current.get('payload',{}).get('messages',[])))})
         return result
 
     async def confirm_deletion(self,entity_id,expected_revision):
@@ -161,8 +245,7 @@ class NativeSync:
                 candidate={key:change[key] for key in ('id','kind','base_revision','payload')}
                 if change.get('deleted'):candidate.update(deleted=True,delete_confirmed=True)
                 if len(json.dumps(wire+[candidate],ensure_ascii=False).encode())>1_990_000:
-                    if not wire:raise CloudError('sync_conversation_too_large',413)
-                    break
+                    if wire:break
                 wire.append(candidate);accepted.append(change)
             result={'request_id':str(uuid4()),'changes':wire,'captures':accepted}
             self.save(db,'outbox',result);return result
