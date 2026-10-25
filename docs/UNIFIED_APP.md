@@ -23,6 +23,11 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 
 ## Delivered Behavior
 
+- Restoring a legacy logical snapshot now stops Native automatic sync for affected
+  namespaces and retains old outboxes as withdrawn receipts. PC settings requires
+  a fresh restore review before sending an independent copy; old Cloud data stays
+  unchanged. Stale review IDs, account changes and unresolved receipts fail closed.
+  See [Native restore validation](validation/2026-10-26-unified-native-restore.md).
 - Native branches made before enrollment now retain a local canonical identity
   map for messages, memories and summaries. Explicit selection adopts the map;
   enrollment alone never uploads a branch. Ownership also propagates before the

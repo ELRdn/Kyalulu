@@ -68,12 +68,28 @@ class NativeSync:
             "json_array_length(value,'$.captures') AS captures,json_array_length(value,'$.changes') AS changes,json_type(value) AS type "
             "FROM runtime.native_sync_meta INDEXED BY native_sync_outbox_header WHERE namespace=? AND key='outbox'", (self.namespace,)).fetchone()
 
-    def configure(self,selected,enabled,*,consent=False):
+    def restores(self,db):
+        return {row[0][8:]:json.loads(row[1]) for row in db.execute("SELECT key,value FROM runtime.native_sync_meta WHERE namespace=? AND substr(key,1,8)='restore:'", (self.namespace,))}
+
+    def configure(self,selected,enabled,*,consent=False,restore_confirmations=None):
         if type(enabled) is not bool or enabled and consent is not True:raise CloudError('sync_consent_required')
         if not isinstance(selected,list) or len(selected)>1000 or any(not isinstance(s,str) or not 0<len(s)<=200 or s.startswith('__') for s in selected) or len(set(selected))!=len(selected):raise CloudError('invalid_sync_selection')
+        confirmations={} if restore_confirmations is None else restore_confirmations
+        if not isinstance(confirmations,dict) or len(confirmations)>1000 or any(sid not in selected or not isinstance(token,str) or len(token)>100 for sid,token in confirmations.items()):raise CloudError('invalid_sync_restore_confirmation')
         with self.transaction(allow_generation=not enabled) as db:
             before=self.meta(db,'selected',[]);excluded=set(self.meta(db,'excluded',[]));links=bridge.Links(db,self.namespace)
-            if enabled:bridge.capture(db,selected,self.namespace)
+            if enabled:
+                restores=self.restores(db)
+                reviewed=[sid for sid in selected if sid in restores]
+                if any(confirmations.get(sid)!=restores[sid] for sid in reviewed):raise CloudError('sync_restored_session_confirmation_required',409)
+                if reviewed and self.meta(db,'outbox'):raise CloudError('sync_restore_receipt_pending',409)
+                for sid in reviewed:
+                    link=links.session(sid)
+                    if link:
+                        excluded.add(link['entity_id'])
+                        links.put(sid,str(uuid4()),0,'',{'recovery_from':link['entity_id']})
+                    db.execute('DELETE FROM runtime.native_sync_meta WHERE namespace=? AND key=?',(self.namespace,'restore:'+sid))
+                bridge.capture(db,selected,self.namespace)
             for sid in set(before)-set(selected):
                 link=links.session(sid)
                 if link:excluded.add(link['entity_id'])
@@ -91,7 +107,7 @@ class NativeSync:
     def status(self):
         with self.transaction(allow_generation=True) as db:
             pending = self.outbox_header(db)
-            return {'enabled':self.meta(db,'enabled',False),'selected':self.meta(db,'selected',[]),'pending':bool(pending and pending['type']!='null'),'cursor':self.meta(db,'cursor',0)}
+            return {'enabled':self.meta(db,'enabled',False),'selected':self.meta(db,'selected',[]),'pending':bool(pending and pending['type']!='null'),'cursor':self.meta(db,'cursor',0),'restores':self.restores(db)}
 
     async def remote(self,path,*,body=None):
         if path == '/sync' and body is not None:
@@ -343,6 +359,7 @@ class NativeSync:
         if pending and pending.get('withdrawn'):
             await self.settle_withdrawn();pending=self.stage()
         if pending:
+            self._transfer_active(pending['request_id'])
             try:result=await self.remote('/sync',body={key:pending[key] for key in ('request_id','changes')})
             except CloudError as exc:
                 if exc.code=='sync_revision_conflict' and any(c.get('deleted') for c in pending['changes']):raise CloudError('sync_delete_reconfirmation_required',409) from exc

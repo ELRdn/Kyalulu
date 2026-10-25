@@ -15,7 +15,7 @@
 | 認証・課金経路とRuntime通信の分離、Cloud鍵をRemoteへ送らない | 実装・限定検証 | 認証切替・Remote通信捕捉・所有者分離試験 |
 | 安定ID/revisionと数値ID互換、永続outbox、自動同期 | Cloud/device/Native-PCを隔離検証。2MB超の分割転送・再開・競合・撤回と断片確認の索引化、実Chromium v1→v2移行を追加 | 分割保存/ストリーム化、250MB/1GB実容量・旧DB復元の全面照合、全方式の統合証拠 |
 | 競合の共通履歴分岐、記憶を自動混合せず出典保持 | state/記憶/作品設定snapshot往復、記録済みrevisionの共通message列、同期済み/登録前のNative分岐のUUID継承と初回受領前のowner継承を隔離検証。証跡なしの旧分岐は推測で結合しない | 証跡のない旧分岐の扱い、祖先本文の復元、旧設定欠落、3方式の実UI確認 |
-| 同期削除・復元、未送信変更の保護 | 条件付き承認でNative-PCとBrowserのowner/revision・撤回fence・永続受領を隔離検証 | 旧復元/実端末スケール確認 |
+| 同期削除・復元、未送信変更の保護 | 条件付き承認でNative-PC/Browserのowner/revision・撤回fence・永続受領を検証。Native論理復元は自動同期を停止し、旧受領を照合後、復元単位の確認IDで別コピーにする日英画面/APIを検証 | DB全体の旧復元/実端末スケール確認 |
 | 端末限定の外部送信禁止・共有記憶分離 | 部分検証 | 生成/記憶/同期/広告/外部AIの通信否定試験 |
 | 最近10件＋固定会話のオフライン保存、容量不足とアカウント分離 | 再取得・保持を実装、fixture検証 | 未送信保持と文書再読込を確認。PWA/ブラウザ/実機の再起動と実容量試験は残る |
 | Remote端末別の管理権限、失効、対象PCでの管理・診断・実験 | 実装・限定検証 | 既存Remote接続を使った権限/失効/全機能確認 |
@@ -80,3 +80,5 @@ SillyTavern・Character.AI・BYAFの追加形式と分離した履歴取込み�
 [Model language](validation/2026-10-26-unified-model-language.md) に記録する。
 Native登録前の分岐IDと初回受領前のowner継承、論理復元時の中立対応表の無効化は
 [Native local identity](validation/2026-10-26-unified-native-local-identity.md) に記録する。
+Nativeの旧論理snapshot復元後の送信停止・受領照合・別コピー確認は
+[Native restore](validation/2026-10-26-unified-native-restore.md) に記録する。

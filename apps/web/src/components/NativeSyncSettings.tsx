@@ -5,7 +5,7 @@ import Button from './ui/Button';
 import { useConfirm } from './ui/Dialog';
 import './connection.css';
 
-type Settings={origin:string;owner:string;connected:boolean;enabled:boolean;selected:string[];pending:boolean;phase:string;error:string;sessions:{id:string;count:number;preview:string}[]};
+type Settings={origin:string;owner:string;connected:boolean;enabled:boolean;selected:string[];pending:boolean;phase:string;error:string;restores?:Record<string,string>;sessions:{id:string;count:number;preview:string}[]};
 type Review={id:string;revision:number;count:number;deleted:boolean};
 const errors:Record<string,[string,string]>={
   sync_account_changed:['同期先が変わりました。設定を再読込してください。','The account changed. Reload the settings.'],
@@ -15,6 +15,8 @@ const errors:Record<string,[string,string]>={
   sync_device_expired:['同期アクセスが失効しています。Cloudで新しいトークンを発行してください。','Sync access expired. Issue a new token in Cloud.'],
   stop_generation_before_sync:['生成結果の保存後に同期します。','Sync will resume after the generation is saved.'],
   sync_pending_receipt_retained:['同期はオフです。未確定の送信結果をこのPCに保持しています。','Sync is off. An unresolved receipt remains on this PC.'],
+  sync_restored_session_confirmation_required:['復元内容が更新されたか、別コピーとして送信する確認が必要です。設定を再読込して確認してください。','The restore changed or needs approval as a separate copy. Reload these settings and review it.'],
+  sync_restore_receipt_pending:['以前の送信結果が未確定です。接続を確認して、復元コピーの確認をやり直してください。','An earlier send is unresolved. Check the connection, then review the restored copy again.'],
 };
 export default function NativeSyncSettings(){
   const en=useLanguage()==='en',[settings,setSettings]=useState<Settings|null>(null),[selected,setSelected]=useState<string[]>([]),[enabled,setEnabled]=useState(false),[consent,setConsent]=useState(false),[token,setToken]=useState(''),[replace,setReplace]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[saved,setSaved]=useState(false),[reviews,setReviews]=useState<Review[]>([]);
@@ -27,6 +29,12 @@ export default function NativeSyncSettings(){
   async function load(reset=false){const attempt=++epoch.current,value:Settings=await call();if(attempt!==epoch.current)return;const changed=current.current!==value.owner;current.current=value.owner;setSettings(value);if(changed||reset)setReviews([]);if(reset||changed||!edited.current){setSelected(value.selected);setEnabled(value.enabled);}if(reset||changed){edited.current=false;setToken('');setConsent(false);setReplace(false);}}
   useEffect(()=>{let alive=true;const refresh=()=>{if(alive&&!working.current&&document.visibilityState!=='hidden')void load().catch(e=>{if(alive)setError(String(e.message));});};refresh();const timer=setInterval(refresh,5000);return()=>{alive=false;++epoch.current;clearInterval(timer);};},[en]);
   async function act(action:()=>Promise<unknown>,reset=false){working.current=true;++epoch.current;setBusy(true);setError('');setSaved(false);try{await action();await load(reset);setSaved(true);}catch(e){setError(e instanceof Error?e.message:String(e));}finally{working.current=false;setBusy(false);}}
+  async function save(){
+    if(!settings||busy)return;
+    const restore_confirmations=enabled?Object.fromEntries(selected.filter(id=>settings.restores?.[id]).map(id=>[id,settings.restores![id]])):{};
+    if(Object.keys(restore_confirmations).length&&!await confirm({title:en?'Sync restored chats as separate copies?':'復元した会話を別コピーとして同期しますか？',description:<><p>{en?'Earlier Cloud chats stay unchanged. Any earlier pending sends will be resolved before these restored chats are saved as new copies.':'以前のCloud会話は変更しません。以前の送信の完了・取消を確認してから、復元した会話を新しいコピーとして保存します。'}</p><ul>{Object.keys(restore_confirmations).map(id=><li key={id}>{settings.sessions.find(s=>s.id===id)?.preview||id}</li>)}</ul></>,confirmLabel:en?'Sync separate copies':'別コピーとして同期',cancelLabel:en?'Cancel':'キャンセル'}))return;
+    await act(()=>call('',{enabled,selected,consent,replace_account:replace,expected_owner:settings.owner,...(token?{token}:{}),...(Object.keys(restore_confirmations).length?{restore_confirmations}:{})},'PUT'),true);
+  }
   return <section className="k-section k-connection k-native-sync">{dialog}<h2>{en?'Sync this PC':'このPCの会話を同期'}</h2>
     <p>{en?'Send selected PC chats and receive chats already synced to the account. Imported chats continue syncing automatically.':'選んだPCの会話を送信し、アカウントで同期中の会話を受信します。取り込んだ会話の変更も自動で同期します。'}</p>
     <p>{en?'Register on this PC. The token grants sync access only and cannot buy credits or run Cloud models.':'登録はこのPCで行います。同期専用トークンでは購入やCloud生成を行えません。'}</p>
@@ -35,9 +43,10 @@ export default function NativeSyncSettings(){
       <label>{en?'Sync token':'同期用トークン'}<input type="password" value={token} disabled={busy} autoComplete="off" maxLength={256} onChange={e=>{edited.current=true;setToken(e.target.value);}} placeholder={settings.connected?(en?'Registered; enter only to replace':'登録済み・変更時のみ入力'):''}/></label>
       {!!token&&settings.connected&&<label><input type="checkbox" checked={replace} onChange={e=>setReplace(e.target.checked)}/>{en?'Allow switching to the token’s account. Other-account chats stay on this PC.':'トークンのアカウントへの切替を許可する。別アカウントの会話はこのPCに残します。'}</label>}
       <label><input type="checkbox" disabled={busy} checked={enabled} onChange={e=>{edited.current=true;setEnabled(e.target.checked);}}/>{en?'Enable automatic sync':'自動同期を有効にする'}</label>
-      <fieldset disabled={busy}><legend>{en?'PC chats to send':'送信するPCの会話'}</legend>{settings.sessions.map(s=><label key={s.id}><input type="checkbox" checked={selected.includes(s.id)} onChange={e=>{edited.current=true;setSelected(e.target.checked?[...selected,s.id]:selected.filter(id=>id!==s.id));}}/>{s.preview||s.id} · {s.count}</label>)}</fieldset>
+      {!!Object.keys(settings.restores??{}).length&&<p role="status">{en?'Restored chats need confirmation before they can be sent as new copies.':'復元した会話を送信するには、新しいコピーとして保存する確認が必要です。'}</p>}
+      <fieldset disabled={busy}><legend>{en?'PC chats to send':'送信するPCの会話'}</legend>{settings.sessions.map(s=><label key={s.id}><input type="checkbox" checked={selected.includes(s.id)} onChange={e=>{edited.current=true;setSelected(e.target.checked?[...selected,s.id]:selected.filter(id=>id!==s.id));}}/>{s.preview||s.id} · {s.count}{settings.restores?.[s.id]&&(en?' (restored; review required)':'（復元・再確認が必要）')}</label>)}{selected.filter(id=>!settings.sessions.some(s=>s.id===id)).map(id=><label key={id}><input type="checkbox" checked onChange={()=>{edited.current=true;setSelected(selected.filter(s=>s!==id));}}/>{id} · {en?'Chat data is missing. Deselect it or check your backup.':'会話データがありません。選択を解除するか、バックアップを確認してください。'}</label>)}</fieldset>
       <label><input type="checkbox" checked={consent} disabled={busy} onChange={e=>setConsent(e.target.checked)}/>{en?'Allow these chats, settings and memories to be saved to this Cloud account.':'このアカウントへの会話・作品設定・記憶の保存と同期に同意する'}</label>
-      <Button disabled={busy||enabled&&!consent||!settings.connected&&!token} onClick={()=>void act(()=>call('',{enabled,selected,consent,replace_account:replace,expected_owner:settings.owner,...(token?{token}:{})},'PUT'),true)}>{en?'Save sync settings':'同期設定を保存'}</Button>
+      <Button disabled={busy||enabled&&!consent||!settings.connected&&!token} onClick={()=>void save()}>{en?'Save sync settings':'同期設定を保存'}</Button>
       <Button variant="secondary" disabled={busy||!settings.connected||!settings.enabled} onClick={()=>void act(()=>call('/run',{expected_owner:settings.owner}))}>{en?'Sync now':'今すぐ同期'}</Button>
       <Button variant="ghost" disabled={busy||!settings.connected} onClick={()=>void act(()=>call('',{expected_owner:settings.owner},'DELETE'),true)}>{en?'Disconnect this PC':'このPCの接続を解除'}</Button>
       {edited.current&&<Button variant="ghost" disabled={busy} onClick={()=>void load(true)}>{en?'Discard settings edits':'設定の変更を戻す'}</Button>}

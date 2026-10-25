@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import tempfile
+from contextlib import closing
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -76,7 +77,7 @@ def service(app,value=None):
 
 
 def choices(namespace):
-    with sqlite3.connect(storage.DB_PATH) as db:
+    with closing(sqlite3.connect(storage.DB_PATH)) as db:
         claims=dict(db.execute('SELECT session_id,namespace FROM unified_native_owners')) if db.execute("SELECT 1 FROM sqlite_master WHERE name='unified_native_owners'").fetchone() else {}
         rows=db.execute("SELECT h.session_id,COUNT(*),MAX(h.created_at),(SELECT SUBSTR(content,1,100) FROM chat_history tail WHERE tail.session_id=h.session_id ORDER BY id DESC LIMIT 1) FROM chat_history h WHERE SUBSTR(h.session_id,1,2)!='__' AND h.session_id NOT IN(SELECT session_id FROM session_deletions) GROUP BY h.session_id ORDER BY MAX(h.created_at) DESC LIMIT 1000").fetchall()
     return [{'id':r[0],'count':r[1],'updated':r[2],'preview':r[3]} for r in rows if r[0] and not r[0].startswith('__') and (r[0] not in claims or claims[r[0]]==namespace)]
@@ -111,7 +112,7 @@ async def stop_active():
 async def configure(request:Request):
     global last,suspended
     value=await body(request)
-    if set(value)-{'enabled','selected','consent','token','replace_account','expected_owner'}:raise CloudError('invalid_sync_settings')
+    if set(value)-{'enabled','selected','consent','token','replace_account','expected_owner','restore_confirmations'}:raise CloudError('invalid_sync_settings')
     await stop_active()
     async with lock:
         before=config();old=service(request.app,before) if before else None
@@ -126,7 +127,12 @@ async def configure(request:Request):
             if value.get('replace_account') is not True:raise CloudError('sync_account_switch_confirmation_required',409)
             old.configure(old.status()['selected'],False)
         if value.get('enabled') is True and not value.get('token'):await sync.verify()
-        sync.configure(value.get('selected',[]),value.get('enabled'),consent=value.get('consent') is True)
+        if value.get('restore_confirmations'):
+            with sync.transaction(allow_generation=True) as db:
+                expected={sid:token for sid,token in sync.restores(db).items() if sid in value.get('selected',[])}
+                if expected and value['restore_confirmations']!=expected:raise CloudError('sync_restored_session_confirmation_required',409)
+            if expected:await sync.settle_withdrawn()
+        sync.configure(value.get('selected',[]),value.get('enabled'),consent=value.get('consent') is True,restore_confirmations=value.get('restore_confirmations'))
         save(candidate);suspended=None;last={'phase':'idle' if value['enabled'] else 'off','error':''}
         if not value['enabled']:
             try:await sync.settle_withdrawn()
