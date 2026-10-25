@@ -17,8 +17,8 @@ async function run(){
   const key='fixture-export-manifest';let manifest=JSON.parse(localStorage.getItem(key)||'null'),phase=manifest?'reload':'setup';
   if(!manifest){
     const first=await request('/api/library',{name:'Old 日本語',data:{description:'OLD'}});
-    const assetLibrary=await request('/api/library',assetCase.document);
     for(const [id,asset] of Object.entries(assetCase.assets))await setMeta('asset:'+owner+':'+id,{raw:fromBase64(asset.base64),mime:asset.mime});
+    const assetLibrary=await request('/api/library',assetCase.document);
     await request('/api/library/'+first.id,{expected_revision:1,document:{...first.document,name:'New',data:{description:'NEW'}}},'PUT');
     const form=new FormData();form.set('file',new File([encoder.encode(text)],"original's.json",{type:'application/json'}));
     const previewResponse=await deviceFetch('/api/imports/preview',{method:'POST',body:form}),preview=await previewResponse.json();

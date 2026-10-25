@@ -3,6 +3,7 @@ import { appTransaction, getMeta, newEntity, type AppEntity } from './appStore';
 import { deviceOwner } from './appContext';
 import { canonical } from './appSyncData';
 import { Sha256 } from '../mobile/sha256';
+import { validateDeviceDocumentAssets } from './deviceAssets';
 
 const conflict=(message:string)=>Object.assign(Error(message),{status:409});
 const hash=(raw:Uint8Array)=>new Sha256().update(raw).digest();
@@ -27,6 +28,7 @@ export async function commitDeviceImport(owner:string,previewId:string,input:unk
     if(selection.index>=preview.documents.length)throw Error('Invalid selection');
     const source=PortableDocumentSchema.parse(preview.documents[selection.index]),doc=structuredClone(selection.document);
     if(source.nsfw||doc.nsfw)throw Object.assign(Error('Adult verification required'),{status:403});
+    await validateDeviceDocumentAssets(doc,owner);
     if(!doc.name.trim())throw Error('Name is required');
     if(selection.history_indices.some(index=>index>=source.histories.length)||selection.history_indices.length&&doc.kind!=='character')throw Error('Invalid history selection');
     doc.source=source.source;doc.source_format=source.source_format;doc.notices=source.notices;

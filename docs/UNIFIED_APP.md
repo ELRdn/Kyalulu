@@ -271,9 +271,12 @@ Research exports now use the same RuntimeDownload/apiFetch path as Library and
 Creator. Late bodies are rejected after account/target changes. Shared component
 and transport fixtures are recorded in
 [Runtime downloads](validation/2026-10-25-unified-runtime-downloads.md); complete
-Browser import/media parity and Browser Research execution remain open. Library
+multi-source import parity and Browser Research execution remain open. Library
 export-format/preview behavior now has
 [separate validation](validation/2026-10-25-unified-device-exports.md).
+JSON/PNG/CHARX/backup imports and owner-scoped inert media APIs/playback now have
+[native-reference and real-decoder checks](validation/2026-10-25-unified-device-imports.md).
+Other source adapters and complete upload/editor journeys remain open.
 
 Current selected-sync work and browser fixture evidence are recorded separately
 in [2026-10-24-unified-sync.md](validation/2026-10-24-unified-sync.md). The historical

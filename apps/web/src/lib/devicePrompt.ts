@@ -21,9 +21,10 @@ function keys(entry:RecordValue,name:string,alias:string) {
   const values=entry[name]??entry[alias]??[];
   if(!Array.isArray(values)||values.some(k=>typeof k!=='string'))throw Error('Invalid Lore keys');return values as string[];
 }
-function unsupported(entry:RecordValue) {
-  return entry.use_regex||entry.useRegex||['useProbability','delay','cooldown','sticky','timeConditions','time_conditions','matchWholeWords','excludeRecursion','preventRecursion','delayUntilRecursion','group'].some(k=>!!entry[k])
-    ||![0,null,undefined].includes(entry.selectiveLogic)||!['before_char','after_char'].includes(entry.position??'after_char')
+export const portableTruthy=(value:unknown)=>Array.isArray(value)?value.length>0:value&&typeof value==='object'?Object.keys(value).length>0:!!value;
+export function unsupportedLoreCondition(entry:RecordValue) {
+  return portableTruthy(entry.use_regex)||portableTruthy(entry.useRegex)||['useProbability','delay','cooldown','sticky','timeConditions','time_conditions','matchWholeWords','excludeRecursion','preventRecursion','delayUntilRecursion','group'].some(k=>portableTruthy(entry[k]))
+    ||![0,false,null,undefined].includes(entry.selectiveLogic)||!['before_char','after_char'].includes(entry.position??'after_char')
     ||keys(entry,'keys','keys').some(k=>/^\/.+\/[a-z]*$/.test(k));
 }
 export function selectLore(books:RecordValue[],history:Message[],render=(value:string)=>value) {
@@ -37,7 +38,7 @@ export function selectLore(books:RecordValue[],history:Message[],render=(value:s
       const additions:string[]=[];
       for(const {entry,index} of pending){
         if(visited.has(index))continue;
-        const reason=entry.enabled===false?'disabled':unsupported(entry)?'unsupported condition':null;
+        const reason=entry.enabled===false?'disabled':unsupportedLoreCondition(entry)?'unsupported condition':null;
         if(reason){audit.push({book:bookIndex,entry:index,selected:false,reason});visited.add(index);continue;}
         const haystack=entry.case_sensitive?scan:casefold(scan),matches=(values:string[])=>values.some(k=>k&&haystack.includes(entry.case_sensitive?k:casefold(k)));
         let active=!!entry.constant||matches(keys(entry,'keys','key'));

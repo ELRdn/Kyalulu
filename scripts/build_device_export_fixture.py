@@ -4,12 +4,15 @@ import io
 import json
 from pathlib import Path
 import zipfile
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'runtime'))
 
 from python.core.portable_binary import build_png_with_text, get_png_texts, neutral_png, parse_png_chunks
 from python.core.portable_export import export_document, FORMATS
 from python.core.portable_schema import PortableDocument
 
-ROOT = Path(__file__).resolve().parents[1]
 
 
 def decode_output(raw, mime):
