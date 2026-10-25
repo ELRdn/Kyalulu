@@ -167,7 +167,7 @@ function ActiveChatSession() {
   const { models, modelId, setModelId, reload: reloadModels, loadFailed: modelsFailed,
     loading: modelsLoading, available: modelAvailable, current: currentModel } = useChatModel({ conversationModel: baselineModel });
   const modelChoices = models.some(m => m.id === modelId) ? models : [
-    { id: modelId, display_name: modelId ? `${modelId}（利用できません）` : "会話エンジンを選んでください", provider_type: "", provider_model: "", quantization: "", available: false }, ...models,
+    { id: modelId, display_name: modelId ? (en ? `${modelId} (unavailable)` : `${modelId}（利用できません）`) : (en ? 'Choose a conversation model' : '会話エンジンを選んでください'), provider_type: "", provider_model: "", quantization: "", available: false }, ...models,
   ];
   const [adult] = useAdultContent();
   const [confirmDialog, confirm] = useConfirm();
@@ -1080,7 +1080,7 @@ function ActiveChatSession() {
                 </div>
                 {!hasCharacter && (
                   <Button variant="secondary" onClick={() => navigate("/discover")}>
-                    <Icon name="compass" size={15} /> キャラクターを探す
+                    <Icon name="compass" size={15} /> {en ? 'Explore characters' : 'キャラクターを探す'}
                   </Button>
                 )}
               </div>
@@ -1178,7 +1178,7 @@ function ActiveChatSession() {
                 {friendly.command.label}
               </button>
             )}
-            <button type="button" onClick={() => setError(null)} aria-label="エラーを閉じる">
+            <button type="button" onClick={() => setError(null)} aria-label={en ? 'Dismiss error' : 'エラーを閉じる'}>
               <Icon name="close" size={14} />
             </button>
           </div>
@@ -1186,29 +1186,29 @@ function ActiveChatSession() {
 
         {historyReady && !modelsLoading && !modelAvailable && (
           <div className="k-chat-recovery" role="status">
-            <span>{modelsFailed ? "会話エンジンを取得できませんでした。" : modelId ? `会話エンジン「${modelId}」を利用できません。別のモデルへ自動では切り替えません。` : "会話エンジンを選んでから送信してね。"}</span>
-            <button type="button" onClick={() => setPortableOpen(true)}>会話エンジンを選ぶ</button>
-            <button type="button" onClick={reloadModels}>再読込</button>
+            <span>{modelsFailed ? (en ? 'Could not load conversation models.' : '会話エンジンを取得できませんでした。') : modelId ? (en ? `Model “${modelId}” is unavailable. No other model will be selected automatically.` : `会話エンジン「${modelId}」を利用できません。別のモデルへ自動では切り替えません。`) : (en ? 'Choose a conversation model before sending.' : '会話エンジンを選んでから送信してね。')}</span>
+            <button type="button" onClick={() => setPortableOpen(true)}>{en ? 'Choose a model' : '会話エンジンを選ぶ'}</button>
+            <button type="button" onClick={reloadModels}>{en ? 'Reload' : '再読込'}</button>
           </div>
         )}
         {(recovery.unresolved || recovery.notice) && (!streaming || recovery.storageError) && (
           <div className="k-chat-recovery" role="status" aria-live="polite">
-            <span>{recovery.storageError ?? recovery.notice ?? "送信結果を確認しています。確認中は新しい送信・会話の変更を待ってね。"}</span>
+            <span>{recovery.storageError ?? recovery.notice ?? (en ? 'Checking the send result. Wait before sending again or changing the conversation.' : '送信結果を確認しています。確認中は新しい送信・会話の変更を待ってね。')}</span>
             {recovery.pending && <button type="button" disabled={recovery.checking} onClick={() => void recovery.reconcile()}>
-              {recovery.checking ? "確認中…" : "結果を確認"}
+              {recovery.checking ? (en ? 'Checking…' : '確認中…') : (en ? 'Check result' : '結果を確認')}
             </button>}
-            {recovery.pending && !streaming && <button type="button" onClick={() => void recovery.cancel()}>停止して確認</button>}
+            {recovery.pending && !streaming && <button type="button" onClick={() => void recovery.cancel()}>{en ? 'Stop and check' : '停止して確認'}</button>}
           </div>
         )}
         <div ref={composerRef} className="k-chat-composer-wrap">
-          {tutorial.storageFailed && !tutorial.open && <p role="status" className="k-context-note">案内の完了・スキップをこのブラウザーに記録できませんでした。次回また案内が出る場合があります。</p>}
-          {capabilitiesError && <div className="k-chat-error" role="alert">{capabilitiesError}<Button variant="ghost" size="sm" onClick={reloadCapabilities}>機能情報を再読込</Button></div>}
-          {capabilities && !capabilities.features.regenerate && <p className="k-context-note">この接続先では返事の再生成に対応していません。</p>}
+          {tutorial.storageFailed && !tutorial.open && <p role="status" className="k-context-note">{en ? 'This browser could not record guide completion or skipping. The guide may appear again next time.' : '案内の完了・スキップをこのブラウザーに記録できませんでした。次回また案内が出る場合があります。'}</p>}
+          {capabilitiesError && <div className="k-chat-error" role="alert">{capabilitiesError}<Button variant="ghost" size="sm" onClick={reloadCapabilities}>{en ? 'Reload capabilities' : '機能情報を再読込'}</Button></div>}
+          {capabilities && !capabilities.features.regenerate && <p className="k-context-note">{en ? 'Reply regeneration is unavailable on this connection.' : 'この接続先では返事の再生成に対応していません。'}</p>}
           {quote && <CloudQuoteConfirmation quote={quote} onAccept={() => consent.accept()} onCancel={() => consent.cancel()}
             onProviderTrainingConsentChange={checked => consent.acknowledgeProviderTraining(quote.quote_id, checked)} />}
-          {lastQuote && !quote && <p className="k-context-note" aria-label="今回の送信先と消費上限">
-            今回：{lastQuote.route.display_name} · {lastQuote.route.upstream || lastQuote.route.provider}
-            {lastQuote.route.upstream && `（${lastQuote.route.provider}経由）`} · 上限 {lastQuote.max_credits.toLocaleString()} K-Credits（予約なし・完了後に実費精算）
+          {lastQuote && !quote && <p className="k-context-note" aria-label={en ? 'Current destination and credit cap' : '今回の送信先と消費上限'}>
+            {en ? 'Current: ' : '今回：'}{lastQuote.route.display_name} · {lastQuote.route.upstream || lastQuote.route.provider}
+            {lastQuote.route.upstream && (en ? ` (via ${lastQuote.route.provider})` : `（${lastQuote.route.provider}経由）`)} · {en ? 'Cap' : '上限'} {lastQuote.max_credits.toLocaleString()} K-Credits{en ? ' (no reservation; actual cost settled after completion)' : '（予約なし・完了後に実費精算）'}
           </p>}
           {streaming && !quote && <KyaluluWaiting progress={progress} researcher={researcher} language={language} />}
           {clientTimings && debugOpen && <details className="k-context-section"><summary>今回の待ち時間</summary>
@@ -1228,7 +1228,7 @@ function ActiveChatSession() {
             <div className={`k-cmd-result ${commandResult.ok ? "" : "is-error"}`} role="status">
               <div className="k-cmd-result__head">{commandResult.command}</div>
               <pre className="k-cmd-result__body">{commandResult.output}</pre>
-              <button type="button" className="k-cmd-result__close" onClick={() => setCommandResult(null)} aria-label="結果を閉じる">
+              <button type="button" className="k-cmd-result__close" onClick={() => setCommandResult(null)} aria-label={en ? 'Dismiss result' : '結果を閉じる'}>
                 <Icon name="close" size={14} />
               </button>
             </div>
