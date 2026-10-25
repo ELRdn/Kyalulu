@@ -27,9 +27,10 @@ import Button from '../components/ui/Button';
 import { useAccountProfile, refreshAccountProfile } from '../lib/accountProfile';
 import { friendlyMessage } from '../lib/errors';
 import DeviceSettings from '../components/DeviceSettings';
-import { executionTarget, isUnifiedEntry } from '../lib/appContext';
+import { executionTarget, isUnifiedEntry, useLanguage } from '../lib/appContext';
 
 export default function Profile() {
+  const publicationEn=useLanguage()==='en';
   const administrative = useAdministrative();
   const {cloud_mode,remote_mode} = useRuntimeAccess();
   const displayName = useDisplayName();
@@ -94,6 +95,7 @@ export default function Profile() {
     <div className="k-page" style={{ maxWidth: 780 }}>
       {confirmDialog}
       <DeviceSettings />
+      {isUnifiedEntry()&&<p><Link to="/publications">{publicationEn?'Publication review and appeals':'公開作品の審査・異議申立て'}</Link> · <Link to="/published">{publicationEn?'Approved works':'承認済み作品'}</Link></p>}
       {loadError && <p role="alert">{loadError}<Button size="sm" variant="secondary" onClick={() => setRetry(value => value + 1)}>再読込</Button></p>}
       {!cloud_mode && <ConnectionSettings />}
       {administrative && executionTarget() === 'local' && <RemoteHostSettings />}

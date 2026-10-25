@@ -61,6 +61,8 @@ class UnifiedService:
         store.unified_service = self
         from .entity_transfers import EntityTransfers
         self.transfers = EntityTransfers(self)
+        from .publications import Publications
+        self.publications = Publications(self)
 
     def available(self):
         if not self.store.config.unified_enabled:
@@ -615,42 +617,11 @@ class UnifiedService:
             db.execute("INSERT INTO app_ad_revenue VALUES(?,?,?)", (key, net_nano, time.time()))
             db.execute("INSERT INTO funds VALUES(?,?,?,'ad-revenue')", (key, net_nano, time.time() + 45 * 86400))
 
-    def submit(self, owner, payload, rating):
-        self.available()
-        if not isinstance(rating, str) or rating not in {"general", "adult"} or not isinstance(payload, dict):
-            raise CloudError("invalid_publication")
-        if rating == "adult":
-            self.require_adult(owner)
-        # Private conversation fields never enter a public snapshot.
-        from .community import PUBLIC_KEYS
-        raw = payload.get("data", {})
-        if not isinstance(raw, dict) or len(json.dumps(payload).encode()) > 40_000:
-            raise CloudError("invalid_publication")
-        snapshot = {"schema_version": 1, "kind": "character", "name": str(payload.get("name", ""))[:120],
-                    "nsfw": rating == "adult", "data": {k: v for k, v in raw.items() if k in PUBLIC_KEYS}}
-        if not snapshot["name"].strip():
-            raise CloudError("invalid_publication")
-        publication = str(uuid4())
-        with self.store.transaction() as db:
-            db.execute("INSERT INTO app_publications VALUES(?,?,?,?,?,?,?,?)",
-                       (publication, owner, 1, rating, "pending", json.dumps(snapshot), "", time.time()))
-        return {"id": publication, "status": "pending", "revision": 1}
+    def submit(self, owner, payload, rating, **kwargs):
+        return self.publications.submit(owner, payload, rating, **kwargs)
 
-    def review(self, moderator, publication, revision, decision, reason):
-        self.available()
-        if moderator not in self.store.config.moderator_owners:
-            raise CloudError("moderator_required", 403)
-        if not isinstance(decision, str) or decision not in {"approved", "rejected", "hidden"} or not isinstance(reason, str) or not 1 <= len(reason) <= 1000:
-            raise CloudError("invalid_review")
-        with self.store.transaction() as db:
-            row = db.execute("SELECT revision FROM app_publications WHERE id=?", (publication,)).fetchone()
-            if not row:
-                raise CloudError("publication_not_found", 404)
-            if row[0] != revision:
-                raise CloudError("publication_revision_conflict", 409)
-            db.execute("UPDATE app_publications SET status=?,reason=?,revision=revision+1 WHERE id=?",
-                       (decision, reason, publication))
-        return {"id": publication, "status": decision, "revision": revision + 1}
+    def review(self, moderator, publication, revision, decision, reason, checks=None):
+        return self.publications.review(moderator, publication, revision, decision, reason, checks)
 
 
 def install_routes(app, service):
@@ -823,20 +794,84 @@ def install_routes(app, service):
 
     @app.post("/api/cloud/app/publications")
     async def submit(request: Request):
-        body = await request.json()
-        return service.submit(request.state.owner, body.get("document"), body.get("rating"))
+        from .account_profile import AccountProfile
+        body = await publication_body(request)
+        if 'request_id' in body and not isinstance(body['request_id'], str):
+            raise CloudError('invalid_publication_request')
+        return await publication_call(service.submit, request.state.owner, body.get("document"), body.get("rating"),
+            request_id=body.get('request_id'), source=body.get('source'), author_name=AccountProfile(service.store).read(request.state.owner).get('display_name') or 'Creator')
 
     @app.get("/api/cloud/app/publications")
     async def publications(request: Request):
-        owner = request.state.owner
-        moderator = owner in service.store.config.moderator_owners
-        with service.store.transaction() as db:
-            rows = db.execute("SELECT * FROM app_publications WHERE owner=? OR ?=1 ORDER BY created DESC LIMIT 100",
-                              (owner, int(moderator))).fetchall()
-        return {"publications": [{**{k: row[k] for k in ("id", "revision", "rating", "status", "reason")},
-                                  "document": json.loads(row["payload"])} for row in rows], "moderator": moderator}
+        return await publication_call(service.publications.queue, request.state.owner)
 
     @app.put("/api/cloud/app/publications/{publication}")
     async def review(publication: str, request: Request):
-        body = await request.json()
-        return service.review(request.state.owner, publication, body.get("revision"), body.get("decision"), body.get("reason"))
+        body = await publication_body(request)
+        return await publication_call(service.review, request.state.owner, publication, body.get("revision"), body.get("decision"), body.get("reason"), body.get('checks'))
+
+    async def publication_body(request):
+        try:
+            body = await request.json()
+        except ValueError as error:
+            raise CloudError('invalid_publication_request') from error
+        if not isinstance(body, dict):
+            raise CloudError('invalid_publication_request')
+        return body
+
+    async def publication_call(method, *args, **kwargs):
+        import anyio
+        from functools import partial
+        return await anyio.to_thread.run_sync(partial(method, *args, **kwargs))
+
+    def public_viewer(request):
+        owner = getattr(request.state, 'owner', '')
+        if not owner:
+            service.verify_eligibility_ticket(request.headers.get('x-kyalulu-eligibility'), request.headers.get('x-kyalulu-country'))
+        return owner
+
+    @app.get('/api/cloud/app/works')
+    async def public_catalog(request: Request, q: str = '', tag: str = '', author: str | None = None, rating: str = 'general'):
+        return await publication_call(service.publications.catalog, public_viewer(request), q, tag, author=author, rating=rating)
+
+    @app.get('/api/cloud/app/publication-viewer')
+    async def publication_viewer(request: Request):
+        from .account_profile import AccountProfile
+        service.available()
+        owner = getattr(request.state, 'owner', '')
+        return {'authenticated': bool(owner), 'owner_scope': owner, 'account_name': AccountProfile(service.store).read(owner)['display_name'] if owner else ''}
+
+    @app.get('/api/cloud/app/works/{publication}')
+    async def public_detail(publication: str, request: Request):
+        return await publication_call(service.publications.detail, public_viewer(request), publication)
+
+    @app.post('/api/cloud/app/works/{publication}/reports')
+    async def public_report(publication: str, request: Request):
+        body = await publication_body(request)
+        return await publication_call(service.publications.report, request.state.owner, publication, body.get('revision'), body.get('reason'))
+
+    @app.put('/api/cloud/app/authors/{author}/block')
+    async def public_block(author: str, request: Request):
+        body = await publication_body(request)
+        return await publication_call(service.publications.block, request.state.owner, author, body.get('active'))
+
+    @app.post('/api/cloud/app/publications/{publication}/appeals')
+    async def public_appeal(publication: str, request: Request):
+        body = await publication_body(request)
+        return await publication_call(service.publications.appeal, request.state.owner, publication, body.get('revision'), body.get('reason'))
+
+    @app.delete('/api/cloud/app/publications/{publication}')
+    async def public_withdraw(publication: str, request: Request):
+        body = await publication_body(request)
+        return await publication_call(service.publications.withdraw, request.state.owner, publication, body.get('revision'))
+
+    @app.get('/api/cloud/app/publication-adult-consent')
+    async def adult_consent(request: Request):
+        return await publication_call(service.publications.consent, request.state.owner)
+
+    @app.put('/api/cloud/app/publication-adult-consent')
+    async def enable_adult(request: Request):
+        body = await publication_body(request)
+        if type(body.get('enabled')) is not bool:
+            raise CloudError('invalid_adult_consent')
+        return await publication_call(service.publications.consent, request.state.owner, body['enabled'])

@@ -21,6 +21,9 @@ const BenchmarkLab = lazy(() => import("./pages/BenchmarkLab"));
 const PublicWork = lazy(() => import('./pages/PublicWork'));
 const PublicAuthor = lazy(() => import('./pages/PublicAuthor'));
 const Migration = lazy(() => import('./pages/Migration'));
+const Publications = lazy(() => import('./pages/Publications'));
+const Published = lazy(() => import('./pages/Published'));
+const PublishedDetail = lazy(() => import('./pages/Published').then(module=>({default:module.PublishedDetail})));
 
 const deferred = (node: ReactNode) => <Suspense fallback={<div className="k-page" aria-busy="true" />}>{node}</Suspense>;
 function AdminPage({ children }: { children: ReactNode }) {
@@ -38,6 +41,9 @@ export default function App() {
       <Route element={<AppShell />}>
         <Route path="/" element={<Home />} />
         <Route path="/discover" element={<Discover />} />
+        <Route path="/published" element={deferred(<Published />)} />
+        <Route path="/published/:publicationId" element={deferred(<PublishedDetail />)} />
+        <Route path="/publications" element={deferred(<Publications />)} />
         <Route path="/works/:workId" element={deferred(<PublicWork />)} />
         <Route path="/authors/:authorId" element={deferred(<PublicAuthor />)} />
         <Route path="/chats" element={<ChatsLanding />} />

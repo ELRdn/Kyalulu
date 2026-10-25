@@ -123,7 +123,9 @@ def create_app(config=None, *, transport=None, ad_provider=None):
             # snapshots. No anonymous account or tenant database is created.
             public_read = request.method == "GET" and (
                 request.url.path in {"/api/capabilities", "/api/characters", "/api/worlds"}
+                or request.url.path == '/api/cloud/app/publication-viewer'
                 or re.fullmatch(r"/api/community/(?:works(?:/[^/]+(?:/comments)?)?|authors/[^/]+)", request.url.path) is not None
+                or re.fullmatch(r'/api/cloud/app/works(?:/[^/]+)?', request.url.path) is not None
             )
             public = request.url.path in {
                 "/api/health",
@@ -222,7 +224,8 @@ def create_app(config=None, *, transport=None, ad_provider=None):
                     bootstrap = request.url.path == '/api/cloud/app/sync/device' and request.method == 'GET' and getattr(request.state, 'app_sync_device', None)
                     if (sync_scope and not bootstrap or expected_owner is not None) and expected_owner != owner:
                         raise CloudError('sync_account_changed', 403)
-                    if config.unified_enabled and (
+                    publication_withdrawal = request.method == 'DELETE' and re.fullmatch(r'/api/cloud/app/publications/[^/]+', request.url.path) is not None
+                    if config.unified_enabled and not publication_withdrawal and (
                         request.url.path.startswith(('/api/cloud/quotes', '/api/cloud/app/sync', '/api/cloud/app/runtime-consent', '/api/cloud/app/entities/', '/api/cloud/app/daily', '/api/cloud/app/rewards', '/api/cloud/app/publications', '/api/cloud/billing/checkout'))
                         or request.url.path.startswith('/api/chat') and request.method not in SAFE_METHODS
                     ):
@@ -248,7 +251,8 @@ def create_app(config=None, *, transport=None, ad_provider=None):
     @app.get("/api/capabilities")
     async def hosted_capabilities():
         from python.api.capabilities import capabilities
-        return {**capabilities(cloud=True, community=app_community_enabled, media=config.image_storage_enabled),
+        base = capabilities(cloud=True, community=app_community_enabled, media=config.image_storage_enabled)
+        return {**base, 'features': {**base['features'], 'publications': unified.publications.accepted(), 'publication_review': config.unified_enabled},
                 "safety_screening": False, "credit_reservation": False}
 
     async def community_call(request, method, *args, **kwargs):

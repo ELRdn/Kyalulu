@@ -39,7 +39,7 @@ export async function cloudFetch(input: string, init: RequestInit = {}): Promise
       return value;
     };
   }
-  if (response.status === 401 && typeof window !== 'undefined') {
+  if (response.status === 401 && typeof window !== 'undefined' && (executionTarget()==='cloud'||!input.startsWith('/api/cloud/'))) {
     window.dispatchEvent(new Event('kyalulu-auth-required'));
   }
   if (response.status === 402 && typeof window !== 'undefined') window.dispatchEvent(new Event('kyalulu-insufficient-credits'));
