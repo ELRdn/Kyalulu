@@ -2,6 +2,7 @@
 import json
 import sqlite3
 import base64
+import asyncio
 import hashlib
 import math
 import re
@@ -134,8 +135,16 @@ class NativeSync:
 
     async def remote(self,path,*,body=None):
         if path == '/sync' and body is not None:
-            raw = json.dumps(body, ensure_ascii=False, separators=(',', ':')).encode()
-            if len(raw) > 1_500_000: return await self._upload(body['request_id'], raw)
+            from python.cloud.entity_transfers import json_chunks, INLINE_BYTES
+            size, digest = 0, hashlib.sha256()
+            for chunk in json_chunks(body):
+                size += len(chunk)
+                if size > 1_000_000_000: raise CloudError('transfer_too_large', 413)
+                if size > INLINE_BYTES: self._transfer_active(body['request_id'])
+                digest.update(chunk)
+                await asyncio.sleep(0)
+            self._transfer_active(body['request_id'])
+            if size > INLINE_BYTES: return await self._upload(body, size, digest.hexdigest())
         if path.startswith('/sync?cursor=') or path.startswith('/entities/'):
             path += '&paged=1' if '?' in path else '?paged=1'
         result = await self._request(path, body=body)
@@ -182,21 +191,22 @@ class NativeSync:
             if any(row['session_id'] not in selected or not row['deleted'] and db.execute('SELECT 1 FROM runtime.session_deletions WHERE session_id=?', (row['session_id'],)).fetchone() for row in sources):
                 raise CloudError('sync_request_canceled', 409)
 
-    async def _upload(self, request_id, raw):
-        from python.cloud.entity_transfers import CHUNK_BYTES
+    async def _upload(self, body, size, sha256):
+        from python.cloud.entity_transfers import CHUNK_BYTES, json_chunks
+        request_id = body['request_id']
         self._transfer_active(request_id)
-        opened = await self._request('/sync/transfers', body={'request_id': request_id, 'size': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()})
+        opened = await self._request('/sync/transfers', body={'request_id': request_id, 'size': size, 'sha256': sha256})
         if opened.get('inline_receipt_required') is True:
             self._transfer_active(request_id)
-            return await self._request('/sync', body=json.loads(raw))
+            return await self._request('/sync', body=body)
         if 'result' in opened: return opened['result']
         transfer, next_part = opened.get('transfer_id'), opened.get('next')
         if (not isinstance(transfer, str) or not re.fullmatch('[0-9a-f-]{36}', transfer) or type(next_part) is not int
-            or not 0 <= next_part <= math.ceil(len(raw) / CHUNK_BYTES) or opened.get('chunk_bytes') != CHUNK_BYTES):
+            or not 0 <= next_part <= math.ceil(size / CHUNK_BYTES) or opened.get('chunk_bytes') != CHUNK_BYTES):
             raise CloudError('invalid_sync_response')
-        for index in range(next_part, math.ceil(len(raw) / CHUNK_BYTES)):
+        for index, chunk in enumerate(json_chunks(body)):
             self._transfer_active(request_id)
-            chunk = raw[index * CHUNK_BYTES:(index + 1) * CHUNK_BYTES]
+            if index < next_part: continue
             received = await self._request(f'/sync/transfers/{transfer}/parts/{index}', body={
                 'data': base64.b64encode(chunk).decode(), 'sha256': hashlib.sha256(chunk).hexdigest()})
             if type(received.get('next')) is not int or received['next'] != index + 1: raise CloudError('invalid_sync_response')
@@ -281,6 +291,7 @@ class NativeSync:
         else:raise CloudError('invalid_sync_receipt')
 
     def stage(self):
+        from python.cloud.entity_transfers import json_chunks
         with self.transaction() as db:
             if not self.meta(db,'enabled',False):return None
             selected=self.meta(db,'selected',[])
@@ -307,8 +318,11 @@ class NativeSync:
             for change in changes:
                 candidate={key:change[key] for key in ('id','kind','base_revision','payload')}
                 if change.get('deleted'):candidate.update(deleted=True,delete_confirmed=True)
-                if len(json.dumps(wire+[candidate],ensure_ascii=False).encode())>1_990_000:
-                    if wire:break
+                size = 0
+                for chunk in json_chunks(wire + [candidate]):
+                    size += len(chunk)
+                    if size > 1_990_000: break
+                if wire and size > 1_990_000: break
                 wire.append(candidate);accepted.append(change)
             result={'request_id':str(uuid4()),'changes':wire,'captures':accepted}
             self.save(db,'outbox',result);return result

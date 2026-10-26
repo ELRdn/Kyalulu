@@ -65,6 +65,8 @@ FILES = (
     "tests/fixtures/rp-format.json",
     "tests/e2e_unified_entry.py",
     "tests/e2e_cloud_login.py",
+    "tests/e2e_outbox_guard.py",
+    "tests/fixtures/outbox-guard.html",
     "tests/browser_fixture_server.py",
     "docs/MOBILE.md",
     "docs/UNIFIED_APP.md",

@@ -2,7 +2,7 @@ import { allEntities, appTransaction, entity, getMeta, scrubGenerationRecords, t
 import { cloudFetch } from './transport';
 import { deviceOwner, generationBusy } from './appContext';
 import { receiveConversation, receiveLibrarySnapshot, receiveCreatorSnapshot, rebindConversation, withLibrarySnapshots, conversationSettings } from './appSyncData';
-import { downloadEntity, uploadSync, SYNC_INLINE_BYTES } from './appTransfers';
+import { downloadEntity, uploadSync } from './appTransfers';
 
 type Batch=Outbox&{revisions:Record<string,number>;withdrawn?:boolean|0;receipt?:{changes:Ack[]}};
 type Ack={id:string;source_id?:string;revision:number;deleted:boolean;branched?:boolean;lineage?:Record<string,unknown>};
@@ -48,10 +48,6 @@ async function rawRequest(owner:string,path:string,init?:RequestInit) {
 }
 async function request(owner:string,path:string,init?:RequestInit) {
   const call=(suffix:string,options?:RequestInit)=>rawRequest(owner,suffix,options);
-  if(path===''&&init?.method==='POST'&&typeof init.body==='string'&&new TextEncoder().encode(init.body).length>SYNC_INLINE_BYTES){
-    const requestId=JSON.parse(init.body).request_id;
-    return uploadSync(init.body,call,()=>transferActive(owner,requestId));
-  }
   const result=await rawRequest(owner,path.startsWith('?cursor=')?path+'&paged=1':path,init);
   if(Array.isArray(result.changes))for(let index=0;index<result.changes.length;index++){
     if(result.changes[index]?.payload_ref){
@@ -270,7 +266,8 @@ async function synchronize(owner:string) {
       current();
       report({phase:'syncing',pending:batch.changes.length,error:''});
       if(batch.withdrawn&&!batch.receipt)throw Error('Sync cancellation pending');
-      const result=syncReceipt(batch,batch.receipt??await request(owner,'',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request_id:batch.request_id,changes:batch.changes})}));current();
+      const result=syncReceipt(batch,batch.receipt??await uploadSync({request_id:batch.request_id,changes:batch.changes},
+        (path,init)=>rawRequest(owner,path,init),()=>transferActive(owner,batch!.request_id)));current();
       const pending=batch;
       const deleted=result.changes.filter((ack:Ack)=>ack.deleted).map((ack:Ack)=>({id:ack.source_id??ack.id,revision:ack.revision,kind:pending.changes.find(c=>c.id===(ack.source_id??ack.id))?.kind,deleted:true,payload:{}}));
       if(deleted.length)await receiveSyncPage(owner,deleted,await getMeta<number>(key(owner,'cursor'))??0);

@@ -12,7 +12,7 @@ import pytest
 from test_unified_app import service, owner
 from test_native_sync_scopes import accounts, client
 from test_native_sync_client import pc, enrolled
-from python.cloud.entity_transfers import CHUNK_BYTES, EntityTransfers
+from python.cloud.entity_transfers import CHUNK_BYTES, EntityTransfers, json_chunks
 from python.cloud.store import CloudError
 
 
@@ -26,6 +26,30 @@ def large_body(request_id='large'):
 
 def encoded(body):
     return json.dumps(body, ensure_ascii=False, separators=(',', ':')).encode()
+
+
+def test_json_byte_chunks_keep_legacy_serialization_at_unicode_and_escape_boundaries():
+    value = {'text': ('茶🙂\n\t\r\b\f\x00"\\' * 130_000), 'nested': [None, True, False, 1e30, -0.0, {'b': 2, 'a': '界'}]}
+    expected = encoded(value)
+    chunks = list(json_chunks(value))
+    assert b''.join(chunks) == expected
+    assert all(len(chunk) == CHUNK_BYTES for chunk in chunks[:-1])
+    assert 0 < len(chunks[-1]) <= CHUNK_BYTES
+
+
+def test_json_byte_iteration_does_not_allocate_an_entire_encoded_batch():
+    import tracemalloc
+    text = '茶🙂' * 2000
+    value = {'messages': [{'content': text, 'id': index} for index in range(6000)]}
+    expected_size = len(encoded({'content': text, 'id': 0})) * 6000
+    tracemalloc.start()
+    try:
+        size = sum(len(chunk) for chunk in json_chunks(value))
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert size > 80_000_000 and abs(size - expected_size) < 100_000
+    assert peak < 8 * CHUNK_BYTES
 
 
 def send_part(transfers, user, transfer, index, raw):
@@ -319,3 +343,37 @@ async def test_native_consent_withdrawal_between_parts_stops_the_remaining_body(
     assert accounts[0].state.unified.pull(accounts[1][0])['changes'] == []
     await sender.settle_withdrawn()
     assert not sender.status()['pending']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('large', [False, True])
+async def test_native_withdrawal_while_hashing_stops_before_any_body_upload(accounts, pc, monkeypatch, large):
+    from python.cloud import entity_transfers
+    sender = await enrolled(accounts, pc)
+    if large:
+        with sqlite3.connect(pc) as db:
+            for message in large_body()['changes'][0]['payload']['messages']:
+                db.execute("INSERT INTO chat_history(session_id,role,content) VALUES('selected','user',?)", (message['content'],))
+    sender.configure(['selected'], True, consent=True)
+    original = entity_transfers.json_chunks
+    withdrawn = False
+    def chunks(value):
+        nonlocal withdrawn
+        for chunk in original(value):
+            if isinstance(value, dict) and 'request_id' in value and not withdrawn:
+                withdrawn = True
+                sender.configure([], False)
+            yield chunk
+    monkeypatch.setattr(entity_transfers, 'json_chunks', chunks)
+    inner = httpx.ASGITransport(accounts[0])
+    class NoManifest(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request):
+            assert '/transfers' not in request.url.path and not (request.method == 'POST' and request.url.path == '/api/cloud/app/sync')
+            return await inner.handle_async_request(request)
+    sender.transport = NoManifest()
+    with pytest.raises(CloudError, match='sync_request_canceled'):
+        await sender.run()
+    assert withdrawn and sender.status()['pending']
+    assert accounts[0].state.unified.pull(accounts[1][0])['changes'] == []
+    with sqlite3.connect(pc) as db:
+        assert db.execute("SELECT COUNT(*) FROM chat_history WHERE session_id='selected'").fetchone()[0] == (29 if large else 1)

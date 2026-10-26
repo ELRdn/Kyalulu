@@ -18,7 +18,7 @@ async def main():
             port = urlsplit(origin).port
             browser = await runtime.chromium.launch(headless=True)
             try:
-                for scenario in ('legacy', 'fresh', 'withdrawal', 'replacement', 'account'):
+                for scenario in ('legacy', 'fresh', 'withdrawal', 'replacement', 'account', 'hash-account'):
                     context = await browser.new_context()
                     blocked = []
                     async def local_only(route):

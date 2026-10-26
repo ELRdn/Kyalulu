@@ -27,6 +27,14 @@ async function run(){
     tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);});old.close();
   let bodyReads=0,foreignReads=0,keyProbes=0,committed=false,startedReads=0;
   const counts=[],chunks=[],api=[];
+  let measuring=true,maxEncodedText=0,wholeBatchWrites=0,hashAccountChanged=false;
+  const originalEncode=TextEncoder.prototype.encode,originalStringify=JSON.stringify;
+  TextEncoder.prototype.encode=function(text){
+    if(measuring){maxEncodedText=Math.max(maxEncodedText,text?.length??0);
+      if(scenario==='hash-account'&&!hashAccountChanged&&text?.includes('large fixture ')){hashAccountChanged=true;rememberOwner('fixture-owner-b');}}
+    return originalEncode.call(this,text);
+  };
+  JSON.stringify=function(value,...args){if(measuring&&value?.request_id===pending.request_id&&Array.isArray(value.changes))wholeBatchWrites++;return originalStringify.call(this,value,...args);};
   const originalGet=IDBObjectStore.prototype.get,originalKeys=IDBIndex.prototype.openKeyCursor;
   IDBObjectStore.prototype.get=function(key){if(this.name==='meta'){if(key===root)bodyReads++;if(key===foreign)foreignReads++;}return originalGet.call(this,key);};
   IDBIndex.prototype.openKeyCursor=function(...args){if(this.name==='sync-outbox-state')keyProbes++;return originalKeys.apply(this,args);};
@@ -55,6 +63,7 @@ async function run(){
   };
   try{
     await syncNow(owner);
+    measuring=false;
     const saved=await entity('chat',owner),remaining=await getMeta(root);
     if(scenario==='legacy'||scenario==='fresh'){
       check(chunks.length===3&&committed,'Transfer did not complete');
@@ -62,15 +71,19 @@ async function run(){
       check(!remaining&&!saved.dirty&&saved.serverRevision===1,'Receipt did not settle atomically');
       const raw=new Uint8Array(chunks.reduce((total,chunk)=>total+chunk.length,0));let offset=0;for(const chunk of chunks){raw.set(chunk,offset);offset+=chunk.length;}
       check(JSON.stringify(JSON.parse(new TextDecoder().decode(raw)))===JSON.stringify({request_id:pending.request_id,changes:pending.changes}),'Body changed during migration');
+    }else if(scenario==='hash-account'){
+      check(hashAccountChanged&&chunks.length===0&&!committed&&saved.dirty&&remaining,'Account change during hashing did not stop before transfer start');
+      check(!api.some(path=>path.includes('/transfers')),'Hashing sent a manifest after the account changed');
     }else{
       check(chunks.length===1&&!committed&&saved.dirty&&remaining,'Control change did not fence the body');
     }
     check(foreignReads===0,'Read another account body');
+    check(maxEncodedText<=4096*6&&wholeBatchWrites===0,'Serializer buffered the entire batch');
     check(localStorage.getItem('fixture-existing-storage')==='retain','Unrelated storage changed');
     const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('kyalulu-app-v1');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
     check(db.version===2&&db.transaction('meta').objectStore('meta').indexNames.contains('sync-outbox-state'),'Index upgrade missing');db.close();
-    return {ok:true,scenario,parts:chunks.length,committed,keyProbes,bodyReads,foreignReads,state:syncState().phase,networkCalls:api.length};
-  }finally{IDBObjectStore.prototype.get=originalGet;IDBIndex.prototype.openKeyCursor=originalKeys;}
+    return {ok:true,scenario,parts:chunks.length,committed,keyProbes,bodyReads,foreignReads,maxEncodedText,wholeBatchWrites,state:syncState().phase,networkCalls:api.length};
+  }finally{IDBObjectStore.prototype.get=originalGet;IDBIndex.prototype.openKeyCursor=originalKeys;TextEncoder.prototype.encode=originalEncode;JSON.stringify=originalStringify;}
 }
 run().then(result=>window.__OUTBOX_RESULT__=result).catch(error=>window.__OUTBOX_RESULT__={ok:false,scenario,error:String(error),stack:error.stack});
 </script>
