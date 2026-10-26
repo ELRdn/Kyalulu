@@ -71,6 +71,9 @@ pnpm --filter desktop build
 現在のentity契約は本文を単一JSONとして保持するため、commit・受信・IndexedDB更新で
 全体の実体化とコピーが必要になる。断片ごとのoutbox確認の全体読込は
 [後続の索引化](2026-10-25-unified-outbox-guards.md)で除去した。
+[転送バイトの追加改善](2026-10-26-unified-sync-byte-streams.md)で、Browser/Native送信と
+Cloud配信用の一括UTF-8コピーを除去し、旧wireのバイト互換・ハッシュ中の撤回を確認した。
+保存・commit・受信の全体実体化は依然として残る。
 **250MB/1GB単一会話の運用合格には、ストリームでの投影と分割保存、メモリ上限、
 アカウント全容量・旧snapshot復元を含む実容量試験が必要。**
 一時downloadはrevision/消去fenceで直ちにアクセスを止める。

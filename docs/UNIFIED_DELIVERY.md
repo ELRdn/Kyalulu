@@ -133,3 +133,8 @@ Cloudログイン・同意・送信先説明・成功/失敗の日英表示と�
 ログイン居住国のサーバー確認済み一覧・日英名称・提供停止時の選択/同意解除と、
 欠落/不正な一覧の拒否は [Login regions](validation/2026-10-26-unified-login-regions.md) に記録する。
 地域の本番承認を追加したものではない。先行 `ae51ead` のRuntime/Web CIはUbuntu/Windowsとも成功。
+Browser/Native送信・Cloud配信用のUTF-8一括コピー除去、旧wireのバイト互換、
+ハッシュ中の撤回/owner変更保護と84MB架空JSONの追加割当て試験は
+[Sync byte streams](validation/2026-10-26-unified-sync-byte-streams.md) に記録する。
+保存/commit/受信は全体実体化が残るため、250MB/1GB単一会話の合格とは扱わない。
+先行 `96e3f59` のRuntime/Web CIはUbuntu/Windowsとも成功。
