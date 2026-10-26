@@ -45,7 +45,7 @@ export default function MigrationExport() {
     return()=>{active=false;window.removeEventListener('message',receive);stop?.();};
   },[token]);
   return <main className="k-migration"><h1>{en?'Move to Kyalulu':'Kyaluluへの移行'}</h1>
-    <label>{en?'Language':'表示言語'}<select value={language} onChange={e=>savePreferences({...preferences(),language:e.target.value as 'ja'|'en'})}><option value="ja">日本語</option><option value="en">English</option></select></label>
+    <label>{en?'Language':'表示言語'}<select aria-label={en?'Language':'表示言語'} value={language} onChange={e=>savePreferences({...preferences(),language:e.target.value as 'ja'|'en'})}><option value="ja">日本語</option><option value="en">English</option></select></label>
     <p>{en?'Export your previous characters, conversations and drafts. Original data stays unchanged.':'以前のキャラ・会話・下書きを書き出します。元の保存データは削除しません。'}</p>
     <p>{en?'Direct transfer sends only to the unified app in this browser. Conversations and models are not uploaded to Cloud.':'直接転送は同じブラウザの統合アプリだけに送ります。会話とモデルをCloudへアップロードしません。'}</p>
     {direct&&<Button disabled={busy} onClick={()=>{
