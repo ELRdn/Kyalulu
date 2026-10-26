@@ -1,5 +1,6 @@
 // Versions the bundled UI actually knows how to explain. Never authorize a
 // freshly fetched opaque version with stale provider disclosure text.
+import type { Language } from './appContext';
 const BASE = '2026-10-03-provider-routing-v2';
 const KNOWN: Record<string,string> = {
   'opencode-go': BASE+'-opencode-go-direct-generation',
@@ -30,7 +31,8 @@ export type OperatorRoute = {
     privacy_note?: string | null; retains_prompts?: boolean; training?: boolean; training_consent_required?: boolean }[];
 };
 
-export function operatorDisclosure(route: OperatorRoute | null) {
+export function operatorDisclosure(route: OperatorRoute | null, language:Language='ja') {
+  const en=language==='en';
   if (route?.provider === 'openrouter' && route.models?.length) {
     if ([route.upstream, route.model].some(value => value !== undefined && typeof value !== 'string') ||
       (route.available !== undefined && typeof route.available !== 'boolean')) {
@@ -49,14 +51,22 @@ export function operatorDisclosure(route: OperatorRoute | null) {
     const destinations = route.models.filter(model => model.available !== false).map(model =>
       [model.display_name || model.id, model.provider || model.provider_type || route.provider,
         model.upstream, model.model || model.provider_model].filter(Boolean).join(' / ') +
-      (model.retains_prompts ? '（提供元が入力を保存します）' : '') +
-      (model.training ? '（会話・設定・記憶・生成結果をAIの学習・改善に利用する可能性があります。送信ごとの別の同意が必要です）' : '') +
-      (model.privacy_note ? `：${model.privacy_note}` : ''));
-    const standard = route.available !== false && route.model ? `標準の会話送信先：${route.provider} / ${route.upstream || ''} / ${route.model}。` : '';
-    return { explanation: `${standard}${destinations.length ? `追加で選択できる会話の送信先：${destinations.join('、')}。` : '追加モデルは現在利用できません。'}入力・出力の外部安全検査は行いません。通常の送信は確認画面なしで始まります。会話の送信先と消費上限はチャット内に表示します。クレジットは予約せず、完了後にAPI実費に基づいて上限内で精算します。別のモデルや提供元へは自動転送しません。`,
-      destination: '表示された提供元（送信先と消費上限をチャット内に表示）' };
+      (model.retains_prompts ? (en?' (The provider stores inputs.)':'（提供元が入力を保存します）') : '') +
+      (model.training ? (en?' (Conversations, settings, memories and generated outputs may be used to train or improve AI. Separate consent is required for every send.)':'（会話・設定・記憶・生成結果をAIの学習・改善に利用する可能性があります。送信ごとの別の同意が必要です）') : '') +
+      (model.privacy_note ? `${en?': ':'：'}${model.privacy_note}` : ''));
+    const standard = route.available !== false && route.model ? (en?`Default conversation destination: ${route.provider} / ${route.upstream || ''} / ${route.model}. `:`標準の会話送信先：${route.provider} / ${route.upstream || ''} / ${route.model}。`) : '';
+    return { explanation: en
+      ? `${standard}${destinations.length?`Additional conversation destinations you can choose: ${destinations.join('; ')}. `:'Additional models are currently unavailable. '}Inputs and outputs are not sent for external safety screening. Ordinary sends start without a confirmation screen. The chat shows the destination and spending limit. Credits are not reserved; after completion, charges are settled from actual API costs within the displayed limit. Nothing is automatically forwarded to a different model or provider.`
+      : `${standard}${destinations.length ? `追加で選択できる会話の送信先：${destinations.join('、')}。` : '追加モデルは現在利用できません。'}入力・出力の外部安全検査は行いません。通常の送信は確認画面なしで始まります。会話の送信先と消費上限はチャット内に表示します。クレジットは予約せず、完了後にAPI実費に基づいて上限内で精算します。別のモデルや提供元へは自動転送しません。`,
+      destination: en?'the listed providers (destination and spending limit shown in the chat)':'表示された提供元（送信先と消費上限をチャット内に表示）' };
   }
   const provider = route?.provider;
+  if(en)return {explanation:(provider==='openrouter'
+    ? `Generation uses ${route?.model||'DeepSeek V4.1 Flash'} from ${route?.upstream||'InferenceNet'} through OpenRouter. Nothing is automatically forwarded to another model or provider. `
+    : provider==='opencode-go'
+      ? 'Generation uses MiMo / DeepSeek through OpenCode Go. Muse Contributor requires separate consent for training use and is never selected automatically. '
+      : 'Generation uses DeepSeek V4.1 Flash. ')+'Inputs and outputs are not sent for external safety screening. Credits are not reserved; after completion, charges are settled from actual API costs within the displayed spending limit.',
+    destination:provider==='openrouter'?`${route?.model||'DeepSeek'} through OpenRouter / ${route?.upstream||'InferenceNet'}`:provider==='opencode-go'?'DeepSeek / MiMo through OpenCode Go':'DeepSeek'};
   return { explanation: (provider === 'openrouter'
     ? `生成はOpenRouter経由で${route?.upstream || 'InferenceNet'}が提供する${route?.model || 'DeepSeek V4.1 Flash'}を使用します。別のモデルや提供元へは自動転送しません。`
     : provider === 'opencode-go'

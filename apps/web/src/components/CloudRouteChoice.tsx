@@ -2,9 +2,11 @@ import { useEffect, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import CloudLogin from './CloudLogin';
 import { consumeLoginReturn, guestReadableRoute, readLoginReturn, rememberLoginReturn, safeLoginReturn } from '../lib/cloudGuest';
+import { useLanguage } from '../lib/appContext';
 
 /** Keep public browsing available while private routes require a real account. */
 export default function CloudRouteChoice({ authenticated, children }: { authenticated: boolean; children: ReactNode }) {
+  const en=useLanguage()==='en';
   const location = useLocation();
   const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
@@ -19,7 +21,7 @@ export default function CloudRouteChoice({ authenticated, children }: { authenti
     }
   }, [authenticated, login, location.pathname, returnTo, navigate]);
   if (login || (!authenticated && !guestReadableRoute(location.pathname))) {
-    return authenticated ? <p role="status">元の画面へ戻っています…</p> : <CloudLogin returnTo={returnTo} />;
+    return authenticated ? <p role="status">{en?'Returning to your previous page…':'元の画面へ戻っています…'}</p> : <CloudLogin returnTo={returnTo} />;
   }
   return children;
 }
