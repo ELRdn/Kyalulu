@@ -23,6 +23,12 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 
 ## Delivered Behavior
 
+- Recommendations update immediately for same-tab and cross-tab preference
+  changes, using existing tags and eligible catalog data. General surfaces retain
+  publication ratings; guest favorites persist in their browser scope without
+  an account write or implicit account merge. Actual Cloud chat still requires
+  login. See [recommendation validation](validation/2026-10-26-unified-recommendations.md).
+
 - Cloud and Native now share guarded static delivery. The unified Cloud bundle
   includes a canonical Caddy template with separate main/device/migration
   policies, explicit worker scope and HTML transformation protection. Actual
