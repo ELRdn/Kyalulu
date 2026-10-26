@@ -30,7 +30,8 @@ async def eligibility(request: Request):
     body = await request.json()
     if body.get('country') not in {'JP', 'US'} or type(body.get('age')) is not int or not 18 <= body['age'] <= 120:
         return JSONResponse({'error': 'preview_region_or_age_not_enabled'}, status_code=403)
-    return {'country': body['country'], 'age_band': 'adult', 'policy': 'LOCAL-FIXTURE-NOT-LEGAL-APPROVAL'}
+    return {'country': body['country'], 'age_band': 'adult', 'policy': 'LOCAL-FIXTURE-NOT-LEGAL-APPROVAL',
+            'ticket': 'LOCAL-FIXTURE-NOT-AUTHORIZATION'}
 
 
 @app.get('/api/mobile/status')
