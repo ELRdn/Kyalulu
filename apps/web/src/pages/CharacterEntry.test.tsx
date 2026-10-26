@@ -90,6 +90,9 @@ it('preserves guest login and adult-view restrictions in both languages', async 
   fixture.guest = true;
   let tree = view();
   expect(renderToStaticMarkup(tree)).toContain('Sign in to start a conversation');
+  await find(tree, node => node.props['aria-label'] === 'Save in this browser').props.onClick();
+  expect(fixture.save).toHaveBeenCalledExactlyOnceWith('hero');
+  expect(fixture.navigate).not.toHaveBeenCalled();
   await find(tree, node => node.props.className?.includes('k-plot-cta__main')).props.onClick();
   expect(fixture.navigate).toHaveBeenCalledWith('/login?next=%2Fcharacters%2Fhero');
   expect(fixture.start).not.toHaveBeenCalled();
