@@ -88,6 +88,10 @@ scalar before UTF-8 chunking; a huge individual string is not covered by the
 many-record allocation test. Further segmented storage/projection and bounded
 receive are required before accepting **250MB/1GB single conversations**.
 
+The subsequent [receive-stream change](2026-10-26-unified-sync-receive-streams.md)
+removes encoded-document assembly from Browser/Native receive and Cloud commit.
+Decoded trees/scalars and the other storage/hash copies listed above remain open.
+
 Real plan-capacity workloads, old-snapshot recovery at that scale, process RSS,
 physical phones, interrupted real-model migration and production rollout remain
 unqualified. Existing distribution candidate `0d9b2f5` predates these changes;
