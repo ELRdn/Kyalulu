@@ -23,6 +23,12 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 
 ## Delivered Behavior
 
+- Browser/Native downloads and Cloud transfer commit now parse UTF-8 and JSON
+  incrementally without a whole encoded-document buffer. Verified syntax/hash
+  and final consent still precede atomic storage; failed receives preserve data
+  and cursors. Decoded trees/scalars and persistent storage still need segmentation.
+  See [receive-stream validation](validation/2026-10-26-unified-sync-receive-streams.md).
+
 - Browser/Native uploads and Cloud downloads serialize transfer bytes in 1MiB
   pages without a whole-batch UTF-8 buffer. Existing wire hashes, restart points,
   inline receipts and cancellation fences remain compatible; hashing-time account

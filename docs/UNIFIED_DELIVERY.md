@@ -138,3 +138,7 @@ Browser/Native送信・Cloud配信用のUTF-8一括コピー除去、旧wireの�
 [Sync byte streams](validation/2026-10-26-unified-sync-byte-streams.md) に記録する。
 保存/commit/受信は全体実体化が残るため、250MB/1GB単一会話の合格とは扱わない。
 先行 `96e3f59` のRuntime/Web CIはUbuntu/Windowsとも成功。
+Browser/Native受信とCloud commitの断片JSON解析、共通構文/UTF-8 fixture、
+最終SHA/構文/撤回失敗時の原本・cursor保持、84MB架空JSONの解析追加割当ては
+[Sync receive streams](validation/2026-10-26-unified-sync-receive-streams.md) に記録する。
+全体のencoded bufferは除去したが、decoded tree・スカラー・永続保存の全体実体化は残る。
