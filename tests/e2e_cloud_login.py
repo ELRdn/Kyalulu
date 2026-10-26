@@ -31,16 +31,16 @@ async def main():
             return httpx.Response(200,json={})
         config=CloudConfig(root=Path(directory),origin='https://app.test',secret='s'*32,supabase_url='https://supabase.test',
             supabase_key='fixture-only',private_test=True,allowed_emails=('fixture@example.test',),signup_limit=1,trial_credits=0,monthly_subsidy_jpy=0,
-            unified_enabled=True,region_policies=(('JP',{'accepted':True,'minimum_age':13,'guardian_below':18,'version':'FIXTURE-NOT-REGIONAL-APPROVAL'}),))
+            unified_enabled=True,region_policies=tuple((country,{'accepted':accepted,'minimum_age':13,'guardian_below':18,'version':'FIXTURE-NOT-REGIONAL-APPROVAL'}) for country,accepted in (('JP',True),('GB',True),('US',False))))
         app=create_app(config,transport=httpx.MockTransport(provider))
-        ticket=app.state.store.unified_service.eligibility_ticket('JP',20)['ticket']
+        ticket=app.state.store.unified_service.eligibility_ticket('GB',20)['ticket']
         async with local_vite(OUTPUT) as origin,async_playwright() as playwright,httpx.AsyncClient(transport=httpx.ASGITransport(app),base_url=config.origin) as api:
             browser=await playwright.chromium.launch(headless=True)
             try:
                 for language,width,theme in (('ja',393,'light'),('en',1280,'dark')):
                     context=await browser.new_context(locale='ja-JP' if language=='ja' else 'en-US',viewport={'width':width,'height':852},color_scheme=theme)
                     held,release=asyncio.Event(),asyncio.Event()
-                    state={'status':'normal','fail':False,'hold':True}
+                    state={'status':'normal','fail':False,'hold':True,'countries':'normal'}
                     status_reads,posts=[],[]
                     try:
                         async def broker(route):
@@ -54,7 +54,7 @@ async def main():
                             if request.method!='GET':
                                 assert url.path=='/api/cloud/auth/login' and request.method=='POST'
                                 body=json.loads(request.post_data);posts.append(body)
-                                assert body=={'email':'fixture@example.test','consent':True,'country':'JP','eligibility_ticket':ticket,
+                                assert body=={'email':'fixture@example.test','consent':True,'country':'GB','eligibility_ticket':ticket,
                                     'operator_backend':'openrouter','provider_consent_version':provider_consent_version(config),'provider_disclosure_version':provider_consent_version(config)}
                                 if state['fail']:
                                     await route.fulfill(status=503,json={'error':'authentication_unavailable'});return
@@ -63,6 +63,8 @@ async def main():
                                 status_reads.append(state['status']);value=response.json()
                                 if state['status']=='unknown':value['provider_consent_version']+='-future-fixture'
                                 elif state['status']=='closed':value['login_available']=False
+                                if state['countries']=='missing':value.pop('login_countries')
+                                elif state['countries']!='normal':value['login_countries']=state['countries']
                                 await route.fulfill(status=response.status_code,json=value);return
                             if url.path=='/api/cloud/auth/login' and state['hold']:
                                 held.set();await release.wait()
@@ -82,11 +84,13 @@ async def main():
                         await expect(google).to_be_disabled();await consent.check();await expect(google).to_be_disabled()
                         country=login.locator('form select')
                         await country.select_option('JP');await expect(consent).not_to_be_checked()
+                        assert await country.locator('option').evaluate_all('(nodes)=>nodes.map(node=>node.value)')==['','GB','JP']
+                        await consent.check();await country.select_option('GB');await expect(consent).not_to_be_checked()
                         email=login.locator('input[type=email]');await email.fill('fixture@example.test');await consent.check()
                         await expect(google).to_be_enabled();before=len(status_reads)
                         alternate='ja' if en else 'en'
                         await login.get_by_role('combobox',name='Language' if en else '表示言語',exact=True).select_option(alternate)
-                        await expect(email).to_have_value('fixture@example.test');await expect(country).to_have_value('JP');await expect(consent).to_be_checked()
+                        await expect(email).to_have_value('fixture@example.test');await expect(country).to_have_value('GB');await expect(consent).to_be_checked()
                         assert len(status_reads)==before and not posts
                         await login.get_by_role('button',name='メールリンクを送る' if en else 'Send sign-in link',exact=True).click()
                         await asyncio.wait_for(held.wait(),10)
@@ -107,7 +111,7 @@ async def main():
                         await expect(login.locator('.k-cloud-login__destination')).not_to_contain_text('DeepSeek')
                         state['status']='normal'
                         await login.get_by_role('button',name='Check sign-in status again' if en else 'ログイン状態を再確認',exact=True).click()
-                        await expect(consent).to_be_enabled();await expect(consent).not_to_be_checked();await consent.check()
+                        await expect(consent).to_be_enabled();await expect(consent).not_to_be_checked();await country.select_option('GB');await consent.check()
                         state['fail']=True
                         await login.get_by_role('button',name='Send sign-in link' if en else 'メールリンクを送る',exact=True).click()
                         await login.get_by_role('status').filter(has_text='Login could not be verified' if en else 'ログインを確認できません').wait_for()
@@ -115,10 +119,25 @@ async def main():
                         await login.get_by_role('combobox',name='Language' if en else '表示言語',exact=True).select_option(alternate)
                         await login.get_by_role('status').filter(has_text='ログインを確認できません' if en else 'Login could not be verified').wait_for()
                         assert len(status_reads)==before and len(posts)==2
-                        await expect(email).to_have_value('fixture@example.test');await expect(country).to_have_value('JP')
+                        await expect(email).to_have_value('fixture@example.test');await expect(country).to_have_value('GB')
                         await login.get_by_role('combobox',name='表示言語' if en else 'Language',exact=True).select_option(language)
                         await login.get_by_role('status').filter(has_text='Login could not be verified' if en else 'ログインを確認できません').wait_for()
                         assert len(status_reads)==before
+                        state['countries']=['JP'];await page.evaluate("window.dispatchEvent(new Event('online'))")
+                        await expect(country.locator('option')).to_have_count(2)
+                        await expect(country).to_have_value('');await expect(consent).not_to_be_checked();await expect(google).to_be_disabled()
+                        await login.locator('form').dispatch_event('submit');assert len(posts)==2
+                        for offered in ('missing',[],None,'JP',['JP','JP'],['JP',7],['jp']):
+                            state['countries']=offered;before=len(status_reads)
+                            async with page.expect_response(lambda response:urlsplit(response.url).path=='/api/cloud/status'):
+                                await page.evaluate("window.dispatchEvent(new Event('online'))")
+                            await expect(consent).to_be_disabled()
+                            await expect(country.locator('option')).to_have_count(1)
+                            await login.locator('form').dispatch_event('submit');assert len(posts)==2
+                            assert len(status_reads)==before+1
+                        state['countries']='normal';await page.evaluate("window.dispatchEvent(new Event('online'))")
+                        await expect(consent).to_be_enabled();await expect(country).to_have_value('');await expect(consent).not_to_be_checked()
+                        await country.select_option('GB');await consent.check();await expect(google).to_be_enabled()
                         state['status']='closed';await page.evaluate("window.dispatchEvent(new Event('online'))")
                         await login.get_by_role('status').filter(has_text='Sign-in is not available' if en else 'この環境のログインは準備中').wait_for()
                         await expect(google).to_be_disabled();await login.locator('form').dispatch_event('submit');assert len(posts)==2
@@ -137,6 +156,9 @@ async def main():
                             'language_change_refetches_nothing':True,'unknown_disclosure_blocks_and_requires_fresh_consent':True,
                             'mock_email_success_and_http_error_translated':True,'busy_fields_locked_analytics_revocable':True,
                             'unavailable_login_stays_closed':True,
+                            'server_countries_only_nonlegacy_country_accepted':True,
+                            'revoked_country_cleared_and_consent_renewed':True,
+                            'missing_empty_malformed_countries_fail_closed':True,
                             'long_form_header_and_footer_reachable':True,
                             'status_reads':len(status_reads),'explicit_login_attempts':len(posts)})
                     finally:

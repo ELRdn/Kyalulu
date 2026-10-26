@@ -6,7 +6,7 @@ import CloudLogin from './CloudLogin';
 const fixture=vi.hoisted(()=>({language:'en',states:[] as any[],refs:[] as {current:any}[],effects:[] as (()=>(()=>void)|void)[],
   next:0,ref:0,request:vi.fn(),analytics:vi.fn(),navigate:vi.fn(),assign:vi.fn(),remember:vi.fn()}));
 vi.mock('react',async original=>({...await original<typeof import('react')>(),
-  useState:(initial:any)=>{const index=fixture.next++;if(fixture.states[index]===undefined)fixture.states[index]=typeof initial==='function'?initial():initial;return [fixture.states[index],(value:any)=>{fixture.states[index]=value;}];},
+  useState:(initial:any)=>{const index=fixture.next++;if(fixture.states[index]===undefined)fixture.states[index]=typeof initial==='function'?initial():initial;return [fixture.states[index],(value:any)=>{fixture.states[index]=typeof value==='function'?value(fixture.states[index]):value;}];},
   useRef:(value:any)=>{const index=fixture.ref++;return fixture.refs[index]??(fixture.refs[index]={current:value});},
   useEffect:(effect:()=>void)=>{fixture.effects.push(effect);},
 }));
@@ -31,7 +31,7 @@ function analytics(tree:ReactNode){return find(find(tree,node=>node.type==='labe
 beforeEach(()=>{
   vi.clearAllMocks();fixture.language='en';fixture.refs=[];fixture.effects=[];
   fixture.states=['fixture@example.test',true,'JP',true,false,null,'deepseek',{provider:'deepseek',safety:{enabled:false}},
-    '2026-10-03-provider-routing-v2-deepseek-direct-generation',true,false,true,0];
+    '2026-10-03-provider-routing-v2-deepseek-direct-generation',true,false,true,0,['JP','GB']];
   vi.stubGlobal('location',{hash:'',assign:fixture.assign});
   vi.stubGlobal('localStorage',{getItem:()=> 'fixture-eligibility'});
 });
@@ -49,6 +49,14 @@ it('renders both languages without changing the entered email, country or consen
 });
 it('does not start authentication while provider confirmation is unavailable',()=>{
   fixture.states[9]=false;submit(view());expect(fixture.request).not.toHaveBeenCalled();expect(fixture.remember).not.toHaveBeenCalled();
+});
+it('offers only server-listed countries and blocks a stale selection even on direct submit',()=>{
+  let tree=view(),html=renderToStaticMarkup(tree);
+  expect(html).toContain('United Kingdom');expect(html).not.toContain('value="US"');
+  fixture.language='ja';expect(renderToStaticMarkup(view())).toContain('イギリス');
+  fixture.states[2]='US';tree=view();submit(tree);
+  expect(fixture.request).not.toHaveBeenCalled();expect(fixture.remember).not.toHaveBeenCalled();
+  fixture.states[13]=[];fixture.states[2]='JP';submit(view());expect(fixture.request).not.toHaveBeenCalled();
 });
 it('rerenders the original error code in the current language without retrying',()=>{
   fixture.states[5]={cause:Object.assign(Error('Previously rendered message'),{code:'login_cancelled'})};

@@ -21,6 +21,7 @@ export default function CloudLogin({ returnTo = '/' }: { returnTo?: string }) {
   const [providerVersion,setProviderVersion] = useState<string|null>(null);
   const [ready,setReady] = useState(false), [loading,setLoading] = useState(true), [privateTest,setPrivateTest] = useState(false);
   const [retry,setRetry] = useState(0);
+  const [countries,setCountries] = useState<string[]>([]);
   const disclosure = useRef<string|null>(null);
   const mounted=useRef(false),analyticsChoice=useRef(analyticsEnabled);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
@@ -40,14 +41,17 @@ export default function CloudLogin({ returnTo = '/' }: { returnTo?: string }) {
     void cloudJson('status').then(status=>{
       const backend=status.operator_route?.provider;
       const version=understoodDisclosure(backend,status.provider_consent_version,status.operator_route);
-      if(!version){if(active){setMessage('disclosure');setConsent(false);setOperatorRoute(null);setProvider(null);setProviderVersion(null);disclosure.current=null;}return;}
+      if(!version){if(active){setMessage('disclosure');setConsent(false);setCountries([]);setOperatorRoute(null);setProvider(null);setProviderVersion(null);disclosure.current=null;}return;}
       operatorDisclosure(status.operator_route);
-      const receipt = JSON.stringify([version, status.operator_route]);
+      const offered=status.login_countries;
+      const countries:string[]=Array.isArray(offered)&&offered.every(value=>typeof value==='string'&&/^[A-Z]{2}$/.test(value))&&new Set(offered).size===offered.length?offered:[];
+      const receipt = JSON.stringify([version, status.operator_route, countries]);
       if(active) {
         if(disclosure.current!==receipt) setConsent(false);
         disclosure.current=receipt;
+        setCountries(countries);setCountry(value=>countries.includes(value)?value:'');
         setOperatorRoute(status.operator_route);
-        setProvider(backend);setProviderVersion(version);setReady(status.login_available===true);setPrivateTest(status.private_test===true);
+        setProvider(backend);setProviderVersion(version);setReady(status.login_available===true&&countries.length>0);setPrivateTest(status.private_test===true);
         if(!error) setMessage(null);
       }
     }).catch(error=>{if(active)setMessage({cause:error});})
@@ -69,7 +73,8 @@ export default function CloudLogin({ returnTo = '/' }: { returnTo?: string }) {
     } catch(error) {if(mounted.current)setMessage({cause:error});}
     finally {if(mounted.current)setBusy(false);}
   }
-  const disabled=busy || !ready || !provider || !providerVersion || !consent || !country;
+  const disabled=busy || !ready || !provider || !providerVersion || !consent || !countries.includes(country);
+  const regionNames=typeof Intl.DisplayNames==='function'?new Intl.DisplayNames([language],{type:'region'}):null;
   const cause=message&&typeof message==='object'?message.cause:null;
   const detail=cause&&typeof cause==='object'&&'code' in cause&&typeof cause.code==='string'?cause.code:cause;
   const notice=message==='email'?(en?'A sign-in email was sent. Open its link in this browser.':'確認メールを送りました。このブラウザでリンクを開いてください。'):message==='disclosure'?(en?'The provider disclosure has changed. Reload the login status to review the current details.':'接続先の説明が更新されています。ログイン状態を再確認し、現在の内容を確認してください。'):message?friendlyMessage(detail,language):'';
@@ -86,7 +91,7 @@ export default function CloudLogin({ returnTo = '/' }: { returnTo?: string }) {
     {loading?<p role="status">{en?'Checking sign-in availability…':'ログインの状態を確認しています…'}</p>:!ready&&<p role="status">{en?'Sign-in is not available in this environment yet.':'この環境のログインは準備中です。'}</p>}
     <form className="k-connection__form" onSubmit={e=>{e.preventDefault();void login();}}>
       <label>{en?'Country of residence':'居住国'}<select aria-label={en?'Country of residence':'居住国'} disabled={busy} value={country} onChange={e=>{setCountry(e.target.value);setConsent(false);}} required>
-        <option value="">{en?'Select your country':'選択してください'}</option><option value="JP">{en?'Japan':'日本'}</option><option value="US">{en?'United States':'米国'}</option>
+        <option value="">{en?'Select your country':'選択してください'}</option>{countries.map(code=><option key={code} value={code}>{regionNames?.of(code)||code}</option>)}
       </select></label>
       <label><input type="checkbox" disabled={busy||loading||!ready||!providerVersion} checked={consent} onChange={e=>setConsent(e.target.checked)} />
         {en?`I agree to the terms, privacy policy and eligibility conditions, and to sending data to ${destination}.`:`利用条件を含む規約・プライバシーポリシーと、${destination}へのデータ送信に同意します`}

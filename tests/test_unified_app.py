@@ -305,3 +305,50 @@ async def test_unified_http_guest_and_provider_boundaries(service):
     with service.store.transaction() as db:
         assert db.execute('SELECT COUNT(*) FROM accounts').fetchone()[0] == 0
         assert db.execute('SELECT COUNT(*) FROM credit_lots').fetchone()[0] == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('unified,accepted,expected', [(True, True, ['GB']), (True, False, []), (False, False, ['JP', 'US'])])
+async def test_login_countries_follow_accepted_server_policy(tmp_path, unified, accepted, expected):
+    import httpx
+    from python.cloud.app import create_app
+    from python.cloud.auth import provider_consent_version
+    config = CloudConfig(root=tmp_path, origin='https://app.test', secret='s'*32,
+        supabase_url='https://supabase.test', supabase_key='fixture', legal_approved=True,
+        unified_enabled=unified, region_policies=(
+            ('GB', {'accepted': accepted, 'version': 'FIXTURE-NOT-REGIONAL-APPROVAL'}),
+            ('JP', {'accepted': False, 'version': 'fixture'}),
+            ('US', {'accepted': 'true', 'version': 'fixture'}),
+            ('CA', {'version': 'fixture'})))
+    calls = []
+    def provider(request):
+        calls.append(request)
+        assert request.url.host == 'supabase.test' and request.url.path == '/auth/v1/otp'
+        return httpx.Response(200, json={})
+    app = create_app(config, transport=httpx.MockTransport(provider))
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url=config.origin,
+                                headers={'Origin': config.origin}) as client:
+        for endpoint in ('/api/cloud/status', '/api/mobile/status'):
+            status = (await client.get(endpoint)).json()
+            assert status['login_countries'] == expected
+            assert status['login_available'] is bool(expected)
+            assert 'region_policies' not in status
+        if unified:
+            version = provider_consent_version(config)
+            body = {'email': 'fixture@example.test', 'country': 'GB', 'consent': True,
+                    'operator_backend': config.operator_backend, 'provider_consent_version': version,
+                    'provider_disclosure_version': version}
+            assert (await client.post('/api/cloud/auth/login', json=body)).status_code == 403
+            assert not calls
+            eligibility = await client.post('/api/cloud/app/eligibility', json={'country': 'GB', 'age': 25})
+            assert eligibility.status_code == (200 if accepted else 403)
+            if accepted:
+                body['eligibility_ticket'] = eligibility.json()['ticket']
+                assert (await client.post('/api/cloud/auth/login', json=body)).status_code == 200
+                assert len(calls) == 1
+                body['country'] = 'JP'
+                assert (await client.post('/api/cloud/auth/login', json=body)).status_code == 403
+                assert len(calls) == 1
+    with app.state.store.transaction() as db:
+        assert db.execute('SELECT COUNT(*) FROM accounts').fetchone()[0] == 0
+        assert db.execute('SELECT COUNT(*) FROM credit_lots').fetchone()[0] == 0
