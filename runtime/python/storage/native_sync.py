@@ -215,6 +215,7 @@ class NativeSync:
 
     async def _expand(self, entity):
         from python.cloud.entity_transfers import CHUNK_BYTES
+        from python.cloud.json_stream import JsonStream
         ref = entity['payload_ref']
         if (not isinstance(ref, dict) or ref.get('id') != entity.get('id') or ref.get('revision') != entity.get('revision')
             or type(ref.get('size')) is not int or not 0 < ref['size'] <= 1_000_000_000
@@ -222,7 +223,7 @@ class NativeSync:
             or ref.get('chunk_bytes') != CHUNK_BYTES or type(ref.get('chunks')) is not int or ref['chunks'] != math.ceil(ref['size'] / CHUNK_BYTES)
             or not isinstance(ref.get('sha256'), str) or not re.fullmatch('[a-f0-9]{64}', ref['sha256'])):
             raise CloudError('invalid_sync_response')
-        raw = bytearray()
+        parser, digest, size = JsonStream(), hashlib.sha256(), 0
         for index in range(ref['chunks']):
             self._transfer_active()
             part = await self._request(f"/sync/transfers/{ref['transfer_id']}/parts/{index}")
@@ -230,12 +231,14 @@ class NativeSync:
             if not isinstance(data, str) or len(data) > 4 * math.ceil(CHUNK_BYTES / 3): raise CloudError('invalid_sync_response')
             try: chunk = base64.b64decode(data, validate=True)
             except ValueError as exc: raise CloudError('invalid_sync_response') from exc
-            if len(chunk) != min(CHUNK_BYTES, ref['size'] - len(raw)) or hashlib.sha256(chunk).hexdigest() != part.get('sha256'):
+            if len(chunk) != min(CHUNK_BYTES, ref['size'] - size) or hashlib.sha256(chunk).hexdigest() != part.get('sha256'):
                 raise CloudError('transfer_hash_mismatch', 409)
-            raw.extend(chunk)
-        if len(raw) != ref['size'] or hashlib.sha256(raw).hexdigest() != ref['sha256']:
+            size += len(chunk); digest.update(chunk)
+            try: parser.feed(chunk)
+            except (ValueError, UnicodeError) as exc: raise CloudError('invalid_sync_response') from exc
+        if size != ref['size'] or digest.hexdigest() != ref['sha256']:
             raise CloudError('transfer_hash_mismatch', 409)
-        try: payload = json.loads(raw)
+        try: payload = parser.finish()
         except (ValueError, UnicodeError) as exc: raise CloudError('invalid_sync_response') from exc
         if not isinstance(payload, dict): raise CloudError('invalid_sync_response')
         self._transfer_active()

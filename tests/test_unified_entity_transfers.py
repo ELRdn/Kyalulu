@@ -56,6 +56,19 @@ def send_part(transfers, user, transfer, index, raw):
     return transfers.append(user, transfer, index, base64.b64encode(raw).decode(), hashlib.sha256(raw).hexdigest())
 
 
+@pytest.mark.parametrize('raw', [b'{"request_id":"invalid","changes":[]} {}', b'{"request_id":"invalid","changes":[}', b'{"request_id":"invalid","changes":[NaN]}', b'{"request_id":"invalid","changes":[],"text":"\xff"}'])
+def test_invalid_stream_never_commits_or_discards_the_staged_source(service, raw):
+    user = owner(service)
+    transfer = service.transfers.begin(user, 'invalid', len(raw), hashlib.sha256(raw).hexdigest())['transfer_id']
+    send_part(service.transfers, user, transfer, 0, raw)
+    with pytest.raises(CloudError, match='invalid_sync_request'):
+        service.transfers.commit(user, transfer)
+    assert service.pull(user)['changes'] == []
+    assert service.transfers.pages.file(user, transfer).exists()
+    with service.store.transaction() as db:
+        assert not db.execute('SELECT 1 FROM app_sync_requests WHERE owner=?', (user,)).fetchone()
+
+
 def test_large_batch_resumes_and_commits_once_after_hash_and_full_validation(service):
     user = owner(service)
     body = large_body()
@@ -319,6 +332,44 @@ async def test_native_outbox_resumes_large_chat_after_restart_and_downloads_it_t
             return await inner.handle_async_request(request)
     receiver.transport = NoRepeatedParts()
     receiver.receive(await receiver.remote('/sync?cursor=0'))
+
+
+@pytest.mark.asyncio
+async def test_native_bad_total_download_hash_preserves_database_cursor_and_source(accounts, pc, tmp_path):
+    from python.storage.native_sync import NativeSync
+    from python.storage import db as storage
+    sender = await enrolled(accounts, pc)
+    with sqlite3.connect(pc) as db:
+        for message in large_body()['changes'][0]['payload']['messages']:
+            db.execute("INSERT INTO chat_history(session_id,role,content) VALUES('selected','user',?)", (message['content'],))
+    sender.configure(['selected'], True, consent=True)
+    await sender.run()
+    target = tmp_path / 'bad-total-receive.db'
+    with sqlite3.connect(target) as db:
+        db.executescript(storage.DDL)
+        for statement in storage.MIGRATIONS: db.execute(statement)
+    inner = httpx.ASGITransport(accounts[0])
+    parts = []
+    class BadTotal(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request):
+            response = await inner.handle_async_request(request)
+            if '/parts/' in request.url.path: parts.append(request.url.path)
+            if request.url.path == '/api/cloud/app/sync' and request.method == 'GET':
+                await response.aread()
+                value = response.json()
+                for entity in value['changes']:
+                    if 'payload_ref' in entity: entity['payload_ref']['sha256'] = '0'*64
+                await response.aclose()
+                return httpx.Response(response.status_code, json=value)
+            return response
+    receiver = NativeSync(target, sender.origin, sender.owner, sender.token, transport=BadTotal())
+    receiver.configure([], True, consent=True)
+    with pytest.raises(CloudError, match='transfer_hash_mismatch'): await receiver.run()
+    assert parts and receiver.status()['cursor'] == 0
+    with sqlite3.connect(target) as db:
+        assert db.execute('SELECT COUNT(*) FROM chat_history').fetchone()[0] == 0
+    with sqlite3.connect(pc) as db:
+        assert db.execute("SELECT COUNT(*) FROM chat_history WHERE session_id='selected'").fetchone()[0] == 29
 
 
 @pytest.mark.asyncio

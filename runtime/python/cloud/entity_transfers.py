@@ -12,6 +12,7 @@ from uuid import UUID
 
 from .store import CloudError
 from .transfers import Transfers, connection
+from .json_stream import JsonStream
 
 CHUNK_BYTES = 1024 * 1024
 INLINE_BYTES = 1_500_000
@@ -193,15 +194,18 @@ class EntityTransfers:
             self.discard_upload(owner, meta['request_id'])
             return receipt
         if meta['next'] != math.ceil(meta['raw_size'] / CHUNK_BYTES): raise CloudError('transfer_incomplete', 409)
-        # shortcut: commit assembles one JSON batch; stream entity projection before accepting 1 GB single-batch workloads.
-        raw = bytearray()
-        with connection(self.pages.file(owner, transfer)) as db:
-            for (encoded,) in db.execute('SELECT payload FROM pages ORDER BY seq'):
-                part = json.loads(self.store.decrypt(encoded))['rows'][0]
-                raw.extend(base64.b64decode(part['data'], validate=True))
-        if len(raw) != meta['raw_size'] or hashlib.sha256(raw).hexdigest() != meta['raw_sha256']:
-            raise CloudError('transfer_hash_mismatch', 409)
-        try: body = json.loads(raw)
+        # shortcut: decoded objects/scalars remain whole; segment storage before 1 GB single-batch acceptance.
+        parser, digest, size = JsonStream(), hashlib.sha256(), 0
+        try:
+            with connection(self.pages.file(owner, transfer)) as db:
+                for (encoded,) in db.execute('SELECT payload FROM pages ORDER BY seq'):
+                    part = json.loads(self.store.decrypt(encoded))['rows'][0]
+                    raw = base64.b64decode(part['data'], validate=True)
+                    size += len(raw); digest.update(raw); parser.feed(raw)
+            if size != meta['raw_size'] or digest.hexdigest() != meta['raw_sha256']:
+                raise CloudError('transfer_hash_mismatch', 409)
+            body = parser.finish()
+        except CloudError: raise
         except (ValueError, UnicodeError) as exc: raise CloudError('invalid_sync_request') from exc
         if not isinstance(body, dict) or set(body) != {'request_id', 'changes'} or body['request_id'] != meta['request_id']:
             raise CloudError('invalid_sync_request')
