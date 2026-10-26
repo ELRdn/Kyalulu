@@ -14,7 +14,7 @@ import { useDocumentTitle } from '../lib/title';
 import { friendlyMessage } from '../lib/errors';
 import { useRuntimeAccess } from '../components/RuntimeGate';
 import { fetchBrowseCatalog, isCloudGuest } from '../lib/cloudGuest';
-import { preferences, savePreferences, labels, useLanguage } from '../lib/appContext';
+import { savePreferences, labels, useLanguage, usePreferences } from '../lib/appContext';
 import { recommend } from '../lib/recommendations';
 import CommunityWorks from '../components/CommunityWorks';
 import './pages.css';
@@ -24,7 +24,7 @@ export default function Home() {
   const guest=isCloudGuest(useRuntimeAccess()),navigate=useNavigate(),language=useLanguage(),t=labels[language],en=language==='en';
   const [sessions,setSessions]=useState<SessionInfo[]>([]),[worlds,setWorlds]=useState<WorldInfo[]>([]),[characters,setCharacters]=useState<CharacterInfo[]>([]);
   const [loading,setLoading]=useState(true),[error,setError]=useState<{cause:unknown}|null>(null),[retry,setRetry]=useState(0);
-  const [prefs,setPrefs]=useState(preferences),[adult]=useAdultContent(),name=useDisplayName();
+  const prefs=usePreferences(),[adult]=useAdultContent(),name=useDisplayName();
   useDocumentTitle(null);
   useEffect(()=>{
     let active=true;setLoading(true);setError(null);
@@ -32,10 +32,9 @@ export default function Home() {
       .catch(e=>{if(active)setError({cause:e});}).finally(()=>{if(active)setLoading(false);});
     return()=>{active=false;};
   },[adult,guest,retry]);
-  useEffect(()=>{const refresh=()=>setPrefs(preferences());window.addEventListener('kyalulu-app-context',refresh);return()=>window.removeEventListener('kyalulu-app-context',refresh);},[]);
   const favorites=useSavedCharacters();
   const featured=recommend(characters,{...prefs,favorites},adult).slice(0,10),recent=sessions.filter(s=>s.count>0).slice(0,4);
-  const choose=(id:string,key:'favorites'|'dismissed')=>{const next={...prefs,[key]:prefs[key].includes(id)?prefs[key].filter(v=>v!==id):[...prefs[key],id]};savePreferences(next);setPrefs(next);};
+  const choose=(id:string,key:'favorites'|'dismissed')=>{const next={...prefs,[key]:prefs[key].includes(id)?prefs[key].filter(v=>v!==id):[...prefs[key],id]};savePreferences(next);};
   return <div className="k-page k-page--home">
     <header className="k-home-identity"><img src={`${import.meta.env.BASE_URL}mascot/v1.2/sit.png`} alt="" width={72} height={72}/><div><h1>Kyalulu</h1><p>{en?`Welcome, ${name}`:`${name}、今日は誰と話す？`}</p></div></header>
     {error&&<p role="alert">{friendlyMessage(error.cause,language)} <Button variant="secondary" onClick={()=>setRetry(v=>v+1)}>{en?'Retry':'再読み込み'}</Button></p>}
