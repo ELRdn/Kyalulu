@@ -23,6 +23,12 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 
 ## Delivered Behavior
 
+- Actual initial entry verifies server eligibility and a complete ticket before
+  the three optional interest screens. Interest edits retain current language,
+  favorites and other unedited fields, and reset volatile choices across owners.
+  Actual JA/EN app tests cover back/skip/later edits, Cloud chat login and anonymous
+  device-only conversation creation. See [entry validation](validation/2026-10-26-unified-entry.md).
+
 - Recommendations update immediately for same-tab and cross-tab preference
   changes, using existing tags and eligible catalog data. General surfaces retain
   publication ratings; guest favorites persist in their browser scope without
