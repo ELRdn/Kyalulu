@@ -2,6 +2,8 @@
 
 Application source: `e25ec63`. This is a Chromium fixture acceptance record,
 not a production migration or physical-device/model-capacity qualification.
+The final language/accessibility follow-up and current retained candidate are
+`0d9b2f5`, recorded below. The initial hashes remain as historical evidence.
 
 ## Defect and change
 
@@ -110,3 +112,50 @@ Real model transfer/capacity, interrupted large-model recovery, Android/iPhone,
 public-domain delivery/Cloudflare, OAuth, regional/provider approvals and
 production data/ledger reconciliation remain unverified. No production data,
 keys, databases, deployments or financial state were changed.
+
+## Final JA/EN follow-up: `0d9b2f5`
+
+Source consent, export, privacy/fallback guidance and connection states now follow
+the selected language. Both neutral migration pages expose the existing shared
+JA/EN preference control. State messages store a status key so a language change
+updates the visible status without restarting the channel. The controls have
+explicit accessible names and a minimum 44px height. Protocol, origin checks,
+consent, model descriptors and authored data are unchanged.
+
+Both complete real-page migration cases passed: **393px light** and **1280px
+dark**. Each switches the live source from JA to EN for consent, translates its
+review status back to JA, and switches the destination preview JA→EN→JA before
+confirming. All earlier cancellation, corruption, replay, source-update/data
+retention and actual chat reload checks pass in both. Both pages fit their
+viewport, actual theme matches the requested theme, and source control height
+is at least 44px. Observed API/external/page errors remain zero in each case.
+The PC/dark case uses Web extracted from the actual final Cloud tar. The
+smartphone/light case uses the matching build before packaging; all packaged
+manifest/precache hashes were checked separately.
+
+Clean final-source TypeScript/unified/Mobile builds and the same **70 unit tests**
+passed again. Browser checks initially exposed the ambiguous nested-select label;
+explicit accessible names fixed it. This is not a fresh full-suite, real-device,
+screen-reader or IME acceptance claim; raw technical diagnostics and full-app
+localization remain in the delivery checklist.
+
+Final candidates are retained at `.artifacts/unified-canonical-0d9b2f5/`:
+
+- Cloud SHA-256:
+  `23faeabf56c10eee3f1642c9952e45040eb2b7a9c116f7cc12193709d4e61295`.
+  All 222 manifest hashes / 61 precache entries verified; source inventory 748.
+  App worker version: `35ea476ff27184fbc7d8`.
+- Mobile: 78 files / 40 verified precache entries; source inventory 748 and ZIP
+  SHA-256 `9632060a434acea1febb86223943d7f6677773ea03734a5c2e87dbc021ccd368`.
+  Mobile worker version: `569dd3090dc9c33b18ed`.
+- Selected migration/recovery/Runtime/proxy/collector sources match the Git
+  export and separately normalized Git blobs. All Mobile manifest hashes and
+  retained-copy hashes were independently checked. New source inventory includes
+  this migration record. Managed Relay and reused WASM inputs are unchanged.
+
+`e25ec63` remains the initial functional acceptance; `1b34575` is superseded by
+the accessible-name fix. Use the final candidate for subsequent acceptance.
+The two-case local summary is
+`.artifacts/unified-mobile-migration-language-browser-results.json`; source and
+preview screenshots are retained separately. Add `--width 1280 --theme dark` to
+the reproduction command for the PC case; defaults are 393px/light.

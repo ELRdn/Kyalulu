@@ -120,6 +120,6 @@ canonical配信のCloud/Native共通化、統合Caddy設定と実HTTPS proxy越�
 [Unified proxy](validation/2026-10-26-unified-proxy.md)、本番移行・復旧条件は
 [Deployment](UNIFIED_DEPLOYMENT.md) に記録する。本番のApp API・Device・移行URLはまだ404。
 旧公開Workerからの実origin popup・分割会話移行・明示更新と下書き保護、
-修正版 `e25ec63` のCloud/旧Mobile候補は
+日英の転送中切替・393px明/1280px暗の受入れと最終 `0d9b2f5` のCloud/旧Mobile候補は
 [Mobile migration](validation/2026-10-26-unified-mobile-migration.md) に記録する。
 先行 `a6cbd98` のApp候補は再取込み時の下書き復活があるため最新として使用しない。

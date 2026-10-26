@@ -92,8 +92,8 @@ approvals and complete runtime/device/recovery acceptance remain separate gates.
 
 ## Final retained candidates
 
-Update: the App candidate below is superseded by `e25ec63` for a migration draft
-fix. Its scope, hashes and old-worker/popup acceptance are recorded in
+Update: the App candidate below is superseded by `0d9b2f5` for migration draft
+protection and JA/EN accessibility. Its scope, hashes and old-worker/popup acceptance are recorded in
 [Mobile migration](2026-10-26-unified-mobile-migration.md). The following is the
 earlier Worker-isolation/PWA evidence, not a fresh test claim for the new build.
 
