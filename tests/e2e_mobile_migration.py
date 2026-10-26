@@ -219,12 +219,15 @@ async def check(args):
                     await popup.get_by_role('button', name='Allow conversation and saved-model transfer', exact=True).click()
                     await target.get_by_role('button', name='取り込む', exact=True).wait_for()
                     await popup.get_by_role('status').filter(has_text='Review the contents').wait_for()
+                    assert await popup.evaluate('document.documentElement.dataset.theme') == args.theme
+                    assert await popup.get_by_label('Language', exact=True).evaluate('(el)=>el.getBoundingClientRect().height>=44')
                     assert await popup.evaluate('document.documentElement.scrollWidth<=innerWidth')
                     await popup.screenshot(path=str(args.output / 'source-english.png'), full_page=True, animations='disabled')
                     await popup.get_by_label('Language', exact=True).select_option('ja')
                     await popup.get_by_role('status').filter(has_text='統合アプリで内容を確認').wait_for()
                     await target.get_by_label('表示言語', exact=True).select_option('en')
                     await target.get_by_role('button', name='Import', exact=True).wait_for()
+                    assert await target.evaluate('document.documentElement.dataset.theme') == args.theme
                     assert await target.evaluate('document.documentElement.scrollWidth<=innerWidth')
                     await target.screenshot(path=str(args.output / 'preview-english.png'), full_page=True, animations='disabled')
                     await target.get_by_label('Language', exact=True).select_option('ja')
