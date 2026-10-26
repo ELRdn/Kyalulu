@@ -124,12 +124,20 @@ async def main():
                         await expect(google).to_be_disabled();await login.locator('form').dispatch_event('submit');assert len(posts)==2
                         await expect(login).to_have_attribute('lang',language)
                         assert await page.evaluate('document.documentElement.scrollWidth<=innerWidth')
+                        await login.evaluate('(node)=>{node.scrollTop=0;}')
+                        bounds=await login.evaluate('node=>({top:node.getBoundingClientRect().top,bottom:node.getBoundingClientRect().bottom,brand:node.querySelector(".k-connect-screen__brand").getBoundingClientRect().top,height:innerHeight})')
+                        assert bounds['top']<=bounds['brand']<bounds['bottom']<=bounds['height']+1, bounds
                         await page.screenshot(path=str(OUTPUT/f'login-{language}-{width}-{theme}.png'),full_page=True,animations='disabled')
+                        footer=login.locator('.k-connect-screen__body > p').last
+                        await footer.scroll_into_view_if_needed()
+                        assert await footer.evaluate('(node)=>{const rect=node.getBoundingClientRect(),parent=node.closest("main").getBoundingClientRect();return rect.top>=parent.top&&rect.bottom<=Math.min(parent.bottom,innerHeight)+1;}')
+                        await page.screenshot(path=str(OUTPUT/f'login-footer-{language}-{width}-{theme}.png'),full_page=True,animations='disabled')
                         assert not external and not errors
                         results.append({'language':language,'width':width,'theme':theme,'live_translation_keeps_email_country_consent':True,
                             'language_change_refetches_nothing':True,'unknown_disclosure_blocks_and_requires_fresh_consent':True,
                             'mock_email_success_and_http_error_translated':True,'busy_fields_locked_analytics_revocable':True,
                             'unavailable_login_stays_closed':True,
+                            'long_form_header_and_footer_reachable':True,
                             'status_reads':len(status_reads),'explicit_login_attempts':len(posts)})
                     finally:
                         release.set();await context.close()

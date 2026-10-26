@@ -23,6 +23,12 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 
 ## Delivered Behavior
 
+- Cloud sign-in, consent, invitation/availability, provider explanations and
+  success/errors follow JA/EN while retaining entered data and known disclosure
+  gates. Pending authentication respects the latest analytics choice; replies
+  after leaving the page cannot grant analytics or redirect. Actual app fixtures
+  and callback tests pass. See [login language validation](validation/2026-10-26-unified-login-language.md).
+
 - Actual initial entry verifies server eligibility and a complete ticket before
   the three optional interest screens. Interest edits retain current language,
   favorites and other unedited fields, and reset volatile choices across owners.
