@@ -214,8 +214,15 @@ async def check(args):
                     assert popup.url.startswith(MOBILE + '/migration/#')
                     assert await popup.evaluate('window.opener !== null && !crossOriginIsolated')
                     assert await target_state(target) == []
-                    await popup.get_by_role('button').filter(has_text='Allow transfer').click()
+                    await popup.get_by_label('表示言語', exact=True).select_option('en')
+                    await popup.get_by_role('button', name='Allow conversation and saved-model transfer', exact=True).click()
                     await target.get_by_role('button', name='取り込む', exact=True).wait_for()
+                    await popup.get_by_role('status').filter(has_text='Review the contents').wait_for()
+                    await popup.get_by_label('Language', exact=True).select_option('ja')
+                    await popup.get_by_role('status').filter(has_text='統合アプリで内容を確認').wait_for()
+                    await target.get_by_label('表示言語', exact=True).select_option('en')
+                    await target.get_by_role('button', name='Import', exact=True).wait_for()
+                    await target.get_by_label('Language', exact=True).select_option('ja')
                     assert await target_state(target) == []
                     await target.get_by_role('button', name='取り込む', exact=True).click()
                     await target.locator('dialog[open]').get_by_role('button', name='キャンセル', exact=True).click()
@@ -300,6 +307,7 @@ async def check(args):
                         'updated_worker_version': new_version, 'corrupt_file_rejected_without_writes': True,
                         'legacy_active_worker_and_original_data_preserved': True, 'real_origin_neutral_popup_and_consent': True,
                         'cancelled_pair_and_import_write_nothing': True, 'multichunk_direct_copy_and_history_snapshots': True,
+                        'language_switch_keeps_live_channel_and_import_preview': True,
                         'cleared_draft_and_pending_preserved_on_replay': True, 'same_file_can_be_selected_again': True,
                         'source_open_blocks_update': True,
                         'explicit_mobile_update_keeps_idb_and_opfs': True, 'file_export_hash_and_replay': True,
