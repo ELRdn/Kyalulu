@@ -17,6 +17,24 @@ CHUNK_BYTES = 1024 * 1024
 INLINE_BYTES = 1_500_000
 
 
+def json_chunks(value):
+    """Preserve compact JSON bytes while bounding the additional UTF-8 buffers."""
+    # shortcut: JSONEncoder retains one encoded scalar; segment stored strings before claiming bounded single-value memory.
+    pending = bytearray()
+    for text in json.JSONEncoder(ensure_ascii=False, separators=(',', ':')).iterencode(value):
+        for start in range(0, len(text), CHUNK_BYTES // 4):
+            raw = text[start:start + CHUNK_BYTES // 4].encode()
+            offset = 0
+            while offset < len(raw):
+                length = min(len(raw) - offset, CHUNK_BYTES - len(pending))
+                pending.extend(raw[offset:offset + length]); offset += length
+                if len(pending) == CHUNK_BYTES:
+                    yield bytes(pending)
+                    pending.clear()
+    if pending:
+        yield bytes(pending)
+
+
 class EntityTransfers:
     def __init__(self, service):
         self.service, self.store = service, service.store
@@ -193,9 +211,12 @@ class EntityTransfers:
 
     def download(self, owner, entity, *, inline_limit=INLINE_BYTES):
         self.service.available()
-        payload = json.dumps(entity['payload'], ensure_ascii=False, separators=(',', ':')).encode()
-        if len(payload) <= inline_limit: return entity
-        if len(payload) > 1_000_000_000: raise CloudError('transfer_too_large', 413)
+        size, digest = 0, hashlib.sha256()
+        for raw in json_chunks(entity['payload']):
+            size += len(raw)
+            if size > 1_000_000_000: raise CloudError('transfer_too_large', 413)
+            digest.update(raw)
+        if size <= inline_limit: return entity
         direction = 'app-download:' + entity['id']
         for file in self.pages.directory(owner).glob('*.db'):
             try: meta = self.pages.inspect(owner, file.stem)
@@ -207,18 +228,17 @@ class EntityTransfers:
                 if meta['revision'] == entity['revision'] and meta['ready']:
                     return {key: value for key, value in entity.items() if key != 'payload'} | {'payload_ref': meta['entity_ref'], 'message_count': len(entity['payload'].get('messages', []))}
                 self.pages.delete(owner, file.stem)
-        if shutil.disk_usage(self.pages.directory(owner)).free < len(payload) * 3:
+        if shutil.disk_usage(self.pages.directory(owner)).free < size * 3:
             raise CloudError('transfer_capacity_not_available', 503)
         transfer = self.pages.create(owner, direction=direction, selected=[], revision=entity['revision'])
-        ref = {'transfer_id': transfer, 'size': len(payload), 'sha256': hashlib.sha256(payload).hexdigest(),
-               'chunk_bytes': CHUNK_BYTES, 'chunks': math.ceil(len(payload) / CHUNK_BYTES), 'id': entity['id'], 'revision': entity['revision']}
+        ref = {'transfer_id': transfer, 'size': size, 'sha256': digest.hexdigest(),
+               'chunk_bytes': CHUNK_BYTES, 'chunks': math.ceil(size / CHUNK_BYTES), 'id': entity['id'], 'revision': entity['revision']}
         try:
             with connection(self.pages.file(owner, transfer)) as db:
                 meta = self.pages.meta(db)
-                meta['download_size'] = len(payload)
+                meta['download_size'] = size
                 self.pages.update_meta(db, meta)
-            for index, offset in enumerate(range(0, len(payload), CHUNK_BYTES)):
-                raw = payload[offset:offset + CHUNK_BYTES]
+            for index, raw in enumerate(json_chunks(entity['payload'])):
                 self.pages.append(owner, transfer, index, {'table': 'app_entity_bytes', 'rows': [
                     {'data': base64.b64encode(raw).decode(), 'sha256': hashlib.sha256(raw).hexdigest()}]})
             with connection(self.pages.file(owner, transfer)) as db:

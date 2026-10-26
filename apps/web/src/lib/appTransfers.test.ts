@@ -5,7 +5,7 @@ import { encodeBytes, decodeBytes } from './remoteRpc';
 
 const chunkBytes=1024*1024,transfer='11111111-1111-4111-8111-111111111111';
 const hash=(raw:Uint8Array)=>new Sha256().update(raw).digest();
-function fixture(){const payload={messages:[{content:'あ🙂'.repeat(330000)}]},body=JSON.stringify({request_id:'durable',changes:[{payload}]});return {payload,body,raw:new TextEncoder().encode(body)};}
+function fixture(){const payload={messages:[{content:'あ🙂'.repeat(330000)}]},body={request_id:'durable',changes:[{payload}]};return {payload,body,raw:new TextEncoder().encode(JSON.stringify(body))};}
 
 it('resumes the same upload and hashes the exact UTF-8 bytes before committing',async()=>{
   const {body,raw}=fixture(),parts=[raw.subarray(0,chunkBytes)];
@@ -44,11 +44,43 @@ it('uses a committed receipt after a restart without sending the body again',asy
 });
 
 it('reconciles a pre-upgrade inline receipt through the original request validation',async()=>{
-  const body=JSON.stringify({request_id:'pre-upgrade',changes:[{payload:{text:'x'.repeat(1_600_000)}}]});
+  const body={request_id:'pre-upgrade',changes:[{payload:{text:'x'.repeat(1_600_000)}}]};
   const result={changes:[{id:'chat',revision:1,deleted:false}]};
   const call=vi.fn(async(path:string,init?:RequestInit)=>{
     if(path==='/transfers')return {inline_receipt_required:true};
     expect(path).toBe('');expect(JSON.parse(String(init?.body)).request_id).toBe('pre-upgrade');return result;
   });
   expect(await uploadSync(body,call,async()=>{})).toBe(result);expect(call).toHaveBeenCalledTimes(2);
+});
+
+it('keeps small requests inline with the original JSON serialization',async()=>{
+  const body={request_id:'small',changes:[{payload:{text:'茶🙂',optional:undefined,values:[undefined,null,-0,true]}}]},result={changes:[]};
+  const call=vi.fn(async(path:string,init?:RequestInit)=>{expect(path).toBe('');expect(init?.body).toBe(JSON.stringify(body));return result;});
+  expect(await uploadSync(body,call,async()=>{})).toBe(result);expect(call).toHaveBeenCalledOnce();
+});
+
+it('streams exact legacy bytes across Unicode and escaped-string boundaries using bounded encodings',async()=>{
+  const key='\"\n\u0000'.repeat(3000),text='x'.repeat(4095)+'🙂'+'\ud800\udc00\ud800\udfff\udfff\ud800\"\\\n\t\r\b\f\u0000'.repeat(90000);
+  const body={request_id:'escaped',changes:[{payload:{[key]:text,values:[null,true,false,undefined,-0,1e30],omit:undefined,nested:{b:2,a:'茶'}}}]};
+  const raw=new TextEncoder().encode(JSON.stringify(body)),sha256=hash(raw),parts:Uint8Array[]=[];
+  const encode=vi.spyOn(TextEncoder.prototype,'encode');
+  try{
+    const call=async(path:string,init?:RequestInit)=>{
+      const value=JSON.parse(String(init?.body));
+      if(path==='/transfers'){expect(value).toMatchObject({size:raw.length,sha256});return {transfer_id:transfer,next:0,chunk_bytes:chunkBytes};}
+      if(path.endsWith('/commit'))return {changes:[]};
+      const part=decodeBytes(value.data);expect(part.length).toBe(Math.min(chunkBytes,raw.length-parts.length*chunkBytes));
+      const offset=parts.length*chunkBytes;
+      expect(part.every((byte,index)=>byte===raw[offset+index])).toBe(true);parts.push(part);return {next:parts.length};
+    };
+    await uploadSync(body,call,async()=>{});
+    expect(parts.length).toBe(Math.ceil(raw.length/chunkBytes));
+    expect(encode.mock.calls.every(([text])=>!text||text.length<=4096*6)).toBe(true);
+  }finally{encode.mockRestore();}
+});
+
+it('rejects cyclic and non-JSON outbox objects before any network call',async()=>{
+  const call=vi.fn(),cycle:any={};cycle.self=cycle;
+  for(const payload of [cycle,new Date(),{value:1n}])await expect(uploadSync({request_id:'invalid',changes:[{payload}]},call,async()=>{})).rejects.toThrow();
+  expect(call).not.toHaveBeenCalled();
 });
