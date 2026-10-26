@@ -9,7 +9,7 @@ from tempfile import TemporaryDirectory
 from urllib.parse import quote, urlsplit
 from uuid import uuid4
 import httpx
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright, expect
 from browser_fixture_server import local_vite
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,7 +27,7 @@ OUTPUT = ROOT / '.artifacts/publication-browser'
 async def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
     owner, moderator, reader = (str(uuid4()) for _ in range(3))
-    blocked, writes, errors, results = [], [], [], []
+    blocked, writes, errors, results, catalog_reads = [], [], [], [], []
     with TemporaryDirectory(prefix='db-', dir=OUTPUT) as directory:
         cfg = CloudConfig(root=Path(directory), origin='https://app.test', secret='s' * 32, unified_enabled=True,
             legal_approved=True, community_enabled=True, moderator_owners=(moderator,),
@@ -57,6 +57,8 @@ async def main():
                             await route.continue_(); return
                         headers = {key: value for key, value in request.headers.items() if key.lower() in {'content-type', 'cookie', 'x-kyalulu-owner', 'x-kyalulu-country', 'x-kyalulu-eligibility'}}
                         headers['Origin'] = cfg.origin
+                        if parsed.path == '/api/cloud/app/works' and request.method == 'GET':
+                            catalog_reads.append(parsed.query)
                         cookies = SimpleCookie(request.headers.get('cookie', ''))
                         headers['cookie'] = SESSION_COOKIE + '=' + cookies['fixture_owner'].value if 'fixture_owner' in cookies else ''
                         if request.method not in ('GET', 'HEAD'):
@@ -160,10 +162,55 @@ async def main():
                     await go('/published'); await go('/published/' + adult['id'])
                     await page.get_by_role('alert').wait_for()
                     assert 'AGE-GATED-MARKER' not in await page.locator('body').inner_text()
+                    suggestion_author = str(uuid4())
+                    service.store.account(suggestion_author, consent='fixture')
+                    service.store.secret(suggestion_author, 'app-eligibility', json.dumps(service.general_eligibility('JP', 20)))
+                    suggestions = {}
+                    for name, tags in (('Plain suggestion', []), ('Comfort suggestion', ['癒し']), ('School suggestion', ['academy'])):
+                        suggestion = service.submit(suggestion_author, {'name': name, 'data': {'tags': tags}}, 'general')
+                        service.review(moderator, suggestion['id'], 1, 'approved', 'Fixture review', {'content_reviewed': True, 'prohibited_content_absent': True, 'rating_correct': True})
+                        suggestions[name] = suggestion['id']
+                    settings = await context.new_page()
+                    await settings.goto(origin + '/@fs/' + quote((ROOT / 'tests/fixtures/publications.html').as_posix(), safe='/:'))
+                    await settings.wait_for_function('window.__PUBLICATIONS_FIXTURE__ !== undefined')
+                    async def preference(**changes):
+                        await settings.evaluate('(value)=>window.__PUBLICATIONS_FIXTURE__.preference(value)', changes)
+                    for path in ('/published', '/recommendations'):
+                        await preference(genres=[], moods=[], activities=[], favorites=[], dismissed=[])
+                        await go(path)
+                        await page.get_by_role('link', name='School suggestion', exact=True).wait_for()
+                        first = page.locator('.k-card h3 a').first
+                        reads = len(catalog_reads)
+                        assert reads > 0, 'Catalog traffic must be observed before checking for extra requests'
+                        await preference(moods=['healing'])
+                        await expect(first).to_have_text('Comfort suggestion')
+                        await preference(favorites=[suggestions['Plain suggestion']])
+                        await expect(first).to_have_text('Plain suggestion')
+                        await preference(dismissed=[suggestions['Plain suggestion']])
+                        await expect(page.get_by_role('link', name='Plain suggestion', exact=True)).to_have_count(0)
+                        await expect(first).to_have_text('Comfort suggestion')
+                        await preference(dismissed=[])
+                        await expect(first).to_have_text('Plain suggestion')
+                        assert len(catalog_reads) == reads, 'Preference changes must not refetch public works'
+                        assert not await page.get_by_role('link', name='Adult gate fixture', exact=True).count()
+                    service.publications.block(reader, service.publications.detail(reader, suggestions['Plain suggestion'])['author_id'], True)
+                    await go('/published'); await go('/recommendations')
+                    await page.get_by_text('No public works match these filters.', exact=True).wait_for()
+                    next_reader = str(uuid4())
+                    service.store.account(next_reader, consent='fixture')
+                    service.store.secret(next_reader, 'app-eligibility', json.dumps(service.general_eligibility('JP', 20)))
+                    app.state.auth.save(next_reader, next_reader, {'access_token': 'fixture', 'refresh_token': 'fixture', 'expires_in': 3600})
+                    await identity(next_reader, 'en')
+                    await page.get_by_role('link', name='School suggestion', exact=True).wait_for()
+                    baseline = service.publications.catalog(next_reader)['works'][0]['name']
+                    await expect(page.locator('.k-card h3 a').first).to_have_text(baseline)
+                    await settings.close()
                     assert not errors and not blocked, {'pageerrors': errors, 'blocked': blocked}
                     results.append({'pending_approval': True, 'human_checks': True, 'fixed_snapshot': True, 'report_hide_appeal': True,
                         'blocked_before_search': True, 'no_private_submission': True, 'no_external_image': True, 'ja_en': True,
-                        'narrow_light_wide_dark': True, 'adult_separate_and_verified': True, 'expired_age_blocks_link': True, 'writes': len(writes)})
+                        'narrow_light_wide_dark': True, 'adult_separate_and_verified': True, 'expired_age_blocks_link': True,
+                        'live_cross_tab_tag_favorite_dismissal': True, 'preference_changes_refetch_nothing': True,
+                        'recommendation_block_and_owner_isolation': True, 'catalog_reads': len(catalog_reads), 'writes': len(writes)})
                     await context.close()
                 finally:
                     await browser.close()

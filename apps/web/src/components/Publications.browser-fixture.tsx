@@ -4,7 +4,8 @@ import { createRoot } from 'react-dom/client';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import Publications from '../pages/Publications';
 import Published, { PublishedDetail } from '../pages/Published';
-import { rememberOwner, preferences, savePreferences } from '../lib/appContext';
+import CommunityWorks from './CommunityWorks';
+import { rememberOwner, preferences, savePreferences, type AppPreferences } from '../lib/appContext';
 import { setCloud, setCloudOwner } from '../lib/cloudMode';
 import '../index.css';
 
@@ -12,5 +13,6 @@ export function identity(owner:string,ticket:string,language:'ja'|'en'='ja'){
   localStorage.setItem('kyalulu-execution-target','cloud');localStorage.setItem('kyalulu-eligibility-ticket',ticket);
   setCloud(true);setCloudOwner(owner);rememberOwner(owner);savePreferences({...preferences(),language,country:'JP',age:20,accepted:true});
 }
+export function preference(value:Partial<AppPreferences>){savePreferences({...preferences(),...value});}
 function Navigation({ready}:{ready:(go:(path:string)=>void)=>void}){const navigate=useNavigate();ready(navigate);return null;}
-export function mount(node:HTMLElement,ready:(go:(path:string)=>void)=>void){const root=createRoot(node);root.render(<StrictMode><MemoryRouter initialEntries={['/publications']}><Navigation ready={ready}/><Routes><Route path="/publications" element={<Publications/>}/><Route path="/published" element={<Published/>}/><Route path="/published/:publicationId" element={<PublishedDetail/>}/></Routes></MemoryRouter></StrictMode>);return root;}
+export function mount(node:HTMLElement,ready:(go:(path:string)=>void)=>void){const root=createRoot(node);root.render(<StrictMode><MemoryRouter initialEntries={['/publications']}><Navigation ready={ready}/><Routes><Route path="/publications" element={<Publications/>}/><Route path="/published" element={<Published/>}/><Route path="/published/:publicationId" element={<PublishedDetail/>}/><Route path="/recommendations" element={<CommunityWorks/>}/></Routes></MemoryRouter></StrictMode>);return root;}

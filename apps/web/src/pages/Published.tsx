@@ -7,7 +7,7 @@ import Button from '../components/ui/Button';
 import { Input, Textarea } from '../components/ui/Input';
 import { useConfirm } from '../components/ui/Dialog';
 import { useDocumentTitle } from '../lib/title';
-import { preferences, savePreferences } from '../lib/appContext';
+import { preferences, savePreferences, usePreferences } from '../lib/appContext';
 import PublishedCards from '../components/PublishedCards';
 import { recommend } from '../lib/recommendations';
 import './pages.css';
@@ -15,15 +15,16 @@ import { loginPath } from '../lib/cloudGuest';
 
 export default function Published(){const scope=usePublicationScope();return <Catalog key={scope}/>;}
 function Catalog(){
-  const en=useLanguage()==='en',scope=publicationScope(),[params,setParams]=useSearchParams(),rating=params.get('rating')==='adult'?'adult':'general';
+  const en=useLanguage()==='en',scope=publicationScope(),prefs=usePreferences(),[params,setParams]=useSearchParams(),rating=params.get('rating')==='adult'?'adult':'general';
   const [q,setQ]=useState(params.get('q')??''),[tag,setTag]=useState(''),[works,setWorks]=useState<PublishedWork[]>([]),[error,setError]=useState(''),[loading,setLoading]=useState(true),[retry,setRetry]=useState(0);
   const author=params.get('author')??'';useDocumentTitle(en?'Approved works':'承認済みの作品');
-  useEffect(()=>{const abort=new AbortController();setLoading(true);setWorks([]);setError('');const timer=setTimeout(()=>void fetchPublishedWorks(q,tag,rating,author,abort.signal).then(value=>{if(!abort.signal.aborted&&scope===publicationScope())setWorks(recommend(value.map(work=>({...work,nsfw:work.rating==='adult',status:'approved'})),preferences(),rating==='adult'));}).catch(error=>{if(!abort.signal.aborted)setError(publicationError(error,en));}).finally(()=>{if(!abort.signal.aborted)setLoading(false);}),250);return()=>{clearTimeout(timer);abort.abort();};},[q,tag,rating,author,retry,en]);
+  useEffect(()=>{const abort=new AbortController();setLoading(true);setWorks([]);setError('');const timer=setTimeout(()=>void fetchPublishedWorks(q,tag,rating,author,abort.signal).then(value=>{if(!abort.signal.aborted&&scope===publicationScope())setWorks(value);}).catch(error=>{if(!abort.signal.aborted)setError(publicationError(error,en));}).finally(()=>{if(!abort.signal.aborted)setLoading(false);}),250);return()=>{clearTimeout(timer);abort.abort();};},[q,tag,rating,author,retry,en]);
+  const featured=recommend(works,prefs,rating==='adult');
   return <div className="k-page"><h1>{en?'Approved works':'承認済みの作品'}</h1><p>{en?'Public versions are fixed snapshots. Your private Library remains separate.':'公開版は固定したスナップショットです。マイライブラリの原本とは別に保持します。'}</p><Link to="/publications">{en?'Your submissions and review':'送信した作品・審査'}</Link>
     <p><label>{en?'Audience':'表示区分'}<select value={rating} onChange={event=>{const next=new URLSearchParams(params);next.set('rating',event.target.value);setParams(next);}}><option value="general">{en?'General':'一般'}</option><option value="adult">{en?'Verified adult section':'成人確認済みの区分'}</option></select></label></p>
     {rating==='adult'&&<p>{en?'This section requires login, verified age and separate enablement. It is separated from general recommendations and advertisements.':'ログイン・成人確認・別途の有効化が必要な区分です。一般向けのおすすめや広告とは分けて表示します。'}</p>}
     <label>{en?'Search':'検索'}<Input value={q} maxLength={200} onChange={event=>setQ(event.target.value)}/></label><label>{en?'Tag':'タグ'}<Input value={tag} maxLength={80} onChange={event=>setTag(event.target.value)}/></label>
-    {error?<p role="alert">{error}<Button onClick={()=>setRetry(value=>value+1)}>{en?'Reload':'再読込'}</Button></p>:loading?<p role="status">{en?'Loading…':'読み込み中…'}</p>:works.length?<PublishedCards works={works}/>:<p>{en?'No approved works match these filters.':'この条件に一致する承認済み作品はありません。'}</p>}
+    {error?<p role="alert">{error}<Button onClick={()=>setRetry(value=>value+1)}>{en?'Reload':'再読込'}</Button></p>:loading?<p role="status">{en?'Loading…':'読み込み中…'}</p>:featured.length?<PublishedCards works={featured}/>:<p>{en?'No approved works match these filters.':'この条件に一致する承認済み作品はありません。'}</p>}
   </div>;
 }
 export function PublishedDetail(){const scope=usePublicationScope(),{publicationId=''}=useParams();return <Detail key={`${scope}:${publicationId}`} id={publicationId}/>;}

@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 
 export type ExecutionTarget = 'cloud' | 'device' | 'pc' | 'local';
 export type StoragePolicy = 'sync' | 'local';
@@ -67,6 +67,11 @@ function subscribe(listener: () => void) {
 }
 export function useExecutionTarget() { return useSyncExternalStore(subscribe, executionTarget, () => 'cloud' as const); }
 export function useDeviceOwner() { return useSyncExternalStore(subscribe, deviceOwner, () => 'guest'); }
+export function usePreferences() {
+  const [value,setValue]=useState(preferences);
+  useEffect(()=>{const refresh=()=>setValue(preferences());const stop=subscribe(refresh);refresh();return stop;},[]);
+  return value;
+}
 export function useLanguage() { return useSyncExternalStore(subscribe, () => preferences().language, () => 'ja' as const); }
 export function useGenerationBusy() { return useSyncExternalStore(subscribe, generationBusy, () => false); }
 export const labels = {

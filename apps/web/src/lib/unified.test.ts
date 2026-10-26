@@ -28,9 +28,18 @@ it('preserves edited summaries until source IDs change and links every source',(
   expect(second.at(-1)?.source_message_ids).toHaveLength(200);expect(second.at(-1)?.text).toContain('edited');
 });
 it('filters age, block and moderation status before ranking favorites',()=>{
-  const prefs={...preferences(),favorites:['adult','blocked','pending'],moods:['healing']};
-  const items=[{id:'adult',nsfw:true},{id:'blocked',blocked:true},{id:'pending',status:'pending'},{id:'plain'},{id:'comfort',tags:['healing']}];
+  const prefs={...preferences(),favorites:['adult','rated','blocked','pending','dismissed'],dismissed:['dismissed'],moods:['healing']};
+  const items=[{id:'adult',nsfw:true},{id:'rated',rating:'adult' as const,nsfw:false},{id:'blocked',blocked:true},{id:'pending',status:'pending'},{id:'dismissed',official:true},{id:'plain'},{id:'comfort',tags:['healing']}];
   expect(recommend(items,prefs).map(c=>c.id)).toEqual(['comfort','plain']);
+  expect(recommend(items,prefs,true).map(c=>c.id)).toEqual(['adult','rated','comfort','plain']);
+});
+it('ranks existing tag aliases without reading conversations or authored content',()=>{
+  const items=[{id:'plain'},{id:'school',tags:['academy']},{id:'comfort',tags:['癒し']}];
+  for(const item of items)Object.defineProperty(item,'messages',{get:()=>{throw Error('Conversation text must not be read');}});
+  const prefs={...preferences(),genres:['school'],moods:['healing'],favorites:['plain']};
+  expect(recommend(items,prefs).map(c=>c.id)).toEqual(['plain','school','comfort']);
+  expect(recommend(items,{...prefs,dismissed:['plain']}).map(c=>c.id)).toEqual(['school','comfort']);
+  expect(recommend(items,{...prefs,favorites:[],genres:[]}).map(c=>c.id)).toEqual(['comfort','plain','school']);
 });
 it('defaults unified entry to Cloud and prevents switching during save reconciliation',()=>{
   vi.stubGlobal('location',{hostname:'app.kyalulu.com',pathname:'/',assign:vi.fn()});
