@@ -3,13 +3,46 @@
 <script type="module">
 import {appTransaction,getMeta,entity} from '/src/lib/appStore.ts';
 import {rememberOwner} from '/src/lib/appContext.ts';
-import {syncNow,syncState} from '/src/lib/appSync.ts';
+import {syncNow,syncState,receiveSyncPage} from '/src/lib/appSync.ts';
+import {downloadEntity} from '/src/lib/appTransfers.ts';
 
 const scenario=new URL(location.href).searchParams.get('scenario')??'legacy';
 const owner='fixture-owner-a',root='sync:'+owner+':outbox',foreign='sync:0-foreign:outbox';
 const transfer='11111111-1111-4111-8111-111111111111';
 const check=(condition,message)=>{if(!condition)throw Error(message);};
 const digest=async raw=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',raw)),b=>b.toString(16).padStart(2,'0')).join('');
+
+async function receive(){
+  rememberOwner(owner);
+  const key='sync:'+owner+':',payload={storage_policy:'sync',settings:{session_id:'chat',library_binding:null},state:{session_id:'chat'},messages:[{id:1,uuid:'old',role:'user',content:'ORIGINAL'}],memories:[],summaries:[]};
+  const original={id:'chat',owner,kind:'conversation',revision:1,serverRevision:1,dirty:false,deleted:false,pinned:false,opened:1,payload};
+  await appTransaction(['entities','meta'],'readwrite',(tx,done)=>{tx.objectStore('entities').put(original);tx.objectStore('meta').put(true,key+'consent');tx.objectStore('meta').put(11,key+'cursor');done();});
+  const next={...payload,messages:Array.from({length:28},(_,index)=>({id:index+1,uuid:'receive-'+index,role:'user',content:'茶🙂'.repeat(11000)}))};
+  let raw=new TextEncoder().encode(JSON.stringify(next));
+  if(scenario==='receive-syntax')raw=raw.subarray(0,raw.length-1);
+  if(scenario==='receive-utf8'){const invalid=new Uint8Array(raw.length+1);invalid.set(raw);invalid[raw.length]=0xff;raw=invalid;}
+  const remote={id:'chat',kind:'conversation',revision:2,deleted:false,payload_ref:{id:'chat',revision:2,transfer_id:transfer,size:raw.length,sha256:scenario==='receive-hash'?'0'.repeat(64):await digest(raw),chunks:Math.ceil(raw.length/(1024*1024)),chunk_bytes:1024*1024}};
+  const parse=JSON.parse,decode=TextDecoder.prototype.decode;let largestScalar=0,largestDecode=0,parts=0,failed=false;
+  JSON.parse=function(text,...args){largestScalar=Math.max(largestScalar,text.length);return parse.call(this,text,...args);};
+  TextDecoder.prototype.decode=function(input,...args){largestDecode=Math.max(largestDecode,input?.byteLength??0);return decode.call(this,input,...args);};
+  try{
+    try{
+      const result=await downloadEntity(remote,async path=>{
+        const index=Number(path.split('/').at(-1)),chunk=raw.subarray(index*1024*1024,(index+1)*1024*1024);parts++;
+        if(scenario==='receive-withdrawal'&&index===remote.payload_ref.chunks-1)await appTransaction(['meta'],'readwrite',(tx,done)=>{tx.objectStore('meta').put(false,key+'consent');done();});
+        let binary='';for(let start=0;start<chunk.length;start+=8192)binary+=String.fromCharCode(...chunk.subarray(start,start+8192));
+        return {data:btoa(binary),sha256:await digest(chunk)};
+      },async()=>{check((await getMeta(key+'consent'))===true,'Consent changed');});
+      await receiveSyncPage(owner,[result],12);
+    }catch(error){failed=true;if(scenario==='receive')throw error;}
+    const saved=await entity('chat',owner),cursor=await getMeta(key+'cursor');
+    if(scenario==='receive')check(!failed&&saved.payload.messages.length===28&&saved.serverRevision===2&&cursor===12,'Valid receive did not commit');
+    else check(failed&&JSON.stringify(saved)===JSON.stringify(original)&&cursor===11&&!await getMeta(key+'remote:chat'),'Failed receive advanced data or cursor');
+    check(largestDecode<=1024*1024&&largestScalar<100000,'Receive parsed the entire encoded entity');
+    check(!('payload' in remote),'Unverified payload leaked into its reference');
+    return {ok:true,scenario,parts,failed,cursor,largestDecode,largestScalar,originalPreserved:scenario!=='receive'};
+  }finally{JSON.parse=parse;TextDecoder.prototype.decode=decode;}
+}
 
 async function run(){
   rememberOwner(owner);localStorage.setItem('fixture-existing-storage','retain');
@@ -85,5 +118,5 @@ async function run(){
     return {ok:true,scenario,parts:chunks.length,committed,keyProbes,bodyReads,foreignReads,maxEncodedText,wholeBatchWrites,state:syncState().phase,networkCalls:api.length};
   }finally{IDBObjectStore.prototype.get=originalGet;IDBIndex.prototype.openKeyCursor=originalKeys;TextEncoder.prototype.encode=originalEncode;JSON.stringify=originalStringify;}
 }
-run().then(result=>window.__OUTBOX_RESULT__=result).catch(error=>window.__OUTBOX_RESULT__={ok:false,scenario,error:String(error),stack:error.stack});
+(scenario.startsWith('receive')?receive():run()).then(result=>window.__OUTBOX_RESULT__=result).catch(error=>window.__OUTBOX_RESULT__={ok:false,scenario,error:String(error),stack:error.stack});
 </script>

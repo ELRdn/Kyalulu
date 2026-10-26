@@ -1,0 +1,22 @@
+{
+  "valid": [
+    "{}", "[]", "null", "true", "false", " 42 \n",
+    "[true,false,null,-0,1.25,-2e-3,1e+21]",
+    "{\"日本語\":\"茶🙂\",\"nested\":[[],{},[1,{\"a\":null}]]}",
+    "{\"dup\":1,\"dup\":{\"nested\":[]}}",
+    "{\"__proto__\":{\"polluted\":true},\"constructor\":1}",
+    "{\"\":\"\",\"a\\\"b\":\"\\\\\\t\\r\\n\\b\\f\\/\\u0000\"}",
+    "\"\\uD83D\\uDE42\\uD800\\uDFFF\"",
+    "\"\\uD800x\\uDFFF\"",
+    "\ufeff{\"bom\":true}"
+  ],
+  "invalid": [
+    "", " ", "{", "}", "[", "]", "{}[]", "true false", "{}x",
+    "{1:2}", "{null:2}", "{\"a\" 2}", "{\"a\":}", "{\"a\":1,}",
+    "[1,]", "[,1]", "[1 2]", "{\"a\":1,,\"b\":2}", "{\"a\":[]]}",
+    "01", "1.", "1e", "-", "+1", "NaN", "Infinity", "-Infinity", "undefined",
+    "\"\\x00\"", "\"line\nbreak\"", "\"\\u12\"", "\"\\uZZZZ\"", "\"unterminated",
+    "\"tail\\", "\ufeff\ufeff{}", "{}\u00a0", "/*comment*/{}"
+  ],
+  "invalid_utf8_hex": ["ff", "c3", "c328", "eda080", "f4908080", "f09f"]
+}

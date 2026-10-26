@@ -63,6 +63,7 @@ FILES = (
     "tests/fixtures/device-research.json",
     "tests/fixtures/device-lore-values.json",
     "tests/fixtures/rp-format.json",
+    "tests/fixtures/json-stream.json",
     "tests/e2e_unified_entry.py",
     "tests/e2e_cloud_login.py",
     "tests/e2e_outbox_guard.py",

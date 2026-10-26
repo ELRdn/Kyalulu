@@ -84,3 +84,28 @@ it('rejects cyclic and non-JSON outbox objects before any network call',async()=
   for(const payload of [cycle,new Date(),{value:1n}])await expect(uploadSync({request_id:'invalid',changes:[{payload}]},call,async()=>{})).rejects.toThrow();
   expect(call).not.toHaveBeenCalled();
 });
+
+it('parses a many-message download without decoding or parsing the entire encoded entity',async()=>{
+  const payload={messages:Array.from({length:28},(_,id)=>({id,content:'茶🙂'.repeat(11000)}))};
+  const raw=new TextEncoder().encode(JSON.stringify(payload));
+  const entity={id:'chat',revision:1,payload_ref:{id:'chat',revision:1,transfer_id:transfer,size:raw.length,sha256:hash(raw),chunks:Math.ceil(raw.length/chunkBytes),chunk_bytes:chunkBytes}};
+  const decode=vi.spyOn(TextDecoder.prototype,'decode'),parse=vi.spyOn(JSON,'parse');
+  try{
+    const result=await downloadEntity(entity,async path=>{
+      const index=Number(path.split('/').at(-1)),part=raw.subarray(index*chunkBytes,(index+1)*chunkBytes);
+      return {data:encodeBytes(part),sha256:hash(part)};
+    },async()=>{});
+    expect(result.payload).toEqual(payload);
+    expect(decode.mock.calls.every(([input])=>!input||input.byteLength<=chunkBytes)).toBe(true);
+    expect(parse.mock.calls.every(([text])=>text.length<100_000)).toBe(true);
+  }finally{decode.mockRestore();parse.mockRestore();}
+});
+
+it.each(['total-hash','syntax','trailing','utf8','shape','withdrawal'])('exposes no payload when a download fails at %s',async failure=>{
+  let raw=new TextEncoder().encode(failure==='syntax'?'{"messages":[':failure==='trailing'?'{} {}':failure==='shape'?'[]':'{"messages":[]}');
+  if(failure==='utf8')raw=new Uint8Array([0xff]);
+  const entity={id:'chat',revision:1,payload_ref:{id:'chat',revision:1,transfer_id:transfer,size:raw.length,sha256:failure==='total-hash'?'0'.repeat(64):hash(raw),chunks:1,chunk_bytes:chunkBytes}};
+  let withdrawn=false;
+  await expect(downloadEntity(entity,async()=>{withdrawn=failure==='withdrawal';return {data:encodeBytes(raw),sha256:hash(raw)};},async()=>{if(withdrawn)throw Error('Consent changed');})).rejects.toThrow();
+  expect(entity).not.toHaveProperty('payload');expect(entity.payload_ref).toBeDefined();
+});
