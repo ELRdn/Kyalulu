@@ -80,7 +80,7 @@ export default function Migration() {
     </>}
     <p><a href="https://mobile.kyalulu.com/?migrate=1" target="_blank" rel="noreferrer">{en?'Export on the old Mobile':'以前のMobileで書き出す'}</a></p>
     <label>{en?'Migration file':'移行用ファイル'}<input type="file" accept="application/json,.json" disabled={busy} onChange={async e=>{
-      const file=e.target.files?.[0];setError('');setPreview(null);if(!file)return;
+      const file=e.target.files?.[0];e.target.value='';setError('');setPreview(null);if(!file)return;
       connection.current?.abort.abort();connection.current=null;setManifest(null);setSelected([]);
       const fileOwner=owner;setBusy(true);
       try{if(file.size>40*1024**2)throw Error('40 MiB limit');const parsed=parseMigration(await file.text());if(fileOwner!==deviceOwner())throw Error('Account changed');previewOwner.current=fileOwner;setPreview(parsed);}catch(e){setError(String(e));}finally{setBusy(false);}
@@ -95,7 +95,7 @@ export default function Migration() {
           if(previewOwner.current!==deviceOwner())throw Error('Account changed / アカウントが切り替わりました');
           const result=await importMobile(preview.data,preview.sha256,previewOwner.current);
           if(previewOwner.current!==deviceOwner())throw Error('Account changed');
-          for(const session of result.sessions)if(session.draft){const recovery=new ChatRecovery(localStorage,`device:${previewOwner.current}`,session.id);if(!recovery.read().draft)recovery.draft(session.draft);}
+          for(const session of result.sessions)if(session.draft){const recovery=new ChatRecovery(localStorage,`device:${previewOwner.current}`,session.id);recovery.read();if(localStorage.getItem(recovery.key)===null)recovery.draft(session.draft);}
           setMessage(en?'Conversations imported. Original data is unchanged.':'会話を取り込みました。元のデータは変更していません。');
           const current=connection.current;
           if(selected.length&&!current?.reader)throw Error('Reconnect to transfer models / モデル転送には再接続してください');
