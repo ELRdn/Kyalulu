@@ -23,6 +23,12 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 
 ## Delivered Behavior
 
+- Browser/Native uploads and Cloud downloads serialize transfer bytes in 1MiB
+  pages without a whole-batch UTF-8 buffer. Existing wire hashes, restart points,
+  inline receipts and cancellation fences remain compatible; hashing-time account
+  or consent changes stop before upload. Whole-entity storage/receive still needs
+  segmentation. See [sync byte-stream validation](validation/2026-10-26-unified-sync-byte-streams.md).
+
 - Cloud sign-in, consent, invitation/availability, provider explanations and
   success/errors follow JA/EN while retaining entered data and known disclosure
   gates. Pending authentication respects the latest analytics choice; replies
