@@ -5,6 +5,7 @@ import base64
 import fnmatch
 import gzip
 import hashlib
+from http.client import HTTPConnection
 import json
 import os
 from pathlib import Path
@@ -77,6 +78,8 @@ def legacy_inventory(directory):
 
 async def check(args):
     old = legacy_inventory(args.legacy)
+    new_version = json.loads(re.search(r'^const VERSION = (.+);$', (args.mobile / 'sw.js').read_text(encoding='utf-8'), re.M)[1])
+    assert new_version != old['VERSION']
     assert not any('migration' in path for path in old['FILES'])
     with socket.socket() as probe:
         probe.bind(('127.0.0.1', 443))
@@ -127,6 +130,20 @@ async def check(args):
                         await asyncio.sleep(.1)
                 key = cert.public_key().public_bytes(Encoding.DER, PublicFormat.SubjectPublicKeyInfo)
                 pins.add(base64.b64encode(hashlib.sha256(key).digest()).decode())
+            for attempt in range(100):
+                connection = HTTPConnection('127.0.0.1', port, timeout=2)
+                try:
+                    connection.request('GET', '/_fixture/seed', headers={'Host': 'mobile.kyalulu.com'})
+                    response = connection.getresponse()
+                    assert response.getheader('X-Kyalulu-Fixture') == 'mobile-migration'
+                    response.read()
+                    break
+                except OSError:
+                    assert all(p.poll() is None for p in processes), 'Fixture process exited'
+                    if attempt == 99: raise
+                    await asyncio.sleep(.1)
+                finally:
+                    connection.close()
             async with async_playwright() as playwright:
                 context = await playwright.chromium.launch_persistent_context(str(args.output / 'profile'), headless=True,
                     locale='ja-JP', viewport={'width': 393, 'height': 852}, args=[
@@ -172,6 +189,7 @@ async def check(args):
                     await source.goto(MOBILE)
                     await source.locator('.m-app').wait_for()
                     await until(source, 'navigator.serviceWorker.controller !== null')
+                    assert any(key.endswith(old['VERSION']) for key in await source.evaluate('caches.keys()'))
                     assert await source_state(source) == original
                     marker.write_text('new', encoding='ascii')
                     target = await context.new_page()
@@ -231,11 +249,15 @@ async def check(args):
                     await update.wait_for()
                     await update.click()
                     await source.get_by_role('alert').filter(has_text=re.compile('タブ|tab')).wait_for()
+                    assert any(key.endswith(old['VERSION']) for key in await source.evaluate('caches.keys()'))
                     assert await source_state(source) == original
                     await popup.close()
-                    await update.click()
+                    async with source.expect_navigation(wait_until='domcontentloaded'):
+                        await update.click()
                     await source.locator('.m-app').wait_for()
                     await until(source, 'navigator.serviceWorker.controller !== null')
+                    await until(source, f"(async()=> (await caches.keys()).some(key=>key.endsWith({json.dumps(new_version)})))()")
+                    await until(source, f"(async()=> !(await caches.keys()).some(key=>key.endsWith({json.dumps(old['VERSION'])})))()")
                     assert await source_state(source) == original
                     await source.get_by_role('button', name='保存・設定', exact=True).click()
                     await source.get_by_role('link', name='統合アプリへ移行する', exact=True).click()
@@ -247,6 +269,12 @@ async def check(args):
                     raw = envelope['payload'].encode('utf-8')
                     assert envelope['bytes'] == len(raw) and hashlib.sha256(raw).hexdigest() == envelope['sha256']
                     assert len(raw) > 1024 ** 2 and json.loads(envelope['payload']) == data
+                    corrupt = args.output / 'corrupt-migration.json'
+                    corrupt.write_text(json.dumps({**envelope, 'sha256': '0' * 64}), encoding='utf-8')
+                    await target.get_by_label('移行用ファイル', exact=True).set_input_files(str(corrupt))
+                    await target.get_by_role('alert').filter(has_text='SHA-256 mismatch').wait_for()
+                    assert await target_state(target) == imported
+                    await expect(target.get_by_role('button', name='取り込む', exact=True)).to_have_count(0)
                     await target.get_by_label('移行用ファイル', exact=True).set_input_files(str(export))
                     assert await target.get_by_label('移行用ファイル', exact=True).input_value() == ''
                     await target.get_by_role('button', name='取り込む', exact=True).wait_for()
@@ -259,14 +287,23 @@ async def check(args):
                     assert await target_state(target) == imported
                     assert await target.evaluate('key=>JSON.parse(localStorage.getItem(key))', key) == cleared
                     await target.screenshot(path=str(args.output / 'imported.png'), full_page=True, animations='disabled')
+                    await target.goto(APP + '/device/#/chats/' + chats[0]['id'])
+                    await expect(target.locator('.k-composer textarea')).to_have_value('')
+                    await target.reload()
+                    await expect(target.locator('.k-composer textarea')).to_have_value('')
+                    after_open = await target_state(target)
+                    assert [{**row, 'opened': 0} for row in after_open] == [{**row, 'opened': 0} for row in imported]
+                    assert next(row['opened'] for row in after_open if row['id'] == chats[0]['id']) >= chats[0]['opened']
                     assert not errors and not external and not api, (errors, external, api)
                     result = {'production_worker_sha256': hashlib.sha256((args.legacy / 'sw.js').read_bytes()).hexdigest(),
                         'production_worker_version': old['VERSION'], 'legacy_precache_files': len(old['FILES']),
+                        'updated_worker_version': new_version, 'corrupt_file_rejected_without_writes': True,
                         'legacy_active_worker_and_original_data_preserved': True, 'real_origin_neutral_popup_and_consent': True,
                         'cancelled_pair_and_import_write_nothing': True, 'multichunk_direct_copy_and_history_snapshots': True,
                         'cleared_draft_and_pending_preserved_on_replay': True, 'same_file_can_be_selected_again': True,
                         'source_open_blocks_update': True,
                         'explicit_mobile_update_keeps_idb_and_opfs': True, 'file_export_hash_and_replay': True,
+                        'migrated_chat_opens_and_cleared_composer_survives_reload': True,
                         'api_requests': len(api), 'external_requests': len(external), 'page_errors': len(errors)}
                     (args.output / 'results.json').write_text(json.dumps(result, indent=2), encoding='utf-8')
                     print(json.dumps(result, indent=2))

@@ -92,6 +92,11 @@ approvals and complete runtime/device/recovery acceptance remain separate gates.
 
 ## Final retained candidates
 
+Update: the App candidate below is superseded by `e25ec63` for a migration draft
+fix. Its scope, hashes and old-worker/popup acceptance are recorded in
+[Mobile migration](2026-10-26-unified-mobile-migration.md). The following is the
+earlier Worker-isolation/PWA evidence, not a fresh test claim for the new build.
+
 Final application/build-policy source is `a6cbd98`; `7c9e8c0` aligned the test
 Relay hostname beforehand. The earlier `1d021fc` candidate is superseded because
 it lacked inference-worker isolation. No candidate was deployed.

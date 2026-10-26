@@ -19,7 +19,7 @@
 | 端末限定の外部送信禁止・共有記憶分離 | 部分検証 | 生成/記憶/同期/広告/外部AIの通信否定試験 |
 | 最近10件＋固定会話のオフライン保存、容量不足とアカウント分離 | 再取得・保持を実装、fixture検証 | 未送信保持と文書再読込を確認。PWA/ブラウザ/実機の再起動と実容量試験は残る |
 | Remote端末別の管理権限、失効、対象PCでの管理・診断・実験 | 実装・限定検証 | 既存Remote接続を使った権限/失効/全機能確認 |
-| 旧Mobileの分割移行、SHA-256/revision/size、モデルCloud送信禁止 | 専用画面・直接転送を実装、別オリジンOPFS fixture検証 | 本番ドメインのpopup/CSP、実モデル容量とAndroid/iPhoneでの直接コピー証拠 |
+| 旧Mobileの分割移行、SHA-256/revision/size、モデルCloud送信禁止 | 旧公開Workerを有効にした実originのloopback/Chromiumで中立popup・同意・分割会話転送・破損拒否・再送・明示更新・原本IDB/OPFS保持を確認。再取込み時の空下書き/送信待ち保護を修正 | 公開配信と実モデル容量・中断回復、Android/iPhoneでの直接コピー証拠。OPFS保持は架空markerでありモデル転送ではない |
 | PWA明示更新、/device/ の分離ヘッダー、広告との共存 | Native実配信と実Chromiumで日英の明示更新・別タブ拒否・下書き保持・オフラインのブラウザ全終了/復帰と分離状態を確認。生成中拒否はclient試験、オフライン表示はrenderer emulationで確認 | 広告と実提供元の共存、本番配信、実モデル・実機・OSネットワーク切替での受入れは残る |
 | 料金版、月額優位の数量、60/180日、原価×6、成功時精算 | 実装・fixture検証 | 決済再送/旧版条件/失敗0消費と既存残高保持 |
 | 初回/日次付与、月3000円＋入金済み広告収入の原資 | 実装・fixture検証 | 二重付与/予算超過/既存台帳保持の照合 |
@@ -119,3 +119,7 @@ PortableEditorの3種別・全タブ・設定集/挨拶/媒体/プリセット�
 canonical配信のCloud/Native共通化、統合Caddy設定と実HTTPS proxy越しの画面・Worker確認は
 [Unified proxy](validation/2026-10-26-unified-proxy.md)、本番移行・復旧条件は
 [Deployment](UNIFIED_DEPLOYMENT.md) に記録する。本番のApp API・Device・移行URLはまだ404。
+旧公開Workerからの実origin popup・分割会話移行・明示更新と下書き保護、
+修正版 `e25ec63` のCloud/旧Mobile候補は
+[Mobile migration](validation/2026-10-26-unified-mobile-migration.md) に記録する。
+先行 `a6cbd98` のApp候補は再取込み時の下書き復活があるため最新として使用しない。
