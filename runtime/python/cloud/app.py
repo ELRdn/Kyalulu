@@ -375,6 +375,9 @@ def create_app(config=None, *, transport=None, ad_provider=None):
             authenticated = True
         except CloudError:
             pass
+        login_countries = (sorted(country for country, policy in config.region_policies
+                                  if policy.get('accepted') is True)
+                           if config.unified_enabled else ['JP', 'US'])
         return {
             "cloud_mode": True,
             "remote_mode": False,
@@ -386,7 +389,8 @@ def create_app(config=None, *, transport=None, ad_provider=None):
             "credit_reservation": False,
             "private_test": config.private_test,
             "login_available": bool(config.supabase_url and config.supabase_key
-                                    and (config.legal_approved or config.private_test)),
+                                    and (config.legal_approved or config.private_test) and login_countries),
+            "login_countries": login_countries,
             "billing_available": config.billing_enabled and backend_block(config) is None,
             "ads_available": False,
             'app_commercial': {'enabled': config.unified_enabled, 'subscriber': False,
