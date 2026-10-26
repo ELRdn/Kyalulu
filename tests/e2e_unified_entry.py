@@ -141,6 +141,8 @@ async def main():
                         settings=page.locator('.k-page > .k-section').first
                         await settings.get_by_role('button',name='Your interests' if en else '好みの設定',exact=True).click()
                         await expect(interests.get_by_role('checkbox',name='School' if en else '学園',exact=True)).to_be_checked()
+                        await interests.get_by_role('checkbox',name='School' if en else '学園',exact=True).uncheck()
+                        await interests.get_by_role('checkbox',name='Fantasy' if en else '異世界',exact=True).check()
                         alternate='ja' if en else 'en'
                         await settings.get_by_role('combobox',name='Language' if en else '表示言語',exact=True).select_option(alternate)
                         await interests.get_by_role('heading',name='好きなジャンル' if en else 'Your genres',exact=True).wait_for()
@@ -154,9 +156,10 @@ async def main():
                             await interests.get_by_role('button',name='スキップ' if en else 'Skip',exact=True).click()
                         current=await prefs(page)
                         assert current['language']==alternate and current['favorites']==['new-favorite'] and current['dismissed']==['new-dismissal']
+                        assert current['genres']==['fantasy'] and current['moods']==['cool'] and current['activities']==['healing']
                         assert len(calls)==reads, 'Device-only preferences must not call Cloud'
                         await settings.get_by_role('button',name='好みの設定' if en else 'Your interests',exact=True).click()
-                        await interests.get_by_role('checkbox',name='異世界' if en else 'Fantasy',exact=True).check()
+                        await interests.get_by_role('checkbox',name='学園' if en else 'School',exact=True).check()
                         for _ in range(2):
                             await interests.get_by_role('button',name='次へ' if en else 'Next',exact=True).click()
                         await page.evaluate("const oldFinish=document.querySelector('.k-interests .k-btn:last-child');localStorage.setItem('kyalulu-app-owner','fixture-next-owner');window.dispatchEvent(new Event('kyalulu-app-context'));oldFinish.click()")
@@ -168,7 +171,7 @@ async def main():
                         current=await prefs(page)
                         assert current['genres']==[] and current['moods']==[] and current['activities']==[] and current['favorites']==[]
                         previous=await page.evaluate("JSON.parse(localStorage.getItem('kyalulu-app-preferences-v1:guest'))")
-                        assert previous['genres']==['school'] and previous['favorites']==['new-favorite']
+                        assert previous['genres']==['fantasy'] and previous['favorites']==['new-favorite']
                         assert len(calls)==reads
                         assert not errors and not external
                         assert await page.evaluate('document.documentElement.scrollWidth<=innerWidth')
