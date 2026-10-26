@@ -146,7 +146,7 @@ async def check(args):
                     connection.close()
             async with async_playwright() as playwright:
                 context = await playwright.chromium.launch_persistent_context(str(args.output / 'profile'), headless=True,
-                    locale='ja-JP', viewport={'width': 393, 'height': 852}, args=[
+                    locale='ja-JP', viewport={'width': args.width, 'height': 852}, color_scheme=args.theme, args=[
                     '--host-resolver-rules=MAP app.kyalulu.com 127.0.0.1, MAP mobile.kyalulu.com 127.0.0.1',
                     '--ignore-certificate-errors-spki-list=' + ','.join(sorted(pins)), '--no-proxy-server'])
                 errors, external, api = [], [], []
@@ -210,6 +210,7 @@ async def check(args):
                     async with target.expect_popup() as opened:
                         await connect.click()
                     popup = await opened.value
+                    await popup.set_viewport_size({'width': args.width, 'height': 852})
                     await popup.locator('.k-migration').wait_for()
                     assert popup.url.startswith(MOBILE + '/migration/#')
                     assert await popup.evaluate('window.opener !== null && !crossOriginIsolated')
@@ -218,10 +219,14 @@ async def check(args):
                     await popup.get_by_role('button', name='Allow conversation and saved-model transfer', exact=True).click()
                     await target.get_by_role('button', name='取り込む', exact=True).wait_for()
                     await popup.get_by_role('status').filter(has_text='Review the contents').wait_for()
+                    assert await popup.evaluate('document.documentElement.scrollWidth<=innerWidth')
+                    await popup.screenshot(path=str(args.output / 'source-english.png'), full_page=True, animations='disabled')
                     await popup.get_by_label('Language', exact=True).select_option('ja')
                     await popup.get_by_role('status').filter(has_text='統合アプリで内容を確認').wait_for()
                     await target.get_by_label('表示言語', exact=True).select_option('en')
                     await target.get_by_role('button', name='Import', exact=True).wait_for()
+                    assert await target.evaluate('document.documentElement.scrollWidth<=innerWidth')
+                    await target.screenshot(path=str(args.output / 'preview-english.png'), full_page=True, animations='disabled')
                     await target.get_by_label('Language', exact=True).select_option('ja')
                     assert await target_state(target) == []
                     await target.get_by_role('button', name='取り込む', exact=True).click()
@@ -302,7 +307,8 @@ async def check(args):
                     assert [{**row, 'opened': 0} for row in after_open] == [{**row, 'opened': 0} for row in imported]
                     assert next(row['opened'] for row in after_open if row['id'] == chats[0]['id']) >= chats[0]['opened']
                     assert not errors and not external and not api, (errors, external, api)
-                    result = {'production_worker_sha256': hashlib.sha256((args.legacy / 'sw.js').read_bytes()).hexdigest(),
+                    result = {'width': args.width, 'theme': args.theme,
+                        'production_worker_sha256': hashlib.sha256((args.legacy / 'sw.js').read_bytes()).hexdigest(),
                         'production_worker_version': old['VERSION'], 'legacy_precache_files': len(old['FILES']),
                         'updated_worker_version': new_version, 'corrupt_file_rejected_without_writes': True,
                         'legacy_active_worker_and_original_data_preserved': True, 'real_origin_neutral_popup_and_consent': True,
@@ -374,6 +380,8 @@ if __name__ == '__main__':
     for name in ('legacy', 'mobile', 'app', 'output'):
         parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument('--caddy', type=Path)
+    parser.add_argument('--width', type=int, default=393)
+    parser.add_argument('--theme', choices=('light', 'dark'), default='light')
     parser.add_argument('--serve', action='store_true')
     parser.add_argument('--port', type=int)
     args = parser.parse_args()
