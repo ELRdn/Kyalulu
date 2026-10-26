@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { parseMigration } from '../mobile/migration';
 import { appTransaction, newEntity, type AppEntity } from '../lib/appStore';
-import { deviceOwner, useDeviceOwner, useLanguage } from '../lib/appContext';
+import { deviceOwner, preferences, savePreferences, useDeviceOwner, useLanguage } from '../lib/appContext';
 import { MODELS, fingerprint, importModel, formatBytes } from '../mobile/models';
 import { APP_ORIGIN, MOBILE_ORIGIN, connectMigration, validateManifest, type MigrationReader, type MigrationManifest } from '../mobile/migrationChannel';
 import { PortableDocumentSchema, RuntimeStateSchema } from '../../../../packages/schemas/src';
@@ -61,6 +61,7 @@ export default function Migration() {
   const models=manifest?.models.flatMap(source=>{const m=MODELS.find(m=>m.id===source.id&&fingerprint(m)===source.fingerprint);return m?[m]:[];})??[];
   const [dialog,confirm]=useConfirm();
   return <div className="k-page k-migration">{dialog}<h1>{en?'Import from Mobile':'以前のMobileから移行'}</h1>
+    <label>{en?'Language':'表示言語'}<select value={language} onChange={e=>savePreferences({...preferences(),language:e.target.value as 'ja'|'en'})}><option value="ja">日本語</option><option value="en">English</option></select></label>
     <p>{en?'Create device-only copies. Original data stays on Mobile. Direct transfer keeps conversations and models in this browser.':'端末限定のコピーを作ります。元のMobileデータは残ります。直接転送では会話とモデルをCloudへ送りません。'}</p>
     {location.pathname!=='/migration/'?<p><a href="/migration/">{en?'Open direct transfer':'直接転送の専用画面を開く'}</a></p>:<>
       <Button disabled={busy||location.origin!==APP_ORIGIN} onClick={async()=>{
