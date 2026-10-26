@@ -132,7 +132,7 @@ class HostService:
         self.noise_factory = noise_factory
         self.render_qr, self.le_probe = render_qr, le_probe
         self.clock, self.monotonic = clock, monotonic
-        self.bridge = RelayBridge(RuntimeAdapter(app, authorize_device=self.authorized))
+        self.bridge = RelayBridge(RuntimeAdapter(app, authorize_device=self.authorized, management_device=self.management))
         self.connections = {}
         self.connected = False
         self.runtime = False
@@ -189,11 +189,22 @@ class HostService:
                 if c.noise.finished and not c.approved and c.expires > self.clock()
             ],
             "devices": [
-                {"device_id": id, "name": d["name"]}
+                {"device_id": id, "name": d["name"], "management": d.get('management') is True}
                 for id, d in self.config["devices"].items()
                 if d.get("approved") and not d.get("revoked")
             ],
         }
+
+    def management(self, device_id):
+        return self.authorized(device_id) and self.config['devices'][device_id].get('management') is True
+
+    def set_management(self, device_id, enabled):
+        uuid(device_id)
+        if type(enabled) is not bool or not self.authorized(device_id):
+            raise HostError('device_not_approved')
+        value = copy.deepcopy(self.config)
+        value['devices'][device_id]['management'] = enabled
+        self._save(value)
 
     async def pair(self):
         if not self.connected or self._stopped:

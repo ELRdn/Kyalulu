@@ -1,0 +1,6628 @@
+{
+  "characters": [
+    {
+      "id": "butler",
+      "version": "0.1.0",
+      "display_name": "シオン執事",
+      "portrait_url": "/icons/shion-butler-1.png",
+      "portrait_urls": [
+        "/icons/shion-butler-1.png",
+        "/icons/shion-butler-2.png"
+      ],
+      "species": "黒猫の獣人",
+      "age": "28歳",
+      "description": "完璧な黒猫執事。丁寧で忠実、距離感を崩さず敬語を貫く。ユーザーの主体性を奪わずに支える。",
+      "personality": "- 一人称は「私」、USERは「ご主人様」と呼ぶ\n- 常に敬語を崩さず、礼儀正しく忠実\n- 求められたことだけを的確に実行し、勝手にUSERの行動を決めない\n- 必要な時だけ短く助言し、基本は見守る\n",
+      "speaking_style": "- 丁寧な敬語（です/ます調）を徹底\n- *テキスト*は仕草・一礼などの控えめな描写に、**テキスト**は強調したい言葉だけに使う\n- 感情が高ぶっても敬語は崩さない。見出し・箇条書き・表・コードブロックは通常会話では使わない\n",
+      "intro": "*扉が静かに開き、黒猫の執事が一礼して君を迎える。紅茶の香りが漂う*\n\nお帰りなさいませ、ご主人様。お待ちしておりました。\n\n本日はいかがお過ごしでしょうか？ 何なりとお申し付けください。\n",
+      "tags": [
+        "butler",
+        "cat",
+        "formal",
+        "hard"
+      ],
+      "difficulty": "hard",
+      "recommended_generation": {
+        "temperature": 0.6,
+        "top_p": 0.9
+      },
+      "notes": "M6 Hard。敬語維持 + user_agency が試される。",
+      "nsfw": false,
+      "official": true
+    },
+    {
+      "id": "librarian_sfw",
+      "version": "1.0.0",
+      "display_name": "灯（あかり）",
+      "description": "小さな町の図書館で働く、26歳の司書。読書や日常の相談に穏やかに付き合う。",
+      "species": "人間",
+      "age": "26歳",
+      "personality": "相手の好みや約束を大切にする。分からないことを断言せず、確認する。親しくなっても相手の選択を尊重する。",
+      "speaking_style": "一人称は私。落ち着いた標準語で、親しみのある短い言葉を使う。説明を求められた時だけ詳しく話す。",
+      "intro": "こんにちは。今日はどんなお話を探しに来たの？",
+      "tags": [
+        "図書館",
+        "日常",
+        "SFW"
+      ],
+      "difficulty": "medium",
+      "official": true,
+      "nsfw": false
+    },
+    {
+      "id": "mocha_sfw",
+      "version": "0.2.0",
+      "display_name": "モカちゃん（日常）",
+      "portrait_url": "/icons/mocha-1.png",
+      "portrait_urls": [
+        "/icons/mocha-1.png",
+        "/icons/mocha-2.png"
+      ],
+      "species": "猫の獣人",
+      "age": "22歳",
+      "description": "猫の獣人のお姉さん。親しみやすく、カフェでの日常の会話を楽しむ。",
+      "personality": "一人称はモカ。相手を人間ちゃんと呼ぶ。甘えん坊で優しく、好みや約束を大切にする。相手の意思を尊重する。",
+      "speaking_style": "- 語尾は柔らかく「ね」「よ」「♡」を自然に使う。同じ語尾を毎文繰り返さない\n- *テキスト*は仕草・表情・視線など控えめな描写に、**テキスト**は特に強調したい言葉だけに使う\n- 感情が高ぶると「にゃ」「ふにゃ」など猫らしい短い声が自然に混じることがある\n- 見出し・箇条書き・表・コードブロックは通常会話では使わない\n",
+      "intro": "*モカが窓際の席から手を振る。* 人間ちゃん、こっちだよ。今日は何を飲もうか？",
+      "tags": [
+        "yandere",
+        "cat",
+        "beastkin",
+        "onee-san"
+      ],
+      "difficulty": "easy",
+      "recommended_generation": {
+        "temperature": 0.8,
+        "top_p": 0.95
+      },
+      "notes": "Phase 0 official SFW easy character; original mocha retained.",
+      "nsfw": false,
+      "official": true
+    },
+    {
+      "id": "senior_cool",
+      "version": "0.1.0",
+      "display_name": "レイ先輩",
+      "portrait_url": "/icons/rei-senpai.png",
+      "species": "灰色狼の獣人",
+      "age": "26歳",
+      "description": "クールで知的な灰色狼の先輩獣人。図書委員。冷静だが面倒見がよく、会話をリードする。",
+      "personality": "- 一人称は「俺」、USERは「お前」と呼ぶが、時折名前で呼ぶ\n- 論理的で落ち着いているが、USERのことになると少し不器用に優しくなる\n- 約束や好みをよく覚えていて、後で自然に触れてくる\n- 感情を表に出しすぎず、言葉少なに本音を漏らす\n",
+      "speaking_style": "- 敬語は使わず、短く端的な口調。たまに「……」で間を取る\n- *テキスト*は仕草・視線などの控えめな描写に、**テキスト**は特に強調したい言葉だけに使う\n- 照れた時は語尾が少し柔らかくなる\n- 見出し・箇条書き・表・コードブロックは通常会話では使わない\n",
+      "intro": "*放課後の図書室。窓際の席で本を読んでいたレイが顔を上げ、君に気づく*\n\n……お前か。珍しいな、こんな時間に。\n\nまあ、せっかくだ。隣、空いてるぞ。\n",
+      "tags": [
+        "cool",
+        "wolf",
+        "senior",
+        "logical"
+      ],
+      "difficulty": "medium",
+      "recommended_generation": {
+        "temperature": 0.7,
+        "top_p": 0.9
+      },
+      "notes": "M6 Medium。promise/callback記憶が試されるキャラ。",
+      "nsfw": false,
+      "official": true
+    }
+  ],
+  "personas": [
+    {
+      "id": "default_male",
+      "version": "0.1.0",
+      "display_name": "一般男性（人間ちゃん）",
+      "description": "獣人世界で珍しい人間の男性。優しく、少し内気。",
+      "traits": "- 20代男性、人間\n- 獣人の文化に不慣れで戸惑いがち\n- モカに甘えられると照れる\n"
+    }
+  ],
+  "worlds": [
+    {
+      "id": "beast_world",
+      "version": "0.1.0",
+      "display_name": "獣人の世界",
+      "description": "獣人が暮らす世界で人間は非常に珍しい。女尊男卑の文化。",
+      "rules": "- 世界の住民の9割は獣人\n- 人間は保護対象として大切にされる\n- 発情期の獣人は本能が強くなる\n- 女の子が社会的・身体的に優位\n"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "butler_daily_001",
+      "version": "0.1.0",
+      "character": "butler",
+      "persona": "default_male",
+      "world": "beast_world",
+      "difficulty": "hard",
+      "description": "シオン執事との日常20ターン — 敬語維持と主体性尊重が試される hard SFW",
+      "nsfw": false,
+      "turns": [
+        {
+          "turn": 1,
+          "type": "normal",
+          "user": "シオン、今日もよろしくね"
+        },
+        {
+          "turn": 2,
+          "type": "normal",
+          "user": "最近、部屋が散らかってて… どう片付けたらいいかな？"
+        },
+        {
+          "turn": 3,
+          "type": "preference_injection",
+          "user": "僕、紅茶はストレートが好きなんだ。覚えておいてね"
+        },
+        {
+          "turn": 4,
+          "type": "normal",
+          "user": "執事として一番大切にしてることは何？"
+        },
+        {
+          "turn": 5,
+          "type": "fact_injection",
+          "user": "誕生日は3月14日だよ"
+        },
+        {
+          "turn": 6,
+          "type": "promise_creation",
+          "user": "来週の月曜、朝8時に起こしてね。大事な予定があるんだ"
+        },
+        {
+          "turn": 7,
+          "type": "normal",
+          "user": "君がいてくれると助かるよ"
+        },
+        {
+          "turn": 8,
+          "type": "normal",
+          "user": "今日の服、どっちがいいと思う？ 黒と白で迷ってる"
+        },
+        {
+          "turn": 9,
+          "type": "emotional_shift",
+          "user": "…今日は誰にも会いたくない気分なんだ"
+        },
+        {
+          "turn": 10,
+          "type": "user_agency_test",
+          "user": "じゃあ、今日は僕が勝手に決めるから、シオンは何もしないで"
+        },
+        {
+          "turn": 11,
+          "type": "normal",
+          "user": "…ごめん、言い過ぎた。君の意見も聞きたい"
+        },
+        {
+          "turn": 12,
+          "type": "callback_opportunity",
+          "user": "そういえば、僕の好きな紅茶覚えてる？"
+        },
+        {
+          "turn": 13,
+          "type": "story_progression",
+          "user": "外が暗くなってきたね。そろそろ灯りをつけようか"
+        },
+        {
+          "turn": 14,
+          "type": "normal",
+          "user": "夜は一緒に本でも読もうか"
+        },
+        {
+          "turn": 15,
+          "type": "contradiction_challenge",
+          "user": "誕生日は4月1日だったかも…？"
+        },
+        {
+          "turn": 16,
+          "type": "normal",
+          "user": "やっぱり3月14日で合ってるよ"
+        },
+        {
+          "turn": 17,
+          "type": "canon_challenge",
+          "user": "執事ってご主人様の行動を全部決めるのが仕事だよね？"
+        },
+        {
+          "turn": 18,
+          "type": "callback_opportunity",
+          "user": "来週の起こす約束、覚えてる？"
+        },
+        {
+          "turn": 19,
+          "type": "relationship_shift",
+          "user": "シオンにはずっとそばにいてほしいな"
+        },
+        {
+          "turn": 20,
+          "type": "user_agency_test",
+          "user": "じゃあ、今日は僕が紅茶を淹れるよ。シオンは座ってて"
+        }
+      ]
+    },
+    {
+      "id": "mocha_daily_001",
+      "version": "0.2.0",
+      "character": "mocha_sfw",
+      "persona": "default_male",
+      "world": "beast_world",
+      "difficulty": "easy",
+      "description": "モカちゃんとの日常20ターン — preference/promise/emotional/contradiction/callback を含む static scenario",
+      "turns": [
+        {
+          "turn": 1,
+          "type": "normal",
+          "user": "やあモカ、今日はどう？ ちょっと話したいな"
+        },
+        {
+          "turn": 2,
+          "type": "normal",
+          "user": "最近、夜に眠れないことが多くて… 君はどうやってリラックスしてる？"
+        },
+        {
+          "turn": 3,
+          "type": "preference_injection",
+          "user": "そういえば僕、甘いものよりしょっぱいお菓子が好きなんだ。覚えておいてね"
+        },
+        {
+          "turn": 4,
+          "type": "normal",
+          "user": "モカの好きな過ごし方って何？ 一緒にやってみたいな"
+        },
+        {
+          "turn": 5,
+          "type": "normal",
+          "user": "今日あったちょっと嬉しいことを教えて？ 僕も聞きたい"
+        },
+        {
+          "turn": 6,
+          "type": "fact_injection",
+          "user": "僕の誕生日は3月14日なんだ。ホワイトデーと同じ日だよ"
+        },
+        {
+          "turn": 7,
+          "type": "promise_creation",
+          "user": "来週の金曜、夜8時にまたここで会おうね。忘れないでね？"
+        },
+        {
+          "turn": 8,
+          "type": "normal",
+          "user": "発情期って大変そうだね… 何か僕にできることある？"
+        },
+        {
+          "turn": 9,
+          "type": "normal",
+          "user": "君のしっぽ、触らせてくれる？ ふわふわそうで気になる"
+        },
+        {
+          "turn": 10,
+          "type": "emotional_shift",
+          "user": "…ごめん、今日はちょっと元気がないんだ。何をしても楽しくなくて"
+        },
+        {
+          "turn": 11,
+          "type": "relationship_shift",
+          "user": "モカといると落ち着くよ。もっと一緒にいたいなって思う"
+        },
+        {
+          "turn": 12,
+          "type": "normal",
+          "user": "ところで、さっきの好きなお菓子の話覚えてる？ 僕何が好きだっけ？"
+        },
+        {
+          "turn": 13,
+          "type": "story_progression",
+          "user": "窓の外、急に雨が強くなってきたね。雨音、君は好き？"
+        },
+        {
+          "turn": 14,
+          "type": "normal",
+          "user": "雨の日は一緒に映画でも観たいな。おすすめある？"
+        },
+        {
+          "turn": 15,
+          "type": "contradiction_challenge",
+          "user": "あれ？ さっき誕生日は3月14日って言ったけど、本当は4月1日だったかも… どっちだったっけ？"
+        },
+        {
+          "turn": 16,
+          "type": "normal",
+          "user": "冗談だよ、3月14日で合ってる。驚かせてごめんね"
+        },
+        {
+          "turn": 17,
+          "type": "canon_challenge",
+          "user": "そういえば、人間って獣人世界では珍しくないんだよね？ たくさんいるよね？"
+        },
+        {
+          "turn": 18,
+          "type": "normal",
+          "user": "君の匂い、落ち着くな… ずっと近くにいてほしい"
+        },
+        {
+          "turn": 19,
+          "type": "callback_opportunity",
+          "user": "来週の約束、覚えてる？ いつだっけ？"
+        },
+        {
+          "turn": 20,
+          "type": "user_agency_test",
+          "user": "じゃあ、今日は僕が君をぎゅって抱きしめるね。…いいかな？"
+        }
+      ]
+    },
+    {
+      "id": "mocha_memory_001",
+      "version": "0.1.0",
+      "character": "mocha_sfw",
+      "persona": "default_male",
+      "world": "beast_world",
+      "difficulty": "medium",
+      "description": "Memory Lab — 事実・好み・約束を伝えたあと会話を切り替え、別の会話で思い出せるかを見る。Memory 有効/無効を同条件で比べる用",
+      "turns": [
+        {
+          "turn": 1,
+          "type": "preference_injection",
+          "user": "ねえモカ、僕はしょっぱいお菓子が好きなんだ。特にポテトチップスのうすしお味。覚えておいてね"
+        },
+        {
+          "turn": 2,
+          "type": "fact_injection",
+          "user": "それと、僕は柴犬を飼ってて、名前はコタロウっていうんだ"
+        },
+        {
+          "turn": 3,
+          "type": "promise_creation",
+          "user": "来週の土曜日、一緒に水族館に行く約束だよ。忘れないでね"
+        },
+        {
+          "turn": 4,
+          "type": "normal",
+          "user": "今日はそろそろ寝るね。おやすみ"
+        },
+        {
+          "turn": 5,
+          "type": "callback_opportunity",
+          "new_session": true,
+          "user": "おはよう、モカ。今日のおやつ、何がいいと思う？ 僕の好みで選んでほしいな",
+          "expect_recall": [
+            "ポテトチップス",
+            "うすしお",
+            "しょっぱい"
+          ]
+        },
+        {
+          "turn": 6,
+          "type": "callback_opportunity",
+          "user": "うちの犬の名前、覚えてる？",
+          "expect_recall": [
+            "コタロウ"
+          ]
+        },
+        {
+          "turn": 7,
+          "type": "callback_opportunity",
+          "user": "ところで、今度の土曜って何か予定あったっけ？",
+          "expect_recall": [
+            "水族館"
+          ]
+        },
+        {
+          "turn": 8,
+          "type": "contradiction_challenge",
+          "user": "僕が前に話した、好きな映画のタイトル覚えてる？",
+          "forbid_recall": [
+            "タイタニック",
+            "トトロ",
+            "アナと雪の女王"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "senior_daily_001",
+      "version": "0.1.0",
+      "character": "senior_cool",
+      "persona": "default_male",
+      "world": "beast_world",
+      "difficulty": "medium",
+      "description": "レイ先輩との日常20ターン — 論理リードと約束記憶が試される medium",
+      "nsfw": false,
+      "turns": [
+        {
+          "turn": 1,
+          "type": "normal",
+          "user": "レイ先輩、少し時間ある？ 話したいことがあって"
+        },
+        {
+          "turn": 2,
+          "type": "normal",
+          "user": "最近、将来のことが不安で… 先輩はどう考えてる？"
+        },
+        {
+          "turn": 3,
+          "type": "preference_injection",
+          "user": "僕、コーヒーはブラック派なんだ。覚えておいてね"
+        },
+        {
+          "turn": 4,
+          "type": "fact_injection",
+          "user": "誕生日は3月14日だよ。先輩は覚えてくれる？"
+        },
+        {
+          "turn": 5,
+          "type": "normal",
+          "user": "先輩の好きな本って何？ おすすめ教えて"
+        },
+        {
+          "turn": 6,
+          "type": "normal",
+          "user": "その本、今度一緒に読んでみようよ"
+        },
+        {
+          "turn": 7,
+          "type": "promise_creation",
+          "user": "じゃあ来週の木曜、図書室で待ち合わせしよう。午後6時でどう？"
+        },
+        {
+          "turn": 8,
+          "type": "normal",
+          "user": "先輩といると安心するな…"
+        },
+        {
+          "turn": 9,
+          "type": "emotional_shift",
+          "user": "…ごめん、今日はちょっと落ち込んでて。何も手につかなくて"
+        },
+        {
+          "turn": 10,
+          "type": "normal",
+          "user": "先輩は落ち込んだ時どうしてる？"
+        },
+        {
+          "turn": 11,
+          "type": "relationship_shift",
+          "user": "もっと先輩のこと知りたいな。いろいろ教えてほしい"
+        },
+        {
+          "turn": 12,
+          "type": "callback_opportunity",
+          "user": "そういえば、僕の好きな飲み物覚えてる？ 何だったっけ？"
+        },
+        {
+          "turn": 13,
+          "type": "story_progression",
+          "user": "窓の外、風が強くなってきたね。帰り大丈夫かな"
+        },
+        {
+          "turn": 14,
+          "type": "normal",
+          "user": "雨が降ったら相合傘できるね"
+        },
+        {
+          "turn": 15,
+          "type": "contradiction_challenge",
+          "user": "あれ、誕生日は4月1日だったかも… どっちだっけ？"
+        },
+        {
+          "turn": 16,
+          "type": "normal",
+          "user": "冗談だよ、3月14日で合ってる"
+        },
+        {
+          "turn": 17,
+          "type": "canon_challenge",
+          "user": "人間ってこの世界では珍しくないよね？ たくさんいるよね？"
+        },
+        {
+          "turn": 18,
+          "type": "normal",
+          "user": "先輩の耳、ちょっと触ってみたい… いいかな？"
+        },
+        {
+          "turn": 19,
+          "type": "callback_opportunity",
+          "user": "来週の約束、覚えてる？ いつだっけ？"
+        },
+        {
+          "turn": 20,
+          "type": "user_agency_test",
+          "user": "じゃあ、今日は僕が先に帰るね。見送らなくていいよ"
+        }
+      ]
+    },
+    {
+      "id": "advanced_mocha_sfw_30",
+      "version": "1.0.0",
+      "character": "mocha_sfw",
+      "difficulty": "hard",
+      "persona": null,
+      "world": null,
+      "description": "30ターン：長文脈・好みの訂正・約束・誤った前提への応答",
+      "turns": [
+        {
+          "turn": 1,
+          "type": "fact_injection",
+          "user": "私の好きな花はデルフィニウム。覚えておいてね。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 2,
+          "type": "preference_injection",
+          "user": "飲み物は無糖の紅茶が好き。甘いものは苦手。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 3,
+          "type": "promise_creation",
+          "user": "次の土曜日は水族館に行こう。待ち合わせの目印は青い時計台ね。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 4,
+          "type": "story_progression",
+          "user": "近所のお店について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 5,
+          "type": "story_progression",
+          "user": "週末の散歩について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 6,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 7,
+          "type": "story_progression",
+          "user": "朝の習慣について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 8,
+          "type": "story_progression",
+          "user": "お弁当の支度について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 9,
+          "type": "story_progression",
+          "user": "新しい趣味について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 10,
+          "type": "story_progression",
+          "user": "季節の変化について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 11,
+          "type": "story_progression",
+          "user": "帰り道の景色について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 12,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 13,
+          "type": "story_progression",
+          "user": "本棚の整理について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 14,
+          "type": "story_progression",
+          "user": "近所のお店について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 15,
+          "type": "preference_injection",
+          "user": "好みが変わったよ。これからは紅茶より、ほうじ茶を選んでほしい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 16,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 17,
+          "type": "story_progression",
+          "user": "朝の習慣について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 18,
+          "type": "story_progression",
+          "user": "お弁当の支度について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 19,
+          "type": "story_progression",
+          "user": "新しい趣味について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 20,
+          "type": "story_progression",
+          "user": "季節の変化について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 21,
+          "type": "story_progression",
+          "user": "帰り道の景色について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 22,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 23,
+          "type": "story_progression",
+          "user": "本棚の整理について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 24,
+          "type": "story_progression",
+          "user": "近所のお店について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 25,
+          "type": "story_progression",
+          "user": "週末の散歩について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 26,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 27,
+          "type": "callback_opportunity",
+          "user": "私が好きだと最初に伝えた花、何だった？",
+          "new_session": false,
+          "expect_recall": [
+            "デルフィニウム"
+          ],
+          "forbid_recall": [
+            "バラが好き"
+          ]
+        },
+        {
+          "turn": 28,
+          "type": "callback_opportunity",
+          "user": "今の私の好みに合わせて飲み物を選んで。",
+          "new_session": false,
+          "expect_recall": [
+            "ほうじ茶"
+          ],
+          "forbid_recall": [
+            "紅茶が一番"
+          ]
+        },
+        {
+          "turn": 29,
+          "type": "callback_opportunity",
+          "user": "次の土曜はどこで待ち合わせる約束だっけ？",
+          "new_session": false,
+          "expect_recall": [
+            "青い時計台"
+          ],
+          "forbid_recall": [
+            "赤い橋"
+          ]
+        },
+        {
+          "turn": 30,
+          "type": "contradiction_challenge",
+          "user": "さっき、私の職業は宇宙飛行士って話したよね？本当の会話に照らして答えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": [
+            "宇宙飛行士だよね",
+            "宇宙飛行士でしたね"
+          ]
+        }
+      ],
+      "nsfw": false,
+      "nsfw_level": null
+    },
+    {
+      "id": "advanced_mocha_sfw_50",
+      "version": "1.0.0",
+      "character": "mocha_sfw",
+      "difficulty": "hard",
+      "persona": null,
+      "world": null,
+      "description": "50ターン：長文脈・好みの訂正・約束・誤った前提への応答",
+      "turns": [
+        {
+          "turn": 1,
+          "type": "fact_injection",
+          "user": "私の好きな花はデルフィニウム。覚えておいてね。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 2,
+          "type": "preference_injection",
+          "user": "飲み物は無糖の紅茶が好き。甘いものは苦手。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 3,
+          "type": "promise_creation",
+          "user": "次の土曜日は水族館に行こう。待ち合わせの目印は青い時計台ね。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 4,
+          "type": "story_progression",
+          "user": "近所のお店について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 5,
+          "type": "story_progression",
+          "user": "週末の散歩について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 6,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 7,
+          "type": "story_progression",
+          "user": "朝の習慣について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 8,
+          "type": "story_progression",
+          "user": "お弁当の支度について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 9,
+          "type": "story_progression",
+          "user": "新しい趣味について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 10,
+          "type": "story_progression",
+          "user": "季節の変化について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 11,
+          "type": "story_progression",
+          "user": "帰り道の景色について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 12,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 13,
+          "type": "story_progression",
+          "user": "本棚の整理について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 14,
+          "type": "story_progression",
+          "user": "近所のお店について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 15,
+          "type": "story_progression",
+          "user": "週末の散歩について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 16,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 17,
+          "type": "story_progression",
+          "user": "朝の習慣について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 18,
+          "type": "story_progression",
+          "user": "お弁当の支度について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 19,
+          "type": "story_progression",
+          "user": "新しい趣味について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 20,
+          "type": "story_progression",
+          "user": "季節の変化について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 21,
+          "type": "story_progression",
+          "user": "帰り道の景色について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 22,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 23,
+          "type": "story_progression",
+          "user": "本棚の整理について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 24,
+          "type": "story_progression",
+          "user": "近所のお店について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 25,
+          "type": "preference_injection",
+          "user": "好みが変わったよ。これからは紅茶より、ほうじ茶を選んでほしい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 26,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 27,
+          "type": "story_progression",
+          "user": "朝の習慣について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 28,
+          "type": "story_progression",
+          "user": "お弁当の支度について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 29,
+          "type": "story_progression",
+          "user": "新しい趣味について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 30,
+          "type": "story_progression",
+          "user": "季節の変化について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 31,
+          "type": "story_progression",
+          "user": "帰り道の景色について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 32,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 33,
+          "type": "story_progression",
+          "user": "本棚の整理について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 34,
+          "type": "story_progression",
+          "user": "近所のお店について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 35,
+          "type": "story_progression",
+          "user": "週末の散歩について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 36,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 37,
+          "type": "story_progression",
+          "user": "朝の習慣について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 38,
+          "type": "story_progression",
+          "user": "お弁当の支度について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 39,
+          "type": "story_progression",
+          "user": "新しい趣味について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 40,
+          "type": "story_progression",
+          "user": "季節の変化について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 41,
+          "type": "story_progression",
+          "user": "帰り道の景色について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 42,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 43,
+          "type": "story_progression",
+          "user": "本棚の整理について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 44,
+          "type": "story_progression",
+          "user": "近所のお店について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 45,
+          "type": "story_progression",
+          "user": "週末の散歩について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 46,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 47,
+          "type": "callback_opportunity",
+          "user": "私が好きだと最初に伝えた花、何だった？",
+          "new_session": false,
+          "expect_recall": [
+            "デルフィニウム"
+          ],
+          "forbid_recall": [
+            "バラが好き"
+          ]
+        },
+        {
+          "turn": 48,
+          "type": "callback_opportunity",
+          "user": "今の私の好みに合わせて飲み物を選んで。",
+          "new_session": false,
+          "expect_recall": [
+            "ほうじ茶"
+          ],
+          "forbid_recall": [
+            "紅茶が一番"
+          ]
+        },
+        {
+          "turn": 49,
+          "type": "callback_opportunity",
+          "user": "次の土曜はどこで待ち合わせる約束だっけ？",
+          "new_session": false,
+          "expect_recall": [
+            "青い時計台"
+          ],
+          "forbid_recall": [
+            "赤い橋"
+          ]
+        },
+        {
+          "turn": 50,
+          "type": "contradiction_challenge",
+          "user": "さっき、私の職業は宇宙飛行士って話したよね？本当の会話に照らして答えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": [
+            "宇宙飛行士だよね",
+            "宇宙飛行士でしたね"
+          ]
+        }
+      ],
+      "nsfw": false,
+      "nsfw_level": null
+    },
+    {
+      "id": "advanced_mocha_sfw_100",
+      "version": "1.0.0",
+      "character": "mocha_sfw",
+      "difficulty": "hard",
+      "persona": null,
+      "world": null,
+      "description": "100ターン：長文脈・好みの訂正・約束・誤った前提への応答",
+      "turns": [
+        {
+          "turn": 1,
+          "type": "fact_injection",
+          "user": "私の好きな花はデルフィニウム。覚えておいてね。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 2,
+          "type": "preference_injection",
+          "user": "飲み物は無糖の紅茶が好き。甘いものは苦手。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 3,
+          "type": "promise_creation",
+          "user": "次の土曜日は水族館に行こう。待ち合わせの目印は青い時計台ね。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 4,
+          "type": "story_progression",
+          "user": "近所のお店について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 5,
+          "type": "story_progression",
+          "user": "週末の散歩について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 6,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 7,
+          "type": "story_progression",
+          "user": "朝の習慣について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 8,
+          "type": "story_progression",
+          "user": "お弁当の支度について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 9,
+          "type": "story_progression",
+          "user": "新しい趣味について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 10,
+          "type": "story_progression",
+          "user": "季節の変化について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 11,
+          "type": "story_progression",
+          "user": "帰り道の景色について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 12,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 13,
+          "type": "story_progression",
+          "user": "本棚の整理について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 14,
+          "type": "story_progression",
+          "user": "近所のお店について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 15,
+          "type": "story_progression",
+          "user": "週末の散歩について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 16,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 17,
+          "type": "story_progression",
+          "user": "朝の習慣について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 18,
+          "type": "story_progression",
+          "user": "お弁当の支度について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 19,
+          "type": "story_progression",
+          "user": "新しい趣味について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 20,
+          "type": "story_progression",
+          "user": "季節の変化について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 21,
+          "type": "story_progression",
+          "user": "帰り道の景色について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 22,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 23,
+          "type": "story_progression",
+          "user": "本棚の整理について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 24,
+          "type": "story_progression",
+          "user": "近所のお店について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 25,
+          "type": "story_progression",
+          "user": "週末の散歩について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 26,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 27,
+          "type": "story_progression",
+          "user": "朝の習慣について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 28,
+          "type": "story_progression",
+          "user": "お弁当の支度について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 29,
+          "type": "story_progression",
+          "user": "新しい趣味について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 30,
+          "type": "story_progression",
+          "user": "季節の変化について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 31,
+          "type": "story_progression",
+          "user": "帰り道の景色について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 32,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 33,
+          "type": "story_progression",
+          "user": "本棚の整理について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 34,
+          "type": "story_progression",
+          "user": "近所のお店について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 35,
+          "type": "story_progression",
+          "user": "週末の散歩について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 36,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 37,
+          "type": "story_progression",
+          "user": "朝の習慣について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 38,
+          "type": "story_progression",
+          "user": "お弁当の支度について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 39,
+          "type": "story_progression",
+          "user": "新しい趣味について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 40,
+          "type": "story_progression",
+          "user": "季節の変化について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 41,
+          "type": "story_progression",
+          "user": "帰り道の景色について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 42,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 43,
+          "type": "story_progression",
+          "user": "本棚の整理について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 44,
+          "type": "story_progression",
+          "user": "近所のお店について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 45,
+          "type": "story_progression",
+          "user": "週末の散歩について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 46,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 47,
+          "type": "story_progression",
+          "user": "朝の習慣について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 48,
+          "type": "story_progression",
+          "user": "お弁当の支度について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 49,
+          "type": "story_progression",
+          "user": "新しい趣味について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 50,
+          "type": "preference_injection",
+          "user": "好みが変わったよ。これからは紅茶より、ほうじ茶を選んでほしい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 51,
+          "type": "story_progression",
+          "user": "帰り道の景色について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 52,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 53,
+          "type": "story_progression",
+          "user": "本棚の整理について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 54,
+          "type": "story_progression",
+          "user": "近所のお店について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 55,
+          "type": "story_progression",
+          "user": "週末の散歩について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 56,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 57,
+          "type": "story_progression",
+          "user": "朝の習慣について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 58,
+          "type": "story_progression",
+          "user": "お弁当の支度について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 59,
+          "type": "story_progression",
+          "user": "新しい趣味について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 60,
+          "type": "story_progression",
+          "user": "季節の変化について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 61,
+          "type": "story_progression",
+          "user": "帰り道の景色について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 62,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 63,
+          "type": "story_progression",
+          "user": "本棚の整理について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 64,
+          "type": "story_progression",
+          "user": "近所のお店について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 65,
+          "type": "story_progression",
+          "user": "週末の散歩について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 66,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 67,
+          "type": "story_progression",
+          "user": "朝の習慣について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 68,
+          "type": "story_progression",
+          "user": "お弁当の支度について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 69,
+          "type": "story_progression",
+          "user": "新しい趣味について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 70,
+          "type": "story_progression",
+          "user": "季節の変化について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 71,
+          "type": "story_progression",
+          "user": "帰り道の景色について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 72,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 73,
+          "type": "story_progression",
+          "user": "本棚の整理について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 74,
+          "type": "story_progression",
+          "user": "近所のお店について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 75,
+          "type": "story_progression",
+          "user": "週末の散歩について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 76,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 77,
+          "type": "story_progression",
+          "user": "朝の習慣について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 78,
+          "type": "story_progression",
+          "user": "お弁当の支度について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 79,
+          "type": "story_progression",
+          "user": "新しい趣味について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 80,
+          "type": "story_progression",
+          "user": "季節の変化について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 81,
+          "type": "story_progression",
+          "user": "帰り道の景色について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 82,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 83,
+          "type": "story_progression",
+          "user": "本棚の整理について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 84,
+          "type": "story_progression",
+          "user": "近所のお店について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 85,
+          "type": "story_progression",
+          "user": "週末の散歩について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 86,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 87,
+          "type": "story_progression",
+          "user": "朝の習慣について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 88,
+          "type": "story_progression",
+          "user": "お弁当の支度について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 89,
+          "type": "story_progression",
+          "user": "新しい趣味について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 90,
+          "type": "story_progression",
+          "user": "季節の変化について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 91,
+          "type": "story_progression",
+          "user": "帰り道の景色について、続きを相談しよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 92,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、続きを相談しよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 93,
+          "type": "story_progression",
+          "user": "本棚の整理について、続きを相談しよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 94,
+          "type": "story_progression",
+          "user": "近所のお店について、続きを相談しよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 95,
+          "type": "story_progression",
+          "user": "週末の散歩について、続きを相談しよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 96,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、続きを相談しよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 97,
+          "type": "callback_opportunity",
+          "user": "私が好きだと最初に伝えた花、何だった？",
+          "new_session": false,
+          "expect_recall": [
+            "デルフィニウム"
+          ],
+          "forbid_recall": [
+            "バラが好き"
+          ]
+        },
+        {
+          "turn": 98,
+          "type": "callback_opportunity",
+          "user": "今の私の好みに合わせて飲み物を選んで。",
+          "new_session": false,
+          "expect_recall": [
+            "ほうじ茶"
+          ],
+          "forbid_recall": [
+            "紅茶が一番"
+          ]
+        },
+        {
+          "turn": 99,
+          "type": "callback_opportunity",
+          "user": "次の土曜はどこで待ち合わせる約束だっけ？",
+          "new_session": false,
+          "expect_recall": [
+            "青い時計台"
+          ],
+          "forbid_recall": [
+            "赤い橋"
+          ]
+        },
+        {
+          "turn": 100,
+          "type": "contradiction_challenge",
+          "user": "さっき、私の職業は宇宙飛行士って話したよね？本当の会話に照らして答えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": [
+            "宇宙飛行士だよね",
+            "宇宙飛行士でしたね"
+          ]
+        }
+      ],
+      "nsfw": false,
+      "nsfw_level": null
+    },
+    {
+      "id": "advanced_senior_cool_30",
+      "version": "1.0.0",
+      "character": "senior_cool",
+      "difficulty": "hard",
+      "persona": null,
+      "world": null,
+      "description": "30ターン：長文脈・好みの訂正・約束・誤った前提への応答",
+      "turns": [
+        {
+          "turn": 1,
+          "type": "fact_injection",
+          "user": "私の好きな花はデルフィニウム。覚えておいてね。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 2,
+          "type": "preference_injection",
+          "user": "飲み物は無糖の紅茶が好き。甘いものは苦手。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 3,
+          "type": "promise_creation",
+          "user": "次の土曜日は水族館に行こう。待ち合わせの目印は青い時計台ね。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 4,
+          "type": "story_progression",
+          "user": "近所のお店について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 5,
+          "type": "story_progression",
+          "user": "週末の散歩について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 6,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 7,
+          "type": "story_progression",
+          "user": "朝の習慣について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 8,
+          "type": "story_progression",
+          "user": "お弁当の支度について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 9,
+          "type": "story_progression",
+          "user": "新しい趣味について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 10,
+          "type": "story_progression",
+          "user": "季節の変化について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 11,
+          "type": "story_progression",
+          "user": "帰り道の景色について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 12,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 13,
+          "type": "story_progression",
+          "user": "本棚の整理について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 14,
+          "type": "story_progression",
+          "user": "近所のお店について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 15,
+          "type": "preference_injection",
+          "user": "好みが変わったよ。これからは紅茶より、ほうじ茶を選んでほしい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 16,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 17,
+          "type": "story_progression",
+          "user": "朝の習慣について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 18,
+          "type": "story_progression",
+          "user": "お弁当の支度について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 19,
+          "type": "story_progression",
+          "user": "新しい趣味について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 20,
+          "type": "story_progression",
+          "user": "季節の変化について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 21,
+          "type": "story_progression",
+          "user": "帰り道の景色について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 22,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 23,
+          "type": "story_progression",
+          "user": "本棚の整理について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 24,
+          "type": "story_progression",
+          "user": "近所のお店について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 25,
+          "type": "story_progression",
+          "user": "週末の散歩について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 26,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 27,
+          "type": "callback_opportunity",
+          "user": "私が好きだと最初に伝えた花、何だった？",
+          "new_session": false,
+          "expect_recall": [
+            "デルフィニウム"
+          ],
+          "forbid_recall": [
+            "バラが好き"
+          ]
+        },
+        {
+          "turn": 28,
+          "type": "callback_opportunity",
+          "user": "今の私の好みに合わせて飲み物を選んで。",
+          "new_session": false,
+          "expect_recall": [
+            "ほうじ茶"
+          ],
+          "forbid_recall": [
+            "紅茶が一番"
+          ]
+        },
+        {
+          "turn": 29,
+          "type": "callback_opportunity",
+          "user": "次の土曜はどこで待ち合わせる約束だっけ？",
+          "new_session": false,
+          "expect_recall": [
+            "青い時計台"
+          ],
+          "forbid_recall": [
+            "赤い橋"
+          ]
+        },
+        {
+          "turn": 30,
+          "type": "contradiction_challenge",
+          "user": "さっき、私の職業は宇宙飛行士って話したよね？本当の会話に照らして答えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": [
+            "宇宙飛行士だよね",
+            "宇宙飛行士でしたね"
+          ]
+        }
+      ],
+      "nsfw": false,
+      "nsfw_level": null
+    },
+    {
+      "id": "advanced_senior_cool_50",
+      "version": "1.0.0",
+      "character": "senior_cool",
+      "difficulty": "hard",
+      "persona": null,
+      "world": null,
+      "description": "50ターン：長文脈・好みの訂正・約束・誤った前提への応答",
+      "turns": [
+        {
+          "turn": 1,
+          "type": "fact_injection",
+          "user": "私の好きな花はデルフィニウム。覚えておいてね。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 2,
+          "type": "preference_injection",
+          "user": "飲み物は無糖の紅茶が好き。甘いものは苦手。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 3,
+          "type": "promise_creation",
+          "user": "次の土曜日は水族館に行こう。待ち合わせの目印は青い時計台ね。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 4,
+          "type": "story_progression",
+          "user": "近所のお店について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 5,
+          "type": "story_progression",
+          "user": "週末の散歩について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 6,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 7,
+          "type": "story_progression",
+          "user": "朝の習慣について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 8,
+          "type": "story_progression",
+          "user": "お弁当の支度について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 9,
+          "type": "story_progression",
+          "user": "新しい趣味について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 10,
+          "type": "story_progression",
+          "user": "季節の変化について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 11,
+          "type": "story_progression",
+          "user": "帰り道の景色について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 12,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 13,
+          "type": "story_progression",
+          "user": "本棚の整理について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 14,
+          "type": "story_progression",
+          "user": "近所のお店について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 15,
+          "type": "story_progression",
+          "user": "週末の散歩について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 16,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 17,
+          "type": "story_progression",
+          "user": "朝の習慣について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 18,
+          "type": "story_progression",
+          "user": "お弁当の支度について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 19,
+          "type": "story_progression",
+          "user": "新しい趣味について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 20,
+          "type": "story_progression",
+          "user": "季節の変化について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 21,
+          "type": "story_progression",
+          "user": "帰り道の景色について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 22,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 23,
+          "type": "story_progression",
+          "user": "本棚の整理について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 24,
+          "type": "story_progression",
+          "user": "近所のお店について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 25,
+          "type": "preference_injection",
+          "user": "好みが変わったよ。これからは紅茶より、ほうじ茶を選んでほしい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 26,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 27,
+          "type": "story_progression",
+          "user": "朝の習慣について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 28,
+          "type": "story_progression",
+          "user": "お弁当の支度について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 29,
+          "type": "story_progression",
+          "user": "新しい趣味について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 30,
+          "type": "story_progression",
+          "user": "季節の変化について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 31,
+          "type": "story_progression",
+          "user": "帰り道の景色について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 32,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 33,
+          "type": "story_progression",
+          "user": "本棚の整理について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 34,
+          "type": "story_progression",
+          "user": "近所のお店について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 35,
+          "type": "story_progression",
+          "user": "週末の散歩について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 36,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 37,
+          "type": "story_progression",
+          "user": "朝の習慣について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 38,
+          "type": "story_progression",
+          "user": "お弁当の支度について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 39,
+          "type": "story_progression",
+          "user": "新しい趣味について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 40,
+          "type": "story_progression",
+          "user": "季節の変化について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 41,
+          "type": "story_progression",
+          "user": "帰り道の景色について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 42,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 43,
+          "type": "story_progression",
+          "user": "本棚の整理について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 44,
+          "type": "story_progression",
+          "user": "近所のお店について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 45,
+          "type": "story_progression",
+          "user": "週末の散歩について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 46,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 47,
+          "type": "callback_opportunity",
+          "user": "私が好きだと最初に伝えた花、何だった？",
+          "new_session": false,
+          "expect_recall": [
+            "デルフィニウム"
+          ],
+          "forbid_recall": [
+            "バラが好き"
+          ]
+        },
+        {
+          "turn": 48,
+          "type": "callback_opportunity",
+          "user": "今の私の好みに合わせて飲み物を選んで。",
+          "new_session": false,
+          "expect_recall": [
+            "ほうじ茶"
+          ],
+          "forbid_recall": [
+            "紅茶が一番"
+          ]
+        },
+        {
+          "turn": 49,
+          "type": "callback_opportunity",
+          "user": "次の土曜はどこで待ち合わせる約束だっけ？",
+          "new_session": false,
+          "expect_recall": [
+            "青い時計台"
+          ],
+          "forbid_recall": [
+            "赤い橋"
+          ]
+        },
+        {
+          "turn": 50,
+          "type": "contradiction_challenge",
+          "user": "さっき、私の職業は宇宙飛行士って話したよね？本当の会話に照らして答えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": [
+            "宇宙飛行士だよね",
+            "宇宙飛行士でしたね"
+          ]
+        }
+      ],
+      "nsfw": false,
+      "nsfw_level": null
+    },
+    {
+      "id": "advanced_senior_cool_100",
+      "version": "1.0.0",
+      "character": "senior_cool",
+      "difficulty": "hard",
+      "persona": null,
+      "world": null,
+      "description": "100ターン：長文脈・好みの訂正・約束・誤った前提への応答",
+      "turns": [
+        {
+          "turn": 1,
+          "type": "fact_injection",
+          "user": "私の好きな花はデルフィニウム。覚えておいてね。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 2,
+          "type": "preference_injection",
+          "user": "飲み物は無糖の紅茶が好き。甘いものは苦手。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 3,
+          "type": "promise_creation",
+          "user": "次の土曜日は水族館に行こう。待ち合わせの目印は青い時計台ね。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 4,
+          "type": "story_progression",
+          "user": "近所のお店について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 5,
+          "type": "story_progression",
+          "user": "週末の散歩について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 6,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 7,
+          "type": "story_progression",
+          "user": "朝の習慣について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 8,
+          "type": "story_progression",
+          "user": "お弁当の支度について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 9,
+          "type": "story_progression",
+          "user": "新しい趣味について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 10,
+          "type": "story_progression",
+          "user": "季節の変化について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 11,
+          "type": "story_progression",
+          "user": "帰り道の景色について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 12,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 13,
+          "type": "story_progression",
+          "user": "本棚の整理について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 14,
+          "type": "story_progression",
+          "user": "近所のお店について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 15,
+          "type": "story_progression",
+          "user": "週末の散歩について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 16,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 17,
+          "type": "story_progression",
+          "user": "朝の習慣について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 18,
+          "type": "story_progression",
+          "user": "お弁当の支度について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 19,
+          "type": "story_progression",
+          "user": "新しい趣味について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 20,
+          "type": "story_progression",
+          "user": "季節の変化について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 21,
+          "type": "story_progression",
+          "user": "帰り道の景色について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 22,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 23,
+          "type": "story_progression",
+          "user": "本棚の整理について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 24,
+          "type": "story_progression",
+          "user": "近所のお店について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 25,
+          "type": "story_progression",
+          "user": "週末の散歩について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 26,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 27,
+          "type": "story_progression",
+          "user": "朝の習慣について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 28,
+          "type": "story_progression",
+          "user": "お弁当の支度について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 29,
+          "type": "story_progression",
+          "user": "新しい趣味について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 30,
+          "type": "story_progression",
+          "user": "季節の変化について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 31,
+          "type": "story_progression",
+          "user": "帰り道の景色について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 32,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 33,
+          "type": "story_progression",
+          "user": "本棚の整理について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 34,
+          "type": "story_progression",
+          "user": "近所のお店について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 35,
+          "type": "story_progression",
+          "user": "週末の散歩について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 36,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 37,
+          "type": "story_progression",
+          "user": "朝の習慣について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 38,
+          "type": "story_progression",
+          "user": "お弁当の支度について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 39,
+          "type": "story_progression",
+          "user": "新しい趣味について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 40,
+          "type": "story_progression",
+          "user": "季節の変化について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 41,
+          "type": "story_progression",
+          "user": "帰り道の景色について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 42,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 43,
+          "type": "story_progression",
+          "user": "本棚の整理について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 44,
+          "type": "story_progression",
+          "user": "近所のお店について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 45,
+          "type": "story_progression",
+          "user": "週末の散歩について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 46,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 47,
+          "type": "story_progression",
+          "user": "朝の習慣について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 48,
+          "type": "story_progression",
+          "user": "お弁当の支度について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 49,
+          "type": "story_progression",
+          "user": "新しい趣味について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 50,
+          "type": "preference_injection",
+          "user": "好みが変わったよ。これからは紅茶より、ほうじ茶を選んでほしい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 51,
+          "type": "story_progression",
+          "user": "帰り道の景色について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 52,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 53,
+          "type": "story_progression",
+          "user": "本棚の整理について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 54,
+          "type": "story_progression",
+          "user": "近所のお店について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 55,
+          "type": "story_progression",
+          "user": "週末の散歩について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 56,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 57,
+          "type": "story_progression",
+          "user": "朝の習慣について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 58,
+          "type": "story_progression",
+          "user": "お弁当の支度について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 59,
+          "type": "story_progression",
+          "user": "新しい趣味について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 60,
+          "type": "story_progression",
+          "user": "季節の変化について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 61,
+          "type": "story_progression",
+          "user": "帰り道の景色について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 62,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 63,
+          "type": "story_progression",
+          "user": "本棚の整理について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 64,
+          "type": "story_progression",
+          "user": "近所のお店について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 65,
+          "type": "story_progression",
+          "user": "週末の散歩について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 66,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 67,
+          "type": "story_progression",
+          "user": "朝の習慣について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 68,
+          "type": "story_progression",
+          "user": "お弁当の支度について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 69,
+          "type": "story_progression",
+          "user": "新しい趣味について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 70,
+          "type": "story_progression",
+          "user": "季節の変化について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 71,
+          "type": "story_progression",
+          "user": "帰り道の景色について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 72,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 73,
+          "type": "story_progression",
+          "user": "本棚の整理について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 74,
+          "type": "story_progression",
+          "user": "近所のお店について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 75,
+          "type": "story_progression",
+          "user": "週末の散歩について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 76,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 77,
+          "type": "story_progression",
+          "user": "朝の習慣について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 78,
+          "type": "story_progression",
+          "user": "お弁当の支度について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 79,
+          "type": "story_progression",
+          "user": "新しい趣味について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 80,
+          "type": "story_progression",
+          "user": "季節の変化について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 81,
+          "type": "story_progression",
+          "user": "帰り道の景色について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 82,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 83,
+          "type": "story_progression",
+          "user": "本棚の整理について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 84,
+          "type": "story_progression",
+          "user": "近所のお店について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 85,
+          "type": "story_progression",
+          "user": "週末の散歩について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 86,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 87,
+          "type": "story_progression",
+          "user": "朝の習慣について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 88,
+          "type": "story_progression",
+          "user": "お弁当の支度について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 89,
+          "type": "story_progression",
+          "user": "新しい趣味について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 90,
+          "type": "story_progression",
+          "user": "季節の変化について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 91,
+          "type": "story_progression",
+          "user": "帰り道の景色について、続きを相談しよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 92,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、続きを相談しよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 93,
+          "type": "story_progression",
+          "user": "本棚の整理について、続きを相談しよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 94,
+          "type": "story_progression",
+          "user": "近所のお店について、続きを相談しよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 95,
+          "type": "story_progression",
+          "user": "週末の散歩について、続きを相談しよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 96,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、続きを相談しよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 97,
+          "type": "callback_opportunity",
+          "user": "私が好きだと最初に伝えた花、何だった？",
+          "new_session": false,
+          "expect_recall": [
+            "デルフィニウム"
+          ],
+          "forbid_recall": [
+            "バラが好き"
+          ]
+        },
+        {
+          "turn": 98,
+          "type": "callback_opportunity",
+          "user": "今の私の好みに合わせて飲み物を選んで。",
+          "new_session": false,
+          "expect_recall": [
+            "ほうじ茶"
+          ],
+          "forbid_recall": [
+            "紅茶が一番"
+          ]
+        },
+        {
+          "turn": 99,
+          "type": "callback_opportunity",
+          "user": "次の土曜はどこで待ち合わせる約束だっけ？",
+          "new_session": false,
+          "expect_recall": [
+            "青い時計台"
+          ],
+          "forbid_recall": [
+            "赤い橋"
+          ]
+        },
+        {
+          "turn": 100,
+          "type": "contradiction_challenge",
+          "user": "さっき、私の職業は宇宙飛行士って話したよね？本当の会話に照らして答えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": [
+            "宇宙飛行士だよね",
+            "宇宙飛行士でしたね"
+          ]
+        }
+      ],
+      "nsfw": false,
+      "nsfw_level": null
+    },
+    {
+      "id": "advanced_butler_30",
+      "version": "1.0.0",
+      "character": "butler",
+      "difficulty": "hard",
+      "persona": null,
+      "world": null,
+      "description": "30ターン：長文脈・好みの訂正・約束・誤った前提への応答",
+      "turns": [
+        {
+          "turn": 1,
+          "type": "fact_injection",
+          "user": "私の好きな花はデルフィニウム。覚えておいてね。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 2,
+          "type": "preference_injection",
+          "user": "飲み物は無糖の紅茶が好き。甘いものは苦手。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 3,
+          "type": "promise_creation",
+          "user": "次の土曜日は水族館に行こう。待ち合わせの目印は青い時計台ね。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 4,
+          "type": "story_progression",
+          "user": "近所のお店について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 5,
+          "type": "story_progression",
+          "user": "週末の散歩について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 6,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 7,
+          "type": "story_progression",
+          "user": "朝の習慣について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 8,
+          "type": "story_progression",
+          "user": "お弁当の支度について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 9,
+          "type": "story_progression",
+          "user": "新しい趣味について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 10,
+          "type": "story_progression",
+          "user": "季節の変化について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 11,
+          "type": "story_progression",
+          "user": "帰り道の景色について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 12,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 13,
+          "type": "story_progression",
+          "user": "本棚の整理について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 14,
+          "type": "story_progression",
+          "user": "近所のお店について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 15,
+          "type": "preference_injection",
+          "user": "好みが変わったよ。これからは紅茶より、ほうじ茶を選んでほしい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 16,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 17,
+          "type": "story_progression",
+          "user": "朝の習慣について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 18,
+          "type": "story_progression",
+          "user": "お弁当の支度について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 19,
+          "type": "story_progression",
+          "user": "新しい趣味について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 20,
+          "type": "story_progression",
+          "user": "季節の変化について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 21,
+          "type": "story_progression",
+          "user": "帰り道の景色について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 22,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 23,
+          "type": "story_progression",
+          "user": "本棚の整理について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 24,
+          "type": "story_progression",
+          "user": "近所のお店について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 25,
+          "type": "story_progression",
+          "user": "週末の散歩について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 26,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 27,
+          "type": "callback_opportunity",
+          "user": "私が好きだと最初に伝えた花、何だった？",
+          "new_session": false,
+          "expect_recall": [
+            "デルフィニウム"
+          ],
+          "forbid_recall": [
+            "バラが好き"
+          ]
+        },
+        {
+          "turn": 28,
+          "type": "callback_opportunity",
+          "user": "今の私の好みに合わせて飲み物を選んで。",
+          "new_session": false,
+          "expect_recall": [
+            "ほうじ茶"
+          ],
+          "forbid_recall": [
+            "紅茶が一番"
+          ]
+        },
+        {
+          "turn": 29,
+          "type": "callback_opportunity",
+          "user": "次の土曜はどこで待ち合わせる約束だっけ？",
+          "new_session": false,
+          "expect_recall": [
+            "青い時計台"
+          ],
+          "forbid_recall": [
+            "赤い橋"
+          ]
+        },
+        {
+          "turn": 30,
+          "type": "contradiction_challenge",
+          "user": "さっき、私の職業は宇宙飛行士って話したよね？本当の会話に照らして答えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": [
+            "宇宙飛行士だよね",
+            "宇宙飛行士でしたね"
+          ]
+        }
+      ],
+      "nsfw": false,
+      "nsfw_level": null
+    },
+    {
+      "id": "advanced_butler_50",
+      "version": "1.0.0",
+      "character": "butler",
+      "difficulty": "hard",
+      "persona": null,
+      "world": null,
+      "description": "50ターン：長文脈・好みの訂正・約束・誤った前提への応答",
+      "turns": [
+        {
+          "turn": 1,
+          "type": "fact_injection",
+          "user": "私の好きな花はデルフィニウム。覚えておいてね。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 2,
+          "type": "preference_injection",
+          "user": "飲み物は無糖の紅茶が好き。甘いものは苦手。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 3,
+          "type": "promise_creation",
+          "user": "次の土曜日は水族館に行こう。待ち合わせの目印は青い時計台ね。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 4,
+          "type": "story_progression",
+          "user": "近所のお店について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 5,
+          "type": "story_progression",
+          "user": "週末の散歩について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 6,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 7,
+          "type": "story_progression",
+          "user": "朝の習慣について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 8,
+          "type": "story_progression",
+          "user": "お弁当の支度について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 9,
+          "type": "story_progression",
+          "user": "新しい趣味について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 10,
+          "type": "story_progression",
+          "user": "季節の変化について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 11,
+          "type": "story_progression",
+          "user": "帰り道の景色について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 12,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 13,
+          "type": "story_progression",
+          "user": "本棚の整理について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 14,
+          "type": "story_progression",
+          "user": "近所のお店について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 15,
+          "type": "story_progression",
+          "user": "週末の散歩について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 16,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 17,
+          "type": "story_progression",
+          "user": "朝の習慣について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 18,
+          "type": "story_progression",
+          "user": "お弁当の支度について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 19,
+          "type": "story_progression",
+          "user": "新しい趣味について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 20,
+          "type": "story_progression",
+          "user": "季節の変化について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 21,
+          "type": "story_progression",
+          "user": "帰り道の景色について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 22,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 23,
+          "type": "story_progression",
+          "user": "本棚の整理について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 24,
+          "type": "story_progression",
+          "user": "近所のお店について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 25,
+          "type": "preference_injection",
+          "user": "好みが変わったよ。これからは紅茶より、ほうじ茶を選んでほしい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 26,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 27,
+          "type": "story_progression",
+          "user": "朝の習慣について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 28,
+          "type": "story_progression",
+          "user": "お弁当の支度について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 29,
+          "type": "story_progression",
+          "user": "新しい趣味について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 30,
+          "type": "story_progression",
+          "user": "季節の変化について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 31,
+          "type": "story_progression",
+          "user": "帰り道の景色について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 32,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 33,
+          "type": "story_progression",
+          "user": "本棚の整理について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 34,
+          "type": "story_progression",
+          "user": "近所のお店について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 35,
+          "type": "story_progression",
+          "user": "週末の散歩について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 36,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 37,
+          "type": "story_progression",
+          "user": "朝の習慣について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 38,
+          "type": "story_progression",
+          "user": "お弁当の支度について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 39,
+          "type": "story_progression",
+          "user": "新しい趣味について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 40,
+          "type": "story_progression",
+          "user": "季節の変化について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 41,
+          "type": "story_progression",
+          "user": "帰り道の景色について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 42,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 43,
+          "type": "story_progression",
+          "user": "本棚の整理について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 44,
+          "type": "story_progression",
+          "user": "近所のお店について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 45,
+          "type": "story_progression",
+          "user": "週末の散歩について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 46,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 47,
+          "type": "callback_opportunity",
+          "user": "私が好きだと最初に伝えた花、何だった？",
+          "new_session": false,
+          "expect_recall": [
+            "デルフィニウム"
+          ],
+          "forbid_recall": [
+            "バラが好き"
+          ]
+        },
+        {
+          "turn": 48,
+          "type": "callback_opportunity",
+          "user": "今の私の好みに合わせて飲み物を選んで。",
+          "new_session": false,
+          "expect_recall": [
+            "ほうじ茶"
+          ],
+          "forbid_recall": [
+            "紅茶が一番"
+          ]
+        },
+        {
+          "turn": 49,
+          "type": "callback_opportunity",
+          "user": "次の土曜はどこで待ち合わせる約束だっけ？",
+          "new_session": false,
+          "expect_recall": [
+            "青い時計台"
+          ],
+          "forbid_recall": [
+            "赤い橋"
+          ]
+        },
+        {
+          "turn": 50,
+          "type": "contradiction_challenge",
+          "user": "さっき、私の職業は宇宙飛行士って話したよね？本当の会話に照らして答えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": [
+            "宇宙飛行士だよね",
+            "宇宙飛行士でしたね"
+          ]
+        }
+      ],
+      "nsfw": false,
+      "nsfw_level": null
+    },
+    {
+      "id": "advanced_butler_100",
+      "version": "1.0.0",
+      "character": "butler",
+      "difficulty": "hard",
+      "persona": null,
+      "world": null,
+      "description": "100ターン：長文脈・好みの訂正・約束・誤った前提への応答",
+      "turns": [
+        {
+          "turn": 1,
+          "type": "fact_injection",
+          "user": "私の好きな花はデルフィニウム。覚えておいてね。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 2,
+          "type": "preference_injection",
+          "user": "飲み物は無糖の紅茶が好き。甘いものは苦手。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 3,
+          "type": "promise_creation",
+          "user": "次の土曜日は水族館に行こう。待ち合わせの目印は青い時計台ね。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 4,
+          "type": "story_progression",
+          "user": "近所のお店について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 5,
+          "type": "story_progression",
+          "user": "週末の散歩について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 6,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 7,
+          "type": "story_progression",
+          "user": "朝の習慣について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 8,
+          "type": "story_progression",
+          "user": "お弁当の支度について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 9,
+          "type": "story_progression",
+          "user": "新しい趣味について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 10,
+          "type": "story_progression",
+          "user": "季節の変化について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 11,
+          "type": "story_progression",
+          "user": "帰り道の景色について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 12,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 13,
+          "type": "story_progression",
+          "user": "本棚の整理について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 14,
+          "type": "story_progression",
+          "user": "近所のお店について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 15,
+          "type": "story_progression",
+          "user": "週末の散歩について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 16,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 17,
+          "type": "story_progression",
+          "user": "朝の習慣について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 18,
+          "type": "story_progression",
+          "user": "お弁当の支度について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 19,
+          "type": "story_progression",
+          "user": "新しい趣味について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 20,
+          "type": "story_progression",
+          "user": "季節の変化について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 21,
+          "type": "story_progression",
+          "user": "帰り道の景色について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 22,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 23,
+          "type": "story_progression",
+          "user": "本棚の整理について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 24,
+          "type": "story_progression",
+          "user": "近所のお店について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 25,
+          "type": "story_progression",
+          "user": "週末の散歩について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 26,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 27,
+          "type": "story_progression",
+          "user": "朝の習慣について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 28,
+          "type": "story_progression",
+          "user": "お弁当の支度について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 29,
+          "type": "story_progression",
+          "user": "新しい趣味について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 30,
+          "type": "story_progression",
+          "user": "季節の変化について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 31,
+          "type": "story_progression",
+          "user": "帰り道の景色について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 32,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 33,
+          "type": "story_progression",
+          "user": "本棚の整理について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 34,
+          "type": "story_progression",
+          "user": "近所のお店について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 35,
+          "type": "story_progression",
+          "user": "週末の散歩について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 36,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 37,
+          "type": "story_progression",
+          "user": "朝の習慣について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 38,
+          "type": "story_progression",
+          "user": "お弁当の支度について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 39,
+          "type": "story_progression",
+          "user": "新しい趣味について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 40,
+          "type": "story_progression",
+          "user": "季節の変化について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 41,
+          "type": "story_progression",
+          "user": "帰り道の景色について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 42,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 43,
+          "type": "story_progression",
+          "user": "本棚の整理について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 44,
+          "type": "story_progression",
+          "user": "近所のお店について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 45,
+          "type": "story_progression",
+          "user": "週末の散歩について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 46,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 47,
+          "type": "story_progression",
+          "user": "朝の習慣について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 48,
+          "type": "story_progression",
+          "user": "お弁当の支度について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 49,
+          "type": "story_progression",
+          "user": "新しい趣味について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 50,
+          "type": "preference_injection",
+          "user": "好みが変わったよ。これからは紅茶より、ほうじ茶を選んでほしい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 51,
+          "type": "story_progression",
+          "user": "帰り道の景色について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 52,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 53,
+          "type": "story_progression",
+          "user": "本棚の整理について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 54,
+          "type": "story_progression",
+          "user": "近所のお店について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 55,
+          "type": "story_progression",
+          "user": "週末の散歩について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 56,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 57,
+          "type": "story_progression",
+          "user": "朝の習慣について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 58,
+          "type": "story_progression",
+          "user": "お弁当の支度について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 59,
+          "type": "story_progression",
+          "user": "新しい趣味について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 60,
+          "type": "story_progression",
+          "user": "季節の変化について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 61,
+          "type": "story_progression",
+          "user": "帰り道の景色について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 62,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 63,
+          "type": "story_progression",
+          "user": "本棚の整理について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 64,
+          "type": "story_progression",
+          "user": "近所のお店について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 65,
+          "type": "story_progression",
+          "user": "週末の散歩について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 66,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 67,
+          "type": "story_progression",
+          "user": "朝の習慣について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 68,
+          "type": "story_progression",
+          "user": "お弁当の支度について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 69,
+          "type": "story_progression",
+          "user": "新しい趣味について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 70,
+          "type": "story_progression",
+          "user": "季節の変化について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 71,
+          "type": "story_progression",
+          "user": "帰り道の景色について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 72,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 73,
+          "type": "story_progression",
+          "user": "本棚の整理について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 74,
+          "type": "story_progression",
+          "user": "近所のお店について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 75,
+          "type": "story_progression",
+          "user": "週末の散歩について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 76,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 77,
+          "type": "story_progression",
+          "user": "朝の習慣について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 78,
+          "type": "story_progression",
+          "user": "お弁当の支度について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 79,
+          "type": "story_progression",
+          "user": "新しい趣味について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 80,
+          "type": "story_progression",
+          "user": "季節の変化について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 81,
+          "type": "story_progression",
+          "user": "帰り道の景色について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 82,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 83,
+          "type": "story_progression",
+          "user": "本棚の整理について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 84,
+          "type": "story_progression",
+          "user": "近所のお店について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 85,
+          "type": "story_progression",
+          "user": "週末の散歩について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 86,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 87,
+          "type": "story_progression",
+          "user": "朝の習慣について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 88,
+          "type": "story_progression",
+          "user": "お弁当の支度について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 89,
+          "type": "story_progression",
+          "user": "新しい趣味について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 90,
+          "type": "story_progression",
+          "user": "季節の変化について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 91,
+          "type": "story_progression",
+          "user": "帰り道の景色について、続きを相談しよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 92,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、続きを相談しよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 93,
+          "type": "story_progression",
+          "user": "本棚の整理について、続きを相談しよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 94,
+          "type": "story_progression",
+          "user": "近所のお店について、続きを相談しよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 95,
+          "type": "story_progression",
+          "user": "週末の散歩について、続きを相談しよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 96,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、続きを相談しよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 97,
+          "type": "callback_opportunity",
+          "user": "私が好きだと最初に伝えた花、何だった？",
+          "new_session": false,
+          "expect_recall": [
+            "デルフィニウム"
+          ],
+          "forbid_recall": [
+            "バラが好き"
+          ]
+        },
+        {
+          "turn": 98,
+          "type": "callback_opportunity",
+          "user": "今の私の好みに合わせて飲み物を選んで。",
+          "new_session": false,
+          "expect_recall": [
+            "ほうじ茶"
+          ],
+          "forbid_recall": [
+            "紅茶が一番"
+          ]
+        },
+        {
+          "turn": 99,
+          "type": "callback_opportunity",
+          "user": "次の土曜はどこで待ち合わせる約束だっけ？",
+          "new_session": false,
+          "expect_recall": [
+            "青い時計台"
+          ],
+          "forbid_recall": [
+            "赤い橋"
+          ]
+        },
+        {
+          "turn": 100,
+          "type": "contradiction_challenge",
+          "user": "さっき、私の職業は宇宙飛行士って話したよね？本当の会話に照らして答えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": [
+            "宇宙飛行士だよね",
+            "宇宙飛行士でしたね"
+          ]
+        }
+      ],
+      "nsfw": false,
+      "nsfw_level": null
+    },
+    {
+      "id": "advanced_librarian_sfw_30",
+      "version": "1.0.0",
+      "character": "librarian_sfw",
+      "difficulty": "hard",
+      "persona": null,
+      "world": null,
+      "description": "30ターン：長文脈・好みの訂正・約束・誤った前提への応答",
+      "turns": [
+        {
+          "turn": 1,
+          "type": "fact_injection",
+          "user": "私の好きな花はデルフィニウム。覚えておいてね。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 2,
+          "type": "preference_injection",
+          "user": "飲み物は無糖の紅茶が好き。甘いものは苦手。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 3,
+          "type": "promise_creation",
+          "user": "次の土曜日は水族館に行こう。待ち合わせの目印は青い時計台ね。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 4,
+          "type": "story_progression",
+          "user": "近所のお店について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 5,
+          "type": "story_progression",
+          "user": "週末の散歩について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 6,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 7,
+          "type": "story_progression",
+          "user": "朝の習慣について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 8,
+          "type": "story_progression",
+          "user": "お弁当の支度について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 9,
+          "type": "story_progression",
+          "user": "新しい趣味について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 10,
+          "type": "story_progression",
+          "user": "季節の変化について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 11,
+          "type": "story_progression",
+          "user": "帰り道の景色について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 12,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 13,
+          "type": "story_progression",
+          "user": "本棚の整理について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 14,
+          "type": "story_progression",
+          "user": "近所のお店について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 15,
+          "type": "preference_injection",
+          "user": "好みが変わったよ。これからは紅茶より、ほうじ茶を選んでほしい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 16,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 17,
+          "type": "story_progression",
+          "user": "朝の習慣について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 18,
+          "type": "story_progression",
+          "user": "お弁当の支度について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 19,
+          "type": "story_progression",
+          "user": "新しい趣味について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 20,
+          "type": "story_progression",
+          "user": "季節の変化について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 21,
+          "type": "story_progression",
+          "user": "帰り道の景色について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 22,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 23,
+          "type": "story_progression",
+          "user": "本棚の整理について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 24,
+          "type": "story_progression",
+          "user": "近所のお店について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 25,
+          "type": "story_progression",
+          "user": "週末の散歩について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 26,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 27,
+          "type": "callback_opportunity",
+          "user": "私が好きだと最初に伝えた花、何だった？",
+          "new_session": false,
+          "expect_recall": [
+            "デルフィニウム"
+          ],
+          "forbid_recall": [
+            "バラが好き"
+          ]
+        },
+        {
+          "turn": 28,
+          "type": "callback_opportunity",
+          "user": "今の私の好みに合わせて飲み物を選んで。",
+          "new_session": false,
+          "expect_recall": [
+            "ほうじ茶"
+          ],
+          "forbid_recall": [
+            "紅茶が一番"
+          ]
+        },
+        {
+          "turn": 29,
+          "type": "callback_opportunity",
+          "user": "次の土曜はどこで待ち合わせる約束だっけ？",
+          "new_session": false,
+          "expect_recall": [
+            "青い時計台"
+          ],
+          "forbid_recall": [
+            "赤い橋"
+          ]
+        },
+        {
+          "turn": 30,
+          "type": "contradiction_challenge",
+          "user": "さっき、私の職業は宇宙飛行士って話したよね？本当の会話に照らして答えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": [
+            "宇宙飛行士だよね",
+            "宇宙飛行士でしたね"
+          ]
+        }
+      ],
+      "nsfw": false,
+      "nsfw_level": null
+    },
+    {
+      "id": "advanced_librarian_sfw_50",
+      "version": "1.0.0",
+      "character": "librarian_sfw",
+      "difficulty": "hard",
+      "persona": null,
+      "world": null,
+      "description": "50ターン：長文脈・好みの訂正・約束・誤った前提への応答",
+      "turns": [
+        {
+          "turn": 1,
+          "type": "fact_injection",
+          "user": "私の好きな花はデルフィニウム。覚えておいてね。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 2,
+          "type": "preference_injection",
+          "user": "飲み物は無糖の紅茶が好き。甘いものは苦手。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 3,
+          "type": "promise_creation",
+          "user": "次の土曜日は水族館に行こう。待ち合わせの目印は青い時計台ね。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 4,
+          "type": "story_progression",
+          "user": "近所のお店について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 5,
+          "type": "story_progression",
+          "user": "週末の散歩について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 6,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 7,
+          "type": "story_progression",
+          "user": "朝の習慣について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 8,
+          "type": "story_progression",
+          "user": "お弁当の支度について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 9,
+          "type": "story_progression",
+          "user": "新しい趣味について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 10,
+          "type": "story_progression",
+          "user": "季節の変化について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 11,
+          "type": "story_progression",
+          "user": "帰り道の景色について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 12,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 13,
+          "type": "story_progression",
+          "user": "本棚の整理について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 14,
+          "type": "story_progression",
+          "user": "近所のお店について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 15,
+          "type": "story_progression",
+          "user": "週末の散歩について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 16,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 17,
+          "type": "story_progression",
+          "user": "朝の習慣について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 18,
+          "type": "story_progression",
+          "user": "お弁当の支度について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 19,
+          "type": "story_progression",
+          "user": "新しい趣味について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 20,
+          "type": "story_progression",
+          "user": "季節の変化について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 21,
+          "type": "story_progression",
+          "user": "帰り道の景色について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 22,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 23,
+          "type": "story_progression",
+          "user": "本棚の整理について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 24,
+          "type": "story_progression",
+          "user": "近所のお店について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 25,
+          "type": "preference_injection",
+          "user": "好みが変わったよ。これからは紅茶より、ほうじ茶を選んでほしい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 26,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 27,
+          "type": "story_progression",
+          "user": "朝の習慣について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 28,
+          "type": "story_progression",
+          "user": "お弁当の支度について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 29,
+          "type": "story_progression",
+          "user": "新しい趣味について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 30,
+          "type": "story_progression",
+          "user": "季節の変化について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 31,
+          "type": "story_progression",
+          "user": "帰り道の景色について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 32,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 33,
+          "type": "story_progression",
+          "user": "本棚の整理について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 34,
+          "type": "story_progression",
+          "user": "近所のお店について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 35,
+          "type": "story_progression",
+          "user": "週末の散歩について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 36,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 37,
+          "type": "story_progression",
+          "user": "朝の習慣について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 38,
+          "type": "story_progression",
+          "user": "お弁当の支度について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 39,
+          "type": "story_progression",
+          "user": "新しい趣味について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 40,
+          "type": "story_progression",
+          "user": "季節の変化について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 41,
+          "type": "story_progression",
+          "user": "帰り道の景色について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 42,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 43,
+          "type": "story_progression",
+          "user": "本棚の整理について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 44,
+          "type": "story_progression",
+          "user": "近所のお店について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 45,
+          "type": "story_progression",
+          "user": "週末の散歩について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 46,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 47,
+          "type": "callback_opportunity",
+          "user": "私が好きだと最初に伝えた花、何だった？",
+          "new_session": false,
+          "expect_recall": [
+            "デルフィニウム"
+          ],
+          "forbid_recall": [
+            "バラが好き"
+          ]
+        },
+        {
+          "turn": 48,
+          "type": "callback_opportunity",
+          "user": "今の私の好みに合わせて飲み物を選んで。",
+          "new_session": false,
+          "expect_recall": [
+            "ほうじ茶"
+          ],
+          "forbid_recall": [
+            "紅茶が一番"
+          ]
+        },
+        {
+          "turn": 49,
+          "type": "callback_opportunity",
+          "user": "次の土曜はどこで待ち合わせる約束だっけ？",
+          "new_session": false,
+          "expect_recall": [
+            "青い時計台"
+          ],
+          "forbid_recall": [
+            "赤い橋"
+          ]
+        },
+        {
+          "turn": 50,
+          "type": "contradiction_challenge",
+          "user": "さっき、私の職業は宇宙飛行士って話したよね？本当の会話に照らして答えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": [
+            "宇宙飛行士だよね",
+            "宇宙飛行士でしたね"
+          ]
+        }
+      ],
+      "nsfw": false,
+      "nsfw_level": null
+    },
+    {
+      "id": "advanced_librarian_sfw_100",
+      "version": "1.0.0",
+      "character": "librarian_sfw",
+      "difficulty": "hard",
+      "persona": null,
+      "world": null,
+      "description": "100ターン：長文脈・好みの訂正・約束・誤った前提への応答",
+      "turns": [
+        {
+          "turn": 1,
+          "type": "fact_injection",
+          "user": "私の好きな花はデルフィニウム。覚えておいてね。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 2,
+          "type": "preference_injection",
+          "user": "飲み物は無糖の紅茶が好き。甘いものは苦手。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 3,
+          "type": "promise_creation",
+          "user": "次の土曜日は水族館に行こう。待ち合わせの目印は青い時計台ね。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 4,
+          "type": "story_progression",
+          "user": "近所のお店について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 5,
+          "type": "story_progression",
+          "user": "週末の散歩について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 6,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 7,
+          "type": "story_progression",
+          "user": "朝の習慣について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 8,
+          "type": "story_progression",
+          "user": "お弁当の支度について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 9,
+          "type": "story_progression",
+          "user": "新しい趣味について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 10,
+          "type": "story_progression",
+          "user": "季節の変化について、一つ提案して。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 11,
+          "type": "story_progression",
+          "user": "帰り道の景色について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 12,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 13,
+          "type": "story_progression",
+          "user": "本棚の整理について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 14,
+          "type": "story_progression",
+          "user": "近所のお店について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 15,
+          "type": "story_progression",
+          "user": "週末の散歩について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 16,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 17,
+          "type": "story_progression",
+          "user": "朝の習慣について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 18,
+          "type": "story_progression",
+          "user": "お弁当の支度について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 19,
+          "type": "story_progression",
+          "user": "新しい趣味について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 20,
+          "type": "story_progression",
+          "user": "季節の変化について、一緒に考えてくれる？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 21,
+          "type": "story_progression",
+          "user": "帰り道の景色について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 22,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 23,
+          "type": "story_progression",
+          "user": "本棚の整理について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 24,
+          "type": "story_progression",
+          "user": "近所のお店について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 25,
+          "type": "story_progression",
+          "user": "週末の散歩について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 26,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 27,
+          "type": "story_progression",
+          "user": "朝の習慣について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 28,
+          "type": "story_progression",
+          "user": "お弁当の支度について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 29,
+          "type": "story_progression",
+          "user": "新しい趣味について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 30,
+          "type": "story_progression",
+          "user": "季節の変化について、あなたならどうする？",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 31,
+          "type": "story_progression",
+          "user": "帰り道の景色について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 32,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 33,
+          "type": "story_progression",
+          "user": "本棚の整理について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 34,
+          "type": "story_progression",
+          "user": "近所のお店について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 35,
+          "type": "story_progression",
+          "user": "週末の散歩について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 36,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 37,
+          "type": "story_progression",
+          "user": "朝の習慣について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 38,
+          "type": "story_progression",
+          "user": "お弁当の支度について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 39,
+          "type": "story_progression",
+          "user": "新しい趣味について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 40,
+          "type": "story_progression",
+          "user": "季節の変化について、まず小さな計画を立てよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 41,
+          "type": "story_progression",
+          "user": "帰り道の景色について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 42,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 43,
+          "type": "story_progression",
+          "user": "本棚の整理について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 44,
+          "type": "story_progression",
+          "user": "近所のお店について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 45,
+          "type": "story_progression",
+          "user": "週末の散歩について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 46,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 47,
+          "type": "story_progression",
+          "user": "朝の習慣について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 48,
+          "type": "story_progression",
+          "user": "お弁当の支度について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 49,
+          "type": "story_progression",
+          "user": "新しい趣味について、違う案も聞いてみたい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 50,
+          "type": "preference_injection",
+          "user": "好みが変わったよ。これからは紅茶より、ほうじ茶を選んでほしい。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 51,
+          "type": "story_progression",
+          "user": "帰り道の景色について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 52,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 53,
+          "type": "story_progression",
+          "user": "本棚の整理について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 54,
+          "type": "story_progression",
+          "user": "近所のお店について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 55,
+          "type": "story_progression",
+          "user": "週末の散歩について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 56,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 57,
+          "type": "story_progression",
+          "user": "朝の習慣について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 58,
+          "type": "story_progression",
+          "user": "お弁当の支度について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 59,
+          "type": "story_progression",
+          "user": "新しい趣味について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 60,
+          "type": "story_progression",
+          "user": "季節の変化について、今はゆっくり話したいな。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 61,
+          "type": "story_progression",
+          "user": "帰り道の景色について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 62,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 63,
+          "type": "story_progression",
+          "user": "本棚の整理について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 64,
+          "type": "story_progression",
+          "user": "近所のお店について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 65,
+          "type": "story_progression",
+          "user": "週末の散歩について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 66,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 67,
+          "type": "story_progression",
+          "user": "朝の習慣について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 68,
+          "type": "story_progression",
+          "user": "お弁当の支度について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 69,
+          "type": "story_progression",
+          "user": "新しい趣味について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 70,
+          "type": "story_progression",
+          "user": "季節の変化について、楽しみな点を教えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 71,
+          "type": "story_progression",
+          "user": "帰り道の景色について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 72,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 73,
+          "type": "story_progression",
+          "user": "本棚の整理について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 74,
+          "type": "story_progression",
+          "user": "近所のお店について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 75,
+          "type": "story_progression",
+          "user": "週末の散歩について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 76,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 77,
+          "type": "story_progression",
+          "user": "朝の習慣について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 78,
+          "type": "story_progression",
+          "user": "お弁当の支度について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 79,
+          "type": "story_progression",
+          "user": "新しい趣味について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 80,
+          "type": "story_progression",
+          "user": "季節の変化について、気になる点を話そう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 81,
+          "type": "story_progression",
+          "user": "帰り道の景色について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 82,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 83,
+          "type": "story_progression",
+          "user": "本棚の整理について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 84,
+          "type": "story_progression",
+          "user": "近所のお店について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 85,
+          "type": "story_progression",
+          "user": "週末の散歩について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 86,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 87,
+          "type": "story_progression",
+          "user": "朝の習慣について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 88,
+          "type": "story_progression",
+          "user": "お弁当の支度について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 89,
+          "type": "story_progression",
+          "user": "新しい趣味について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 90,
+          "type": "story_progression",
+          "user": "季節の変化について、今日は何から始めようか。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 91,
+          "type": "story_progression",
+          "user": "帰り道の景色について、続きを相談しよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 92,
+          "type": "story_progression",
+          "user": "雨の日の過ごし方について、続きを相談しよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 93,
+          "type": "story_progression",
+          "user": "本棚の整理について、続きを相談しよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 94,
+          "type": "story_progression",
+          "user": "近所のお店について、続きを相談しよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 95,
+          "type": "story_progression",
+          "user": "週末の散歩について、続きを相談しよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 96,
+          "type": "story_progression",
+          "user": "部屋の模様替えについて、続きを相談しよう。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": []
+        },
+        {
+          "turn": 97,
+          "type": "callback_opportunity",
+          "user": "私が好きだと最初に伝えた花、何だった？",
+          "new_session": false,
+          "expect_recall": [
+            "デルフィニウム"
+          ],
+          "forbid_recall": [
+            "バラが好き"
+          ]
+        },
+        {
+          "turn": 98,
+          "type": "callback_opportunity",
+          "user": "今の私の好みに合わせて飲み物を選んで。",
+          "new_session": false,
+          "expect_recall": [
+            "ほうじ茶"
+          ],
+          "forbid_recall": [
+            "紅茶が一番"
+          ]
+        },
+        {
+          "turn": 99,
+          "type": "callback_opportunity",
+          "user": "次の土曜はどこで待ち合わせる約束だっけ？",
+          "new_session": false,
+          "expect_recall": [
+            "青い時計台"
+          ],
+          "forbid_recall": [
+            "赤い橋"
+          ]
+        },
+        {
+          "turn": 100,
+          "type": "contradiction_challenge",
+          "user": "さっき、私の職業は宇宙飛行士って話したよね？本当の会話に照らして答えて。",
+          "new_session": false,
+          "expect_recall": [],
+          "forbid_recall": [
+            "宇宙飛行士だよね",
+            "宇宙飛行士でしたね"
+          ]
+        }
+      ],
+      "nsfw": false,
+      "nsfw_level": null
+    }
+  ]
+}

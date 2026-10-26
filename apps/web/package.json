@@ -7,12 +7,20 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "dev:app": "vite --mode unified",
+    "build:app": "tsc -b && vite build --mode unified --outDir ../../.artifacts/unified-app --emptyOutDir",
+    "dev:mobile": "vite --mode mobile",
+    "build:mobile": "tsc -b && vite build --mode mobile --outDir ../../.artifacts/mobile-pages --emptyOutDir",
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc -b --noEmit",
+    "test:mobile": "node node_modules/vitest/vitest.mjs run src/mobile src/lib/pwa.test.ts src/lib/text.test.ts --pool threads --maxWorkers 1",
     "test": "node node_modules/vitest/vitest.mjs run"
   },
   "dependencies": {
+    "@huggingface/transformers": "4.3.1",
+    "@wllama/wllama": "3.8.1",
+    "@wllama/wllama-compat": "3.8.1",
     "noise-c.wasm": "0.4.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

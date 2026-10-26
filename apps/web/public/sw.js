@@ -1,6 +1,7 @@
 /* Replaced by the Vite build. The public template cannot install in development. */
 const FILES = /* BUILD_FILES */ [];
 const INTEGRITY = /* BUILD_INTEGRITY */ {};
+const COMPRESSED = /* BUILD_COMPRESSED */ {};
 const VERSION = "BUILD_VERSION";
 const PREFIX = `kyalulu-shell:${self.registration.scope}:`;
 const CACHE = PREFIX + VERSION;
@@ -8,6 +9,10 @@ const SHELL = new URL("index.html", self.registration.scope).href;
 const ROOT = new URL("./", self.registration.scope).href;
 const ALLOWED = new Set(FILES.map((file) => new URL(file, self.registration.scope).href));
 ALLOWED.add(ROOT);
+const DEVICE = new URL('device/', self.registration.scope).href;
+if(FILES.includes('device/index.html')) ALLOWED.add(DEVICE);
+const MIGRATION = new URL('migration/', self.registration.scope).href;
+if(FILES.includes('migration/index.html')) ALLOWED.add(MIGRATION);
 
 self.addEventListener("install", (event) => {
   event.waitUntil((async () => {
@@ -18,9 +23,19 @@ self.addEventListener("install", (event) => {
       // SRI rejects mixed deployments and HTML fallbacks masquerading as chunks.
       // Pages canonicalizes index.html to the scope root. Request it directly;
       // retain SRI and reject redirects for every asset.
-      await cache.addAll(FILES.map((file) => new Request(new URL(file === "index.html" ? "./" : file, self.registration.scope), {
+      await cache.addAll(FILES.filter((file) => !COMPRESSED[file]).map((file) => new Request(new URL(file === "index.html" ? "./" : file.replace(/\/index\.html$/, '/'), self.registration.scope), {
         cache: "reload", credentials: "omit", redirect: "error", integrity: INTEGRITY[file],
       })));
+      // Pages recompresses transport bodies; decode explicit .gz assets ourselves.
+      for (const [file, packed] of Object.entries(COMPRESSED)) {
+        const response = await fetch(new Request(new URL(packed.path, self.registration.scope), {
+          cache: "reload", credentials: "omit", redirect: "error", integrity: packed.integrity,
+        }));
+        if (!response.ok || !response.body) throw new Error("Missing compressed runtime asset");
+        await cache.put(new URL(file, self.registration.scope), new Response(response.body.pipeThrough(new DecompressionStream("gzip")), {
+          headers: { "Content-Type": "application/wasm" },
+        }));
+      }
     } catch (error) {
       await caches.delete(CACHE);
       throw error;
@@ -60,8 +75,8 @@ self.addEventListener("fetch", (event) => {
   // Only the hash-router document and exact build outputs are eligible.
   // API calls, private media, avatars, conversations, external fonts and unknown
   // URLs go directly to the network and never enter Cache Storage.
-  const key = (url.href === ROOT || url.href === SHELL) ? ROOT : url.href;
-  if (!ALLOWED.has(key)) return;
+  if (!ALLOWED.has(url.href)) return;
+  const key = (url.href === ROOT || url.href === SHELL) ? ROOT : url.href.replace(/\/index\.html$/, '/');
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
     return (await cache.match(key)) || fetch(request); // No runtime cache writes.

@@ -375,7 +375,8 @@ async def run_chat(req, prepared):
                 evidence = "\n".join(m.content for m in req.messages if m.role == "user")
                 event["result"] = await generations.finish(
                     req.generation_id, event["result"], req.messages[-1].model_dump(), req.model_id,
-                    memory_scope=scope, memory_turn=state.turn + 1, evidence_text=evidence)
+                    memory_scope=scope, memory_turn=state.turn + 1, evidence_text=evidence,
+                    settings_snapshot={**settings.model_dump(),'system_prompt':req.system_prompt if req.system_prompt is not None else settings.system_prompt,'temperature':requested['temperature']})
                 finished = True
             yield event
     finally:
@@ -667,8 +668,18 @@ async def list_sessions():
             """)
             rows = await cur.fetchall()
             sessions = [dict(r) for r in rows]
+            copies, recoveries = {}, set()
+            if await (await db.execute("SELECT 1 FROM sqlite_master WHERE name='unified_runtime_links'")).fetchone():
+                copies = {r[0]: {"entity_id": r[1], "revision": r[2]} for r in await (await db.execute(
+                    "SELECT session_id,entity_id,revision FROM unified_runtime_links WHERE json_extract(mapping,'$.projection')=1"
+                )).fetchall()}
+                recoveries = {r[0] for r in await (await db.execute("SELECT session_id FROM unified_runtime_links WHERE json_extract(mapping,'$.recovery_from') IS NOT NULL")).fetchall()}
             for s in sessions:
                 s.update(_session_identity(await _load_settings(s["session_id"])))
+                if s["session_id"] in copies:
+                    s["sync_copy"] = copies[s["session_id"]]
+                if s["session_id"] in recoveries:
+                    s["sync_recovery"] = True
             # デフォルトセッションがまだ無い場合でも空で返す
             return {"sessions": sessions}
     except generations.Conflict as e:

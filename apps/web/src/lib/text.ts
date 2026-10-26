@@ -1,4 +1,5 @@
 /** Display helpers that keep raw generation markup out of consumer surfaces. */
+import type { Language } from './appContext';
 
 const TECH_PREFIX = /^\s*\[(?:Mock Echo|mock|debug)[^\]]*\]\s*/i;
 
@@ -80,33 +81,35 @@ export function parseDbTime(value: string | null | undefined): Date | null {
   return isNaN(d.getTime()) ? null : d;
 }
 
-export function formatRelative(value: string | null | undefined): string {
+export function formatRelative(value: string | null | undefined, language: Language = 'ja'): string {
+  const en = language === 'en', locale = en ? 'en-US' : 'ja-JP';
   const d = parseDbTime(value);
   if (!d) return "";
   const now = new Date();
   const diff = (now.getTime() - d.getTime()) / 1000;
-  if (diff < 60) return "たった今";
-  if (diff < 3600) return `${Math.floor(diff / 60)}分前`;
-  if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+  if (diff < 60) return en ? 'Just now' : 'たった今';
+  if (diff < 3600) return en ? `${Math.floor(diff / 60)}m ago` : `${Math.floor(diff / 60)}分前`;
+  if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
   const y = new Date(now);
   y.setDate(now.getDate() - 1);
-  if (d.toDateString() === y.toDateString()) return "昨日";
-  if (diff < 7 * 86400) return `${Math.floor(diff / 86400)}日前`;
-  return d.toLocaleDateString("ja-JP", { month: "short", day: "numeric" });
+  if (d.toDateString() === y.toDateString()) return en ? 'Yesterday' : '昨日';
+  if (diff < 7 * 86400) return en ? `${Math.floor(diff / 86400)}d ago` : `${Math.floor(diff / 86400)}日前`;
+  return d.toLocaleDateString(locale, { month: "short", day: "numeric" });
 }
 
 /** プロフィール表示用: プロンプト向けの {{user}} / USER / {{char}} を読み手向けの言葉に置き換える。 */
-export function displayProfileText(text: string | null | undefined, charName: string): string {
+export function displayProfileText(text: string | null | undefined, charName: string, language: Language = 'ja'): string {
   if (!text) return "";
   return text
-    .replace(/\{\{\s*user\s*\}\}|<user>|\bUSER\b/gi, "あなた")
+    .replace(/\{\{\s*user\s*\}\}|<user>|\bUSER\b/gi, language === 'en' ? 'you' : 'あなた')
     .replace(/\{\{\s*char\s*\}\}|<char>/gi, charName)
     .replace(/^\s*[-・*]\s+/gm, "・")
     .trim();
 }
 
 /** 1万以上を「1.2万」のように短く表す */
-export function formatCount(n: number): string {
+export function formatCount(n: number, language: Language = 'ja'): string {
+  if (language === 'en') return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(n);
   if (n >= 100_000_000) return `${(n / 100_000_000).toFixed(1).replace(/\.0$/, "")}億`;
   if (n >= 10_000) return `${(n / 10_000).toFixed(1).replace(/\.0$/, "")}万`;
   return n.toLocaleString("ja-JP");

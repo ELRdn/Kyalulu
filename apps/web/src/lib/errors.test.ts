@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { friendlyError } from "./errors";
+import { describe, expect, it, vi } from "vitest";
+import { friendlyError, friendlyMessage } from "./errors";
 
 describe("friendlyError", () => {
   it.each(['provider_rate_limited', 'HTTP 429', Object.assign(Error('Too Many Requests'), { status: 429 })])('explains upstream rate limiting with manual retry or model selection: %s', raw => {
@@ -62,4 +62,43 @@ describe("friendlyError", () => {
 it('説明する: 準備中の会話消去では再見積りが必要', () => {
   expect(friendlyError('generation_context_changed').message).toContain('新しい見積り');
   expect(friendlyError('generation_context_changed').message).toContain('消費は0');
+});
+
+it.each([
+  'context_conflict', 'community_awaiting_acceptance', 'transfer_source_changed_restart_download', 'generation_context_changed',
+  'login_cancelled', 'authentication_not_configured', 'profile_conflict', 'invalid_display_name', 'profile_item_limit',
+  'account_not_allowed', 'cloud_residence_country_required', 'terms_consent_required', 'authentication_flow_expired', 'authentication_failed',
+  'insufficient_credits', 'operator_budget_exhausted', 'cloud_registration_capacity_reached', 'provider_consent_renewal_required',
+  'provider_retention_approval_required', 'provider_endpoint_unavailable', 'provider_privacy_unverified', 'provider_terms_unverified',
+  'model_catalog_unverified', 'cloud_route_not_available', 'provider_key_not_configured', 'inference_awaiting_acceptance',
+  'provider_usage_unavailable', 'provider_rate_limited', 'cloud_sfw_only', 'allow_nsfw', 'le_unavailable', 'ECONNREFUSED',
+  'Generation failed', 'Failed to fetch', 'Timeout', 'Internal Server Error', 'HTTP 404', 'HTTP 401', 'HTTP 403', 'future_provider_gate', '',
+])('explains %s in English without exposing a machine code', raw => {
+  const result = friendlyError(raw, 'en');
+  expect(result.message.length).toBeGreaterThan(10);
+  expect(JSON.stringify(result)).not.toMatch(/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u);
+  if (raw) expect(result.message).not.toBe(raw);
+});
+
+it('localizes guidance while preserving manual actions and accounting distinctions', () => {
+  const unloaded = friendlyError('HTTPStatusError: model_not_loaded [le/qwen3-8b-q4]', 'en');
+  expect(unloaded.command).toEqual({ label: 'Load model', input: '/le load le/qwen3-8b-q4' });
+  expect(friendlyError('le_unavailable', 'en').action).toEqual({ label: 'Diagnose connection', to: '/status' });
+  expect(friendlyError('allow_nsfw', 'en').action?.to).toBe('/profile#adult');
+  expect(friendlyError('generation_context_changed', 'en').message).toContain('new quote before sending');
+  expect(friendlyError('provider_rate_limited', 'en').message).toContain('Failed generation charged no K-Credits');
+  expect(friendlyError('provider_usage_unavailable', 'en').message).toContain('No K-Credits were charged');
+  expect(friendlyError('operator_budget_exhausted', 'en').message).toContain('even with K-Credits remaining');
+  expect(friendlyError('insufficient_credits', 'en').message).not.toContain('No K-Credits');
+  expect(friendlyError('transfer_source_changed_restart_download', 'en').command).toBeUndefined();
+});
+
+it('uses the current browser preference, preserves unknown details and accepts explicit language', () => {
+  vi.stubGlobal('window', {});
+  vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'kyalulu-app-preferences-v1' ? JSON.stringify({ version: 1, language: 'en' }) : null });
+  try {
+    expect(friendlyMessage('insufficient_credits')).toContain('input cost');
+    expect(friendlyMessage('insufficient_credits', 'ja')).toContain('入力料金');
+    expect(friendlyMessage('Specific provider detail')).toBe('Specific provider detail');
+  } finally { vi.unstubAllGlobals(); }
 });

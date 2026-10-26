@@ -1,16 +1,33 @@
 import { activeRemote } from './remoteStore';
-import { cloudEpoch, isCloud } from './cloudMode';
+import { cloudEpoch, cloudOwner, isCloud } from './cloudMode';
+import { executionTarget } from './appContext';
 /** Direct same-origin or explicitly selected encrypted Relay. Never auto-fallback. */
 export async function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
   if (!input.startsWith('/api/')) throw new Error('Runtime API以外には接続できません。');
-  if (activeRemote()) {
+  const pathname = input.split(/[?#]/, 1)[0];
+  if (['/api/local/app-sync', '/api/local/cloud'].some(path => pathname === path || pathname.startsWith(path + '/')) && executionTarget() !== 'local') {
+    throw new Error('この設定は対象のPC上で開いてください。');
+  }
+  if (input.startsWith('/api/cloud/') || input.startsWith('/api/community/')) return cloudFetch(input, init);
+  if (executionTarget() === 'device') {
+    const { deviceFetch } = await import('./deviceApi');
+    return deviceFetch(input, init);
+  }
+  if (activeRemote() && executionTarget() === 'pc') {
     const { remoteConnection } = await import('./remoteClient');
     return remoteConnection().fetch(input, init);
   }
+  return cloudFetch(input, init);
+}
+
+export async function cloudFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  if (!input.startsWith('/api/')) throw Error('Invalid API path');
   // RuntimeGate owns status ordering; it must be able to discover the next owner.
   const epoch = isCloud() && input !== '/api/mobile/status' ? cloudEpoch() : null;
+  const headers=new Headers(init.headers);
+  if(epoch!==null&&cloudOwner()&&!headers.has('X-Kyalulu-Owner'))headers.set('X-Kyalulu-Owner',cloudOwner());
   const response = await globalThis.fetch(input, {
-    ...init, credentials: 'same-origin', cache: 'no-store', redirect: 'error',
+    ...init, headers, credentials: 'same-origin', cache: 'no-store', redirect: 'error',
   });
   // A delayed response (including 401) must never affect the next account.
   if (epoch !== null && cloudEpoch() !== epoch) throw new Error('アカウントが切り替わりました。');
@@ -22,9 +39,10 @@ export async function apiFetch(input: string, init: RequestInit = {}): Promise<R
       return value;
     };
   }
-  if (response.status === 401 && typeof window !== 'undefined') {
+  if (response.status === 401 && typeof window !== 'undefined' && (executionTarget()==='cloud'||!input.startsWith('/api/cloud/'))) {
     window.dispatchEvent(new Event('kyalulu-auth-required'));
   }
+  if (response.status === 402 && typeof window !== 'undefined') window.dispatchEvent(new Event('kyalulu-insufficient-credits'));
   return response;
 }
 

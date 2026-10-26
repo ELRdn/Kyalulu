@@ -1,0 +1,122 @@
+{
+  "books": [
+    {
+      "recursive_scanning": {},
+      "entries": [
+        {
+          "enabled": null,
+          "constant": true,
+          "content": "MUST NOT INJECT"
+        },
+        {
+          "enabled": 0,
+          "constant": true,
+          "content": "MUST NOT INJECT"
+        },
+        {
+          "constant": [],
+          "content": "MUST NOT INJECT"
+        },
+        {
+          "keys": [
+            "SEA"
+          ],
+          "case_sensitive": {},
+          "content": "Stars"
+        },
+        {
+          "keys": [
+            "sea"
+          ],
+          "selective": {},
+          "content": "Allowed"
+        },
+        {
+          "constant": true,
+          "position": null,
+          "content": "MUST NOT INJECT"
+        },
+        {
+          "keys": [
+            "Stars"
+          ],
+          "content": "MUST NOT RECURSE"
+        }
+      ]
+    }
+  ],
+  "history": [
+    {
+      "role": "user",
+      "content": "sea"
+    }
+  ],
+  "expected": {
+    "selected": [
+      {
+        "keys": [
+          "SEA"
+        ],
+        "case_sensitive": {},
+        "content": "Stars",
+        "_book": 0,
+        "_entry": 3
+      },
+      {
+        "keys": [
+          "sea"
+        ],
+        "selective": {},
+        "content": "Allowed",
+        "_book": 0,
+        "_entry": 4
+      }
+    ],
+    "audit": [
+      {
+        "book": 0,
+        "entry": 0,
+        "selected": false,
+        "reason": "disabled"
+      },
+      {
+        "book": 0,
+        "entry": 1,
+        "selected": false,
+        "reason": "disabled"
+      },
+      {
+        "book": 0,
+        "entry": 3,
+        "selected": true,
+        "estimated_tokens": 3,
+        "reason": "keyword"
+      },
+      {
+        "book": 0,
+        "entry": 4,
+        "selected": true,
+        "estimated_tokens": 4,
+        "reason": "keyword"
+      },
+      {
+        "book": 0,
+        "entry": 5,
+        "selected": false,
+        "reason": "unsupported condition"
+      },
+      {
+        "book": 0,
+        "entry": 2,
+        "selected": false,
+        "reason": "no keyword match"
+      },
+      {
+        "book": 0,
+        "entry": 6,
+        "selected": false,
+        "reason": "no keyword match"
+      }
+    ]
+  }
+}

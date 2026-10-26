@@ -4,7 +4,7 @@ import Button from './ui/Button';
 
 type HostStatus = { installed: boolean; connected: boolean; runtime?: boolean; le?: { status?: string };
   pending?: { device_id: string; name: string; code: string }[];
-  devices?: { device_id: string; name: string }[] };
+  devices?: { device_id: string; name: string; management?: boolean }[] };
 export default function RemoteHostSettings() {
   const [status, setStatus] = useState<HostStatus | null>(null);
   const [pairing, setPairing] = useState<{ url: string; qr: string; expires: number } | null>(null);
@@ -52,7 +52,9 @@ export default function RemoteHostSettings() {
       {status.pending?.map(p => <div key={p.device_id}><strong>{p.name}</strong><p>スマホに表示された6桁の確認コードを入力してください。</p>
         <input aria-label={`${p.name}の確認コード`} inputMode="numeric" maxLength={6} value={codes[p.device_id] || ''} onChange={e => setCodes({ ...codes, [p.device_id]: e.target.value.replace(/\D/g, '') })} />
         <Button disabled={busy || codes[p.device_id]?.length !== 6} onClick={() => void action('approve', 'POST', { device_id: p.device_id, code: codes[p.device_id] })}>この端末を承認</Button></div>)}
-      <ul>{status.devices?.map(d => <li key={d.device_id}>{d.name} <Button variant="ghost" disabled={busy} onClick={() => void action(`devices/${d.device_id}`, 'DELETE')}>登録解除</Button></li>)}</ul>
+      <ul>{status.devices?.map(d => <li key={d.device_id}>{d.name}
+        <label><input type="checkbox" checked={d.management===true} disabled={busy} onChange={e=>void action(`devices/${d.device_id}/management`,'PUT',{enabled:e.target.checked})}/>モデル管理・診断・実験を許可</label>
+        <Button variant="ghost" disabled={busy} onClick={() => void action(`devices/${d.device_id}`, 'DELETE')}>登録解除</Button></li>)}</ul>
       <Button variant="secondary" disabled={busy} onClick={() => void action('stop')}>Remote接続を停止</Button>
     </>}
     {error && <p role="alert">{error}</p>}

@@ -200,11 +200,12 @@ class PageAssets(Mapping):
 
 
 class Transfers:
-    def __init__(self, store, sync):
+    def __init__(self, store, sync, *, entity=False):
         self.store, self.sync = store, sync
+        self.root = 'entity-transfers' if entity else 'transfers'
 
     def directory(self, owner):
-        directory = self.store.config.root / "transfers" / str(UUID(owner))
+        directory = self.store.config.root / self.root / str(UUID(owner))
         if directory.is_symlink():
             raise CloudError("invalid_transfer_directory")
         directory.mkdir(parents=True, exist_ok=True)
@@ -353,9 +354,12 @@ class Transfers:
             if index != meta["next"] or meta["ready"]:
                 raise CloudError("transfer_page_order", 409)
             size = len(json.dumps(page, ensure_ascii=False).encode())
+            capacity = self.store.entitlements(owner).storage_bytes
+            if self.root == 'entity-transfers' and meta['direction'].startswith('app-download:'):
+                capacity = max(capacity, meta.get('download_size', 0))
             if (
                 size > PAGE_BYTES
-                or meta["size"] + size > self.store.entitlements(owner).storage_bytes * 2
+                or meta["size"] + size > capacity * 2
             ):
                 raise CloudError("transfer_too_large", 413)
             db.execute(

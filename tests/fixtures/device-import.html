@@ -1,0 +1,93 @@
+<!doctype html><meta charset="utf-8"><title>Disposable device import and media fixture</title>
+<div id="media" style="width:240px"></div><pre id="result">Running fake local data</pre>
+<script type="module">
+import RefreshRuntime from '/@react-refresh';
+import {deviceFetch} from '/src/lib/deviceApi.ts';
+import {rememberOwner,savePreferences,preferences} from '/src/lib/appContext.ts';
+import {getMeta,entity} from '/src/lib/appStore.ts';
+import {parseDeviceImport} from '/src/lib/deviceParseImport.ts';
+import {acceptDeviceMedia} from '/src/lib/deviceAssets.ts';
+import {base64,fromBase64} from '/src/lib/portableBinary.ts';
+RefreshRuntime.injectIntoGlobalHook(window);window.$RefreshReg$=()=>{};window.$RefreshSig$=()=>type=>type;window.__vite_plugin_react_preamble_installed__=true;
+const {mountPortableMedia}=await import('/src/components/PortableMedia.browser-fixture.tsx');
+const check=(value,message)=>{if(!value)throw Error(message);};
+const same=(a,b)=>{const normalize=value=>Array.isArray(value)?value.map(normalize):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,item])=>[key,normalize(item)])):value;return JSON.stringify(normalize(a))===JSON.stringify(normalize(b));};
+const request=async(path,body,method='POST')=>{const response=await deviceFetch(path,{method,...(body?{body:body instanceof FormData?body:JSON.stringify(body)}:{})});return {status:response.status,value:await response.json()};};
+const fileForm=(name,raw)=>{const form=new FormData();form.set('file',new File([raw],name,{type:'text/html'}));return form;};
+const wait=async(test)=>{for(let n=0;n<150;n++){if(test())return;await new Promise(resolve=>setTimeout(resolve,20));}throw Error('UI did not settle');};
+async function run(){
+  const owner='fixture-import-owner';rememberOwner(owner);localStorage.setItem('kyalulu-execution-target','device');savePreferences({...preferences(),language:'en'});
+  const imports=await (await fetch(new URL('device-imports.json',location.href))).json(),media=await (await fetch(new URL('device-media.json',location.href))).json();
+  for(const fixture of imports){
+    const parsed=await parseDeviceImport(fixture.filename,fromBase64(fixture.base64));
+    check(same(parsed.documents,fixture.documents),fixture.name+' document parity');
+    check(same(Object.fromEntries([...parsed.assets].map(([id,asset])=>[id,{base64:base64(asset.raw),mime:asset.mime}])),fixture.assets),fixture.name+' asset parity');
+  }
+  for(const fixture of media){
+    let parsed,error;try{const asset=await acceptDeviceMedia(fromBase64(fixture.base64));parsed={id:asset.id,mime:asset.mime};}catch(value){error=value;}
+    check(fixture.expected?same(parsed,fixture.expected):!!error,fixture.name+' real media validation');
+  }
+  const manifest=JSON.parse(localStorage.getItem('import-fixture-manifest')||'null'),phase=manifest?'reload':'setup';
+  let saved=manifest;
+  if(!saved){
+    const card=imports.find(item=>item.name==='png-and-audio-assets/charx'),raw=fromBase64(card.base64);
+    const preview=await request('/api/imports/preview',fileForm(card.filename,raw));check(preview.status===200,'Binary preview failed');
+    const doc=preview.value.documents[0],audio=doc.assets.find(asset=>asset.media_type==='audio/wav');
+    check(audio.rights_confirmed===false,'Imported media inherited rights');
+    const body={request_id:'fixture-binary-import',selections:[{index:0,document:doc}]},path='/api/imports/'+preview.value.preview_id+'/commit';
+    check((await request(path,body)).status===400,'Unconfirmed media saved');audio.rights_confirmed=true;
+    const commit=await request(path,body);check(commit.status===200,'Confirmed import failed');
+    saved={id:commit.value.items[0].id,hash:preview.value.source_hash,card:card.name,audio};
+    localStorage.setItem('import-fixture-manifest',JSON.stringify(saved));
+    const uploadForm=fileForm('fake.wav',fromBase64(media.find(item=>item.name==='wav').base64));
+    check((await request('/api/library/assets',uploadForm)).status===400,'Upload bypassed rights');uploadForm.set('rights_confirmed','true');
+    const upload=await request('/api/library/assets',uploadForm);check(upload.status===200&&upload.value.media_type==='audio/wav','Upload trusted declared MIME');
+    const image=media.find(item=>item.name==='png'),imageUpload=await request('/api/library/assets',fileForm('fake.html',fromBase64(image.base64)));
+    check(imageUpload.status===200&&imageUpload.value.media_type==='image/png','Image upload failed');
+    check((await request('/api/library/assets',fileForm('bad.png',fromBase64(media.find(item=>item.name==='png-invalid-decoder').base64)))).status===400,'Invalid decoded image accepted');
+    const quotaForm=fileForm(card.filename,raw),put=IDBObjectStore.prototype.put;let failed;
+    try{IDBObjectStore.prototype.put=function(value,key){if(this.name==='meta'&&String(key).startsWith('preview:'))throw new DOMException('Fixture quota','QuotaExceededError');return put.call(this,value,key);};failed=await request('/api/imports/preview',quotaForm);}finally{IDBObjectStore.prototype.put=put;}
+    check(failed.status===400,'Quota fixture did not fail');
+    const original=(await getMeta('original:'+owner+':'+saved.hash));check(same([...original.raw],[...raw]),'Failed preview changed original');
+  }
+  const library=await entity(saved.id,owner);check(library?.payload.document.name==='Assets','Reload lost imported Library');
+  const byaf=imports.find(item=>item.name==='byaf/microsecond-offset-order'),byafPreview=await request('/api/imports/preview',fileForm(byaf.filename,fromBase64(byaf.base64)));
+  check(byafPreview.status===200&&byafPreview.value.documents.length===2,'Multi-scenario preview failed');
+  const byafPath='/api/imports/'+byafPreview.value.preview_id+'/commit',byafBody={request_id:'byaf-'+phase,selections:byafPreview.value.documents.map((document,index)=>({index,document,history_indices:[0]}))};
+  const byafCommit=await request(byafPath,byafBody);check(byafCommit.status===200&&byafCommit.value.sessions.length===2,'Multi-scenario commit failed');
+  const byafHistories=await Promise.all(byafCommit.value.sessions.map(item=>entity(item.session_id,owner)));
+  check(byafHistories[0].payload.messages[1].content==='前の候補'&&byafHistories[1].payload.messages[1].content==='選択された返答','Scenarios mixed selected history');
+  check(new Set(byafHistories.flatMap(record=>record.payload.messages.map(message=>message.id))).size===4,'BYAF numeric message IDs collided');
+  check(same((await request(byafPath,byafBody)).value,byafCommit.value),'BYAF replay duplicated scenarios');
+  const originalResponse=await deviceFetch('/api/library/'+saved.id+'/export?format=original&download=true');
+  check(originalResponse.ok&&base64(new Uint8Array(await originalResponse.arrayBuffer()))===imports.find(item=>item.name===saved.card).base64,'Original binary changed');
+  const root=mountPortableMedia(document.getElementById('media'),[saved.audio]);
+  await wait(()=>document.querySelector('audio'));document.querySelector('details').open=true;
+  check(!document.querySelector('audio').getAttribute('src'),'Media fetched before user action');
+  const button=[...document.querySelectorAll('button')].find(button=>button.textContent==='Load for playback');check(button,'Missing playback action');button.click();
+  await wait(()=>document.querySelector('audio')?.getAttribute('src')?.startsWith('blob:'));
+  const player=document.querySelector('audio');player.load();await wait(()=>player.readyState>=1||player.error);check(!player.error&&player.duration>0,'Real WAV decoder failed');
+  check(player.paused&&!player.autoplay,'Media autoplayed');
+  check(player.getBoundingClientRect().width<=document.getElementById('media').clientWidth,'Player overflows a narrow container');
+  const blob=player.src;rememberOwner('fixture-unrelated-owner');
+  await wait(()=>!document.querySelector('audio')?.getAttribute('src'));
+  check((await request('/api/library/assets/'+saved.audio.asset_id,undefined,'GET')).status===409,'Another account read media');
+  check((await request('/api/library/'+saved.id,undefined,'GET')).status===404,'Another account read Library');
+  check(!![...document.querySelectorAll('button')].find(button=>button.textContent==='Load for playback'),'Account change retained pending playback');
+  let revoked=false;try{await fetch(blob);}catch{revoked=true;}check(revoked,'Old owner Blob URL was retained');
+  rememberOwner(owner);await wait(()=>[...document.querySelectorAll('button')].some(button=>button.textContent==='Load for playback'));
+  const originalBlob=Response.prototype.blob,createUrl=URL.createObjectURL;let release,bodyPending=false,created=0;
+  const gate=new Promise(resolve=>{release=resolve;});
+  try{
+    Response.prototype.blob=async function(){const blob=await originalBlob.call(this);if(blob.type==='audio/wav'){bodyPending=true;await gate;}return blob;};
+    URL.createObjectURL=function(blob){created++;return createUrl.call(URL,blob);};
+    [...document.querySelectorAll('button')].find(button=>button.textContent==='Load for playback').click();await wait(()=>bodyPending);
+    rememberOwner('fixture-unrelated-owner');await wait(()=>!document.querySelector('audio')?.getAttribute('src'));release();await new Promise(resolve=>setTimeout(resolve,50));
+    check(created===0&&!document.querySelector('audio')?.getAttribute('src'),'Late previous-owner body exposed a Blob');
+  }finally{release();Response.prototype.blob=originalBlob;URL.createObjectURL=createUrl;}
+  savePreferences({...preferences(),language:'ja'});await wait(()=>[...document.querySelectorAll('button')].some(button=>button.textContent==='再生用に取得'));
+  root.unmount();rememberOwner(owner);
+  return {ok:true,phase,imports:imports.length,realMedia:media.length,wavDecoded:true,accountIsolation:true,originalPreserved:true,noAutoplay:true,byafHistoriesSeparate:true,lateBodyDiscarded:true,narrowPlayer:true,jaEn:true};
+}
+run().then(value=>{window.__IMPORT_RESULT__=value;document.getElementById('result').textContent=JSON.stringify(value);}).catch(error=>{window.__IMPORT_RESULT__={ok:false,error:String(error),stack:error.stack};document.getElementById('result').textContent=String(error);});
+</script>

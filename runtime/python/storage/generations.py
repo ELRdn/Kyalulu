@@ -3,6 +3,7 @@ from python.storage.context import get_db_path
 import hashlib
 import json
 import time
+from copy import deepcopy
 from contextlib import asynccontextmanager
 import aiosqlite
 import anyio
@@ -91,7 +92,8 @@ async def load_state(session_id: str, settings: dict) -> RuntimeState:
 
 async def finish(generation_id: str, result: dict, user: dict | None, model_id: str,
                  *, memory_scope: str | None = None, memory_turn: int | None = None,
-                 evidence_text: str = "", cloud_revision: tuple | None = None):
+                 evidence_text: str = "", cloud_revision: tuple | None = None,
+                 settings_snapshot: dict | None = None):
     async with transaction() as db:
         save_started = time.perf_counter()
         if cloud_revision:
@@ -140,6 +142,7 @@ async def finish(generation_id: str, result: dict, user: dict | None, model_id: 
             await db.execute("INSERT INTO runtime_states VALUES(?,?) ON CONFLICT(session_id) DO UPDATE SET state_json=excluded.state_json",
                              (sid, json.dumps(result["state"], ensure_ascii=False)))
         result.update(generation_id=generation_id, session_id=sid, user_id=user_id, assistant_id=assistant_id)
+        before_memories = await memories.conversation_snapshot(db, sid) if result['status']=='completed' else None
         if memory_scope is not None:
             # Only user evidence can support biography/preferences; provider replies are never user facts.
             user_evidence = user.get("content", "") if user else evidence_text
@@ -149,6 +152,20 @@ async def finish(generation_id: str, result: dict, user: dict | None, model_id: 
                                   source_revision=await conversation._revision(db, sid))
         if save_reply:
             await conversation.refresh(db, sid)
+        if result['status']=='completed' and 'state_before' in result:
+            if settings_snapshot is None:
+                cursor = await db.execute("SELECT system_prompt,temperature,character_id,persona_id,world_id,intro,library_binding "
+                    "FROM session_settings WHERE session_id IN (?, '__global__') ORDER BY CASE WHEN session_id=? THEN 0 ELSE 1 END LIMIT 1",(sid,sid))
+                cursor.row_factory=aiosqlite.Row
+                settings_row=await cursor.fetchone()
+                saved_settings={'system_prompt':'','temperature':.8,**(dict(settings_row) if settings_row else {})}
+            else:saved_settings=deepcopy(settings_snapshot)
+            saved_settings['session_id']=sid
+            if isinstance(saved_settings.get('library_binding'),str):saved_settings['library_binding']=json.loads(saved_settings['library_binding'])
+            result['sync_snapshots'] = {
+                'before': {'state': result['state_before'], 'memories': before_memories,'settings':saved_settings},
+                'after': {'state': result['state'], 'memories': await memories.conversation_snapshot(db, sid),'settings':saved_settings},
+            }
         result.setdefault("telemetry", {})["save_processing_ms"] = round((time.perf_counter() - save_started) * 1000, 2)
         await db.execute("UPDATE generations SET status=?,result_json=?,user_id=?,assistant_id=? WHERE generation_id=?",
                          (result["status"], json.dumps(result, ensure_ascii=False), user_id, assistant_id, generation_id))
@@ -186,6 +203,11 @@ async def latest(session_id: str):
 async def state_before(session_id: str, message_id: int, settings: dict):
     async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
         row = await (await db.execute("SELECT result_json FROM generations WHERE session_id=? AND assistant_id=? AND valid=1 ORDER BY rowid DESC LIMIT 1", (session_id, message_id))).fetchone()
+        if not row and await (await db.execute(
+            "SELECT 1 FROM imported_history i JOIN chat_history h ON h.id=i.message_id "
+            "WHERE h.session_id=? AND h.id=? AND json_extract(i.origin_json,'$.format')='unified'",
+            (session_id, message_id))).fetchone():
+            raise Conflict("Historical state is unavailable for regenerating this synced reply")
     state = RuntimeState.model_validate(json.loads(row[0])["state_before"]) if row else RuntimeState(session_id=session_id)
     if state.world_id != settings.get("world_id"):
         state.rpg = {}

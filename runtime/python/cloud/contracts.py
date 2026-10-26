@@ -18,10 +18,23 @@ class PlanEntitlements:
 
 PLANS = {
     "free": PlanEntitlements("free", 0, 0, 25_000_000, 0, 1),
-    "plus": PlanEntitlements("plus", 5, 12_500, 250_000_000, 7, 1),
-    "pro": PlanEntitlements("pro", 10, 25_000, 1_000_000_000, 30, 2),
+    "plus": PlanEntitlements("plus", 5, 50_000, 250_000_000, 7, 1),
+    "pro": PlanEntitlements("pro", 10, 125_000, 1_000_000_000, 30, 2),
 }
-PACKS = {"credits_5": (5, 50_000), "credits_10": (10, 100_000)}
+PACKS = {"credits_5": (5, 37_500), "credits_10": (10, 75_000)}
+PRICING_VERSION = "2026-10-23-unified-v1"
+
+
+def purchase_terms(sku, *, subscriber=False):
+    if sku in {"plus", "pro"}:
+        return {"version": PRICING_VERSION, "sku": sku, "usd": PLANS[sku].monthly_usd,
+                "credits": PLANS[sku].monthly_credits, "days": 60, "subscriber_bonus": False}
+    if sku not in PACKS:
+        raise ValueError("invalid_billing_sku")
+    usd, credits = PACKS[sku]
+    return {"version": PRICING_VERSION, "sku": sku, "usd": usd,
+            "credits": credits * 6 // 5 if subscriber else credits,
+            "days": 180, "subscriber_bonus": bool(subscriber)}
 
 
 @dataclass(frozen=True)

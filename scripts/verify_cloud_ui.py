@@ -144,6 +144,7 @@ def main():
                         "remote_mode": False,
                         "authenticated": authenticated,
                         "login_available": login_available,
+                        "login_countries": ["JP", "US"],
                         "private_test": True,
                         "administrative": False,
                         "owner_scope": owner if authenticated else None,

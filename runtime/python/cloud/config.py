@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 import os
+import json
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -42,6 +43,9 @@ class CloudConfig:
     trial_credits: int = 1000
     test_budget_nano: int = 0
     test_prior_cost_nano: int = 0
+    unified_enabled: bool = False
+    region_policies: tuple = ()
+    moderator_owners: tuple[str, ...] = ()
 
     def __post_init__(self):
         origin = urlsplit(self.origin)
@@ -57,6 +61,14 @@ class CloudConfig:
             raise ValueError("cloud requires an exact HTTPS origin")
         if len(self.secret) < 32:
             raise ValueError("cloud master secret must contain at least 32 characters")
+        for country, policy in self.region_policies:
+            if (not isinstance(country, str) or len(country) != 2 or not country.isupper()
+                    or not isinstance(policy, dict) or not isinstance(policy.get('version'), str)
+                    or type(policy.get('minimum_age', 13)) is not int
+                    or not 13 <= policy.get('minimum_age', 13) <= 120
+                    or type(policy.get('guardian_below', 18)) is not int
+                    or not 13 <= policy.get('guardian_below', 18) <= 120):
+                raise ValueError('invalid unified regional policy')
         if self.operator_backend not in {"deepseek", "opencode-go", "openrouter"}:
             raise ValueError("invalid operator backend")
         from .model_choices import CHOICES
@@ -105,6 +117,9 @@ class CloudConfig:
         flag = lambda key: os.getenv(key, "0") == "1"
         return cls(
             root=Path(os.environ["KYALULU_CLOUD_DATA_DIR"]).resolve(),
+            unified_enabled=flag("KYALULU_UNIFIED_APP_ENABLED"),
+            region_policies=tuple(json.loads(os.getenv("KYALULU_REGION_POLICIES", "{}")).items()),
+            moderator_owners=tuple(x.strip() for x in os.getenv("KYALULU_MODERATOR_OWNERS", "").split(',') if x.strip()),
             origin=os.environ["KYALULU_CLOUD_ORIGIN"],
             secret=os.environ["KYALULU_CLOUD_SECRET"],
             supabase_url=os.getenv("KYALULU_SUPABASE_URL", "").rstrip("/"),

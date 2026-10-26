@@ -1,0 +1,275 @@
+{
+  "id": "device-conversation",
+  "kind": "conversation",
+  "base_revision": 0,
+  "payload": {
+    "storage_policy": "sync",
+    "rating": "general",
+    "settings": {
+      "session_id": "device-conversation",
+      "system_prompt": "NEW SYSTEM",
+      "temperature": 1.1,
+      "character_id": "character",
+      "world_id": "created_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@2",
+      "library_binding": {
+        "character": {
+          "id": "character",
+          "revision": 2
+        }
+      }
+    },
+    "messages": [
+      {
+        "id": 1,
+        "uuid": "user-uuid",
+        "role": "user",
+        "content": "tea"
+      },
+      {
+        "id": 2,
+        "uuid": "reply-uuid",
+        "role": "assistant",
+        "content": "device reply",
+        "before": {
+          "state": {
+            "session_id": "device-conversation",
+            "turn": 0,
+            "character_id": "character",
+            "world_id": "created_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@1",
+            "rpg": {
+              "hp": 50
+            }
+          },
+          "memories": [],
+          "settings": {
+            "session_id": "device-conversation",
+            "system_prompt": "OLD SYSTEM",
+            "temperature": 0.4,
+            "character_id": "character",
+            "world_id": "created_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@1",
+            "library_binding": {
+              "character": {
+                "id": "character",
+                "revision": 1
+              }
+            }
+          }
+        },
+        "after": {
+          "state": {
+            "session_id": "device-conversation",
+            "turn": 1,
+            "location": "library",
+            "character_id": "character",
+            "world_id": "created_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@1",
+            "rpg": {
+              "hp": 42
+            }
+          },
+          "memories": [
+            {
+              "id": "tea-memory",
+              "type": "semantic",
+              "content": "tea",
+              "origin": "model",
+              "supported": true,
+              "source_session_id": "device-conversation",
+              "source_turn": 1,
+              "source_message_ids": [
+                1
+              ],
+              "uuid": "stable-memory",
+              "version": 3,
+              "source_quote": "tea"
+            }
+          ],
+          "settings": {
+            "session_id": "device-conversation",
+            "system_prompt": "OLD SYSTEM",
+            "temperature": 0.4,
+            "character_id": "character",
+            "world_id": "created_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@1",
+            "library_binding": {
+              "character": {
+                "id": "character",
+                "revision": 1
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "uuid": "user-2",
+        "role": "user",
+        "content": "coffee"
+      },
+      {
+        "id": 4,
+        "uuid": "assistant-2",
+        "role": "assistant",
+        "content": "park reply",
+        "before": {
+          "state": {
+            "session_id": "device-conversation",
+            "turn": 1,
+            "location": "library",
+            "character_id": "character",
+            "world_id": "created_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@2",
+            "rpg": {
+              "hp": 100
+            }
+          },
+          "memories": [
+            {
+              "id": "tea-memory",
+              "type": "semantic",
+              "content": "tea",
+              "origin": "model",
+              "supported": true,
+              "source_session_id": "device-conversation",
+              "source_turn": 1,
+              "source_message_ids": [
+                1
+              ],
+              "uuid": "stable-memory",
+              "version": 3,
+              "source_quote": "tea"
+            }
+          ],
+          "settings": {
+            "session_id": "device-conversation",
+            "system_prompt": "NEW SYSTEM",
+            "temperature": 1.1,
+            "character_id": "character",
+            "world_id": "created_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@2",
+            "library_binding": {
+              "character": {
+                "id": "character",
+                "revision": 2
+              }
+            }
+          }
+        },
+        "after": {
+          "state": {
+            "session_id": "device-conversation",
+            "turn": 2,
+            "location": "park",
+            "character_id": "character",
+            "world_id": "created_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@2",
+            "rpg": {
+              "hp": 99
+            }
+          },
+          "memories": [
+            {
+              "id": "tea-memory",
+              "type": "semantic",
+              "content": "coffee",
+              "origin": "model",
+              "supported": true,
+              "source_session_id": "device-conversation",
+              "source_turn": 2,
+              "source_message_ids": [
+                3
+              ],
+              "uuid": "stable-memory",
+              "version": 4,
+              "source_quote": "coffee"
+            }
+          ],
+          "settings": {
+            "session_id": "device-conversation",
+            "system_prompt": "NEW SYSTEM",
+            "temperature": 1.1,
+            "character_id": "character",
+            "world_id": "created_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@2",
+            "library_binding": {
+              "character": {
+                "id": "character",
+                "revision": 2
+              }
+            }
+          }
+        }
+      }
+    ],
+    "state": {
+      "session_id": "device-conversation",
+      "turn": 2,
+      "location": "park",
+      "character_id": "character",
+      "world_id": "created_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@2",
+      "rpg": {
+        "hp": 99
+      }
+    },
+    "memories": [
+      {
+        "id": "tea-memory",
+        "type": "semantic",
+        "content": "coffee",
+        "origin": "model",
+        "supported": true,
+        "source_session_id": "device-conversation",
+        "source_turn": 2,
+        "source_message_ids": [
+          3
+        ],
+        "uuid": "stable-memory",
+        "version": 4,
+        "source_quote": "coffee"
+      }
+    ],
+    "summaries": [
+      {
+        "id": "chapter-0",
+        "kind": "chapter",
+        "ordinal": 0,
+        "text": "tea",
+        "source_message_ids": [
+          1,
+          2
+        ]
+      }
+    ],
+    "memory_enabled": true,
+    "library_snapshots": {
+      "character@1": {
+        "name": "Old character",
+        "data": {
+          "personality": "OLD ROLE"
+        }
+      },
+      "character@2": {
+        "name": "New character",
+        "data": {
+          "personality": "NEW ROLE"
+        }
+      }
+    },
+    "creator_snapshots": {
+      "created_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@1": {
+        "kind": "world",
+        "document": {
+          "display_name": "Old world",
+          "rules": "OLD RULE",
+          "rpg": {
+            "initial_hp": 50
+          }
+        }
+      },
+      "created_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@2": {
+        "kind": "world",
+        "document": {
+          "display_name": "New world",
+          "rules": "NEW RULE",
+          "rpg": {
+            "initial_hp": 100
+          }
+        }
+      }
+    }
+  }
+}

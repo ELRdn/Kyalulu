@@ -116,6 +116,21 @@ async def pair(host):
     return result, payload
 
 
+async def test_management_permission_is_saved_separately_and_revocable(host):
+    device = str(uuid4())
+    value = copy.deepcopy(host.service.config)
+    value['devices'][device] = {'approved': True, 'revoked': False, 'name': 'Test device'}
+    host.service._save(value)
+    assert host.service.authorized(device) and not host.service.management(device)
+    host.service.set_management(device, True)
+    assert host.service.management(device)
+    assert host.service.vault.read()['devices'][device]['management'] is True
+    host.service.set_management(device, False)
+    assert host.service.authorized(device) and not host.service.management(device)
+    with pytest.raises(HostError):
+        host.service.set_management(str(uuid4()), True)
+
+
 async def handshake(
     host, secret, *, device_id=None, private=None, pending=True, name="Phone"
 ):

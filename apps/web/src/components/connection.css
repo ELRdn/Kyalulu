@@ -4,6 +4,9 @@
 .k-connection h2 { font-size: 20px; }
 .k-connection p { color: var(--text-secondary); font-size: 14px; line-height: 1.75; overflow-wrap: anywhere; }
 .k-connection__form { display: grid; gap: 14px; }
+.k-native-sync fieldset { display: grid; gap: 10px; min-width: 0; padding: 12px; border: 1px solid var(--border-subtle); border-radius: 12px; }
+.k-native-sync label:has(input[type='checkbox']) { display: flex; align-items: flex-start; gap: 10px; line-height: 1.7; }
+.k-native-sync input[type='checkbox'] { width: 18px; height: 18px; min-height: 18px; padding: 0; flex-shrink: 0; margin-top: 3px; accent-color: var(--accent-primary); }
 .k-connection label { display: grid; gap: 7px; font-size: 14px; }
 .k-connection input { width: 100%; min-width: 0; padding: 12px; min-height: 48px; font: inherit; font-size: 16px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--bg-canvas); color: var(--text-primary); }
 .k-connection input:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }

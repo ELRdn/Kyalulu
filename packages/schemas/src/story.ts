@@ -27,3 +27,10 @@ export const RPGOptionsSchema = z.object({
 });
 export type CastMember = z.infer<typeof CastMemberSchema>;
 export type RPGOptions = z.infer<typeof RPGOptionsSchema>;
+export const CreatorDocumentSchema = z.object({
+  display_name:z.string().trim().min(1).max(120),description:z.string().trim().max(4000).default(''),
+  traits:z.string().trim().max(6000).default(''),rules:z.string().trim().max(6000).default(''),
+  cast:z.array(CastMemberSchema).max(12).default([]),rpg:RPGOptionsSchema.nullable().default(null),
+}).strict().superRefine((value,context)=>{
+  if(new Set(value.cast.map(c=>c.id)).size!==value.cast.length)context.addIssue({code:'custom',message:'Cast IDs must be unique',path:['cast']});
+});

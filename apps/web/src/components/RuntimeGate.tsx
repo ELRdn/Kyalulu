@@ -10,6 +10,8 @@ import { refreshAccountProfile } from '../lib/accountProfile';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { isCloud } from '../lib/cloudMode';
 import { loginPath } from '../lib/cloudGuest';
+import { rememberOwner, clearDeviceOwner, useLanguage } from '../lib/appContext';
+import { friendlyMessage } from '../lib/errors';
 
 type Access = { remote_mode: boolean; authenticated: boolean; administrative?: boolean; device_name?: string; cloud_mode?: boolean };
 const AccessContext = createContext<Access>({ remote_mode: false, authenticated: true });
@@ -35,6 +37,7 @@ async function readResponse(response: Response) {
 }
 
 export default function RuntimeGate({ children }: { children: ReactNode }) {
+  const language=useLanguage(),en=language==='en';
   const route = useLocation();
   const navigate = useNavigate();
   const returnRoute = useRef(route.pathname + route.search);
@@ -59,6 +62,8 @@ export default function RuntimeGate({ children }: { children: ReactNode }) {
       }
       setCloud(result.cloud_mode === true);
       setCloudOwner(result.authenticated && typeof result.owner_scope === 'string' ? result.owner_scope : '');
+      if (result.cloud_mode && result.authenticated) rememberOwner(result.owner_scope);
+      else if (result.cloud_mode) clearDeviceOwner();
       if (result.cloud_mode && result.authenticated) void refreshAccountProfile();
       if (mounted.current && attempt === epoch.current) { setAccess(result); setError(''); }
     } catch {
@@ -69,6 +74,7 @@ export default function RuntimeGate({ children }: { children: ReactNode }) {
     mounted.current = true;
     void check();
     const required = () => {
+      if (isCloud()) clearDeviceOwner();
       ++epoch.current; setCloudOwner(''); setBusy(false);
       setAccess(previous=>({...previous, remote_mode: previous?.remote_mode ?? true, authenticated: false}));
       setError('認証の有効期限が切れました。もう一度ログインしてください。');
@@ -94,23 +100,24 @@ export default function RuntimeGate({ children }: { children: ReactNode }) {
   if (access?.authenticated) return <AccessContext.Provider key={connectionScope()} value={access}>{children}</AccessContext.Provider>;
   return <main className="k-connect-screen"><div className="k-connect-screen__body">
     <div className="k-connect-screen__brand">Kyalulu ✦</div>
-    <h1>{access ? 'いつもの会話を、このスマホで。' : '会話のサーバーに接続'}</h1>
-    <p className="k-connect-screen__intro">{access ? 'サーバーで発行した登録コードを入力して、この端末をつなぎます。' : 'キャラ・会話・記憶を保管しているサーバーを確認しています。'}</p>
-    <section className="k-connection" aria-label="端末登録">
-      <p>接続先：{location.host || 'このPC'}</p>
-      {error && <p role="alert">{error}</p>}
+    <h1>{access ? (en?'Your conversations on this device.':'いつもの会話を、この端末で。') : (en?'Connect to the conversation server':'会話のサーバーに接続')}</h1>
+    <p className="k-connect-screen__intro">{access ? (en?'Enter the registration code issued by the server to connect this device.':'サーバーで発行した登録コードを入力して、この端末をつなぎます。') : (en?'Checking the server that stores your characters, conversations and memories.':'キャラ・会話・記憶を保管しているサーバーを確認しています。')}</p>
+    <section className="k-connection" aria-label={en?'Device registration':'端末登録'}>
+      <p>{en?'Destination: ':'接続先：'}{location.host || (en?'This PC':'このPC')}</p>
+      {error && <p role="alert">{friendlyMessage(error,language)}</p>}
       {access && <form onSubmit={pair} className="k-connection__form">
-        <label>端末の名前<input value={name} maxLength={80} onChange={e => setName(e.target.value)} required autoComplete="off" /></label>
-        <label>登録コード<input value={code} onChange={e => setCode(e.target.value.replace(/[^0-9]/g, ''))} required minLength={8} maxLength={8} pattern="[0-9]{8}" inputMode="numeric" autoComplete="one-time-code" autoCapitalize="none" autoCorrect="off" spellCheck={false} /></label>
-        <Button type="submit" disabled={busy}>{busy ? '確認中…' : 'この端末を登録'}</Button>
+        <label>{en?'Device name':'端末の名前'}<input value={name} maxLength={80} onChange={e => setName(e.target.value)} required autoComplete="off" /></label>
+        <label>{en?'Registration code':'登録コード'}<input value={code} onChange={e => setCode(e.target.value.replace(/[^0-9]/g, ''))} required minLength={8} maxLength={8} pattern="[0-9]{8}" inputMode="numeric" autoComplete="one-time-code" autoCapitalize="none" autoCorrect="off" spellCheck={false} /></label>
+        <Button type="submit" disabled={busy}>{busy ? (en?'Checking…':'確認中…') : (en?'Register this device':'この端末を登録')}</Button>
       </form>}
-      {!access && <Button type="button" onClick={() => void check()} disabled={busy}>{busy ? '接続を確認中…' : 'もう一度接続する'}</Button>}
+      {!access && <Button type="button" onClick={() => void check()} disabled={busy}>{busy ? (en?'Checking connection…':'接続を確認中…') : (en?'Retry connection':'もう一度接続する')}</Button>}
     </section>
     {!busy && <ConnectionSettings />}
   </div></main>;
 }
 
 export function DeviceRegistration() {
+  const language=useLanguage(),en=language==='en';
   const access = useRuntimeAccess();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -123,7 +130,7 @@ export function DeviceRegistration() {
     } catch { setError('登録を解除できませんでした。接続を確認して再試行してください。'); }
     finally { setBusy(false); }
   };
-  return <section className="k-connection"><h2>この端末の登録</h2><p>{access.device_name || '登録済みの端末'}から接続しています。登録を解除すると、この端末からサーバーの会話にアクセスできなくなります。端末に保存した下書きは残ります。</p>
-    <Button type="button" variant="secondary" disabled={busy} onClick={() => void logout()}>この端末の登録を解除</Button>{error && <p role="alert">{error}</p>}
+  return <section className="k-connection"><h2>{en?'This device’s registration':'この端末の登録'}</h2><p>{en?`Connected as ${access.device_name || 'a registered device'}. Revoking registration removes this device’s access to server conversations. Drafts saved on this device are retained.`:`${access.device_name || '登録済みの端末'}から接続しています。登録を解除すると、この端末からサーバーの会話にアクセスできなくなります。端末に保存した下書きは残ります。`}</p>
+    <Button type="button" variant="secondary" disabled={busy} onClick={() => void logout()}>{en?'Revoke this device’s registration':'この端末の登録を解除'}</Button>{error && <p role="alert">{friendlyMessage(error,language)}</p>}
   </section>;
 }

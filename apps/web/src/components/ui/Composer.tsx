@@ -3,6 +3,7 @@ import type { SlashCommand } from "../../lib/api";
 import Button from "./Button";
 import Icon from "./Icon";
 import "./ui.css";
+import { useLanguage } from '../../lib/appContext';
 
 export function preserveComposerKey(key: string, composing: boolean, nativeComposing: boolean, keyCode: number, coarsePointer: boolean) {
   return composing || nativeComposing || keyCode === 229 || (key === "Enter" && coarsePointer);
@@ -16,8 +17,8 @@ export default function Composer({
   streaming = false,
   disabled = false,
   sendBlocked = false,
-  disabledText = "準備中…",
-  placeholder = "きみの言葉を入力してね…",
+  disabledText,
+  placeholder,
   tools,
   commands,
 }: {
@@ -37,6 +38,7 @@ export default function Composer({
   /** 指定すると「/」入力でスラッシュコマンドの候補を出す */
   commands?: SlashCommand[];
 }) {
+  const en = useLanguage() === 'en';
   const ref = useRef<HTMLTextAreaElement>(null);
   const composing = useRef(false);
   const [active, setActive] = useState(0);
@@ -86,7 +88,7 @@ export default function Composer({
     <div className="k-composer">
       <div className="k-composer__box">
         {matches.length > 0 && (
-          <div className="k-slash" role="listbox" aria-label="コマンド">
+          <div className="k-slash" role="listbox" aria-label={en ? 'Commands' : 'コマンド'}>
             {matches.map((c) => (
               <button
                 key={c.name}
@@ -138,26 +140,26 @@ export default function Composer({
               if (!locked) onSend();
             }
           }}
-          placeholder={disabled && !streaming ? disabledText : placeholder}
+          placeholder={disabled && !streaming ? disabledText ?? (en ? 'Preparing…' : '準備中…') : placeholder ?? (en ? 'Write your message…' : 'きみの言葉を入力してね…')}
           disabled={disabled && !streaming}
           rows={1}
-          aria-label="メッセージ"
+          aria-label={en ? 'Message' : 'メッセージ'}
         />
         <div className="k-composer__row">
           {tools}
-          <button type="button" className="k-composer__tool" onClick={insertAsterisk} disabled={disabled && !streaming} title="ト書きを入れる（*動作*）" aria-label="ト書きを入れる">
+          <button type="button" className="k-composer__tool" onClick={insertAsterisk} disabled={disabled && !streaming} title={en ? 'Insert narration (*action*)' : 'ト書きを入れる（*動作*）'} aria-label={en ? 'Insert narration' : 'ト書きを入れる'}>
             <span aria-hidden="true">＊</span>
           </button>
           <span className="k-composer__hint k-composer__hint--keyboard">
-            <kbd>Enter</kbd> 送信 · <kbd>Shift</kbd>+<kbd>Enter</kbd> 改行
+            <kbd>Enter</kbd> {en ? 'Send' : '送信'} · <kbd>Shift</kbd>+<kbd>Enter</kbd> {en ? 'New line' : '改行'}
           </span>
           {streaming && onStop ? (
             <Button variant="secondary" size="md" className="k-composer__send" onClick={onStop}>
-              <Icon name="stop" size={14} /> 停止
+              <Icon name="stop" size={14} /> {en ? 'Stop' : '停止'}
             </Button>
           ) : (
             <Button variant="primary" size="md" className="k-composer__send" onClick={onSend} disabled={locked || !value.trim()}>
-              <Icon name="send" size={15} /> 送信
+              <Icon name="send" size={15} /> {en ? 'Send' : '送信'}
             </Button>
           )}
         </div>
