@@ -73,6 +73,7 @@ FILES = (
     "docs/validation/2026-10-24-unified-cache-migration.md",
     "docs/validation/2026-10-24-unified-portable.md",
     "docs/validation/2026-10-26-unified-proxy.md",
+    "docs/validation/2026-10-26-unified-mobile-migration.md",
     "deploy/cloud/Dockerfile",
     "deploy/cloud/Dockerfile.prebuilt",
     "deploy/cloud/compose.yml",
