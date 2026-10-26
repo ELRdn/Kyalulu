@@ -129,10 +129,17 @@ def _data_url_bytes(uri):
 
 
 def _store_asset(assets, raw, uri, name, atype):
-    asset_id, mime = validate_image(raw)
+    media = atype in ('audio', 'music', 'video')
+    if media:
+        from .portable_assets import accept_media
+        asset_id, mime = accept_media(raw)
+        if not mime.startswith('video/' if atype == 'video' else 'audio/'):
+            raise ValueError('Embedded media type does not match its declared use')
+    else:
+        asset_id, mime = validate_image(raw)
     assets.setdefault(asset_id, (bytes(raw), mime))
     return PortableAsset(name=name or "asset", type=atype or "asset", uri=uri or "",
-                          media_type=mime, asset_id=asset_id)
+                          media_type=mime, asset_id=asset_id, **({'rights_confirmed': False} if media else {}))
 
 
 def _apply_kyalulu_roundtrip(data, profile, notices):
@@ -420,7 +427,7 @@ def _parse_charx(filename, raw, assets):
         found, blob = _resolve_zip_path(files, base, rel)
         if blob is None:
             raise ValueError('CHARX references missing embedded file: ' + asset.uri)
-        if sniff_mime(blob):
+        if sniff_mime(blob) or asset.type in ('audio', 'music', 'video'):
             resolved[asset.uri] = _store_asset(assets, blob, asset.uri, asset.name, asset.type)
             doc.assets[index] = resolved[asset.uri]
         else:

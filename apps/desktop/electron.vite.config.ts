@@ -16,6 +16,7 @@ export default defineConfig({
   },
   renderer: {
     root: "src/renderer",
+    worker: { format: "es" },
     publicDir: resolve(__dirname, "../web/public"),
     build: {
       outDir: "out/renderer",

@@ -7,6 +7,11 @@ character/history/memory database. Relay remains a separate encrypted transport.
 No Redis, Postgres connection, or desktop process is required for Character Core;
 Supabase is used for authentication only. SQLite has a single writer/process.
 
+For the planned canonical `app.kyalulu.com` deployment, use the separate
+[unified cutover runbook](../../docs/UNIFIED_DEPLOYMENT.md) and the unified bundle's
+`Caddyfile.unified.example`. The legacy examples below remain available; they do
+not provide the unified document policies or canonical routing by themselves.
+
 For the private Google-login test on the existing ConoHa VPS, see
 [the VPS cloud runbook](VPS.md) and [current handoff](../../docs/HANDOFF.md).
 Subscriptions, purchases, ads and unvalidated image storage/sync remain disabled.

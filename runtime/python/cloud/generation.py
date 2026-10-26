@@ -122,7 +122,10 @@ class CloudGenerations:
                 prior = await (await db.execute("SELECT content FROM chat_history WHERE session_id=? AND role='user' AND id<? ORDER BY id DESC LIMIT 1", (req.session_id, req.regenerate_message_id))).fetchone()
             if not tail or tail[0] != req.regenerate_message_id or tail[1] != "assistant" or not prior or messages[-1]["content"] != prior[0]:
                 raise CloudError("regeneration_conflict", 409)
-            state = await generations.state_before(req.session_id, req.regenerate_message_id, settings.model_dump())
+            try:
+                state = await generations.state_before(req.session_id, req.regenerate_message_id, settings.model_dump())
+            except generations.Conflict as exc:
+                raise CloudError('historical_state_unavailable', 409) from exc
         memory_ctx = scope = None
         try:
             pinned_scope = await memories.session_scope(settings.model_dump())
@@ -229,6 +232,8 @@ class CloudGenerations:
             "model": model,
             "tariff": tariff,
             "temperature": req.temperature if req.temperature is not None else settings.temperature,
+            "settings_snapshot": {**settings.model_dump(),'system_prompt':req.system_prompt or settings.system_prompt,
+                'temperature':req.temperature if req.temperature is not None else settings.temperature},
             "character_constraints": constraints,
         }
 
@@ -419,6 +424,7 @@ class CloudGenerations:
                     memory_turn=prepared["state"].turn + 1,
                     evidence_text=req.messages[-1].content,
                     cloud_revision=(self.store.path, owner),
+                    settings_snapshot=prepared['settings_snapshot'],
                 )
                 stages["save"] = round((time.perf_counter()-previous)*1000, 2)
                 result.setdefault("telemetry", {})["cloud_stages_ms"] = stages

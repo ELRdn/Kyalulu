@@ -311,6 +311,38 @@ async def test_static_same_origin_spa_api_and_sw_headers(tmp_path):
             assert response.headers["cache-control"] == "no-store, private"
 
 
+@pytest.mark.asyncio
+async def test_native_serves_isolated_device_and_migration_documents(tmp_path):
+    (tmp_path / 'index.html').write_text('main app', encoding='utf-8')
+    app = make_app(mobile.Config(), tmp_path)
+    async with client(app, local=True) as local:
+        # A missing isolated build must never fall back to the unisolated shell.
+        for name in ('device', 'migration'):
+            for path in (f'/{name}', f'/{name}/', f'/{name}/index.html'):
+                assert (await local.get(path, headers={'Accept': 'text/html'})).status_code == 404
+            (tmp_path / name).mkdir()
+            (tmp_path / name / 'index.html').write_text(name, encoding='utf-8')
+            for path in (f'/{name}', f'/{name}/', f'/{name}/index.html'):
+                response = await local.get(path)
+                assert response.status_code == 200 and response.text == name
+                assert response.headers['cache-control'] == 'no-cache'
+                assert 'frame-ancestors' in response.headers['content-security-policy']
+                assert response.headers['cross-origin-opener-policy'] == ('same-origin' if name == 'device' else 'unsafe-none')
+                assert response.headers['cross-origin-embedder-policy'] == ('require-corp' if name == 'device' else 'unsafe-none')
+                assert ("'wasm-unsafe-eval'" in response.headers['content-security-policy']) == (name == 'device')
+                if name == 'migration':
+                    assert "connect-src 'none'" in response.headers['content-security-policy']
+        main = await local.get('/')
+        assert main.text == 'main app' and 'cross-origin-embedder-policy' not in main.headers
+        for path in ('/device/missing', '/migration/missing'):
+            assert (await local.get(path, headers={'Accept': 'text/html'})).status_code == 404
+        (tmp_path / 'assets').mkdir()
+        (tmp_path / 'assets/runtime.worker-fixture.js').write_text('// worker fixture', encoding='utf-8')
+        worker = await local.get('/assets/runtime.worker-fixture.js')
+        assert worker.headers['cross-origin-embedder-policy'] == 'require-corp'
+        assert "frame-src 'none'" in worker.headers['content-security-policy']
+
+
 @pytest.mark.parametrize(
     "origin",
     [

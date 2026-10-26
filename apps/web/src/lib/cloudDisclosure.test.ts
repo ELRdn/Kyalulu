@@ -68,3 +68,14 @@ it('explains actual destinations, per-send Baidu consent and settlement without 
     { id: 'haiku', upstream: 'google-vertex/global', provider_model: 'anthropic/haiku' },
   ] }).explanation).toContain('haiku / openrouter / google-vertex/global / anthropic/haiku');
 });
+
+it('translates routing explanations while retaining original identifiers, privacy notes and version gates',()=>{
+  const original=structuredClone(route),text=operatorDisclosure(route,'en').explanation;
+  for(const value of ['openrouter / InferenceNet / standard','Baidu','OpenAI',baidu.privacy_note,flex.privacy_note,
+    'Separate consent is required for every send','provider stores inputs','Credits are not reserved','actual API costs',
+    'not sent for external safety screening','Nothing is automatically forwarded'])expect(text).toContain(value);
+  expect(operatorDisclosure({...route,models:[{...baidu,available:false}]},'en').explanation).toContain('Additional models are currently unavailable');
+  expect(operatorDisclosure({provider:'opencode-go',safety},'en').explanation).toContain('Muse Contributor requires separate consent');
+  expect(operatorDisclosure({provider:'deepseek',safety},'en').destination).toBe('DeepSeek');
+  expect(route).toEqual(original);expect(understoodDisclosure('openrouter',version,route)).toBe(version);
+});

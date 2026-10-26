@@ -12,6 +12,18 @@ const stages: [GenerationProgress['stage'], string][] = [
 ];
 
 describe('Kyalulu waiting display', () => {
+  it('keeps English announcements stable and diagnostics outside the live region', () => {
+    const baseline = renderToStaticMarkup(<KyaluluWaiting language="en" progress={null} />);
+    for (const [stage] of stages) {
+      expect(renderToStaticMarkup(<KyaluluWaiting language="en" progress={{ stage, elapsed_ms: 12500 }} />)).toBe(baseline);
+      const detailed = renderToStaticMarkup(<KyaluluWaiting language="en" progress={{ stage, elapsed_ms: 12500 }} researcher />);
+      expect(detailed).toContain('12.5s elapsed');
+      expect(detailed).toContain('aria-live="off"');
+      expect(detailed).not.toMatch(/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u);
+    }
+    expect(baseline).toContain('Waiting for a reply…');
+  });
+
   it.each(stages)('keeps the consumer display stable through %s and elapsed updates', stage => {
     const baseline = renderToStaticMarkup(<KyaluluWaiting progress={null} />);
     for (const elapsed_ms of [0, 1200, 65000]) {

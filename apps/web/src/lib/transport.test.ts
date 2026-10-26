@@ -1,7 +1,38 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { apiFetch, serverAddress } from './transport';
 import { setCloud, setCloudOwner } from './cloudMode';
-afterEach(() => { setCloud(false); vi.unstubAllGlobals(); });
+import * as remoteStore from './remoteStore';
+afterEach(() => { setCloud(false); vi.unstubAllGlobals();vi.restoreAllMocks(); });
+it.each(['pc','device','local'])('does not revoke %s pairing on a Cloud publication login error',async target=>{
+  vi.stubGlobal('localStorage',{getItem:(key:string)=>key==='kyalulu-execution-target'?target:null});
+  const dispatchEvent=vi.fn();vi.stubGlobal('window',{dispatchEvent});
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response('{}',{status:401})));
+  expect((await apiFetch('/api/cloud/app/publications')).status).toBe(401);
+  expect(dispatchEvent).not.toHaveBeenCalled();
+});
+it.each(['cloud','pc','device'])('blocks PC-only sync credentials before dispatch to %s',async target=>{
+  vi.stubGlobal('localStorage',{getItem:(key:string)=>key==='kyalulu-execution-target'?target:null});
+  vi.spyOn(remoteStore,'activeRemote').mockReturnValue({id:'selected'} as any);
+  const fetch=vi.fn();vi.stubGlobal('fetch',fetch);
+  for(const path of ['/api/local/app-sync','/api/local/app-sync?x=1','/api/local/app-sync/run','/api/local/cloud','/api/local/cloud/sync']) {
+    await expect(apiFetch(path,{method:'PUT',body:'fixture-secret'})).rejects.toThrow('対象のPC上');
+  }
+  expect(fetch).not.toHaveBeenCalled();
+});
+it('keeps explicit local enrollment off Relay even when a Remote key remains selected',async()=>{
+  vi.stubGlobal('localStorage',{getItem:(key:string)=>key==='kyalulu-execution-target'?'local':null});
+  vi.spyOn(remoteStore,'activeRemote').mockReturnValue({id:'selected'} as any);
+  const fetch=vi.fn().mockResolvedValue(new Response('{}'));vi.stubGlobal('fetch',fetch);
+  const body=JSON.stringify({token:'fixture-local-only-token'});
+  await apiFetch('/api/local/app-sync',{method:'PUT',body});
+  expect(fetch).toHaveBeenCalledWith('/api/local/app-sync',expect.objectContaining({body,credentials:'same-origin'}));
+});
+it('pins authenticated runtime mutations to the expected Cloud account',async()=>{
+  setCloud(true);setCloudOwner('expected-owner');
+  const fetch=vi.fn().mockResolvedValue(new Response('{}'));vi.stubGlobal('fetch',fetch);
+  await apiFetch('/api/chat/sessions/sync-fixture/data',{method:'DELETE'});
+  expect(new Headers(fetch.mock.calls[0][1].headers).get('X-Kyalulu-Owner')).toBe('expected-owner');
+});
 it.each([200,401])('rejects old-owner HTTP %s without logging the new owner out',async status=>{
   setCloud(true);setCloudOwner('a');
   const dispatchEvent=vi.fn();vi.stubGlobal('window',{dispatchEvent});

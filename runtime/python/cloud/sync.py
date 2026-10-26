@@ -443,6 +443,19 @@ def apply_rows(db, value, *, validate_only=False):
                 + ")",
                 tuple(row[name] for name in names),
             )
+    # Logical snapshots do not carry local identity proofs; retain neither stale ancestry nor reused numeric IDs.
+    if db.execute("SELECT 1 FROM sqlite_master WHERE name='unified_local_links'").fetchone():
+        if selected is None:
+            db.execute('DELETE FROM unified_local_links')
+        else:
+            db.executemany('DELETE FROM unified_local_links WHERE session_id=?', ((sid,) for sid in selected))
+    from python.storage.native_sync import fence_restored
+    fence_restored(db, selected)
+    if db.execute("SELECT 1 FROM sqlite_master WHERE name='unified_runtime_links'").fetchone():
+        for row in db.execute('SELECT session_id,mapping FROM unified_runtime_links').fetchall():
+            if selected is None or row[0] in selected:
+                mapping = json.loads(row[1]); mapping['restored_from_snapshot'] = True
+                db.execute('UPDATE unified_runtime_links SET mapping=? WHERE session_id=?', (json.dumps(mapping), row[0]))
 
 
 def apply_snapshot(path, value):

@@ -125,7 +125,10 @@ def _write(con, document, original_id=None, target_id=None, expected_revision=No
     document.data['name'] = document.name
     for asset in document.assets:
         if asset.asset_id:
-            read_asset(asset.asset_id)
+            _raw, mime = read_asset(asset.asset_id)
+            if not mime.startswith('image/') and getattr(asset, 'rights_confirmed', False) is not True:
+                raise ValueError('Confirm your right to use imported media before saving')
+            asset.media_type = mime
     item_id = target_id or 'lib_' + uuid4().hex
     old = con.execute('SELECT MAX(revision) FROM library_versions WHERE id=?', (item_id,)).fetchone()[0]
     if target_id and (old is None or expected_revision != old):
@@ -222,7 +225,7 @@ def commit(preview_id: str, body: ImportCommit):
                     cur = con.execute("INSERT INTO chat_history (session_id,role,content,model_id,created_at) VALUES (?,?,?,?,COALESCE(?,datetime('now')))",
                                       (sid, message['role'], message['content'], 'imported', message.get('created_at')))
                     con.execute('INSERT INTO imported_history VALUES (?,?)',
-                                (cur.lastrowid, encode({'original_id': row['original_id'], 'history_index': idx, **message})))
+                                (cur.lastrowid, encode({**message, 'original_id': row['original_id'], 'history_index': idx, 'format': 'portable'})))
                 sessions.append({'session_id': sid, 'name': history.name, 'character_id': item.id})
         result = {'items': items, 'sessions': sessions}
         con.execute('INSERT INTO library_commits VALUES (?,?,?)', (body.request_id, fingerprint, encode(result)))

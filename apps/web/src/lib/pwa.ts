@@ -1,5 +1,29 @@
 /// <reference types="vite/client" />
 import { useSyncExternalStore } from "react";
+import { generationBusy, preferences } from './appContext';
+
+export const pwaMessages = {
+  ja: {
+    otherTabs: 'ほかのKyaluluタブやウィンドウを閉じてから更新してください。',
+    cache: 'アプリの保存・更新に失敗しました。接続を確認して再度お試しください。',
+    preparation: 'オフライン用の準備ができませんでした。オンラインで引き続き利用できます。',
+    install: 'インストールできませんでした。ブラウザのメニューから再度お試しください。',
+    generation: '生成を停止し、保存結果を確認してから更新してください。',
+    update: '更新を完了できませんでした。接続を確認し、もう一度お試しください。',
+    check: '更新を確認できませんでした。接続を確認してください。',
+    confirm: 'アプリを更新して再読み込みします。生成中の応答や未保存の入力が失われる場合があります。保存・停止してから更新してください。',
+  },
+  en: {
+    otherTabs: 'Close other Kyalulu tabs and windows before updating.',
+    cache: 'The app could not be saved or updated. Check your connection and try again.',
+    preparation: 'Offline preparation failed. You can continue using the app online.',
+    install: 'Installation failed. Try again from your browser menu.',
+    generation: 'Stop generation and check its saved result before updating.',
+    update: 'The update could not be completed. Check your connection and try again.',
+    check: 'Updates could not be checked. Check your connection.',
+    confirm: 'Update and reload the app? Responses being generated and unsaved input may be lost. Save your input and stop generation before updating.',
+  },
+};
 
 interface InstallPrompt extends Event {
   prompt(): Promise<void>;
@@ -14,7 +38,7 @@ type PwaState = {
   offlineReady: boolean;
   updateAvailable: boolean;
   busy: boolean;
-  error: string | null;
+  error: Exclude<keyof typeof pwaMessages.ja, 'confirm'> | null;
 };
 
 export function canUsePwa(protocol: string, secure: boolean, electron: boolean) {
@@ -70,7 +94,7 @@ export async function startPwa() {
     if (event.data?.type === "UPDATE_BLOCKED") {
       requestedUpdate = false;
       clearTimeout(updateTimeout);
-      publish({ busy: false, error: "ほかのKyaluluタブやウィンドウを閉じてから更新してください。" });
+      publish({ busy: false, error: 'otherTabs' });
     }
   });
   try {
@@ -81,7 +105,7 @@ export async function startPwa() {
       const worker = registration?.installing;
       worker?.addEventListener("statechange", () => {
         refresh();
-        if (worker.state === "redundant") publish({ error: "アプリの保存・更新に失敗しました。接続を確認して再度お試しください。" });
+        if (worker.state === "redundant") publish({ error: 'cache' });
       });
     };
     registration.addEventListener("updatefound", watch);
@@ -97,7 +121,7 @@ export async function startPwa() {
     });
   } catch {
     started = false;
-    publish({ error: "オフライン用の準備ができませんでした。オンラインで引き続き利用できます。" });
+    publish({ error: 'preparation' });
   }
 }
 
@@ -109,20 +133,21 @@ export async function installPwa() {
   try {
     await prompt.prompt();
     await prompt.userChoice; // appinstalled is the authoritative success signal.
-  } catch { publish({ error: "インストールできませんでした。ブラウザのメニューから再度お試しください。" }); }
+  } catch { publish({ error: 'install' }); }
   finally { publish({ busy: false }); }
 }
 
 export function applyPwaUpdate() {
+  if (generationBusy()) { publish({error:'generation'}); return; }
   if (!registration?.waiting || state.busy || !state.online) return;
   // Explicit confirmation also protects drafts outside the conversation page.
-  if (!window.confirm("アプリを更新して再読み込みします。生成中の応答や未保存の入力が失われる場合があります。保存・停止してから更新してください。")) return;
+  if (!window.confirm(pwaMessages[preferences().language].confirm)) return;
   requestedUpdate = true;
   publish({ busy: true, error: null });
   registration.waiting.postMessage({ type: "APPLY_UPDATE" });
   updateTimeout = setTimeout(() => {
     requestedUpdate = false;
-    publish({ busy: false, error: "更新を完了できませんでした。接続を確認し、もう一度お試しください。" });
+    publish({ busy: false, error: 'update' });
   }, 15_000);
 }
 
@@ -130,6 +155,6 @@ export async function checkPwaUpdate() {
   if (state.busy || !state.online) return;
   publish({ busy: true, error: null });
   try { if (registration) await registration.update(); else await startPwa(); }
-  catch { publish({ error: "更新を確認できませんでした。接続を確認してください。" }); }
+  catch { publish({ error: 'check' }); }
   finally { publish({ busy: false }); }
 }

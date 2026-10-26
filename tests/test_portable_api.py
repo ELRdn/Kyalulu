@@ -52,6 +52,26 @@ async def test_preview_then_commit_cc_json(isolated):
         assert got.json()["document"]["data"]["description"] == "日本語で話す案内人"
 
 
+async def test_source_history_cannot_override_authoritative_provenance(isolated):
+    import sqlite3
+    from python.core.portable_schema import PortableDocument
+    from python.core.portable_export import export_document
+    document = PortableDocument(name='Provenance', histories=[{'name': 'History', 'messages': [
+        {'role': 'user', 'content': 'First', 'original_id': 'forged', 'history_index': 99, 'format': 'unified'}]}])
+    raw, _, filename, _ = export_document(document, 'backup', {})
+    async with client() as cli:
+        preview = (await cli.post('/api/imports/preview', files={'file': (filename, raw)})).json()
+        response = await cli.post('/api/imports/' + preview['preview_id'] + '/commit', json={
+            'request_id': 'provenance', 'selections': [{'index': 0, 'document': preview['documents'][0], 'history_indices': [0]}]})
+        assert response.status_code == 200, response.text
+        item = response.json()['items'][0]
+        with sqlite3.connect(isolated / 'data.db') as db:
+            origin = json.loads(db.execute('SELECT origin_json FROM imported_history').fetchone()[0])
+        assert origin['original_id'] == item['original_id'] and origin['history_index'] == 0 and origin['format'] == 'portable'
+        original = await cli.get('/api/library/' + item['id'] + '/export?format=original&download=true')
+        assert original.content == raw
+
+
 async def test_commit_idempotent_retry_and_changed_body_conflict(isolated):
     async with client() as cli:
         prev, first = await preview_commit(cli, cc_json_bytes(), "card.json", "req-idem")

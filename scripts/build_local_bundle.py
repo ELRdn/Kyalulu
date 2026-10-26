@@ -123,7 +123,7 @@ def build(output, release, target, web_dist=None):
                 text += "\n" + os.path.relpath(directory, executable.parent)
             pth.write_text(text + "\nimport site\n")
         copy_source(ROOT / "runtime/python", stage / "runtime/python")
-        for directory in ("characters", "personas", "worlds", "prompts", "models"):
+        for directory in ("characters", "personas", "worlds", "prompts", "scenarios", "models"):
             target_dir = stage / directory
             target_dir.mkdir()
             for source in (ROOT / directory).iterdir():

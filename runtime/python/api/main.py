@@ -32,9 +32,14 @@ async def lifespan(app: FastAPI):
             print(f"[lifespan] registry sync failed: {e}")
         from python.core.benchmark import recover_jobs
         recover_jobs()
+        from python.api.native_sync import background
+        import asyncio
+        native_sync_task=asyncio.create_task(background(app))
         try:
             yield
         finally:
+            native_sync_task.cancel()
+            await asyncio.gather(native_sync_task,return_exceptions=True)
             from python.api.benchmarks import shutdown
             await shutdown()
 
@@ -98,6 +103,8 @@ app.include_router(creator_router, prefix="/api")
 app.include_router(benchmarks_router, prefix="/api")
 from python.api.cloud_sync import router as cloud_sync_router
 app.include_router(cloud_sync_router, prefix="/api")
+from python.api.native_sync import router as native_sync_router
+app.include_router(native_sync_router,prefix='/api')
 
 # Security wraps CORS and all routes, including future APIs and static responses.
 from python.api.mobile import Config, Devices, MobileSecurity, WebDist, router as mobile_router

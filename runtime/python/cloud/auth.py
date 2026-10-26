@@ -53,13 +53,19 @@ class SupabaseAuth:
             raise CloudError("authentication_failed", 401)
         return data
 
-    async def begin(self, *, provider=None, email=None, consent=False, country=None):
+    async def begin(self, *, provider=None, email=None, consent=False, country=None, eligibility_ticket=None):
         if not self.config.legal_approved and not self.config.private_test:
             raise CloudError("legal_publication_pending", 503)
         if consent is not True:
             raise CloudError("terms_consent_required", 403)
-        if not isinstance(country, str) or country not in {"JP", "US"}:
+        if not isinstance(country, str) or (country not in dict(self.config.region_policies) if self.config.unified_enabled else country not in {"JP", "US"}):
             raise CloudError("cloud_residence_country_required", 403)
+        eligibility = None
+        if self.config.unified_enabled:
+            service = getattr(self.store, 'unified_service', None)
+            if not service:
+                raise CloudError('unified_app_awaiting_acceptance', 503)
+            eligibility = service.verify_eligibility_ticket(eligibility_ticket, country)
         if not self.config.supabase_url or not self.config.supabase_key:
             raise CloudError("authentication_not_configured", 503)
         if provider not in {None, "google"}:
@@ -83,7 +89,7 @@ class SupabaseAuth:
                 "INSERT INTO flows VALUES(?,?,?)",
                 (digest(flow), self.store.encrypt(json.dumps({"verifier": verifier,
                     "consent": provider_consent_version(self.config), "backend": self.config.operator_backend,
-                    "country": country})),
+                    "country": country, 'app_eligibility': eligibility})),
                     time.time() + 600),
             )
         callback = self.config.origin + "/auth/callback"
@@ -128,7 +134,7 @@ class SupabaseAuth:
                 if (agreement["consent"] != provider_consent_version(self.config)
                         or agreement["backend"] != self.config.operator_backend
                         or not isinstance(agreement["country"], str)
-                        or agreement["country"] not in {"JP", "US"}):
+                        or agreement["country"] not in (dict(self.config.region_policies) if self.config.unified_enabled else {"JP", "US"})):
                     raise ValueError()
                 verifier = agreement["verifier"]
             except (ValueError, KeyError, TypeError) as exc:
@@ -144,7 +150,15 @@ class SupabaseAuth:
         if (not session.get("access_token") or not session.get("refresh_token")
                 or type(session.get("expires_in")) is not int or not 0 < session["expires_in"] <= 86400):
             raise CloudError("authentication_failed", 401)
+        if self.config.unified_enabled:
+            eligibility = agreement.get('app_eligibility')
+            policy = dict(self.config.region_policies).get(agreement['country'], {})
+            if (not isinstance(eligibility, dict) or policy.get('accepted') is not True
+                    or eligibility.get('policy') != policy.get('version')):
+                raise CloudError('eligibility_confirmation_required', 403)
         self.store.account(owner, consent=provider_consent_version(self.config), enroll=True)
+        if self.config.unified_enabled:
+            self.store.secret(owner, 'app-eligibility', json.dumps(eligibility))
         self.store.secret(owner, "eligibility", json.dumps({"country": agreement["country"],
             "consent_version": agreement["consent"], "self_declared": True}))
         metadata = user.get("user_metadata")

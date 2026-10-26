@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { isCloud } from './cloud';
+import { isUnifiedEntry } from './appContext';
 
 /** 成人向けコンテンツの表示可否。年齢確認のうえ利用者自身が有効にする（既定はOFF）。 */
 const LS_ADULT = "kyalulu-adult-content";
 const EVENT = "kyalulu-adult-change";
 
 export function isAdultContentEnabled(): boolean {
-  if (isCloud()) return false;
+  if (isCloud() || isUnifiedEntry()) return false;
   try {
     return localStorage.getItem(LS_ADULT) === "1";
   } catch {
@@ -15,7 +16,7 @@ export function isAdultContentEnabled(): boolean {
 }
 
 export function setAdultContentEnabled(v: boolean) {
-  if (isCloud()) v = false;
+  if (isCloud() || isUnifiedEntry()) v = false;
   try {
     localStorage.setItem(LS_ADULT, v ? "1" : "0");
   } catch {

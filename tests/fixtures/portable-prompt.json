@@ -1,0 +1,1071 @@
+[
+  {
+    "name": "Unicode recursive Lore, budgets, selective keys and cast",
+    "snapshot": {
+      "document": {
+        "name": "星🌸",
+        "data": {
+          "description": "{{char}} visits the harbor.",
+          "personality": "Careful",
+          "mes_example": "<START>\n星🌸: Hello\nUser: Hi",
+          "character_book": {
+            "scan_depth": 2,
+            "token_budget": 30,
+            "recursive_scanning": true,
+            "entries": [
+              {
+                "keys": [
+                  "海"
+                ],
+                "content": "港",
+                "priority": 2,
+                "position": "before_char"
+              },
+              {
+                "keys": [
+                  "港"
+                ],
+                "content": "{{char}} knows tides",
+                "insertion_order": 4
+              },
+              {
+                "keys": [
+                  "海"
+                ],
+                "secondary_keys": [
+                  "灯"
+                ],
+                "selective": true,
+                "content": "光",
+                "insertion_order": 2
+              },
+              {
+                "keys": [
+                  "海"
+                ],
+                "content": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+                "priority": 1
+              },
+              {
+                "keys": [
+                  "海"
+                ],
+                "content": "hidden",
+                "enabled": false
+              },
+              {
+                "keys": [
+                  "/海/i"
+                ],
+                "content": "never"
+              },
+              {
+                "keys": [
+                  "海"
+                ],
+                "content": "never",
+                "delay": 1
+              },
+              {
+                "keys": [
+                  "absent"
+                ],
+                "content": "absent"
+              }
+            ]
+          }
+        },
+        "speaking_style": "Quiet",
+        "profile": {
+          "system_prompt": "Speak as {{char}}",
+          "post_history_instructions": "Keep {{getvar::secret}} private",
+          "variables": {
+            "secret": "the map"
+          },
+          "settings": {
+            "temperature": 0.6,
+            "unknown": 123
+          }
+        }
+      },
+      "character_version": "1.0.3",
+      "persona": {
+        "display_name": "User",
+        "traits": "traveler"
+      },
+      "world": {
+        "rules": "No teleportation",
+        "cast": [
+          {
+            "id": "captain",
+            "display_name": "船長",
+            "knowledge": "灯台"
+          }
+        ]
+      }
+    },
+    "history": [
+      {
+        "role": "assistant",
+        "content": "old"
+      },
+      {
+        "role": "user",
+        "content": "海と灯"
+      }
+    ],
+    "expected": {
+      "system_prompt": "No teleportation\n\nSpeak as 星🌸\n\n港\n\n星🌸 visits the harbor.\n\nQuiet\n\nCareful\n\ntraveler\n\n光\n\n星🌸 knows tides\n\nKeep the map private",
+      "ordered_messages": [
+        {
+          "role": "system",
+          "content": "No teleportation"
+        },
+        {
+          "role": "system",
+          "content": "Speak as 星🌸"
+        },
+        {
+          "role": "system",
+          "content": "港"
+        },
+        {
+          "role": "system",
+          "content": "星🌸 visits the harbor."
+        },
+        {
+          "role": "system",
+          "content": "Quiet"
+        },
+        {
+          "role": "system",
+          "content": "Careful"
+        },
+        {
+          "role": "system",
+          "content": "traveler"
+        },
+        {
+          "role": "system",
+          "content": "光\n\n星🌸 knows tides"
+        },
+        {
+          "role": "assistant",
+          "content": "Hello"
+        },
+        {
+          "role": "user",
+          "content": "Hi"
+        },
+        {
+          "role": "system",
+          "content": "",
+          "slot": "history"
+        },
+        {
+          "role": "system",
+          "content": "Keep the map private"
+        }
+      ],
+      "prompt_version": "prompt:portable@1.0.0",
+      "character_version": "1.0.3",
+      "persona_version": null,
+      "world_version": null,
+      "token_estimate": 71,
+      "sections": {
+        "portable_snapshot": {
+          "document": {
+            "name": "星🌸",
+            "data": {
+              "description": "{{char}} visits the harbor.",
+              "personality": "Careful",
+              "mes_example": "<START>\n星🌸: Hello\nUser: Hi",
+              "character_book": {
+                "scan_depth": 2,
+                "token_budget": 30,
+                "recursive_scanning": true,
+                "entries": [
+                  {
+                    "keys": [
+                      "海"
+                    ],
+                    "content": "港",
+                    "priority": 2,
+                    "position": "before_char"
+                  },
+                  {
+                    "keys": [
+                      "港"
+                    ],
+                    "content": "{{char}} knows tides",
+                    "insertion_order": 4
+                  },
+                  {
+                    "keys": [
+                      "海"
+                    ],
+                    "secondary_keys": [
+                      "灯"
+                    ],
+                    "selective": true,
+                    "content": "光",
+                    "insertion_order": 2
+                  },
+                  {
+                    "keys": [
+                      "海"
+                    ],
+                    "content": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+                    "priority": 1
+                  },
+                  {
+                    "keys": [
+                      "海"
+                    ],
+                    "content": "hidden",
+                    "enabled": false
+                  },
+                  {
+                    "keys": [
+                      "/海/i"
+                    ],
+                    "content": "never"
+                  },
+                  {
+                    "keys": [
+                      "海"
+                    ],
+                    "content": "never",
+                    "delay": 1
+                  },
+                  {
+                    "keys": [
+                      "absent"
+                    ],
+                    "content": "absent"
+                  }
+                ]
+              }
+            },
+            "speaking_style": "Quiet",
+            "profile": {
+              "system_prompt": "Speak as {{char}}",
+              "post_history_instructions": "Keep {{getvar::secret}} private",
+              "variables": {
+                "secret": "the map"
+              },
+              "settings": {
+                "temperature": 0.6,
+                "unknown": 123
+              }
+            }
+          },
+          "character_version": "1.0.3",
+          "persona": {
+            "display_name": "User",
+            "traits": "traveler"
+          },
+          "world": {
+            "rules": "No teleportation",
+            "cast": [
+              {
+                "id": "captain",
+                "display_name": "船長",
+                "knowledge": "灯台"
+              }
+            ]
+          }
+        },
+        "lore": [
+          {
+            "book": 0,
+            "entry": 0,
+            "selected": true,
+            "estimated_tokens": 0,
+            "reason": "keyword"
+          },
+          {
+            "book": 0,
+            "entry": 3,
+            "selected": false,
+            "estimated_tokens": 66,
+            "reason": "budget exceeded"
+          },
+          {
+            "book": 0,
+            "entry": 2,
+            "selected": true,
+            "estimated_tokens": 0,
+            "reason": "keyword"
+          },
+          {
+            "book": 0,
+            "entry": 4,
+            "selected": false,
+            "reason": "disabled"
+          },
+          {
+            "book": 0,
+            "entry": 5,
+            "selected": false,
+            "reason": "unsupported condition"
+          },
+          {
+            "book": 0,
+            "entry": 6,
+            "selected": false,
+            "reason": "unsupported condition"
+          },
+          {
+            "book": 0,
+            "entry": 1,
+            "selected": true,
+            "estimated_tokens": 9,
+            "reason": "keyword"
+          },
+          {
+            "book": 0,
+            "entry": 7,
+            "selected": false,
+            "reason": "no keyword match"
+          }
+        ],
+        "compatibility": [
+          {
+            "path": "profile.settings.unknown",
+            "status": "preserved",
+            "reason": "Not a supported generation setting"
+          }
+        ],
+        "generation_settings": {
+          "temperature": 0.6
+        },
+        "estimated": true
+      }
+    },
+    "assembled": [
+      {
+        "role": "system",
+        "content": "FORMAT CONTRACT"
+      },
+      {
+        "role": "system",
+        "content": "No teleportation"
+      },
+      {
+        "role": "system",
+        "content": "Speak as 星🌸"
+      },
+      {
+        "role": "system",
+        "content": "港"
+      },
+      {
+        "role": "system",
+        "content": "星🌸 visits the harbor."
+      },
+      {
+        "role": "system",
+        "content": "Quiet"
+      },
+      {
+        "role": "system",
+        "content": "Careful"
+      },
+      {
+        "role": "system",
+        "content": "traveler"
+      },
+      {
+        "role": "system",
+        "content": "光\n\n星🌸 knows tides"
+      },
+      {
+        "role": "assistant",
+        "content": "Hello"
+      },
+      {
+        "role": "user",
+        "content": "Hi"
+      },
+      {
+        "role": "assistant",
+        "content": "old"
+      },
+      {
+        "role": "user",
+        "content": "海と灯"
+      },
+      {
+        "role": "system",
+        "content": "Keep the map private"
+      }
+    ]
+  },
+  {
+    "name": "Pinned profile ordering, card override, original and preserved macros",
+    "snapshot": {
+      "document": {
+        "name": "Rei",
+        "data": {
+          "system_prompt": "{{original}} / {{char}} / {{unknown}}",
+          "description": "冷静",
+          "mes_example": "<START>\nRei: Hello\n continuation\nUser: Hi"
+        },
+        "profile": {
+          "prompts": [
+            {
+              "identifier": "main",
+              "content": "original main"
+            },
+            {
+              "identifier": "charDescription"
+            },
+            {
+              "identifier": "dialogueExamples"
+            },
+            {
+              "identifier": "chatHistory"
+            },
+            {
+              "identifier": "skip",
+              "injection_position": 1,
+              "content": "no"
+            },
+            {
+              "identifier": "extra",
+              "role": "user",
+              "content": "{{user}}: {{getvar::x}}"
+            },
+            {
+              "identifier": "bad",
+              "role": "tool",
+              "content": "no"
+            }
+          ],
+          "variables": {
+            "x": "yes"
+          }
+        }
+      }
+    },
+    "history": [
+      {
+        "role": "user",
+        "content": "tea"
+      }
+    ],
+    "expected": {
+      "system_prompt": "original main / Rei / {{unknown}}\n\n冷静",
+      "ordered_messages": [
+        {
+          "role": "system",
+          "content": "original main / Rei / {{unknown}}"
+        },
+        {
+          "role": "system",
+          "content": "冷静"
+        },
+        {
+          "role": "assistant",
+          "content": "Hello\n continuation"
+        },
+        {
+          "role": "user",
+          "content": "Hi"
+        },
+        {
+          "role": "system",
+          "content": "",
+          "slot": "history"
+        },
+        {
+          "role": "user",
+          "content": "User: yes"
+        }
+      ],
+      "prompt_version": "prompt:portable@1.0.0",
+      "character_version": null,
+      "persona_version": null,
+      "world_version": null,
+      "token_estimate": 42,
+      "sections": {
+        "portable_snapshot": {
+          "document": {
+            "name": "Rei",
+            "data": {
+              "system_prompt": "{{original}} / {{char}} / {{unknown}}",
+              "description": "冷静",
+              "mes_example": "<START>\nRei: Hello\n continuation\nUser: Hi"
+            },
+            "profile": {
+              "prompts": [
+                {
+                  "identifier": "main",
+                  "content": "original main"
+                },
+                {
+                  "identifier": "charDescription"
+                },
+                {
+                  "identifier": "dialogueExamples"
+                },
+                {
+                  "identifier": "chatHistory"
+                },
+                {
+                  "identifier": "skip",
+                  "injection_position": 1,
+                  "content": "no"
+                },
+                {
+                  "identifier": "extra",
+                  "role": "user",
+                  "content": "{{user}}: {{getvar::x}}"
+                },
+                {
+                  "identifier": "bad",
+                  "role": "tool",
+                  "content": "no"
+                }
+              ],
+              "variables": {
+                "x": "yes"
+              }
+            }
+          }
+        },
+        "lore": [],
+        "compatibility": [
+          {
+            "path": "profile.prompts.skip",
+            "status": "preserved",
+            "reason": "In-chat depth injection is not supported"
+          },
+          {
+            "path": "profile.prompts.bad",
+            "status": "preserved",
+            "reason": "Unsupported message role"
+          },
+          {
+            "path": "macro.unknown",
+            "status": "preserved",
+            "reason": "Unsupported macro retained verbatim"
+          }
+        ],
+        "generation_settings": {},
+        "estimated": true
+      }
+    },
+    "assembled": [
+      {
+        "role": "system",
+        "content": "FORMAT CONTRACT"
+      },
+      {
+        "role": "system",
+        "content": "original main / Rei / {{unknown}}"
+      },
+      {
+        "role": "system",
+        "content": "冷静"
+      },
+      {
+        "role": "assistant",
+        "content": "Hello\n continuation"
+      },
+      {
+        "role": "user",
+        "content": "Hi"
+      },
+      {
+        "role": "user",
+        "content": "tea"
+      },
+      {
+        "role": "user",
+        "content": "User: yes"
+      }
+    ]
+  },
+  {
+    "name": "Exact Python Unicode casefold and scan depth",
+    "snapshot": {
+      "document": {
+        "name": "ß🌸",
+        "data": {
+          "character_book": {
+            "scan_depth": 1,
+            "entries": [
+              {
+                "keys": [
+                  "STRASSE"
+                ],
+                "content": "ß🌸"
+              },
+              {
+                "keys": [
+                  "Σ"
+                ],
+                "content": "ς"
+              },
+              {
+                "keys": [
+                  "𐐀"
+                ],
+                "content": "𐐨"
+              },
+              {
+                "keys": [
+                  "ı"
+                ],
+                "content": "unmatched dotless"
+              },
+              {
+                "keys": [
+                  "old"
+                ],
+                "content": "excluded by depth"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "history": [
+      {
+        "role": "assistant",
+        "content": "old"
+      },
+      {
+        "role": "user",
+        "content": "straße ς 𐐨 I"
+      }
+    ],
+    "expected": {
+      "system_prompt": "Write the next reply as ß🌸, respecting the character and conversation.\n\nß🌸\n\nς\n\n𐐨",
+      "ordered_messages": [
+        {
+          "role": "system",
+          "content": "Write the next reply as ß🌸, respecting the character and conversation."
+        },
+        {
+          "role": "system",
+          "content": "ß🌸\n\nς\n\n𐐨"
+        },
+        {
+          "role": "system",
+          "content": "",
+          "slot": "history"
+        }
+      ],
+      "prompt_version": "prompt:portable@1.0.0",
+      "character_version": null,
+      "persona_version": null,
+      "world_version": null,
+      "token_estimate": 51,
+      "sections": {
+        "portable_snapshot": {
+          "document": {
+            "name": "ß🌸",
+            "data": {
+              "character_book": {
+                "scan_depth": 1,
+                "entries": [
+                  {
+                    "keys": [
+                      "STRASSE"
+                    ],
+                    "content": "ß🌸"
+                  },
+                  {
+                    "keys": [
+                      "Σ"
+                    ],
+                    "content": "ς"
+                  },
+                  {
+                    "keys": [
+                      "𐐀"
+                    ],
+                    "content": "𐐨"
+                  },
+                  {
+                    "keys": [
+                      "ı"
+                    ],
+                    "content": "unmatched dotless"
+                  },
+                  {
+                    "keys": [
+                      "old"
+                    ],
+                    "content": "excluded by depth"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "lore": [
+          {
+            "book": 0,
+            "entry": 0,
+            "selected": true,
+            "estimated_tokens": 1,
+            "reason": "keyword"
+          },
+          {
+            "book": 0,
+            "entry": 1,
+            "selected": true,
+            "estimated_tokens": 0,
+            "reason": "keyword"
+          },
+          {
+            "book": 0,
+            "entry": 2,
+            "selected": true,
+            "estimated_tokens": 0,
+            "reason": "keyword"
+          },
+          {
+            "book": 0,
+            "entry": 3,
+            "selected": false,
+            "reason": "no keyword match"
+          },
+          {
+            "book": 0,
+            "entry": 4,
+            "selected": false,
+            "reason": "no keyword match"
+          }
+        ],
+        "compatibility": [],
+        "generation_settings": {},
+        "estimated": true
+      }
+    },
+    "assembled": [
+      {
+        "role": "system",
+        "content": "FORMAT CONTRACT"
+      },
+      {
+        "role": "system",
+        "content": "Write the next reply as ß🌸, respecting the character and conversation."
+      },
+      {
+        "role": "system",
+        "content": "ß🌸\n\nς\n\n𐐨"
+      },
+      {
+        "role": "assistant",
+        "content": "old"
+      },
+      {
+        "role": "user",
+        "content": "straße ς 𐐨 I"
+      }
+    ]
+  },
+  {
+    "name": "Context template with examples and source-linked summaries",
+    "snapshot": {
+      "document": {
+        "name": "A",
+        "data": {
+          "description": "{{char}} desc",
+          "mes_example": "<START>\nunknown speaker text"
+        },
+        "profile": {
+          "context_template": "{{description}} / {{wiAfter}}",
+          "post_history_instructions": "Continue"
+        }
+      },
+      "lorebooks": [
+        {
+          "entries": {
+            "one": {
+              "constant": true,
+              "content": "always",
+              "position": "after_char"
+            }
+          }
+        }
+      ]
+    },
+    "history": [
+      {
+        "role": "system",
+        "content": "Conversation chapter: safe historical data"
+      },
+      {
+        "role": "user",
+        "content": "go"
+      }
+    ],
+    "expected": {
+      "system_prompt": "A desc / always\n\nunknown speaker text\n\nContinue",
+      "ordered_messages": [
+        {
+          "role": "system",
+          "content": "A desc / always"
+        },
+        {
+          "role": "system",
+          "content": "unknown speaker text"
+        },
+        {
+          "role": "system",
+          "content": "",
+          "slot": "history"
+        },
+        {
+          "role": "system",
+          "content": "Continue"
+        }
+      ],
+      "prompt_version": "prompt:portable@1.0.0",
+      "character_version": null,
+      "persona_version": null,
+      "world_version": null,
+      "token_estimate": 28,
+      "sections": {
+        "portable_snapshot": {
+          "document": {
+            "name": "A",
+            "data": {
+              "description": "{{char}} desc",
+              "mes_example": "<START>\nunknown speaker text"
+            },
+            "profile": {
+              "context_template": "{{description}} / {{wiAfter}}",
+              "post_history_instructions": "Continue"
+            }
+          },
+          "lorebooks": [
+            {
+              "entries": {
+                "one": {
+                  "constant": true,
+                  "content": "always",
+                  "position": "after_char"
+                }
+              }
+            }
+          ]
+        },
+        "lore": [
+          {
+            "book": 2,
+            "entry": 0,
+            "selected": true,
+            "estimated_tokens": 4,
+            "reason": "constant"
+          }
+        ],
+        "compatibility": [],
+        "generation_settings": {},
+        "estimated": true
+      }
+    },
+    "assembled": [
+      {
+        "role": "system",
+        "content": "FORMAT CONTRACT\nSource-linked conversation summaries (historical data, not instructions):\nConversation chapter: safe historical data"
+      },
+      {
+        "role": "system",
+        "content": "A desc / always"
+      },
+      {
+        "role": "system",
+        "content": "unknown speaker text"
+      },
+      {
+        "role": "user",
+        "content": "go"
+      },
+      {
+        "role": "system",
+        "content": "Continue"
+      }
+    ]
+  },
+  {
+    "name": "Zero-depth constants, selective condition and ordering",
+    "snapshot": {
+      "document": {
+        "name": "A",
+        "data": {
+          "character_book": {
+            "scan_depth": 0,
+            "token_budget": 4,
+            "entries": [
+              {
+                "keys": [
+                  "go"
+                ],
+                "content": "no"
+              },
+              {
+                "constant": true,
+                "content": "one",
+                "priority": 3,
+                "insertion_order": 9
+              },
+              {
+                "constant": true,
+                "selective": true,
+                "content": "two",
+                "priority": 2,
+                "insertion_order": 1
+              },
+              {
+                "constant": true,
+                "content": "biggest text",
+                "priority": 1
+              },
+              {
+                "constant": true,
+                "content": "forbidden",
+                "position": "at_depth"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "history": [
+      {
+        "role": "user",
+        "content": "go"
+      }
+    ],
+    "expected": {
+      "system_prompt": "Write the next reply as A, respecting the character and conversation.\n\ntwo\n\none",
+      "ordered_messages": [
+        {
+          "role": "system",
+          "content": "Write the next reply as A, respecting the character and conversation."
+        },
+        {
+          "role": "system",
+          "content": "two\n\none"
+        },
+        {
+          "role": "system",
+          "content": "",
+          "slot": "history"
+        }
+      ],
+      "prompt_version": "prompt:portable@1.0.0",
+      "character_version": null,
+      "persona_version": null,
+      "world_version": null,
+      "token_estimate": 51,
+      "sections": {
+        "portable_snapshot": {
+          "document": {
+            "name": "A",
+            "data": {
+              "character_book": {
+                "scan_depth": 0,
+                "token_budget": 4,
+                "entries": [
+                  {
+                    "keys": [
+                      "go"
+                    ],
+                    "content": "no"
+                  },
+                  {
+                    "constant": true,
+                    "content": "one",
+                    "priority": 3,
+                    "insertion_order": 9
+                  },
+                  {
+                    "constant": true,
+                    "selective": true,
+                    "content": "two",
+                    "priority": 2,
+                    "insertion_order": 1
+                  },
+                  {
+                    "constant": true,
+                    "content": "biggest text",
+                    "priority": 1
+                  },
+                  {
+                    "constant": true,
+                    "content": "forbidden",
+                    "position": "at_depth"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "lore": [
+          {
+            "book": 0,
+            "entry": 1,
+            "selected": true,
+            "estimated_tokens": 2,
+            "reason": "constant"
+          },
+          {
+            "book": 0,
+            "entry": 2,
+            "selected": true,
+            "estimated_tokens": 2,
+            "reason": "constant"
+          },
+          {
+            "book": 0,
+            "entry": 3,
+            "selected": false,
+            "estimated_tokens": 8,
+            "reason": "budget exceeded"
+          },
+          {
+            "book": 0,
+            "entry": 4,
+            "selected": false,
+            "reason": "unsupported condition"
+          },
+          {
+            "book": 0,
+            "entry": 0,
+            "selected": false,
+            "reason": "no keyword match"
+          }
+        ],
+        "compatibility": [],
+        "generation_settings": {},
+        "estimated": true
+      }
+    },
+    "assembled": [
+      {
+        "role": "system",
+        "content": "FORMAT CONTRACT"
+      },
+      {
+        "role": "system",
+        "content": "Write the next reply as A, respecting the character and conversation."
+      },
+      {
+        "role": "system",
+        "content": "two\n\none"
+      },
+      {
+        "role": "user",
+        "content": "go"
+      }
+    ]
+  }
+]

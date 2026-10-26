@@ -32,7 +32,7 @@ from .router import public_routes
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
-def create_app(config=None, *, transport=None):
+def create_app(config=None, *, transport=None, ad_provider=None):
     config = config or CloudConfig.from_env()
     store = CloudStore(config)
     profiles = AccountProfile(store)
@@ -43,7 +43,8 @@ def create_app(config=None, *, transport=None):
     transfers = Transfers(store, sync)
     from .community import Community, public_document
     community = Community(config.root / "community.db")
-    app_community_enabled = config.community_enabled and config.legal_approved and not config.private_test
+    # Legacy publication cannot bypass the unified age/moderation workflow.
+    app_community_enabled = config.community_enabled and config.legal_approved and not config.private_test and not config.unified_enabled
 
     @asynccontextmanager
     async def lifespan(app):
@@ -51,13 +52,15 @@ def create_app(config=None, *, transport=None):
 
         with RuntimeLock(config.root):
             store.recover()
+            unified.transfers.cleanup()
+            transfer_worker = asyncio.create_task(unified.transfers.worker())
             billing_worker = None if config.private_test else asyncio.create_task(billing.worker())
             try:
                 yield
             finally:
-                if billing_worker:
-                    billing_worker.cancel()
-                    await asyncio.gather(billing_worker, return_exceptions=True)
+                workers = [transfer_worker] + ([billing_worker] if billing_worker else [])
+                for worker in workers: worker.cancel()
+                await asyncio.gather(*workers, return_exceptions=True)
                 await jobs.shutdown()
 
     app = FastAPI(
@@ -67,6 +70,10 @@ def create_app(config=None, *, transport=None):
     app.state.jobs, app.state.sync = jobs, sync
     app.state.billing = billing
     app.state.transfers = transfers
+    from .unified import UnifiedService, install_routes
+    unified = UnifiedService(store, region_policies=dict(config.region_policies), ad_provider=ad_provider)
+    app.state.unified = unified
+    install_routes(app, unified)
 
     @app.exception_handler(CloudError)
     async def cloud_error(request, exc):
@@ -116,7 +123,9 @@ def create_app(config=None, *, transport=None):
             # snapshots. No anonymous account or tenant database is created.
             public_read = request.method == "GET" and (
                 request.url.path in {"/api/capabilities", "/api/characters", "/api/worlds"}
+                or request.url.path == '/api/cloud/app/publication-viewer'
                 or re.fullmatch(r"/api/community/(?:works(?:/[^/]+(?:/comments)?)?|authors/[^/]+)", request.url.path) is not None
+                or re.fullmatch(r'/api/cloud/app/works(?:/[^/]+)?', request.url.path) is not None
             )
             public = request.url.path in {
                 "/api/health",
@@ -126,6 +135,8 @@ def create_app(config=None, *, transport=None):
                 "/api/cloud/auth/logout",  # Local revocation must work while Supabase is unavailable.
                 "/auth/callback",
                 "/api/cloud/billing/webhook",
+                "/api/cloud/app/rewards/webhook",
+                "/api/cloud/app/eligibility",
             }
             try:
                 if request.headers.get("host") != urlsplit(config.origin).netloc:
@@ -134,7 +145,7 @@ def create_app(config=None, *, transport=None):
                     raise CloudError("not_found", 404)
                 if (
                     request.method not in SAFE_METHODS
-                    and request.url.path != "/api/cloud/billing/webhook"
+                    and request.url.path not in {"/api/cloud/billing/webhook", "/api/cloud/app/rewards/webhook"}
                 ):
                     if request.headers.get("origin") != config.origin or request.headers.get(
                         "sec-fetch-site", "same-origin"
@@ -169,7 +180,7 @@ def create_app(config=None, *, transport=None):
                             if k.lower() != b"cache-control"
                         ]
                         headers += [
-                            (b"cache-control", b"no-store"),
+                            (b"cache-control", b"no-store" if request.url.path.startswith('/api/') else b"no-store, no-transform"),
                             (b"x-content-type-options", b"nosniff"),
                             (b"referrer-policy", b"no-referrer"),
                         ]
@@ -180,19 +191,27 @@ def create_app(config=None, *, transport=None):
                 if not public and request.url.path.startswith("/api/"):
                     bearer = request.headers.get("authorization", "")
                     if bearer.startswith("Bearer "):
-                        if not request.url.path.startswith("/api/cloud/sync"):
+                        native_sync = ((request.url.path == '/api/cloud/app/sync' and request.method in {'GET', 'POST'})
+                            or re.fullmatch(r'/api/cloud/app/sync/cancel/[^/]+',request.url.path) is not None and request.method=='POST'
+                            or request.url.path == '/api/cloud/app/sync/device' and request.method == 'GET'
+                            or re.fullmatch(r'/api/cloud/app/sync/transfers(?:/[0-9a-f-]{36}/(?:parts/\d+|commit))?', request.url.path) is not None
+                                and request.method in {'GET', 'POST'}
+                            or re.fullmatch(r'/api/cloud/app/entities/[^/]+', request.url.path) is not None and request.method == 'GET')
+                        if not request.url.path.startswith("/api/cloud/sync") and not native_sync:
                             raise CloudError("sync_token_scope_required", 403)
                         token = bearer[7:]
                         with store.transaction() as db:
-                            device = db.execute(
-                                "SELECT owner,expires,session_hash FROM sync_devices WHERE hash=?",
-                                (digest(token),),
-                            ).fetchone()
+                            if native_sync:
+                                device = db.execute('SELECT owner,expires,session_hash,id FROM app_sync_devices WHERE hash=?', (digest(token),)).fetchone()
+                            else:
+                                device = db.execute('SELECT owner,expires,session_hash FROM sync_devices WHERE hash=?', (digest(token),)).fetchone()
                         if not device or device[1] <= time.time():
                             raise CloudError("sync_device_expired", 401)
                         owner = await auth.owner(token, session_hash=device[2])
                         if owner != device[0]:
                             raise CloudError("sync_device_invalid", 401)
+                        if native_sync:
+                            request.state.app_sync_device = device[3]
                     else:
                         try:
                             owner = await auth.owner(request.cookies.get(SESSION_COOKIE))
@@ -200,6 +219,17 @@ def create_app(config=None, *, transport=None):
                             if not public_read or exc.status != 401:
                                 raise
                 if owner:
+                    expected_owner = request.headers.get('x-kyalulu-owner')
+                    sync_scope = request.url.path.startswith(('/api/cloud/app/sync', '/api/cloud/app/runtime-consent', '/api/cloud/app/entities/'))
+                    bootstrap = request.url.path == '/api/cloud/app/sync/device' and request.method == 'GET' and getattr(request.state, 'app_sync_device', None)
+                    if (sync_scope and not bootstrap or expected_owner is not None) and expected_owner != owner:
+                        raise CloudError('sync_account_changed', 403)
+                    publication_withdrawal = request.method == 'DELETE' and re.fullmatch(r'/api/cloud/app/publications/[^/]+', request.url.path) is not None
+                    if config.unified_enabled and not publication_withdrawal and (
+                        request.url.path.startswith(('/api/cloud/quotes', '/api/cloud/app/sync', '/api/cloud/app/runtime-consent', '/api/cloud/app/entities/', '/api/cloud/app/daily', '/api/cloud/app/rewards', '/api/cloud/app/publications', '/api/cloud/billing/checkout'))
+                        or request.url.path.startswith('/api/chat') and request.method not in SAFE_METHODS
+                    ):
+                        unified.require_general(owner)
                     context = CloudStorageContext.for_owner(config.root / "tenants", owner)
                     context.directory.mkdir(parents=True, exist_ok=True)
                     scope.setdefault("state", {})["owner"] = owner
@@ -221,7 +251,8 @@ def create_app(config=None, *, transport=None):
     @app.get("/api/capabilities")
     async def hosted_capabilities():
         from python.api.capabilities import capabilities
-        return {**capabilities(cloud=True, community=app_community_enabled, media=config.image_storage_enabled),
+        base = capabilities(cloud=True, community=app_community_enabled, media=config.image_storage_enabled)
+        return {**base, 'features': {**base['features'], 'publications': unified.publications.accepted(), 'publication_review': config.unified_enabled},
                 "safety_screening": False, "credit_reservation": False}
 
     async def community_call(request, method, *args, **kwargs):
@@ -344,6 +375,9 @@ def create_app(config=None, *, transport=None):
             authenticated = True
         except CloudError:
             pass
+        login_countries = (sorted(country for country, policy in config.region_policies
+                                  if policy.get('accepted') is True)
+                           if config.unified_enabled else ['JP', 'US'])
         return {
             "cloud_mode": True,
             "remote_mode": False,
@@ -355,9 +389,12 @@ def create_app(config=None, *, transport=None):
             "credit_reservation": False,
             "private_test": config.private_test,
             "login_available": bool(config.supabase_url and config.supabase_key
-                                    and (config.legal_approved or config.private_test)),
+                                    and (config.legal_approved or config.private_test) and login_countries),
+            "login_countries": login_countries,
             "billing_available": config.billing_enabled and backend_block(config) is None,
             "ads_available": False,
+            'app_commercial': {'enabled': config.unified_enabled, 'subscriber': False,
+                               'ads_available': False, 'banner': None},
             "images_available": config.image_storage_enabled and backend_block(config) is None,
             "inference_available": backend_block(config) is None,
             "operator_route": public_route(config),
@@ -379,6 +416,7 @@ def create_app(config=None, *, transport=None):
             email=body.get("email"),
             consent=body.get("consent") is True,
             country=body.get("country"),
+            eligibility_ticket=body.get('eligibility_ticket'),
         )
         response = JSONResponse(result)
         response.set_cookie(
@@ -457,6 +495,7 @@ def create_app(config=None, *, transport=None):
             "billing_available": config.billing_enabled and backend_block(config) is None,
             "billing_portal_available": bool(config.stripe_key and store.account(owner)["customer"]),
             "ads_available": False,
+            'unified_sync_available':config.unified_enabled,
         }
 
     @app.get("/api/cloud/profile")
@@ -946,7 +985,7 @@ def create_app(config=None, *, transport=None):
                             from python.storage import conversation
                             try:
                                 response = JSONResponse(await conversation.purge(
-                                    request.path_params["session_id"], cloud_revision=(store.path, owner)))
+                                    request.path_params["session_id"], cloud_revision=(store.path, owner, store.encrypt('{}'))))
                             except generations.Conflict as exc:
                                 raise CloudError("stop_generation_before_delete", 409) from exc
                         else:
@@ -971,14 +1010,14 @@ def create_app(config=None, *, transport=None):
             app.router.routes.append(copy)
 
     if config.web_dist:
+        from python.api.mobile import WebDist
+        static = WebDist(directory=str(config.web_dist), html=True)
 
         @app.get("/{path:path}")
-        async def web(path: str):
-            candidate = (config.web_dist / path).resolve()
-            if candidate.is_relative_to(config.web_dist.resolve()) and candidate.is_file():
-                return FileResponse(candidate)
-            if path.startswith("api/"):
-                raise CloudError("not_found", 404)
-            return FileResponse(config.web_dist / "index.html")
+        async def web(path: str, request: Request):
+            for document in ('device', 'migration'):
+                if path in {document, document + '/', document + '/index.html'} and not (config.web_dist / document / 'index.html').is_file():
+                    raise CloudError(document + '_shell_not_built', 503)
+            return await static.get_response(path, request.scope)
 
     return app

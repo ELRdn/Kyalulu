@@ -68,6 +68,13 @@ export const StateUpdateSchema = z.object({
 export const GenerationOutputSchema = z.object({
   reply: z.string().min(1), state_update: StateUpdateSchema,
 }).strict();
+export const DeviceGenerationOutputSchema = GenerationOutputSchema.extend({
+  memory_proposals: z.array(z.object({
+    type: z.enum(['semantic', 'episodic', 'relationship']),
+    content: z.string().min(1).max(200),
+    source_kind: z.enum(['user_statement', 'user_correction', 'work_setting', 'story_event']).default('user_statement'),
+  }).strict()).max(3).default([]),
+}).strict();
 export const RuntimeStateSchema = z.object({
   session_id: z.string().default("default"),
   turn: z.number().int().min(0).default(0),
@@ -118,6 +125,9 @@ export const ScenarioTurnSchema = z.object({
   turn: z.number().int().min(1),
   type: ScenarioEventTypeSchema.default("normal"),
   user: z.string().min(1),
+  new_session: z.boolean().default(false),
+  expect_recall: z.array(z.string()).default([]),
+  forbid_recall: z.array(z.string()).default([]),
 });
 export type ScenarioTurn = z.infer<typeof ScenarioTurnSchema>;
 
@@ -132,8 +142,29 @@ export const ScenarioCardSchema = z.object({
   turns: z.array(ScenarioTurnSchema).min(1),
   nsfw: z.boolean().default(false),
   nsfw_level: z.enum(["innuendo", "explicit"]).nullable().default(null),
-});
+}).refine(value => new Set(value.turns.map(turn => turn.turn)).size === value.turns.length, "Scenario turn numbers must be unique");
 export type ScenarioCard = z.infer<typeof ScenarioCardSchema>;
+
+export const MemoryOptionsSchema = z.object({
+  top_k: z.number().int().min(1).max(20).default(5),
+  budget_tokens: z.number().int().min(20).max(4000).default(300),
+  min_score: z.number().min(0).max(1).default(.12),
+  fill_recent: z.boolean().default(true),
+}).strict();
+
+export const BenchmarkRequestSchema = z.object({
+  model_ids: z.array(z.string().min(1)).min(1).max(3),
+  scenarios: z.array(z.string().regex(/^[A-Za-z0-9_-]{1,128}$/)).min(1).max(12),
+  runs: z.number().int().min(1).max(3).default(1),
+  seed: z.number().int().default(42),
+  temperature: z.number().min(0).max(2).default(.8),
+  memory: z.enum(['off','on','compare']).default('compare'),
+  memory_options: MemoryOptionsSchema.default({}),
+  history_turn_limit: z.number().int().min(1).max(100).nullable().default(null),
+  run_timeout_seconds: z.number().int().min(10).max(21600).default(3600),
+  request_id: z.string().uuid().default(()=>crypto.randomUUID()),
+}).strict().refine(value=>new Set(value.model_ids).size===value.model_ids.length&&new Set(value.scenarios).size===value.scenarios.length,'Models and scenarios must be unique');
+export type BenchmarkRequest = z.infer<typeof BenchmarkRequestSchema>;
 
 export const ExperimentMetaSchema = z.object({
   experiment_id: z.string().min(1),
@@ -166,6 +197,9 @@ export const ExperimentMetaSchema = z.object({
   scenario_snapshot: z.record(z.unknown()).default({}),
   extra_system_prompt: z.string().nullable().default(null),
   official: z.boolean().default(false),
+  memory_enabled: z.boolean().default(false),
+  memory_options: z.record(z.unknown()).default({}),
+  history_turn_limit: z.number().int().min(1).max(100).nullable().default(null),
 });
 export type ExperimentMeta = z.infer<typeof ExperimentMetaSchema>;
 
@@ -188,3 +222,4 @@ export const GenerationRecordSchema = z.object({
 });
 export type GenerationRecord = z.infer<typeof GenerationRecordSchema>;
 export * from './hub';
+export * from './publications';

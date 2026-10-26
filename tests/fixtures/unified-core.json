@@ -1,0 +1,25 @@
+{
+  "memory": {
+    "query": "猫",
+    "memories": [
+      {"id":"a","type":"semantic","content":"猫","origin":"manual","supported":true,"status":"active"},
+      {"id":"b","type":"relationship","content":"約束","origin":"manual","supported":true,"status":"active"},
+      {"id":"c","type":"semantic","content":"猫","origin":"model","supported":false,"status":"active"},
+      {"id":"d","type":"episodic","content":"海","origin":"manual","supported":true,"status":"active"}
+    ],
+    "injected": ["a","b","d"],
+    "decisions": {"a":"injected","b":"injected","c":"unverified","d":"recent_fill"},
+    "tokens": 16
+  },
+  "rpg": {
+    "options": {"initial_hp":100,"initial_inventory":["key"],"skills":{"open":1},"actions":[{"id":"door","label":"Open","trigger":"open","skill":"open","difficulty":2,"hp_delta":-10,"inventory_remove":["key"],"inventory_add":["map"]}]},
+    "input":"open",
+    "generation_id":"fixture-generation",
+    "die":1,
+    "expected":{"hp":90,"inventory":["map"],"skills":{"open":1},"rolls":[{"generation_id":"fixture-generation","action_id":"door","die":1,"modifier":1,"difficulty":2,"success":true,"reason":"rolled"}]}
+  },
+  "summary": {
+    "messages":[{"id":1,"role":"user","content":"こんにちは🌸"},{"id":2,"role":"assistant","content":"Hello."}],
+    "expected":"[1:user] こんにちは🌸\n[2:assistant] Hello."
+  }
+}

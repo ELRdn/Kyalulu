@@ -16,13 +16,15 @@ import { cleanPreview } from "../lib/text";
 import { useDocumentTitle } from "../lib/title";
 import "./pages.css";
 import { friendlyMessage } from '../lib/errors';
+import { useLanguage } from '../lib/appContext';
 
 export default function ChatsLanding() {
+  const language = useLanguage(), en = language === 'en';
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [worlds, setWorlds] = useState<WorldInfo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
-  const [catalogError, setCatalogError] = useState('');
+  const [loadError, setLoadError] = useState<{cause:unknown}|null>(null);
+  const [catalogError, setCatalogError] = useState<{cause:unknown}|null>(null);
   const [retry, setRetry] = useState(0);
   const [query, setQuery] = useState("");
   const [oldestFirst, setOldestFirst] = useState(false);
@@ -31,19 +33,19 @@ export default function ChatsLanding() {
   const savedIds = useSavedCharacters();
   const pinned = usePinnedSessions();
   const navigate = useNavigate();
-  useDocumentTitle("チャット");
+  useDocumentTitle(en ? 'Chats' : 'チャット');
 
   useEffect(() => {
     let active = true;
     setLoading(true);
-    setLoadError('');
+    setLoadError(null);
     Promise.all([fetchSessions(), fetchWorlds()])
       .then(([s, w]) => {
         if (!active) return;
         setSessions(s);
         setWorlds(w);
       })
-      .catch(error => { if (active) setLoadError(friendlyMessage(error)); })
+      .catch(error => { if (active) setLoadError({cause:error}); })
       .finally(() => { if (active) setLoading(false); });
     const refresh = () => { if (document.visibilityState === 'visible') setRetry(n => n + 1); };
     document.addEventListener('visibilitychange', refresh);
@@ -52,8 +54,8 @@ export default function ChatsLanding() {
   }, [retry]);
 
   useEffect(() => {
-    let active = true; setCatalogError('');
-    fetchCharacters(adult).then(value => { if (active) setCharacters(value); }).catch(error => { if (active) setCatalogError(friendlyMessage(error)); });
+    let active = true; setCatalogError(null);
+    fetchCharacters(adult).then(value => { if (active) setCharacters(value); }).catch(error => { if (active) setCatalogError({cause:error}); });
     return () => { active = false; };
   }, [adult, retry]);
 
@@ -67,7 +69,7 @@ export default function ChatsLanding() {
   const { pinnedList, recentList } = useMemo(() => {
     const q = query.trim().toLowerCase();
     const withData = sessions.filter((s) => s.count > 0);
-    const matched = q ? withData.filter((s) => `${sessionTitle(s)} ${cleanPreview(s.last_preview, 400)}`.toLowerCase().includes(q)) : withData;
+    const matched = q ? withData.filter((s) => `${sessionTitle(s, 'ja')} ${sessionTitle(s, 'en')} ${cleanPreview(s.last_preview, 400)}`.toLowerCase().includes(q)) : withData;
     const time = (s: SessionInfo) => Date.parse(s.last_at ?? "") || 0;
     const list = [...matched].sort((a, b) => (oldestFirst ? time(a) - time(b) : time(b) - time(a)));
     return {
@@ -92,23 +94,23 @@ export default function ChatsLanding() {
     <div className="k-page" style={{ maxWidth: 780 }}>
       <div className="k-page-head">
         <div>
-          <h1 className="k-page-title">チャット</h1>
-          <p className="k-page-sub">これまでの会話を、いつでも続きから。</p>
+          <h1 className="k-page-title">{en ? 'Chats' : 'チャット'}</h1>
+          <p className="k-page-sub">{en ? 'Pick up your conversations where you left off.' : 'これまでの会話を、いつでも続きから。'}</p>
         </div>
         <Button variant="primary" onClick={handleNew}>
-          <Icon name="plus" size={16} /> 新しいチャット
+          <Icon name="plus" size={16} /> {en ? 'New chat' : '新しいチャット'}
         </Button>
       </div>
 
-      {catalogError && <p role="alert">{catalogError}<Button size="sm" variant="ghost" onClick={() => setRetry(value => value + 1)}>保存キャラを再読込</Button></p>}
+      {catalogError && <p role="alert">{friendlyMessage(catalogError.cause,language)}<Button size="sm" variant="ghost" onClick={() => setRetry(value => value + 1)}>{en ? 'Reload saved characters' : '保存キャラを再読込'}</Button></p>}
       {saved.length > 0 && !query && (
         <section className="k-section k-saved-strip" aria-labelledby="k-saved-title">
           <div className="k-section__head">
             <h2 id="k-saved-title" className="k-section__title k-section__title--sm">
-              <Icon name="heart" size={15} /> 保存したキャラクター
+              <Icon name="heart" size={15} /> {en ? 'Saved characters' : '保存したキャラクター'}
             </h2>
             <Link to="/profile" className="k-section__more">
-              すべて見る <Icon name="chevron" size={13} />
+              {en ? 'View all' : 'すべて見る'} <Icon name="chevron" size={13} />
             </Link>
           </div>
           <div className="k-saved-strip__row">
@@ -127,10 +129,10 @@ export default function ChatsLanding() {
       <div className="k-chats-tools">
         <div className="k-search-field">
           <Icon name="search" size={17} />
-          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="キャラクター名や会話の内容で探す…" aria-label="チャットを検索" />
+          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={en ? 'Search character names and conversation text…' : 'キャラクター名や会話の内容で探す…'} aria-label={en ? 'Search chats' : 'チャットを検索'} />
         </div>
-        <button type="button" className="k-sort-toggle" onClick={() => setOldestFirst((v) => !v)} aria-label={`並び順：${oldestFirst ? "古い順" : "新しい順"}（押すと切り替え）`}>
-          <Icon name="refresh" size={14} /> {oldestFirst ? "古い順" : "新しい順"}
+        <button type="button" className="k-sort-toggle" onClick={() => setOldestFirst((v) => !v)} aria-label={en ? `Sort: ${oldestFirst ? 'oldest first' : 'newest first'} (press to switch)` : `並び順：${oldestFirst ? "古い順" : "新しい順"}（押すと切り替え）`}>
+          <Icon name="refresh" size={14} /> {oldestFirst ? (en ? 'Oldest first' : '古い順') : (en ? 'Newest first' : '新しい順')}
         </button>
       </div>
 
@@ -141,16 +143,16 @@ export default function ChatsLanding() {
           ))}
         </div>
       ) : loadError ? (
-        <div role="alert"><EmptyState title="会話を読み込めませんでした" description={loadError} action={<Button variant="secondary" onClick={() => setRetry(n => n + 1)}>もう一度読み込む</Button>} /></div>
+        <div role="alert"><EmptyState title={en ? 'Could not load conversations' : '会話を読み込めませんでした'} description={friendlyMessage(loadError.cause,language)} action={<Button variant="secondary" onClick={() => setRetry(n => n + 1)}>{en ? 'Retry' : 'もう一度読み込む'}</Button>} /></div>
       ) : empty ? (
         <EmptyState
           mascot={query ? "shy" : "default"}
-          title={query ? "見つからなかったみたい" : "まだチャットがありません"}
-          description={query ? "別のことばで探してみよう。" : "ディスカバーでキャラクターを見つけて、最初の会話を始めよう。"}
+          title={query ? (en ? 'No matching chats' : '見つからなかったみたい') : (en ? 'No chats yet' : 'まだチャットがありません')}
+          description={query ? (en ? 'Try another search.' : '別のことばで探してみよう。') : (en ? 'Find a character in Explore and start your first conversation.' : 'ディスカバーでキャラクターを見つけて、最初の会話を始めよう。')}
           action={
             !query && (
               <Button variant="secondary" onClick={() => navigate("/discover")}>
-                キャラクターを探す
+                {en ? 'Explore characters' : 'キャラクターを探す'}
               </Button>
             )
           }
@@ -160,7 +162,7 @@ export default function ChatsLanding() {
           {pinnedList.length > 0 && (
             <section className="k-section" style={{ gap: 8 }}>
               <h2 className="k-section__title k-section__title--sm">
-                <Icon name="pin" size={15} /> ピン留め
+                <Icon name="pin" size={15} /> {en ? 'Pinned' : 'ピン留め'}
               </h2>
               {rows(pinnedList)}
             </section>
@@ -168,7 +170,7 @@ export default function ChatsLanding() {
           {recentList.length > 0 && (
             <section className="k-section" style={{ gap: 8 }}>
               <h2 className="k-section__title k-section__title--sm">
-                <Icon name="chat" size={15} /> 最近のチャット
+                <Icon name="chat" size={15} /> {en ? 'Recent chats' : '最近のチャット'}
               </h2>
               {rows(recentList)}
             </section>

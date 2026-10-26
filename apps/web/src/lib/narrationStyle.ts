@@ -8,14 +8,14 @@
 
 export type NarrationStyleId = "minimal" | "descriptive" | "dialogue_heavy" | "light_novel" | "first_person" | "third_person" | "cinematic";
 
-export const NARRATION_STYLES: { id: NarrationStyleId; label: string; instruction: string }[] = [
-  { id: "minimal", label: "ミニマル", instruction: "地の文・情景描写は最小限にし、セリフ中心で簡潔に応答する。" },
-  { id: "descriptive", label: "描写重視", instruction: "情景・仕草・表情の描写を*テキスト*で丁寧に添え、雰囲気を大切にする。" },
-  { id: "dialogue_heavy", label: "会話中心", instruction: "地の文は最小限にとどめ、キャラクター同士の掛け合い・セリフを中心に展開する。" },
-  { id: "light_novel", label: "ライトノベル風", instruction: "ライトノベル的な文体で、地の文とセリフのバランスを取りながら物語調に描写する。" },
-  { id: "first_person", label: "一人称視点", instruction: "キャラクター自身の一人称視点で、*（内心の独白）*も交えて描写する。独白は読者に見えるが、他のキャラクターには聞こえない。" },
-  { id: "third_person", label: "三人称視点", instruction: "三人称視点で、客観的にシーン全体を描写する。" },
-  { id: "cinematic", label: "シネマティック", instruction: "映画のワンシーンのように、カメラワークを意識した情景描写を心がける。" },
+export const NARRATION_STYLES: { id: NarrationStyleId; label: string; englishLabel: string; instruction: string }[] = [
+  { id: "minimal", label: "ミニマル", englishLabel: 'Minimal', instruction: "地の文・情景描写は最小限にし、セリフ中心で簡潔に応答する。" },
+  { id: "descriptive", label: "描写重視", englishLabel: 'Descriptive', instruction: "情景・仕草・表情の描写を*テキスト*で丁寧に添え、雰囲気を大切にする。" },
+  { id: "dialogue_heavy", label: "会話中心", englishLabel: 'Dialogue focused', instruction: "地の文は最小限にとどめ、キャラクター同士の掛け合い・セリフを中心に展開する。" },
+  { id: "light_novel", label: "ライトノベル風", englishLabel: 'Light novel', instruction: "ライトノベル的な文体で、地の文とセリフのバランスを取りながら物語調に描写する。" },
+  { id: "first_person", label: "一人称視点", englishLabel: 'First person', instruction: "キャラクター自身の一人称視点で、*（内心の独白）*も交えて描写する。独白は読者に見えるが、他のキャラクターには聞こえない。" },
+  { id: "third_person", label: "三人称視点", englishLabel: 'Third person', instruction: "三人称視点で、客観的にシーン全体を描写する。" },
+  { id: "cinematic", label: "シネマティック", englishLabel: 'Cinematic', instruction: "映画のワンシーンのように、カメラワークを意識した情景描写を心がける。" },
 ];
 
 const MARK_START = "<!-- kyalulu:narration-style";

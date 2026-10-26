@@ -5,6 +5,7 @@ import { gradientFor } from "./Avatar";
 import Icon from "./Icon";
 import { formatCount } from "../../lib/text";
 import "./ui.css";
+import { useLanguage } from '../../lib/appContext';
 
 export default function CharacterCard({
   id,
@@ -24,7 +25,8 @@ export default function CharacterCard({
   /** このキャラとの累計メッセージ数（0なら表示しない） */
   talks?: number;
 }) {
-  const moods = moodsOf(tags);
+  const language = useLanguage(), en = language === 'en';
+  const moods = moodsOf(tags, language);
   return (
     <Link to={`/characters/${encodeURIComponent(id)}`} className="k-media-card k-char-card">
       <div className="k-media-card__art" style={portraitUrl ? undefined : { background: gradientFor(id) }}>
@@ -38,11 +40,11 @@ export default function CharacterCard({
         <span className="k-char-card__sparkles" aria-hidden="true" />
         {moods[0] && <span className="k-char-card__badge">{moods[0].label}</span>}
         {talks > 0 && (
-          <span className="k-char-card__count" aria-label={`${talks}メッセージ`}>
-            <Icon name="chat" size={11} /> {formatCount(talks)}
+          <span className="k-char-card__count" aria-label={en ? `${talks} messages` : `${talks}メッセージ`}>
+            <Icon name="chat" size={11} /> {formatCount(talks, language)}
           </span>
         )}
-        <span className="k-char-card__cta" aria-hidden="true">話してみる ✦</span>
+        <span className="k-char-card__cta" aria-hidden="true">{en ? 'Start a chat' : '話してみる'} ✦</span>
       </div>
       <div className="k-media-card__body">
         <div className="k-media-card__title">{displayName}</div>

@@ -1,4 +1,5 @@
 import { apiFetch as fetch } from './transport';
+import type { Language } from './appContext';
 import { SSEDecoder } from "./sse";
 import { cloudJson, isCloud } from './cloud';
 import type { GenerationRecord } from "../../../../packages/schemas/src";
@@ -197,6 +198,9 @@ export type ChatMessage = {
 };
 
 export type SessionInfo = {
+  offline_available?: boolean;
+  sync_recovery?: boolean;
+  sync_copy?: {entity_id:string;revision:number};
   session_id: string;
   count: number;
   last_at: string | null;
@@ -209,9 +213,9 @@ export type SessionInfo = {
 };
 
 /** 一覧表示用の会話名。キャラ未設定の会話は「新しい会話」として扱い、生IDは出さない。 */
-export function sessionTitle(s: Pick<SessionInfo, "session_id" | "character_name">): string {
+export function sessionTitle(s: Pick<SessionInfo, "session_id" | "character_name">, language: Language = 'ja'): string {
   if (s.character_name) return s.character_name;
-  return s.session_id === "default" ? "きゃるる" : "フリートーク";
+  return s.session_id === "default" ? (language === 'en' ? 'Kyalulu' : 'きゃるる') : (language === 'en' ? 'Free chat' : 'フリートーク');
 }
 
 const API_BASE_STREAM = ""; // Same-origin SSE through the tested Vite proxy.
@@ -443,11 +447,12 @@ export async function fetchRatings(experiment_id: string): Promise<{ turn: numbe
   const j = await checkedJson(r);
   return j.ratings ?? [];
 }
-export async function runExperiments(scenario: string, model_id: string, runs = 1, temperature?: number, allow_nsfw = false, memory = false): Promise<{ experiment_id: string }[]> {
+export async function runExperiments(scenario: string, model_id: string, runs = 1, temperature?: number, allow_nsfw = false, memory = false, request_id?: string, signal?:AbortSignal): Promise<{ experiment_id: string }[]> {
   const r = await fetch("/api/experiments/run", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ scenario, model_id, runs, temperature, allow_nsfw, memory }),
+    body: JSON.stringify({ scenario, model_id, runs, temperature, allow_nsfw, memory, request_id }),
+    signal,
   });
   const j = await checkedJson(r);
   return j.results ?? [];
@@ -651,9 +656,9 @@ export type GenerationResult = {
   raw_prompt?: string; attempts?: { number: number; raw: string; errors: string[]; messages: ChatMessage[] }[];
   snapshot_valid?: boolean; token_budget?: Record<string, unknown>;
 };
-export async function replayExperiment(id: string, allow_nsfw = false): Promise<{ experiment_id: string }[]> {
+export async function replayExperiment(id: string, allow_nsfw = false, options?:{request_id:string;signal:AbortSignal}): Promise<{ experiment_id: string }[]> {
   const r = await fetch(`/api/experiments/${encodeURIComponent(id)}/rerun`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runs: 1, allow_nsfw }),
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runs: 1, allow_nsfw,request_id:options?.request_id }),signal:options?.signal,
   });
   const j = await checkedJson(r);
   return j.results;
