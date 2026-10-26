@@ -39,6 +39,8 @@
   text-wrap: balance;
 }
 .k-cloud-login h2 { margin: 0 0 10px; font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+.k-cloud-login__language { display: grid; gap: 6px; margin: 16px 0; font-size: 12px; }
+.k-cloud-login select { min-width: 0; max-width: 100%; min-height: 44px; padding: 8px; font: inherit; border: 1px solid var(--border-strong); border-radius: 8px; }
 .k-cloud-login p { margin: 10px 0; color: var(--text-secondary); font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
 .k-cloud-login .k-cloud-login__destination {
   margin: 16px 0 10px;
