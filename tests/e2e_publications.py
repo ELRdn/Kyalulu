@@ -27,7 +27,7 @@ OUTPUT = ROOT / '.artifacts/publication-browser'
 async def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
     owner, moderator, reader = (str(uuid4()) for _ in range(3))
-    blocked, writes, errors, results, catalog_reads = [], [], [], [], []
+    blocked, writes, errors, results, catalog_reads, guest_private_reads = [], [], [], [], [], []
     with TemporaryDirectory(prefix='db-', dir=OUTPUT) as directory:
         cfg = CloudConfig(root=Path(directory), origin='https://app.test', secret='s' * 32, unified_enabled=True,
             legal_approved=True, community_enabled=True, moderator_owners=(moderator,),
@@ -60,6 +60,8 @@ async def main():
                         if parsed.path == '/api/cloud/app/works' and request.method == 'GET':
                             catalog_reads.append(parsed.query)
                         cookies = SimpleCookie(request.headers.get('cookie', ''))
+                        if (not cookies.get('fixture_owner') or not cookies['fixture_owner'].value) and parsed.path.startswith(('/api/chat/', '/api/cloud/profile')):
+                            guest_private_reads.append(parsed.path)
                         headers['cookie'] = SESSION_COOKIE + '=' + cookies['fixture_owner'].value if 'fixture_owner' in cookies else ''
                         if request.method not in ('GET', 'HEAD'):
                             value = request.post_data or ''
@@ -205,12 +207,33 @@ async def main():
                     baseline = service.publications.catalog(next_reader)['works'][0]['name']
                     await expect(page.locator('.k-card h3 a').first).to_have_text(baseline)
                     await settings.close()
+                    with service.store.transaction() as db:
+                        account_count = db.execute('SELECT COUNT(*) FROM accounts').fetchone()[0]
+                    await context.clear_cookies()
+                    await identity('', 'en'); await go('/')
+                    recommendations = page.locator('section[aria-labelledby="home-recommendations"]')
+                    await recommendations.locator('.k-char-card').first.wait_for()
+                    candidate = recommendations.locator('.k-grid > div').last
+                    favorite_href = await candidate.locator('.k-char-card').get_attribute('href')
+                    previous_writes = len(writes)
+                    await candidate.get_by_role('button', name='Favorite', exact=True).click()
+                    await expect(recommendations.locator('.k-char-card').first).to_have_attribute('href', favorite_href)
+                    await expect(recommendations.get_by_role('button', name='Favorite', exact=True).first).to_have_attribute('aria-pressed', 'true')
+                    await page.reload()
+                    await page.wait_for_function('window.__PUBLICATIONS_FIXTURE__ !== undefined')
+                    await page.evaluate('()=>window.__PUBLICATIONS_FIXTURE__.mount(document.getElementById("root"),go=>window.__go=go,"/")')
+                    await expect(recommendations.locator('.k-char-card').first).to_have_attribute('href', favorite_href)
+                    await expect(recommendations.get_by_role('button', name='Favorite', exact=True).first).to_have_attribute('aria-pressed', 'true')
+                    assert len(writes) == previous_writes and not guest_private_reads
+                    with service.store.transaction() as db:
+                        assert db.execute('SELECT COUNT(*) FROM accounts').fetchone()[0] == account_count
                     assert not errors and not blocked, {'pageerrors': errors, 'blocked': blocked}
                     results.append({'pending_approval': True, 'human_checks': True, 'fixed_snapshot': True, 'report_hide_appeal': True,
                         'blocked_before_search': True, 'no_private_submission': True, 'no_external_image': True, 'ja_en': True,
                         'narrow_light_wide_dark': True, 'adult_separate_and_verified': True, 'expired_age_blocks_link': True,
                         'live_cross_tab_tag_favorite_dismissal': True, 'preference_changes_refetch_nothing': True,
-                        'recommendation_block_and_owner_isolation': True, 'catalog_reads': len(catalog_reads), 'writes': len(writes)})
+                        'recommendation_block_and_owner_isolation': True, 'guest_home_favorite_and_reload': True,
+                        'guest_creates_no_account_or_private_request': True, 'catalog_reads': len(catalog_reads), 'writes': len(writes)})
                     await context.close()
                 finally:
                     await browser.close()

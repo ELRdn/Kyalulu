@@ -197,7 +197,7 @@ export default function CharacterEntry() {
     }
   };
   const resume = () => pastSessions[0] && navigate(`/chats/${encodeURIComponent(pastSessions[0].session_id)}`);
-  const save = () => guest ? navigate(loginPath(`/characters/${encodeURIComponent(character.id)}`)) : toggleSaved(character.id);
+  const save = () => toggleSaved(character.id);
   const back = () => (window.history.length > 1 ? navigate(-1) : navigate("/discover"));
 
   const art = portrait ? (
@@ -219,7 +219,7 @@ export default function CharacterEntry() {
         <span className="k-plot-bar__title" aria-hidden={!scrolled}>
           {name}
         </span>
-        <button type="button" className={`k-plot-bar__btn ${isSaved ? "is-on" : ""}`} onClick={save} aria-pressed={isSaved} aria-label={guest ? (en ? 'Sign in to save' : 'ログインして保存する') : isSaved ? (en ? 'Unsave' : '保存を解除') : (en ? 'Save' : '保存する')}>
+        <button type="button" className={`k-plot-bar__btn ${isSaved ? "is-on" : ""}`} onClick={save} aria-pressed={isSaved} aria-label={isSaved ? (en ? 'Unsave' : '保存を解除') : guest ? (en ? 'Save in this browser' : 'このブラウザに保存する') : (en ? 'Save' : '保存する')}>
           <Icon name="heart" size={19} />
         </button>
       </header>

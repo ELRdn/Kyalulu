@@ -1,14 +1,14 @@
 import { scopedKey } from './remoteStore';
 import { useEffect, useState } from "react";
 import { accountProfile, changeAccountProfile } from './accountProfile';
-import { isCloud } from './cloudMode';
+import { cloudOwner, isCloud } from './cloudMode';
 
-/** Hosted favorites are account preferences; local favorites stay on device. */
+/** Signed-in Cloud favorites use the account; guest/local favorites stay scoped to this browser. */
 const LS_SAVED = "kyalulu-saved-characters";
 const EVENT = "kyalulu-saved-change";
 
 function read(): string[] {
-  if(isCloud()) return accountProfile()?.saved_characters || [];
+  if(isCloud()&&cloudOwner()) return accountProfile()?.saved_characters || [];
   try {
     const raw = localStorage.getItem(scopedKey(LS_SAVED));
     const v = raw ? JSON.parse(raw) : [];
@@ -19,7 +19,7 @@ function read(): string[] {
 }
 
 export function toggleSaved(characterId: string) {
-  if(isCloud()){void changeAccountProfile({toggle_saved:characterId}).catch(()=>{});return;}
+  if(isCloud()&&cloudOwner()){void changeAccountProfile({toggle_saved:characterId}).catch(()=>{});return;}
   const cur = read();
   const next = cur.includes(characterId) ? cur.filter((x) => x !== characterId) : [characterId, ...cur];
   try {
