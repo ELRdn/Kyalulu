@@ -43,6 +43,7 @@ jobs:
       - run: uv run --no-sync python tests/e2e_device_import.py
       - run: uv run --no-sync python tests/e2e_publications.py
       - run: uv run --no-sync python tests/e2e_unified_entry.py
+      - run: uv run --no-sync python tests/e2e_cloud_login.py
       - run: uv run --no-sync python tests/e2e_memory_language.py
       - run: uv run --no-sync python tests/e2e_research_language.py
       - run: uv run --no-sync python tests/e2e_device_research.py

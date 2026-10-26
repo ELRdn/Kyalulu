@@ -128,3 +128,5 @@ canonical配信のCloud/Native共通化、統合Caddy設定と実HTTPS proxy越�
 この推薦修正は `0d9b2f5` 配布候補の後続であり、本番候補は全変更を含む再生成・監査が必要。
 初回の地域/年齢/同意から好み・おすすめ・ログイン時点・端末会話へ進む実App受入れと、
 好み編集の部分保存・owner分離は [Initial entry](validation/2026-10-26-unified-entry.md) に記録する。
+Cloudログイン・同意・送信先説明・成功/失敗の日英表示と、待機中の解析撤回・画面離脱後の応答保護は
+[Login language](validation/2026-10-26-unified-login-language.md) に記録する。
