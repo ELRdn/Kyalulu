@@ -8,7 +8,7 @@
 |---|---|---|
 | app.kyalulu.com への統合と旧URL移行導線 | 本番未反映。統合Caddy・Cloud/Native共通配信・同一originのAPIと3文書・Workerを実HTTPS proxyで検証。Cloud/旧Mobileの監査済み候補と移行手順を保持 | 実配信・TLS・API・OAuth callback・旧URL導線・既存Remote鍵の照合 |
 | 共通UI、Cloud初期選択、地域・年齢確認、3画面の任意設定 | 実装あり・接続待ちを含む | 日英の初回・戻る・スキップ・後変更・未ログイン端末利用の画面証拠 |
-| 好み・お気に入り・興味なしのタグ推薦、先行する年齢/公開/ブロック制限 | 部分実装 | 既存/公開タグfixtureと検索APIを含む制限・順位の試験 |
+| 好み・お気に入り・興味なしのタグ推薦、先行する年齢/公開/ブロック制限 | 共通タグ別名・先行絞り込みと順位、公開一覧の別タブ即時反映、ブロック/owner切替をASGI/Chromiumで確認。実ホームのゲストお気に入り・再読込・興味なしの除外/復帰も検証し、アカウント書込み/作成を増やさない | 元の要件に対応するローカル証拠は推薦記録を参照。本番・実機・実OAuthの全体受入れは別途必要 |
 | PC単体・オフライン維持と3方式の機能対応表 | 部分実装。Device研究の実行/結果/採点/再実行・実験別記憶と、BenchmarkLabのペア行列・進捗・別タブ中止・期限・中断回復を追加。共通生成、実IndexedDB/Web Locks/BroadcastChannel、架空推論の100ターンで隔離検証 | 会話・制作・記憶・要約・World・分岐・入出力・研究の全行確認。実モデル/実機と運用規模の証拠は残る。Deviceジョブは実行元の文書を開いている必要がある |
 | 実行先/モデル/保存/同期の表示、生成中切替の停止・保存確認 | 実装・限定検証 | 3方式での停止/保存/再開・自動転送なしのE2E |
 | Portable再利用、ブラウザ記憶/物語とPython共通fixture | World/cast/Lore、6形式export、JSON/PNG/CHARX/backup・ST/CAI/BYAF import、原本保持・選択履歴のatomic commit、媒体upload/再生取得を実装。48入力とLore条件、実decoder・実IDBの共通検証 | 各形式の追加実データ・全画面媒体操作、実容量・実モデル・実機を含むパリティ試験は残る |
@@ -123,3 +123,6 @@ canonical配信のCloud/Native共通化、統合Caddy設定と実HTTPS proxy越�
 日英の転送中切替・393px明/1280px暗の受入れと最終 `0d9b2f5` のCloud/旧Mobile候補は
 [Mobile migration](validation/2026-10-26-unified-mobile-migration.md) に記録する。
 先行 `a6cbd98` のApp候補は再取込み時の下書き復活があるため最新として使用しない。
+好み変更の即時推薦・区分フィルターとゲストのお気に入り保存/分離は
+[Recommendations](validation/2026-10-26-unified-recommendations.md) に記録する。
+この推薦修正は `0d9b2f5` 配布候補の後続であり、本番候補は全変更を含む再生成・監査が必要。
