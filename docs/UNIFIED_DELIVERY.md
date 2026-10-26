@@ -130,3 +130,6 @@ canonical配信のCloud/Native共通化、統合Caddy設定と実HTTPS proxy越�
 好み編集の部分保存・owner分離は [Initial entry](validation/2026-10-26-unified-entry.md) に記録する。
 Cloudログイン・同意・送信先説明・成功/失敗の日英表示と、待機中の解析撤回・画面離脱後の応答保護は
 [Login language](validation/2026-10-26-unified-login-language.md) に記録する。
+ログイン居住国のサーバー確認済み一覧・日英名称・提供停止時の選択/同意解除と、
+欠落/不正な一覧の拒否は [Login regions](validation/2026-10-26-unified-login-regions.md) に記録する。
+地域の本番承認を追加したものではない。先行 `ae51ead` のRuntime/Web CIはUbuntu/Windowsとも成功。

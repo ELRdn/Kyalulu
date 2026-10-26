@@ -83,6 +83,7 @@ Real OAuth/email completion and cookies, public TLS/CSP delivery, accepted regio
 and provider terms, legal-copy approval, real public analytics, assistive
 technologies, OS IME and physical devices remain unqualified. The existing JP/US
 login country choices are retained; this phase does not establish global regional
-coverage. Raw provider notes remain authored data. Final distributions must be
+coverage. The subsequent [region-choice change](2026-10-26-unified-login-regions.md)
+replaces the fixed choices with accepted server policies. Raw provider notes remain authored data. Final distributions must be
 regenerated from the completed integration source; the earlier `0d9b2f5` candidate
 predates these changes. No production settings, data, finances or deployment changed.

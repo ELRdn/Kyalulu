@@ -81,6 +81,7 @@ FILES = (
     "docs/validation/2026-10-26-unified-recommendations.md",
     "docs/validation/2026-10-26-unified-entry.md",
     "docs/validation/2026-10-26-unified-login-language.md",
+    "docs/validation/2026-10-26-unified-login-regions.md",
     "deploy/cloud/Dockerfile",
     "deploy/cloud/Dockerfile.prebuilt",
     "deploy/cloud/compose.yml",
