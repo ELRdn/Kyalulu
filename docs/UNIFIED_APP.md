@@ -28,6 +28,10 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
   gates. Pending authentication respects the latest analytics choice; replies
   after leaving the page cannot grant analytics or redirect. Actual app fixtures
   and callback tests pass. See [login language validation](validation/2026-10-26-unified-login-language.md).
+  Residence choices now follow the server's accepted regional policies, with
+  JA/EN names. Missing/malformed lists and removed selections close login;
+  changed lists require fresh consent. Existing eligibility tickets remain
+  mandatory. See [login regions validation](validation/2026-10-26-unified-login-regions.md).
 
 - Actual initial entry verifies server eligibility and a complete ticket before
   the three optional interest screens. Interest edits retain current language,
