@@ -162,3 +162,5 @@ Browser同期受信/ack確定時の全owner本文の一括保持を除き、参�
 bf83d03イメージはこのclient修正を含まない。以降の変更は候補を再生成し、同じ版のimage検証と区別する。
 PC未選択時にRuntime通信が同一originへ流れない境界と、通常の暗号化接続/失効の維持は
 [Runtime routing](validation/2026-10-29-unified-runtime-routing.md) に記録する。
+Windows同梱CLIの隔離復元/rollbackと旧Mobile梱包、切替修正により旧候補を配布対象外とした記録は
+[Native/Mobile packages](validation/2026-10-30-unified-native-mobile.md) に記録する。

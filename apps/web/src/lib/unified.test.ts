@@ -47,6 +47,19 @@ it('defaults unified entry to Cloud and prevents switching during save reconcili
   expect(executionTarget()).toBe('cloud');setGenerationBusy(true);
   expect(()=>switchTarget('device')).toThrow('Stop generation');expect(location.assign).not.toHaveBeenCalled();
 });
+it.each([
+  ['pc','/','',true],['cloud','/','',true],['device','/device/','',true],
+  ['device','/','',false],['cloud','/device/','',false],['cloud','/','?fixture=1',false],
+] as const)('replaces the execution context for %s from %s%s', (target,pathname,search,reload)=>{
+  vi.stubGlobal('window',{});vi.stubGlobal('navigator',{userAgent:'Chromium'});
+  const setItem=vi.fn();vi.stubGlobal('localStorage',{setItem});
+  vi.stubGlobal('location',{protocol:'https:',pathname,search,hash:'/chats/fixture',assign:vi.fn(),reload:vi.fn()});
+  switchTarget(target);
+  expect(setItem).toHaveBeenCalledWith('kyalulu-execution-target',target);
+  expect(location.reload).toHaveBeenCalledTimes(reload?1:0);
+  if(reload){expect(location.hash).toBe('/');expect(location.assign).not.toHaveBeenCalled();}
+  else expect(location.assign).toHaveBeenCalledWith((target==='device'?'/device/':'/')+'#/');
+});
 it('checks migration revision, byte length and SHA-256 before parsing',()=>{
   const data=initialData();data.conversations=[newConversation(data.characters[0],'kyalulu-iq3m')];
   data.conversations[0].draft='未送信🌸';
