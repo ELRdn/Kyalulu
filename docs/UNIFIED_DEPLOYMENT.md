@@ -46,6 +46,11 @@ launch, provider contracts, regional policies or real-device behavior.
    funded credits and private-budget history. Make an independent encrypted
    disaster backup and verify its hash/offsite copy. Restore only into a new
    isolated root and compare recorded rows before selecting a production release.
+   Use the updated admin/recovery tool: the snapshot includes Community and both
+   transfer trees as well as control/tenant DBs and retained versions. Existing
+   data in any control table or durable destination must cause refusal. Preserve
+   the compatible recovery tool with the backup; older readers reject the added
+   archive members. See the separate fictional recovery evidence and its limits.
 3. Prove the complete required feature/compatibility matrix and accepted regional
    policies. Keep existing private-test, signup, budget, billing, advertising,
    image and provider restrictions. Never insert guessed policy approvals or
