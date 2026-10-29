@@ -1,0 +1,106 @@
+<!doctype html><meta charset="utf-8"><title>Disposable offline cache fixture</title>
+<script type="module">
+import {allEntities,appTransaction,trimOfflineCache} from '/src/lib/appStore.ts';
+import {rememberOwner} from '/src/lib/appContext.ts';
+
+const scenario=new URL(location.href).searchParams.get('scenario')??'normal';
+const owner='cache-owner',foreign='other-owner';
+const check=(value,message)=>{if(!value)throw Error(message);};
+const id=index=>'chat-'+String(index).padStart(3,'0');
+async function run(){
+  rememberOwner(owner);
+  if(scenario==='reload'){
+    const rows=await allEntities(owner);
+    check(rows.filter(e=>e.payload.cache_evicted&&e.id!==id(5)).length===30,'Evicted cache did not survive browser restart');
+    check(rows.find(e=>e.id===id(1)).payload.messages[0].content.startsWith('UNSENT'),'Unsent conversation lost on restart');
+    return {ok:true,scenario,records:rows.length};
+  }
+  const rows=Array.from({length:46},(_,index)=>({id:id(index),owner,kind:'conversation',revision:2,serverRevision:1,
+    dirty:false,deleted:false,pinned:false,opened:index,payload:{storage_policy:'sync',title:id(index),rating:'general',
+      settings:{session_id:id(index)},messages:[{id:index+1,uuid:'uuid-'+index,content:'UNSENT 茶🙂'.repeat(16384)}],memories:[],summaries:[]}}));
+  rows[0].pinned=true;rows[1].dirty=true;rows[2].payload.storage_policy='local';rows[3].serverRevision=0;
+  rows[4].payload.pending_generation={id:'pending'};rows[5].payload.cache_evicted=true;
+  rows.push({...rows[45],id:'deleted',deleted:true,opened:100});
+  rows.push({...rows[45],id:'library',kind:'character',opened:101});
+  rows.push({...rows[45],owner:foreign,id:'FOREIGN PRIVATE'});
+  await appTransaction(['entities'],'readwrite',(tx,done)=>{for(const row of rows)tx.objectStore('entities').put(row);done();});
+  const before=await allEntities(owner),otherBefore=await allEntities(foreign);
+  let getAllCalls=0,scanned=0,reads=0,writes=0,outstanding=0,maxOutstanding=0,raced=false;
+  const getAll=IDBObjectStore.prototype.getAll,openCursor=IDBObjectStore.prototype.openCursor;
+  const get=IDBObjectStore.prototype.get,put=IDBObjectStore.prototype.put,transaction=IDBDatabase.prototype.transaction;
+  const track=request=>{
+    maxOutstanding=Math.max(maxOutstanding,++outstanding);
+    request.addEventListener('success',()=>outstanding--);
+    request.addEventListener('error',()=>outstanding--);
+    return request;
+  };
+  IDBObjectStore.prototype.getAll=function(...args){if(this.name==='entities'){getAllCalls++;throw Error('Whole-owner cache read');}return getAll.apply(this,args);};
+  IDBObjectStore.prototype.openCursor=function(...args){
+    const request=openCursor.apply(this,args);
+    if(this.name==='entities')request.addEventListener('success',()=>{if(request.result){scanned++;check(request.result.value.owner===owner,'Foreign body read');
+      if(scenario==='scan-account'&&scanned===3)rememberOwner(foreign);}});
+    return request;
+  };
+  IDBObjectStore.prototype.get=function(key){
+    const request=get.call(this,key);
+    if(this.name==='entities'){check(key[0]===owner,'Foreign body read');reads++;return track(request);}
+    return request;
+  };
+  IDBObjectStore.prototype.put=function(value,...args){
+    if(this.name==='entities'&&value.payload.cache_evicted){
+      writes++;
+      if(scenario==='quota'&&writes===2)return track(this.add(value));
+      return track(put.call(this,value,...args));
+    }
+    return put.call(this,value,...args);
+  };
+  IDBDatabase.prototype.transaction=function(stores,mode,...args){
+    if(mode==='readwrite'&&!raced){
+      raced=true;
+      if(scenario==='account')rememberOwner(foreign);
+      if(scenario==='race'){
+        const edit=transaction.call(this,'entities','readwrite'),store=edit.objectStore('entities');
+        for(const [index,change] of [[6,{opened:999}],[7,{dirty:true,revision:3}],[8,{pinned:true}],
+          [9,{payload:{pending_generation:{id:'late'}}}],[10,{payload:{storage_policy:'local'}}],
+          [11,{serverRevision:2}],[12,{deleted:true}],[13,{kind:'character'}]]){
+          const read=get.call(store,[owner,id(index)]);read.onsuccess=()=>{
+            const value=read.result;put.call(store,{...value,...change,payload:{...value.payload,...change.payload}});
+          };
+        }
+      }
+    }
+    return transaction.call(this,stores,mode,...args);
+  };
+  let failed=false;
+  try{try{await trimOfflineCache(owner);}catch(error){failed=true;if(!['quota','account','scan-account'].includes(scenario))throw error;}}
+  finally{
+    IDBObjectStore.prototype.getAll=getAll;IDBObjectStore.prototype.openCursor=openCursor;
+    IDBObjectStore.prototype.get=get;IDBObjectStore.prototype.put=put;IDBDatabase.prototype.transaction=transaction;
+  }
+  rememberOwner(owner);
+  const after=await allEntities(owner),otherAfter=await allEntities(foreign);
+  check(JSON.stringify(otherBefore)===JSON.stringify(otherAfter),'Foreign account changed');
+  check(getAllCalls===0&&maxOutstanding<=1,'Eviction queued multiple conversation bodies');
+  if(['quota','account','scan-account'].includes(scenario)){
+    check(failed&&JSON.stringify(before)===JSON.stringify(after),'Failed cache transaction lost data');
+    if(scenario==='quota')check(writes===2,'Failure did not occur after a successful write');
+  }else{
+    check(!failed,'Cache trim failed');
+    const protectedIds=new Set([...Array.from({length:6},(_,i)=>id(i)),...Array.from({length:10},(_,i)=>id(i+36)),'deleted','library']);
+    if(scenario==='race')for(let index=6;index<=13;index++)protectedIds.add(id(index));
+    for(const row of after){
+      const original=before.find(e=>e.id===row.id);
+      if(!protectedIds.has(row.id)){
+        check(row.payload.cache_evicted===true&&!('content' in row.payload.messages[0]),'Old clean conversation retained its body');
+        check(row.payload.messages[0].id===original.payload.messages[0].id&&row.payload.messages[0].uuid===original.payload.messages[0].uuid,'Stable identity lost');
+        check(row.payload.cache_preview.last_preview===original.payload.messages[0].content.slice(0,160),'Preview lost');
+        check(row.revision===original.revision&&row.serverRevision===original.serverRevision,'Eviction changed sync revisions');
+      }else if(scenario!=='race'||!Array.from({length:8},(_,i)=>id(i+6)).includes(row.id))check(JSON.stringify(row)===JSON.stringify(original),'Protected conversation changed');
+      else check(!row.payload.cache_evicted&&row.payload.messages[0].content===original.payload.messages[0].content,'Concurrent edit lost');
+    }
+    check(writes===(scenario==='race'?22:30),'Unexpected eviction count');
+  }
+  return {ok:true,scenario,failed,scanned,reads,writes,maxOutstanding,getAllCalls,fixtureContentBytes:new TextEncoder().encode(rows[0].payload.messages[0].content).length*46};
+}
+run().then(result=>window.__CACHE_RESULT__=result).catch(error=>window.__CACHE_RESULT__={ok:false,scenario,error:String(error),stack:error.stack});
+</script>

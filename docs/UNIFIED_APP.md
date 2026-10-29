@@ -1,9 +1,10 @@
 # Unified App Implementation Status
 
-2026-10-23 to 2026-10-26. **Partial implementation, not release acceptance.** No production
+2026-10-23 to 2026-10-29. **Partial implementation, not release acceptance.** No production
 deployment, provider application, purchase, contract or DNS change has been performed.
-Work is now committed incrementally on `codex/unified-app-integration`; merging is
-reserved for the owner. Pre-existing Mobile changes remain in place.
+PR #8 was merged as `fc590baf`; its post-merge Windows/Ubuntu CI passed. Follow-up
+work continues incrementally on `codex/unified-app-integration`. Unrelated local
+changes remain outside the integration commits.
 
 ## Local Build
 
@@ -22,6 +23,13 @@ Existing `build` and `build:mobile` entry points remain separate and supported.
 Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:app`.
 
 ## Delivered Behavior
+
+- Offline-cache selection walks one entity at a time and retains only selection
+  metadata; eviction waits for each body read/write in one atomic transaction.
+  Fresh IndexedDB checks cover protected records, concurrent changes, account
+  switches, rollback after a write error and page restart. Single-entity capacity
+  and real quota/device acceptance remain open. See
+  [offline-cache validation](validation/2026-10-29-unified-offline-cache.md).
 
 - Browser/Native downloads and Cloud transfer commit now parse UTF-8 and JSON
   incrementally without a whole encoded-document buffer. Verified syntax/hash
