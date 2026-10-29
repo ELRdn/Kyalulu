@@ -1,5 +1,7 @@
 # Native and Mobile package validation — 2026-10-30
 
+Current fixed code candidate: **`897737f`**, recorded in the final section. The earlier candidates below remain historical; they lack the newly built WASM and IndexedDB v3 client.
+
 The first, historical record below uses clean corresponding source from
 `232c2ee0afbef784791e6b07530d4291590e78d2`. That source passed 845 Web tests and
 the unified build. The later same-document target-switch defect makes these
@@ -104,3 +106,24 @@ All gates and limits above remain: no fresh WASM build, macOS/clean-OS/physical
 device acceptance, signing, license acceptance, public download or production
 recovery is claimed. The latest Cloud tar has not been uploaded or built as a
 Linux image; `bf83d03` image evidence cannot validate its newer client code.
+
+## Current fixed candidate: 897737f, fresh WASM and browser DB v3
+
+Source: `897737fbe63e424f51b225467a81685ef0b7bccd`. The fixed clean corresponding-source tree passed **855 Web tests / 66 files**, App/Mobile builds and isolated packaging. Four fresh WASM files match the [separate build and real-model evidence](2026-10-30-unified-wasm.md). Earlier candidates do not contain these binaries or the v3 segmented browser client.
+
+| Candidate | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Cloud tar | See local manifest | `fb88a3d1bab219372e78f518bc082959678abd78ceee0aec55b72f1b49f15e52` |
+| Windows tar | 140242228 | `cbc74df39aaebef353612f6a85d57ec6fc6fdd81da4da1912749719b16366c89` |
+| Mobile source ZIP | See local manifest | `ee21658beb87e9b78b7fd44ed79c84d07b7273e639e34007a4f4458f33b45fa8` |
+| Unpublished packed CLI | 18518 | `434591330c8b85811abd4d5d924dbbdfb398857c37e08af561fa7aadb48202bd` |
+
+Cloud: **223** verified manifest entries, **220** matching product files and **61** precache assets. Mobile: **78** Pages files, **77** manifest entries, **40** precache assets, eight matched license copies and a safe **797**-file source ZIP. The largest Pages file is **16,811,691 bytes**. All **572** collected committed source files exactly match the fixed Git export. Raw Git blobs match 31 files; the other **541** differ only by strictly verified UTF-8 CRLF-to-LF conversion. The builder itself is LF in the Windows export. Source compatibility is reported separately from raw byte equality.
+
+Windows: **8,718** safe archive files, **217** matching product files, managed Python **3.13.7**, **33** locked Python dependencies. All extracted files and four fresh runtime hashes match the candidate. The actual packed CLI passed isolated start/restart, fictional memory/chat persistence, backup/restore, rollback, seven pointer-write/rename faults, failed-start/update preservation and unrelated-process protection. Empty PATH and isolated home/data were used. Owned processes remaining: **0**. Clean-OS and first-download acceptance remain false; signing and license acceptance remain open.
+
+Built PWA: **4/4** JA/EN, 393/1280, light/dark scenarios passed including explicit update, other-tab protection, draft/editor/uncertain-reply preservation and full-browser offline restart. Old Mobile direct migration passed separately at **393/light** and **1280/dark**, using the actual old worker, exact-origin loopback HTTPS and fictional history/OPFS markers. Each suite recorded zero API requests, external requests and page errors. See [segmented storage](2026-10-30-unified-segmented-storage.md) for details and v3 rollback requirements.
+
+Local evidence: `.artifacts/unified-release-897737f-audit.json`, `.artifacts/unified-mobile-897737f-audit.json`, `.artifacts/unified-native-897737f-audit.json`, `.artifacts/unified-native-897737f-report.md`. The dedicated clean build is `C:/Users/hiron/AppData/Local/Temp/kyalulu-release-897737f-me7wgynn`. Generated/private evidence remains outside Git.
+
+No new Linux image or production selection/upload was performed for 897737f. The approved bf83d03 image test remains historical. Real-phone/long-model, large-capacity/RSS, macOS/clean-OS, signing/license, independent production-backup restore, canonical cutover and provider contracts remain separate gates. Returning a v3-upgraded browser to a v2-only UI is unsupported; preserve the stores and retain a v3-compatible recovery bundle.
