@@ -39,6 +39,12 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
   commercial UI cases pass. See
   [runtime routing](validation/2026-10-29-unified-runtime-routing.md).
 
+- Fixed `b133ce0` Cloud/Windows/legacy-Mobile candidates now include those client
+  fixes. Clean-source tests/build, archive/precache/source comparisons and the
+  Windows packed CLI's isolated recovery checks passed. Gates remain false;
+  signing, real devices and production recovery are not accepted. See
+  [package validation](validation/2026-10-30-unified-native-mobile.md).
+
 - The fixed `bf83d03` Cloud candidate now builds as a distinct Linux image and
   passes isolated read-only/network-none application and default-command checks.
   Authorized production aggregates/digests matched before/after; running services
