@@ -12,6 +12,11 @@ launch, provider contracts, regional policies or real-device behavior.
   `python scripts/prepare_cloud_bundle.py --unified --output .artifacts/unified-cloud`.
   Use a clean committed source tree, the existing locked dependencies and verified
   WASM inputs; do not package a dirty operator workspace.
+- When extracting an audited archive into a new private release/validation root,
+  explicitly set its **public build-context directories** to 0755 before Docker
+  COPY; a restrictive operator umask can otherwise make them unreadable by UID
+  10002. Keep the enclosing root private. Apply this only inside the newly owned,
+  verified bundle, never to production volumes or secret/configuration roots.
 - The unified bundle includes `deploy/cloud/Caddyfile.unified.example` in addition
   to the legacy example. Install only the APP site block into the existing Caddy
   configuration. Preserve its global no-log settings and Relay site/container.
