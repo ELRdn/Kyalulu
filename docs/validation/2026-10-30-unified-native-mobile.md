@@ -1,11 +1,12 @@
 # Native and Mobile package validation — 2026-10-30
 
-These local, unsigned candidates use clean corresponding source from
+The first, historical record below uses clean corresponding source from
 `232c2ee0afbef784791e6b07530d4291590e78d2`. That source passed 845 Web tests and
 the unified build. The later same-document target-switch defect makes these
 candidates **superseded**; successful packaging and recovery checks are not
 permission to publish them. New candidates must include the
 [routing correction](2026-10-29-unified-runtime-routing.md).
+The corrected fixed candidates are recorded at the end of this document.
 
 ## Windows artifact and isolated CLI
 
@@ -62,3 +63,44 @@ WASM uses existing pinned outputs and has not been rebuilt. macOS packaging,
 clean-OS/Node-only installation, signing, license acceptance, real model/device
 tests and public delivery remain open. No npm/GitHub release, Pages deployment,
 production DB change, provider connection or real-user restore occurred.
+
+## Corrected fixed candidates: b133ce0
+
+Clean corresponding source from
+`b133ce0cbcc02d168db444d1bc20c20379c1a3b8` includes the target-switch correction.
+Its **851 Web tests / 66 files** and unified build passed. The actual commercial
+fixture passed **24/24 cases, 472 checks**, including blocked unregistered PCs
+and explicit Cloud return with the original draft. These candidates replace the
+superseded artifacts above.
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Cloud tar | 65,973,573 | `d3a48e955b08d91dbae6b5d7d30a60306d15edf29432d5a760492842e57c980e` |
+| Windows runtime tar | 140,134,789 | `ea6f1d9fd133833c9475c75fbb8b50eabbd1670e6fca2f2cc48c47fa0ee5cc4f` |
+| Mobile corresponding-source ZIP | 16,396,388 | `4e886d11f492119241a7429e90d2766757927be1853d44b1ed227252bc60f9e7` |
+
+The Cloud archive passed **223 manifest**, **220 build/source** and **61 precache**
+comparisons. The Windows archive has **8,706 safe regular members**, **217 matched
+product files**, Python 3.13.7 and 33 locked dependencies. Its packed CLI was
+rerun with an empty PATH and isolated fictional data: start/restart, memory/chat
+persistence, backup/restore, rollback, all seven pointer failures and preservation
+checks passed. The owned Runtime was stopped; no process record remains. The
+bundled interpreter independently loaded all four scenarios and verified static
+main/device/migration headers.
+
+The Mobile candidate passed the same **78 Pages / 77 manifest / 40 precache**
+checks and the 25 MiB limit. Its safe source ZIP now has **785 members**. All
+**560 committed-source files** match the Git export exactly. The 530 raw Git
+differences are strictly verified UTF-8 CRLF-to-LF changes, while 30 files match
+raw bytes. Export/content acceptance and strict raw-byte equality remain separate.
+
+Local audit files are `.artifacts/unified-release-b133ce0-audit.json`,
+`.artifacts/unified-native-b133ce0-audit.json` and
+`.artifacts/unified-mobile-b133ce0-audit.json`. Build outputs remain in the
+task-specific temporary source tree. CI results are separate from these local
+checks; the `232c2ee` Ubuntu failure must not be described as a passing CI run.
+
+All gates and limits above remain: no fresh WASM build, macOS/clean-OS/physical
+device acceptance, signing, license acceptance, public download or production
+recovery is claimed. The latest Cloud tar has not been uploaded or built as a
+Linux image; `bf83d03` image evidence cannot validate its newer client code.
