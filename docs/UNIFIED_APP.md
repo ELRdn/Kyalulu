@@ -24,6 +24,12 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 
 ## Delivered Behavior
 
+- The fixed `bf83d03` Cloud candidate now builds as a distinct Linux image and
+  passes isolated read-only/network-none application and default-command checks.
+  Authorized production aggregates/digests matched before/after; running services
+  were retained. Public cutover, migrations and recovery remain separate. See
+  [isolated image validation](validation/2026-10-29-unified-container.md).
+
 - Native Chromium IndexedDB quota errors now have explicit acceptance coverage:
   two owners each retain originals, revisions, durable outboxes and receipts
   after new/update saves fail at a 128 KiB origin quota; identical saves succeed
