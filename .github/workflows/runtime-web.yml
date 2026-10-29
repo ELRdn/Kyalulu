@@ -37,6 +37,7 @@ jobs:
       - run: pnpm --filter web build
       - run: pnpm --filter desktop build
       - run: uv run --no-sync python -m pytest tests -q
+      - run: uv run --no-sync python -B tests/fixtures/unified-disaster-recovery.py --evidence-dir .artifacts/disaster-recovery-ci
       - run: uv run --no-sync python -m playwright install --with-deps chromium
       - run: uv run --no-sync python tests/e2e_outbox_guard.py
       - run: uv run --no-sync python tests/e2e_segmented_storage.py
