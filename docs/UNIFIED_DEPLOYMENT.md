@@ -55,6 +55,11 @@ launch, provider contracts, regional policies or real-device behavior.
    at APP: the old `__Host-kyalulu_cloud` cookie cannot migrate across hostnames.
    Existing Cloud account IDs, encrypted data and balances stay in the same
    protected store; do not copy cookies or forwarding credentials across origins.
+6. Retain a verified **v3-compatible browser recovery bundle** before publishing
+   the segmented-storage client. Opening IndexedDB v3 is additive and preserves
+   inline v1/v2 records, but a v2 client cannot reopen that database. Verify the
+   recovery bundle with both inline and segmented records; preserve `entities`,
+   `meta` and `parts` together. The earlier v2 UI alone is not a rollback option.
 
 ## Cutover and recovery conditions
 
@@ -76,6 +81,9 @@ launch, provider contracts, regional policies or real-device behavior.
   configuration. Preserve new data and archives before any DB rollback. Use the
   reviewed Core/disaster recovery path; never overwrite current outboxes with an
   older DB or drop browser stores to make an old client start.
+  For browser storage already upgraded to v3, serve the retained v3-compatible
+  recovery UI even if server behavior is rolled back. Do not send those browsers
+  back to a v2-only bundle or interpret `VersionError` as permission to clear data.
 
 The local HTTPS proxy check is `tests/e2e_unified_proxy.py --caddy <verified-tool>
 --dist <unified-build> --output <new-disposable-directory>`. It starts only
