@@ -90,6 +90,7 @@ FILES = (
     "docs/validation/2026-10-26-unified-sync-byte-streams.md",
     "docs/validation/2026-10-26-unified-sync-receive-streams.md",
     "docs/validation/2026-10-29-unified-offline-cache.md",
+    "docs/validation/2026-10-29-unified-device-reads.md",
     "deploy/cloud/Dockerfile",
     "deploy/cloud/Dockerfile.prebuilt",
     "deploy/cloud/compose.yml",

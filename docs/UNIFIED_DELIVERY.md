@@ -144,3 +144,6 @@ Browser/Native受信とCloud commitの断片JSON解析、共通構文/UTF-8 fixt
 全体のencoded bufferは除去したが、decoded tree・スカラー・永続保存の全体実体化は残る。
 オフライン保持の選択・置換で全会話本文を同時に読む処理の除去と、競合/失敗時の保持は
 [Offline cache](validation/2026-10-29-unified-offline-cache.md) に記録する。
+端末内APIのhealth/単一会話/単一Library操作で不要な全会話読込を除去し、
+owner・下書き・固定版を維持した証拠は
+[Device reads](validation/2026-10-29-unified-device-reads.md) に記録する。
