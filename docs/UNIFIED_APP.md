@@ -24,6 +24,13 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 
 ## Delivered Behavior
 
+- Browser Runtime health/capability calls no longer load account entities, and
+  selected conversation/Library operations skip unrelated conversation bodies.
+  Lists and imports retain their required owner-wide reads. Captured-owner
+  fencing, bindings, immutable revisions and unsent input are covered by new
+  unit checks and existing real IndexedDB memory/export scenarios. See
+  [route-read validation](validation/2026-10-29-unified-device-reads.md).
+
 - Offline-cache selection walks one entity at a time and retains only selection
   metadata; eviction waits for each body read/write in one atomic transaction.
   Fresh IndexedDB checks cover protected records, concurrent changes, account

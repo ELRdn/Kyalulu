@@ -217,7 +217,11 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
     const asset=await readDeviceAsset(owner,media[1]);
     return new Response(new Uint8Array(asset.raw),{headers:{'Content-Type':asset.mime,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
   }
-  const records=(await allEntities(owner)).filter(e=>!e.deleted),sessions=records.filter(e=>e.kind==='conversation');
+  const readRecords=async()=>{
+    const records=(await allEntities(owner)).filter(e=>!e.deleted);
+    if(owner!==deviceOwner())throw fail('Account changed',409);
+    return records;
+  };
   if(owner!==deviceOwner())throw fail('Account changed',409);
   if(path==='/api/mobile/status')return json({cloud_mode:false,remote_mode:false,authenticated:true,administrative:false,device_mode:true});
   if(path==='/api/health')return json({status:'ok',version:'0.1.0',runtime:'browser'});
@@ -227,16 +231,16 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
   if(path==='/api/diagnostics')return json({ready:true,checks:[{id:'browser',ok:true,message:'On-device runtime',hint:null,detail:null}]});
   if(path==='/api/commands')return json(method==='GET'?{commands:[]}:{ok:false,command:'',output:'Use Settings to manage on-device models',refresh_models:false});
   if(path==='/api/characters')return json({characters:[...builtin.map(c=>({...c,portrait_url:c.id==='senior_cool'?'/icons/rei-senpai.png':c.id==='butler'?'/icons/shion-butler-1.png':c.id==='mocha_sfw'?'/icons/mocha-1.png':null})),
-    ...records.filter(e=>e.kind==='character'&&!e.payload.document?.nsfw).map(e=>({id:e.id,display_name:e.payload.document.name,description:String(e.payload.document.data.description??e.payload.document.data.personality??''),intro:e.payload.document.data.first_mes??'',tags:e.payload.document.data.tags??[],version:String(e.payload.current_revision??e.revision),library_revision:e.payload.current_revision??e.revision}))]});
-  if(path==='/api/personas')return json({personas:[...catalog.personas,...records.filter(e=>e.kind==='persona'&&e.payload.creator).map(e=>creatorView(e))]});
-  if(path==='/api/worlds')return json({worlds:[...catalog.worlds,...records.filter(e=>e.kind==='world'&&e.payload.creator).map(e=>creatorView(e))]});
+    ...(await readRecords()).filter(e=>e.kind==='character'&&!e.payload.document?.nsfw).map(e=>({id:e.id,display_name:e.payload.document.name,description:String(e.payload.document.data.description??e.payload.document.data.personality??''),intro:e.payload.document.data.first_mes??'',tags:e.payload.document.data.tags??[],version:String(e.payload.current_revision??e.revision),library_revision:e.payload.current_revision??e.revision}))]});
+  if(path==='/api/personas')return json({personas:[...catalog.personas,...(await readRecords()).filter(e=>e.kind==='persona'&&e.payload.creator).map(e=>creatorView(e))]});
+  if(path==='/api/worlds')return json({worlds:[...catalog.worlds,...(await readRecords()).filter(e=>e.kind==='world'&&e.payload.creator).map(e=>creatorView(e))]});
   if(path==='/api/prompt/compile')return json(await compiled(body,[],owner));
   const creator=path.match(/^\/api\/creator\/(persona|world)(?:\/(created_[0-9a-f]{32}@[1-9]\d*)(\/export)?)?$/);
   if(creator){
     const kind=creator[1] as 'persona'|'world',reference=creator[2],match=reference?.match(/^(.*)@(\d+)$/),value=match?await entity(match[1],owner):undefined;
     if(reference&&(!value||value.deleted||value.kind!==kind))throw fail('Saved setting not found',404);
     if(method==='GET'){
-      if(!reference)return json({items:records.filter(e=>e.kind===kind&&e.payload.creator).map(e=>creatorView(e))});
+      if(!reference)return json({items:(await readRecords()).filter(e=>e.kind===kind&&e.payload.creator).map(e=>creatorView(e))});
       const item=creatorView(value!,Number(match![2]));
       if(creator[3]){const document=CreatorDocumentSchema.parse(Object.fromEntries(Object.keys(CreatorDocumentSchema.innerType().shape).map(key=>[key,item[key]])));return json({format:'kyalulu-creator',version:1,kind,document});}
       return json({item,versions:Object.keys(value!.payload.versions).map(r=>creatorView(value!,Number(r))).sort((a,b)=>b.revision-a.revision)});
@@ -250,14 +254,17 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
     const saved=await saveEntity(value?{...value,payload}:newEntity(kind,id,payload,owner),value?.revision);return json(creatorView(saved,revision),value?200:201);
   }
   if(path==='/api/chat/stream')return generate(body,init.signal??undefined);
-  if(path==='/api/chat/sessions')return json({sessions:sessions.map(e=>{
+  if(path==='/api/chat/sessions'){
+    const records=await readRecords(),sessions=records.filter(e=>e.kind==='conversation');
+    return json({sessions:sessions.map(e=>{
     const p=e.payload,c=builtin.find(c=>c.id===p.settings.character_id),last=p.messages.at(-1);
     const preview=p.cache_evicted?p.cache_preview:{count:p.messages.length,last_at:last?.created_at??null,last_preview:last?.content??''};
     return {session_id:e.id,...preview,character_id:p.settings.character_id,character_name:c?.display_name??records.find(r=>r.id===p.settings.character_id)?.payload.document?.name??p.title??null,
       world_id:p.settings.world_id,nsfw:false,sync_recovery:!!p.recovery_from,offline_available:!p.cache_evicted};
-  }).sort((a,b)=>String(b.last_at).localeCompare(String(a.last_at)))});
+    }).sort((a,b)=>String(b.last_at).localeCompare(String(a.last_at)))});
+  }
   if(path==='/api/chat/settings') {
-    const session=await conversation(body.session_id??url.searchParams.get('session_id')??'default');
+    const session=await conversation(body.session_id??url.searchParams.get('session_id')??'default',owner);
     if(method==='GET')return json(session.payload.settings);
     if(running)throw fail('Stop generation before editing',409);
     if(typeof body.system_prompt!=='string'||body.system_prompt.length>128000)throw fail('Invalid system prompt');
@@ -268,14 +275,14 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
     await saveEntity({...session,payload:{...session.payload,settings}},session.revision);return json({ok:true});
   }
   if(path==='/api/chat/history') {
-    const session=await conversation(url.searchParams.get('session_id')??'default');
+    const session=await conversation(url.searchParams.get('session_id')??'default',owner);
     if(method==='GET')return json({history:session.payload.messages});
     if(running)throw fail('Stop generation before editing',409);
     await saveEntity({...session,payload:{...session.payload,messages:[]}},session.revision);return json({ok:true});
   }
   if(/^\/api\/chat\/history\/\d+$/.test(path)) {
     if(running)throw fail('Stop generation before editing',409);
-    const id=Number(path.split('/').at(-1)),found=sessions.find(s=>s.payload.messages.some((m:any)=>m.id===id));
+    const id=Number(path.split('/').at(-1)),found=(await readRecords()).find(s=>s.kind==='conversation'&&s.payload.messages.some((m:any)=>m.id===id));
     if(!found)throw fail('Message not found',404);
     const session=await conversation(found.id,owner);
     if(method!=='DELETE'&&(typeof body.content!=='string'||!body.content.trim()||body.content.length>128000))throw fail('Invalid message');
@@ -283,16 +290,16 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
     await saveEntity({...session,payload:{...session.payload,messages}},session.revision);return json({ok:true});
   }
   if(path==='/api/chat/intro/inject') {
-    const session=await conversation(url.searchParams.get('session_id')??'default');
+    const session=await conversation(url.searchParams.get('session_id')??'default',owner);
     if(session.payload.messages.length)return json({injected:false});
-    const d=await documentFor(session.payload.settings),intro=d.data.first_mes??d.data.intro??'';
+    const d=await documentFor(session.payload.settings,owner),intro=d.data.first_mes??d.data.intro??'';
     if(!intro)return json({injected:false});
     const message={id:await nextId(owner),uuid:crypto.randomUUID(),role:'assistant',content:intro,model_id:'intro',created_at:new Date().toISOString()};
     await saveEntity({...session,payload:{...session.payload,messages:[message]}},session.revision);return json({injected:true,intro});
   }
   const generation=path.match(/^\/api\/chat\/generations\/([^/]+)(\/cancel)?$/);
   if(generation) {
-    const key='generation:'+deviceOwner()+':'+generation[1],status=await getMeta<any>(key);
+    const key='generation:'+owner+':'+generation[1],status=await getMeta<any>(key);
     if(!status||status.session_id!==url.searchParams.get('session_id'))throw fail('Generation not found',404);
     if(generation[2]&&running===generation[1])runtime?.stop();
     if(status.status==='pending'&&running!==generation[1]){status.status='failed';await setMeta(key,status);}
@@ -301,7 +308,7 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
   const branch=path.match(/^\/api\/chat\/sessions\/([^/]+)\/(branch|data)$/);
   if(branch) {
     if(running)throw fail('Stop generation before editing',409);
-    const source=await conversation(branch[1]);
+    const source=await conversation(branch[1],owner);
     if(branch[2]==='data'){
       if(source.payload.storage_policy==='sync')await saveEntity({...source,deleted:true,payload:{...source.payload,delete_confirmation_revision:source.revision+1}},source.revision);
       else await appTransaction<void>(['entities','meta'],'readwrite',(tx,done)=>{
@@ -324,7 +331,6 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
     payload.summaries=payload.summaries.filter((s:any)=>s.source_message_ids?.every((mid:number)=>payload.messages.some((m:any)=>m.id===mid)));
     payload.branch_of=source.id;payload.fork_revision=source.revision;payload.settings.session_id=id;payload.state.session_id=id;payload.state.turn=turn;
     payload.last_generation=null;
-    const owner=source.owner;
     await appTransaction<void>(['entities','meta'],'readwrite',(tx,done)=>{
       const store=tx.objectStore('entities'),meta=tx.objectStore('meta'),read=store.get([owner,source.id]);
       read.onsuccess=()=>{
@@ -343,7 +349,7 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
   }
   const context=path.match(/^\/api\/chat\/context\/([^/]+)(?:\/summaries\/([^/]+))?$/);
   if(context) {
-    const session=await conversation(context[1]);
+    const session=await conversation(context[1],owner);
     if(method==='GET')return json({history_revision:String(session.revision),summaries:session.payload.summaries});
     if(running)throw fail('Stop generation before editing',409);
     const summary=session.payload.summaries.find((s:any)=>s.id===context[2]);
@@ -353,13 +359,13 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
     summary.text=body.text;summary.revision+=1;summary.method='manual';await saveEntity(session,session.revision);return json(summary);
   }
   if(path==='/api/chat/debug') {
-    const session=await conversation(url.searchParams.get('session_id')??'default'),p=session.payload;
-    return json({session_id:session.id,settings:p.settings,compiled:await compiled(p.settings),history_count:p.messages.length,approx_turn:p.state.turn,
+    const session=await conversation(url.searchParams.get('session_id')??'default',owner),p=session.payload;
+    return json({session_id:session.id,settings:p.settings,compiled:await compiled(p.settings,[],owner),history_count:p.messages.length,approx_turn:p.state.turn,
       relationship:p.state.relationship_state.stage,state:p.state,generation:p.last_generation??null});
   }
   const memorySession=path.match(/^\/api\/memory\/session\/([^/]+)(\/data|\/scope-preview|\/scope-migrate)?$/);
   if(memorySession) {
-    const session=await conversation(memorySession[1]);
+    const session=await conversation(memorySession[1],owner);
     if(memorySession[2]==='/scope-preview')return json({scope:session.id,target_scope:session.id,preview_revision:String(session.revision),memories:session.payload.memories,identity:{session_id:session.id}});
     if(memorySession[2]==='/scope-migrate')throw fail('On-device memories remain isolated to their conversation',409);
     if(method!=='GET') {
@@ -372,7 +378,7 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
   }
   if(path==='/api/memory'||path.startsWith('/api/memory/')) {
     const memoryId=path.split('/')[3];
-    const found=memoryId?sessions.find(s=>s.payload.memories.some((m:any)=>m.id===memoryId)):null;
+    const found=memoryId?(await readRecords()).find(s=>s.kind==='conversation'&&s.payload.memories.some((m:any)=>m.id===memoryId)):null;
     if(memoryId&&!found)throw fail('Memory not found',404);
     const session=await conversation(found?.id??body.scope??url.searchParams.get('scope')??'default',owner);
     if(method==='GET')return json({memories:session.payload.memories.filter((m:any)=>m.status==='active')});
@@ -386,7 +392,7 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
     await saveEntity(session,session.revision);return json(memory);
   }
   if(path==='/api/library') {
-    if(method==='GET')return json({items:records.filter(e=>['character','preset'].includes(e.kind)&&e.payload.document).map(e=>libraryView(e))});
+    if(method==='GET')return json({items:(await readRecords()).filter(e=>['character','preset'].includes(e.kind)&&e.payload.document).map(e=>libraryView(e))});
     const d=PortableDocumentSchema.parse(body);if(d.nsfw)throw fail('Adult verification required',403);
     await validateDeviceDocumentAssets(d,owner);
     const id=crypto.randomUUID(),value=newEntity(d.kind==='character'?'character':'preset',id,{storage_policy:'local',document:d,versions:{'1':d}},owner);
@@ -435,6 +441,7 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
   }
   if(path==='/api/imports/text/preview'||path==='/api/imports/preview') {
     if(method!=='POST')throw fail('Preview requires POST',405);
+    const records=await readRecords();
     let filename=typeof body.filename==='string'?body.filename:'character.txt',raw:Uint8Array;
     if(init.body instanceof FormData){const file=init.body.get('file');if(!(file instanceof File)||file.size>32*1024*1024)throw fail('Choose a file up to 32 MiB');raw=new Uint8Array(await file.arrayBuffer());filename=file.name;}
     else {if(typeof body.text!=='string'||Array.from(body.text).length>2000000)throw fail('Invalid import text');raw=encoder.encode(body.text);}
@@ -450,14 +457,14 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
     });return json(preview);
   }
   const commit=path.match(/^\/api\/imports\/([^/]+)\/commit$/);
-  if(commit){if(method!=='POST')throw fail('Import requires POST',405);return json(await commitDeviceImport(owner,commit[1],body,records));}
+  if(commit){if(method!=='POST')throw fail('Import requires POST',405);return json(await commitDeviceImport(owner,commit[1],body,await readRecords()));}
   if(path==='/api/prompts/presets') {
-    if(method==='GET')return json({presets:records.filter(e=>e.kind==='preset'&&e.payload.content).map(e=>({id:e.id,...e.payload}))});
+    if(method==='GET')return json({presets:(await readRecords()).filter(e=>e.kind==='preset'&&e.payload.content).map(e=>({id:e.id,...e.payload}))});
     if(typeof body.content!=='string'||body.content.length>128000||typeof body.name!=='string')throw fail('Invalid preset');
     const e=await saveEntity(newEntity('preset',crypto.randomUUID(),{...body,storage_policy:'local',nsfw:false},owner));return json({id:e.id,...e.payload});
   }
   if(path.startsWith('/api/prompts/presets/')) {
-    const e=await entity(path.split('/').at(-1)!);if(!e)throw fail('Preset not found',404);
+    const e=await entity(path.split('/').at(-1)!,owner);if(!e)throw fail('Preset not found',404);
     if(method==='DELETE'){await saveEntity({...e,deleted:true},e.revision);return json({ok:true});}
     if(typeof body.content!=='string'||body.content.length>128000)throw fail('Invalid preset');
     const saved=await saveEntity({...e,payload:{...e.payload,...body}},e.revision);return json({id:e.id,...saved.payload});
