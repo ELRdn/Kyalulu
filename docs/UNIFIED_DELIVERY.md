@@ -153,3 +153,7 @@ owner・下書き・固定版を維持した証拠は
 [Device quota](validation/2026-10-29-unified-device-quota.md) に記録する。
 監査済みCloud候補のLinuxイメージ作成・networkなしの配信/既定CMD確認と、本番の参照情報保持は
 [Isolated image](validation/2026-10-29-unified-container.md) に記録する。本番切替ではない。
+Browser同期受信/ack確定時の全owner本文の一括保持を除き、参照作品・数値ID上限・
+衝突/owner切替とatomic rollbackを維持した証拠は
+[Selective sync](validation/2026-10-29-unified-sync-selection.md) に記録する。
+この修正はbf83d03イメージ候補の後続であり、最終配布候補は再生成が必要。

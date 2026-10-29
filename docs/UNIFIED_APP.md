@@ -24,6 +24,13 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 
 ## Delivered Behavior
 
+- Browser sync receive/ack transactions scan one record at a time, retaining only
+  target/referenced bodies plus owner-wide IDs and the numeric high-water mark.
+  Real IndexedDB cases preserve historical-only references, immutable current
+  versions, unsent originals, collision/owner-change rollback and cached receipts.
+  Outgoing/list/storage segmentation remains open. See
+  [selective sync validation](validation/2026-10-29-unified-sync-selection.md).
+
 - The fixed `bf83d03` Cloud candidate now builds as a distinct Linux image and
   passes isolated read-only/network-none application and default-command checks.
   Authorized production aggregates/digests matched before/after; running services
