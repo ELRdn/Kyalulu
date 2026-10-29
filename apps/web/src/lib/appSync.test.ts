@@ -30,6 +30,12 @@ vi.mock('./appStore',async importOriginal=>({
     const tx={abort:()=>{aborted=true;},objectStore:(name:string)=>{
       const map=name==='entities'?entities:meta,key=(k:any)=>name==='entities'?JSON.stringify(k):k;
       return {get:(k:any)=>{if(name==='meta')fixture.reads.push(String(k));return enqueue(()=>map.get(key(k)));},getAllKeys:()=>enqueue(()=>[...map.keys()]),getAll:(range:any)=>enqueue(()=>[...entities.values()].filter(e=>e.owner===range.lower[0])),
+        openCursor:(range:any)=>{
+          const matches=[...entities.values()].filter(e=>e.owner===range.lower[0]).sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0);
+          const request:any={};let index=0;
+          const next=()=>{pending++;queueMicrotask(()=>{try{if(!aborted){request.result=index<matches.length?{value:structuredClone(matches[index++]),continue:next}:null;request.onsuccess?.();}}catch{aborted=true;}finally{pending--;finish();}});};
+          next();return request;
+        },
         index:()=>({openKeyCursor:(range:any)=>{
           const matches=[...meta.entries()].filter(([,value])=>value?.request_id===range.lower[0]&&value?.withdrawn===range.lower[1]).map(([key])=>key).sort();
           const request:any={};let index=0;
@@ -206,6 +212,35 @@ it('rolls back the entire page when a historical fixed library revision is missi
   expect(fixture.entities.size).toBe(0);expect(fixture.meta.get('sync:owner-a:cursor')).toBeUndefined();
 });
 
+it('allocates after an unrelated local history while ignoring another owner high-water mark',async()=>{
+  const unrelated=local('unrelated');unrelated.payload.messages[0].id=900;
+  const foreign=local('foreign','owner-b');foreign.payload.messages[0].id=9000;
+  put(unrelated);put(foreign);fixture.meta.set('message-sequence:owner-a',3);
+  await receiveSyncPage('owner-a',[remote()],1);
+  expect(get('chat').payload.messages[0].id).toBe(901);
+  expect(get('unrelated')).toEqual(unrelated);expect(get('foreign','owner-b')).toEqual(foreign);
+});
+
+it.each([
+  [true,{messages:{}}],[true,{messages:[null]}],[true,{settings:{library_binding:{lorebooks:1}}}],
+  [false,{messages:{}}],[false,{messages:[null]}],[false,{settings:{library_binding:{lorebooks:1}}}],
+] as const)('keeps skipped remote payloads from invalidating an unsent/newer local record (dirty=%s)',async(dirty,payload)=>{
+  const current=local('chat');current.dirty=dirty;current.serverRevision=9;put(current);
+  await receiveSyncPage('owner-a',[{...remote(),payload:{...remote().payload,...payload}}],18);
+  expect(get('chat')).toEqual(current);expect(fixture.meta.get('sync:owner-a:cursor')).toBe(18);
+});
+
+it('rejects a recovery UUID collision with an unrelated record without retiring the unsent original',async()=>{
+  const pending=local('chat');pending.dirty=true;put(pending);
+  const id='11111111-1111-4111-8111-111111111111',unrelated=local(id);put(unrelated);
+  const original=structuredClone(fixture.entities);
+  const random=vi.spyOn(crypto,'randomUUID').mockReturnValue(id);
+  try{
+    await expect(receiveSyncPage('owner-a',[{id:'chat',kind:'conversation',revision:2,deleted:true,payload:{}}],1)).rejects.toThrow('aborted');
+    expect(fixture.entities).toEqual(original);expect(fixture.meta.get('sync:owner-a:cursor')).toBeUndefined();
+  }finally{random.mockRestore();}
+});
+
 it('imports unused characters and per-conversation snapshots once while retaining drafts and stopped history',async()=>{
   const data=initialData();data.characters.push({...data.characters[0],id:'unused',name:'Unused'});
   const original={...data.characters[0],name:'Historical character'},session=newConversation(original,'kyalulu-iq3m');
@@ -305,6 +340,27 @@ it('adopts a branch acknowledgment without deleting the source or losing edits m
   expect(get('fork').payload.messages[0].content).toBe('edited during upload');expect(get('fork').dirty).toBe(true);
   expect(get('fork').payload.messages[0].id).not.toBe(get('chat').payload.messages[0].id);
   expect(fixture.meta.has('sync:owner-a:outbox')).toBe(false);
+});
+
+it.each([false,true])('checks unrelated identities and numeric IDs while adopting a branch acknowledgment (collision=%s)',async collision=>{
+  const current=local('chat');current.dirty=true;put(current);
+  const unrelated=local(collision?'fork':'unrelated');unrelated.payload.messages[0].id=900;put(unrelated);
+  const original=structuredClone(fixture.entities);
+  const pending={request_id:'selected-ack',withdrawn:0,revisions:{chat:1},changes:[{id:'chat',kind:'conversation',base_revision:0,payload:current.payload,deleted:false}]};
+  fixture.meta.set('sync:owner-a:outbox',pending);
+  vi.mocked(cloudFetch).mockImplementation(async(path,init)=>{
+    if(path==='/api/mobile/status')return new Response(JSON.stringify({cloud_mode:true,authenticated:true,owner_scope:'owner-a'}));
+    return new Response(JSON.stringify(init?.method==='POST'?{changes:[{id:'fork',source_id:'chat',revision:1,deleted:false,branched:true}]}:{changes:[],cursor:0,has_more:false}));
+  });
+  await syncNow('owner-a');
+  if(collision){
+    expect(fixture.entities).toEqual(original);expect(fixture.meta.get('sync:owner-a:outbox')).toEqual(pending);
+    expect(syncState().phase).toBe('error');
+  }else{
+    expect(get('fork').payload.messages[0].id).toBe(901);expect(get('unrelated')).toEqual(unrelated);
+    expect(get('chat').payload.messages[0].content).toBe(current.payload.messages[0].content);
+    expect(fixture.meta.has('sync:owner-a:outbox')).toBe(false);
+  }
 });
 it('retains the outbox and local edits if consent is revoked while an acknowledgment is arriving',async()=>{
   const current=local('chat');current.dirty=true;put(current);

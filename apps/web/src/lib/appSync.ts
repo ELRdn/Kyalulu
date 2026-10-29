@@ -93,20 +93,52 @@ function syncReceipt(batch:Batch,result:any):{changes:Ack[]} {
   return {changes:result.changes};
 }
 
+function selectSyncRecords(tx:IDBTransaction,owner:string,required:Set<string>,
+  finish:(records:Map<string,AppEntity>,identities:Set<string>,number:number)=>void) {
+  const sequence=tx.objectStore('meta').get('message-sequence:'+owner);
+  sequence.onsuccess=()=>{
+    const records=new Map<string,AppEntity>(),identities=new Set<string>();let number=sequence.result??0;
+    const read=tx.objectStore('entities').openCursor(IDBKeyRange.bound([owner,''],[owner,'\uffff']));
+    read.onsuccess=()=>{
+      if(owner!==deviceOwner()||generationBusy()){tx.abort();return;}
+      const cursor=read.result;
+      if(!cursor){finish(records,identities,number);return;}
+      const record=cursor.value as AppEntity;
+      identities.add(record.id);
+      if(required.has(record.id))records.set(record.id,record);
+      for(const message of record.payload.messages??[])number=Math.max(number,message.id);
+      cursor.continue();
+    };
+  };
+}
+
 export async function receiveSyncPage(owner:string, changes:any[], cursor:number) {
   await appTransaction<void>(['entities','meta'],'readwrite',(tx,done)=>{
     const store=tx.objectStore('entities'),meta=tx.objectStore('meta');
     const consent=meta.get(key(owner,'consent'));
     consent.onsuccess=()=>{
       if(owner!==deviceOwner()||!consent.result||generationBusy()){tx.abort();return;}
-      const read=store.getAll(IDBKeyRange.bound([owner,''],[owner,'\uffff']));
-      read.onsuccess=()=>{
-        const sequence=meta.get('message-sequence:'+owner);
-        sequence.onsuccess=()=>{
+      const required=new Set<string>();
+      try {
+        for(const remote of changes){
+          if(typeof remote?.id==='string')required.add(remote.id);
+          if(remote?.kind!=='conversation'||remote.deleted||!remote.payload)continue;
+          // Prefetch must not validate payloads that an unsent/newer local revision will skip.
+          const payload=remote.payload,messages=Array.isArray(payload.messages)?payload.messages.filter((message:any)=>message&&typeof message==='object'):[];
+          const settings=conversationSettings({settings:payload.settings,messages});
+          for(const setting of [...settings,...messages.flatMap((message:any)=>[message.before?.state,message.after?.state].filter(Boolean))]){
+            for(const kind of ['persona','world']){
+              const reference=setting[kind+'_id'];
+              if(typeof reference==='string'&&reference.startsWith('created_'))required.add(reference.split('@')[0]);
+            }
+          }
+          for(const setting of settings)for(const [field,value] of Object.entries(setting.library_binding??{})){
+            for(const ref of (field==='lorebooks'?(Array.isArray(value)?value:[]):[value]) as any[])if(typeof ref?.id==='string')required.add(ref.id);
+          }
+        }
+      }catch{tx.abort();return;}
+      selectSyncRecords(tx,owner,required,(records,identities,number)=>{
           try {
-            const records=new Map<string,AppEntity>((read.result as AppEntity[]).map(e=>[e.id,e]));
-            let number=sequence.result??0;
-            for(const record of records.values())for(const message of record.payload.messages??[])number=Math.max(number,message.id);
             const allocate=()=>{if(!Number.isSafeInteger(++number))throw Error('Message ID limit reached');return number;};
             for(const remote of changes) {
               if(!remote||typeof remote.id!=='string'||!remote.id||remote.id.length>200||!Number.isSafeInteger(remote.revision)||remote.revision<1
@@ -119,7 +151,7 @@ export async function receiveSyncPage(owner:string, changes:any[], cursor:number
               if(remote.deleted) {
                 if(local?.deleted&&local.serverRevision>=remote.revision)continue;
                 if(local?.dirty&&!local.deleted) {
-                  const id=crypto.randomUUID();if(records.has(id))throw Error('Recovery identity conflict');
+                  const id=crypto.randomUUID();if(identities.has(id)||records.has(id))throw Error('Recovery identity conflict');
                   const payload=local.kind==='conversation'?rebindConversation(receiveConversation(local.payload,undefined,allocate),id):structuredClone(local.payload);
                   payload.storage_policy='local';payload.recovery_from=local.id;payload.last_generation=null;
                   const recovery={...local,id,payload,revision:1,serverRevision:0,dirty:false,deleted:false};
@@ -176,8 +208,7 @@ export async function receiveSyncPage(owner:string, changes:any[], cursor:number
             meta.put(number,'message-sequence:'+owner);
             const position=meta.get(key(owner,'cursor'));position.onsuccess=()=>meta.put(Math.max(position.result??0,cursor),key(owner,'cursor'));done();
           }catch{tx.abort();}
-        };
-      };
+      });
     };
   });
 }
@@ -275,20 +306,15 @@ async function synchronize(owner:string) {
         const store=tx.objectStore('entities'),meta=tx.objectStore('meta'),queued=meta.get(key(owner,'outbox')),consent=meta.get(key(owner,'consent'));
         consent.onsuccess=()=>{
           if(!consent.result||owner!==deviceOwner()||generationBusy()||queued.result?.request_id!==pending.request_id){tx.abort();return;}
-          const read=store.getAll(IDBKeyRange.bound([owner,''],[owner,'\uffff']));
-          read.onsuccess=()=>{
-            const sequence=meta.get('message-sequence:'+owner);
-            sequence.onsuccess=()=>{
+          const required=new Set<string>(result.changes.map((ack:Ack)=>ack.source_id??ack.id));
+          selectSyncRecords(tx,owner,required,(records,identities,number)=>{
               try {
-                const records=new Map<string,AppEntity>((read.result as AppEntity[]).map(e=>[e.id,e]));
-                let number=sequence.result??0;
-                for(const record of records.values())for(const message of record.payload.messages??[])number=Math.max(number,message.id);
                 for(const ack of result.changes as Ack[]) {
                   const source=ack.source_id??ack.id;
                   const local=records.get(source);if(!local)throw Error('Missing local conversation');
                   const updated=acknowledgeEntity(local,ack,pending);
                   if(ack.branched) {
-                    if(records.has(ack.id))throw Error('Branch identity conflict');
+                    if(identities.has(ack.id)||records.has(ack.id))throw Error('Branch identity conflict');
                     if(local.deleted) {
                       const sent=pending.changes.find(c=>c.id===source)!;
                       updated.deleted=false;updated.dirty=false;
@@ -306,8 +332,7 @@ async function synchronize(owner:string) {
                 if(result.changes.some((ack:Ack)=>ack.branched))meta.put(0,key(owner,'cursor'));
                 meta.delete(key(owner,'outbox'));done();
               }catch{tx.abort();}
-            };
-          };
+          });
         };
       });
     }
