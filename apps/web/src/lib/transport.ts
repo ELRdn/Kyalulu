@@ -13,7 +13,8 @@ export async function apiFetch(input: string, init: RequestInit = {}): Promise<R
     const { deviceFetch } = await import('./deviceApi');
     return deviceFetch(input, init);
   }
-  if (activeRemote() && executionTarget() === 'pc') {
+  if (executionTarget() === 'pc') {
+    if (!activeRemote()) throw new Error('接続先を選んでください。');
     const { remoteConnection } = await import('./remoteClient');
     return remoteConnection().fetch(input, init);
   }

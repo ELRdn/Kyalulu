@@ -3,6 +3,20 @@ import { apiFetch, serverAddress } from './transport';
 import { setCloud, setCloudOwner } from './cloudMode';
 import * as remoteStore from './remoteStore';
 afterEach(() => { setCloud(false); vi.unstubAllGlobals();vi.restoreAllMocks(); });
+it.each([['/api/mobile/status','GET'],['/api/chat/history','GET'],['/api/chat','POST']])('never dispatches %s to Cloud when the selected PC is missing',async(path,method)=>{
+  vi.stubGlobal('localStorage',{getItem:(key:string)=>key==='kyalulu-execution-target'?'pc':null});
+  vi.spyOn(remoteStore,'activeRemote').mockReturnValue(null);
+  const fetch=vi.fn();vi.stubGlobal('fetch',fetch);
+  await expect(apiFetch(path,{method,...(method==='POST'?{body:'private PC draft'}:{})})).rejects.toThrow('接続先を選んでください');
+  expect(fetch).not.toHaveBeenCalled();
+});
+it('keeps Cloud account APIs reachable while the selected PC is missing',async()=>{
+  vi.stubGlobal('localStorage',{getItem:(key:string)=>key==='kyalulu-execution-target'?'pc':null});
+  vi.spyOn(remoteStore,'activeRemote').mockReturnValue(null);
+  const fetch=vi.fn().mockResolvedValue(new Response('{}'));vi.stubGlobal('fetch',fetch);
+  for(const path of ['/api/cloud/profile','/api/community/characters'])await apiFetch(path);
+  expect(fetch.mock.calls.map(call=>call[0])).toEqual(['/api/cloud/profile','/api/community/characters']);
+});
 it.each(['pc','device','local'])('does not revoke %s pairing on a Cloud publication login error',async target=>{
   vi.stubGlobal('localStorage',{getItem:(key:string)=>key==='kyalulu-execution-target'?target:null});
   const dispatchEvent=vi.fn();vi.stubGlobal('window',{dispatchEvent});

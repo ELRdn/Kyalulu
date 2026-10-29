@@ -103,6 +103,7 @@ FILES = (
     "docs/validation/2026-10-29-unified-device-quota.md",
     "docs/validation/2026-10-29-unified-container.md",
     "docs/validation/2026-10-29-unified-sync-selection.md",
+    "docs/validation/2026-10-29-unified-runtime-routing.md",
     "deploy/cloud/Dockerfile",
     "deploy/cloud/Dockerfile.prebuilt",
     "deploy/cloud/compose.yml",

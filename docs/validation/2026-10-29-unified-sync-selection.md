@@ -83,6 +83,25 @@ python -B tests/e2e_sync_selection.py
 The host's installed Chromium was used because the sandbox has no browser
 installation. No new dependency is installed.
 
+## Fixed source and package provenance
+
+The clean corresponding-source export of
+`6c8cdf4634274e90557055ffdcc0264f7529ce0f` passed **831 Web tests / 66 files**
+and `build:app` with `VITE_RELAY_ORIGIN=https://relay.kyalulu.com`. Its locally
+prepared Cloud archive has SHA-256
+`110b3a137d78d14180846badc98dc0fda5cb610c7cd3f6f3d9535018ab214893`.
+All **223 manifest entries** and **61 Service Worker precache entries** were
+verified; **220 packaged files** matched the clean build/source and **558
+corresponding-source files** matched the committed export byte for byte. The
+source archive contains 783 files including installed dependency license texts.
+These counts use different scopes from the earlier renderer/Runtime-only count.
+
+WASM inputs are reused fixed outputs. This archive was not uploaded to the VPS
+or built as a Linux image. The separately accepted
+[`bf83d03` image](2026-10-29-unified-container.md) predates these client changes;
+its container results do not validate this archive. Subsequent source changes
+require a new build, audit and matching image evidence before deployment.
+
 ## Limits
 
 This is functional and read-method evidence on synthetic local IndexedDB data.
