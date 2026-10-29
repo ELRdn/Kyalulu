@@ -1,12 +1,37 @@
 """Corresponding source must not collect private files or follow external links."""
 
 import importlib.util
+import io
 from pathlib import Path
 import json
 import re
+import subprocess
+import tarfile
 import zipfile
 
 import pytest
+
+
+def test_wasm_builder_keeps_unix_lines_in_windows_git_export(tmp_path, monkeypatch):
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.syspath_prepend(str(root / 'scripts'))
+    import collect_release_sources as sources
+
+    assert '.gitattributes' in sources.FILES
+    builder = 'scripts/mobile_wasm/build.sh'
+    for name in ('.gitattributes', builder):
+        target = tmp_path / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((root / name).read_bytes().replace(b'\r\n', b'\n'))
+    def git(*args):
+        return subprocess.check_output(['git', '-c', 'core.autocrlf=true', *args], cwd=tmp_path, stderr=subprocess.PIPE)
+    git('init', '--quiet')
+    git('add', '.gitattributes', builder)
+    git('-c', 'user.name=Release fixture', '-c', 'user.email=fixture@example.invalid',
+        '-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'Fictional release source')
+    with tarfile.open(fileobj=io.BytesIO(git('archive', '--format=tar', 'HEAD'))) as archive:
+        script = archive.extractfile(builder).read()
+    assert b'\n' in script and b'\r\n' not in script
 
 
 def test_source_contains_browser_fixture_imports(tmp_path, monkeypatch):
