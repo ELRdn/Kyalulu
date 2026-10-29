@@ -104,6 +104,7 @@ FILES = (
     "docs/validation/2026-10-29-unified-container.md",
     "docs/validation/2026-10-29-unified-sync-selection.md",
     "docs/validation/2026-10-29-unified-runtime-routing.md",
+    "docs/validation/2026-10-30-unified-native-mobile.md",
     "deploy/cloud/Dockerfile",
     "deploy/cloud/Dockerfile.prebuilt",
     "deploy/cloud/compose.yml",

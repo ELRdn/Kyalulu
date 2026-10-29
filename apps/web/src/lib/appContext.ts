@@ -53,6 +53,9 @@ export function switchTarget(target: ExecutionTarget) {
   localStorage.setItem(MODE, target);
   const destination = target === 'device' ? '/device/' : '/';
   if (isDesktop() || location.protocol === 'file:') { location.reload(); return; }
+  if (location.pathname === destination && !location.search) {
+    location.hash = '/'; location.reload(); return;
+  }
   location.assign(destination + '#/');
 }
 let busy = 0;

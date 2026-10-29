@@ -28,8 +28,16 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
   target/referenced bodies plus owner-wide IDs and the numeric high-water mark.
   Real IndexedDB cases preserve historical-only references, immutable current
   versions, unsent originals, collision/owner-change rollback and cached receipts.
-  Outgoing/list/storage segmentation remains open. See
+  Outgoing batches now retain at most 50 dirty sync entities and only their
+  referenced documents in one readonly snapshot; final counts recheck consent.
+  List/individual-entity storage segmentation remains open. See
   [selective sync validation](validation/2026-10-29-unified-sync-selection.md).
+
+- Same-path Cloud/PC target changes now force document reload, so previous Cloud
+  access state and drafts are not reused on a missing PC. Unregistered PC Runtime
+  calls are rejected before HTTP dispatch. Unit navigation cases and 24 actual
+  commercial UI cases pass. See
+  [runtime routing](validation/2026-10-29-unified-runtime-routing.md).
 
 - The fixed `bf83d03` Cloud candidate now builds as a distinct Linux image and
   passes isolated read-only/network-none application and default-command checks.

@@ -178,6 +178,17 @@ async def run_case(browser, origin, output, language, width, theme, scenario):
     t = WORDS[language]
     try:
         await page.goto(origin + ('/device/' if scenario == 'device' else '/'))
+        if scenario == 'pc':
+            await page.get_by_role('heading', name='Connect to the conversation server' if language == 'en' else '会話のサーバーに接続', exact=True).wait_for()
+            await page.wait_for_load_state('networkidle')
+            await expect(page.get_by_role('combobox', name=t['target'], exact=True)).to_have_value('pc')
+            check('unregistered PC has no conversation or advertising UI', await page.locator('.k-page--home, .k-composer, .k-ad-slot').count() == 0)
+            check('unregistered PC sends no Runtime or Cloud API requests', not api.calls, api.calls)
+            check('no unmocked API or model downloads', not api.unexpected, api.unexpected)
+            check('no external service requests', not api.blocked, api.blocked)
+            check('no service workers started', await page.evaluate('window.__commercialServiceWorkerAttempts === 0'))
+            check('no uncaught browser errors', not errors, errors)
+            return result
         await page.locator('.k-page--home').wait_for()
         await page.wait_for_load_state('networkidle')
         await expect(page.locator('html')).to_have_attribute('data-theme', theme)
@@ -289,18 +300,26 @@ async def run_case(browser, origin, output, language, width, theme, scenario):
             for target in ('device', 'pc'):
                 await insufficient()
                 before = list(api.writes())
+                calls_before_switch = len(api.calls)
                 api.target = target
                 async with page.expect_navigation(wait_until='domcontentloaded'):
                     await dialog.get_by_role('button', name=t[target], exact=True).click()
-                await page.locator('.k-page--home').wait_for()
+                if target == 'pc':
+                    await page.get_by_role('heading', name='Connect to the conversation server' if language == 'en' else '会話のサーバーに接続', exact=True).wait_for()
+                else:
+                    await page.locator('.k-page--home').wait_for()
                 await expect(page.get_by_role('combobox', name=t['target'], exact=True)).to_have_value(target)
                 await page.wait_for_load_state('networkidle')
                 check(target + ': switch hides commercial UI', await page.locator('.k-ad-slot').count() == 0 and await dialog.count() == 0)
                 records = await recovery_records(page)
                 check(target + ': switch preserves original draft', all(records.get(k) == v for k, v in initial.items()))
-                await page.goto(origin + ('/device/' if target == 'device' else '/') + '#/chats/' + SESSION)
-                await composer.wait_for()
-                await expect(composer).to_have_value('')
+                if target == 'pc':
+                    await expect(composer).to_have_count(0)
+                    check('missing PC does not reuse Cloud runtime state', not any(c['path'] == '/api/mobile/status' for c in api.calls[calls_before_switch:]))
+                else:
+                    await page.goto(origin + '/device/#/chats/' + SESSION)
+                    await composer.wait_for()
+                    await expect(composer).to_have_value('')
                 check(target + ': original draft not copied to new scope', sum(v['draft'] == DRAFT for v in (await recovery_records(page)).values()) == 1)
                 api.target = 'cloud'
                 await page.get_by_role('combobox', name=t['target'], exact=True).select_option('cloud')
@@ -377,8 +396,8 @@ async def run_case(browser, origin, output, language, width, theme, scenario):
         result.update(calls=api.calls, intercepted_fictional_ads=api.ads,
                       blocked_requests=api.blocked, unexpected=api.unexpected, page_errors=errors)
         await context.close()
-    result['passed'] = not result['failures']
-    print(json.dumps({k: result[k] for k in ('case', 'passed', 'failures')}, ensure_ascii=False), flush=True)
+        result['passed'] = not result['failures']
+        print(json.dumps({k: result[k] for k in ('case', 'passed', 'failures')}, ensure_ascii=False), flush=True)
     return result
 
 
