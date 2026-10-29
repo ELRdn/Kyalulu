@@ -177,5 +177,10 @@ v3へ更新後はv2 clientへ戻せないため、復旧にもv3対応bundleが�
 2026-10-30の追加許可で固定897737fのVPS別imageを作成し、実image210ファイル/新WASM4点・
 12項目・既定Uvicorn実HTTPと、3サービス/DB表hash/残高集計/設定フラグの前後一致を確認した。
 [Current image](validation/2026-10-30-unified-container.md) に記録する。本番切替ではない。
-Android/iPhone実機は本人の指定で後日とした。復旧計画用のvolume/Compose配置メタデータ保存は
-自動承認レビューで今回の範囲外とされ、未取得。
+Android/iPhone実機は本人の指定で後日とした。volume/Compose配置メタデータの広い取得は
+自動承認レビューで範囲外とされ未実行。その後、本人が限定したmount4項目を許可し、指定先へ非公開保存済み。
+暗号化backupと別root復元の[架空データprobe](validation/2026-10-30-unified-disaster-recovery.md)は23項目成功。
+アカウント0件でも原資のある復元先を拒否するguardと、Community/途中転送DBの保存漏れを修正し、
+Cloud関連125試験と最終復元10ケースで確認。コピーを使うprivate staging prototypeも24項目成功。
+これら後続のadmin変更は固定897737f imageには含まれない。
+実データのbackup/転送/復元は未実施であり、この4項目の読取許可には含まれない。

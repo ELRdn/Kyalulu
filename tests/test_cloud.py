@@ -913,6 +913,113 @@ async def test_encrypted_disaster_restore_new_environment_keeps_retained_version
         admin.disaster_restore(target, destination)
 
 
+@pytest.mark.parametrize('occupied', ['funds', 'extension'])
+def test_disaster_restore_rejects_nonempty_control_without_accounts(config, occupied):
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        'cloud_admin_funded_destination', Path(__file__).parents[1] / 'scripts/cloud_admin.py'
+    )
+    admin = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(admin)
+    source = CloudStore(config)
+    archive = config.root.parent / 'fictional-empty.kybackup'
+    admin.disaster_backup(source, archive)
+    target = CloudStore(replace(config, root=config.root.parent / 'funded-control',
+                                backup_root=config.root.parent / 'funded-backups'))
+    if occupied == 'funds':
+        target.add_funds(1_000_000, 'fictional-funded-destination')
+    else:
+        with target.transaction() as db:
+            db.execute('CREATE TABLE "sqliteX""budget" (value TEXT)')
+            db.execute('INSERT INTO "sqliteX""budget" VALUES (?)', ('fixture-extension',))
+    with target.transaction() as db:
+        assert db.execute('SELECT COUNT(*) FROM accounts').fetchone()[0] == 0
+        before = tuple(db.iterdump())
+    with pytest.raises(ValueError, match='not empty'):
+        admin.disaster_restore(target, archive)
+    with target.transaction() as db:
+        assert tuple(db.iterdump()) == before
+
+
+@pytest.mark.parametrize('existing_root', ['community.db', 'transfers', 'entity-transfers'])
+def test_disaster_restore_rejects_existing_durable_root(config, existing_root):
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        'cloud_admin_existing_durable_root', Path(__file__).parents[1] / 'scripts/cloud_admin.py'
+    )
+    admin = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(admin)
+    source = CloudStore(config)
+    archive = config.root.parent / 'empty-durable.kybackup'
+    admin.disaster_backup(source, archive)
+    target = CloudStore(replace(config, root=config.root.parent / 'occupied-durable',
+                                backup_root=config.root.parent / 'occupied-durable-backups'))
+    sentinel = target.config.root / existing_root
+    if existing_root != 'community.db':
+        sentinel.mkdir()
+        sentinel = sentinel / 'fictional-original'
+    sentinel.write_bytes(b'preserve-existing-durable-root')
+    before = hashlib.sha256(target.path.read_bytes()).digest()
+    with pytest.raises(ValueError, match='empty'):
+        admin.disaster_restore(target, archive)
+    assert sentinel.read_bytes() == b'preserve-existing-durable-root'
+    assert hashlib.sha256(target.path.read_bytes()).digest() == before
+
+
+@pytest.mark.parametrize('wal', [False, True])
+def test_disaster_restore_preserves_community_and_unfinished_transfers(config, wal):
+    import importlib.util
+    import sqlite3
+    from pathlib import Path
+    from python.cloud.transfers import Transfers
+
+    spec = importlib.util.spec_from_file_location(
+        'cloud_admin_durable_roots', Path(__file__).parents[1] / 'scripts/cloud_admin.py'
+    )
+    admin = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(admin)
+    source = CloudStore(config)
+    owner = account(source)
+    with sqlite3.connect(config.root / 'community.db') as db:
+        if wal:
+            assert db.execute('PRAGMA journal_mode=WAL').fetchone()[0] == 'wal'
+        db.execute('CREATE TABLE legacy_works (payload TEXT)')
+        db.execute('INSERT INTO legacy_works VALUES (?)', ('fictional published work',))
+    pending, writers = [], []
+    for entity in (False, True):
+        transfers = Transfers(source, None, entity=entity)
+        transfer = transfers.create(owner, direction='upload', selected=['fictional-chat'],
+                                    revision=1, request_id='fictional-durable-'+str(entity))
+        metadata = transfers.inspect(owner, transfer)
+        if wal:
+            writer = sqlite3.connect(transfers.file(owner, transfer))
+            assert writer.execute('PRAGMA journal_mode=WAL').fetchone()[0] == 'wal'
+            with writer:
+                metadata['fixture_committed_wal'] = True
+                transfers.update_meta(writer, metadata)
+            writers.append(writer)
+        pending.append((entity, transfer, metadata))
+    archive = config.root.parent / 'durable-roots.kybackup'
+    try:
+        admin.disaster_backup(source, archive)
+    finally:
+        for writer in writers:
+            writer.close()
+    target = CloudStore(replace(config, root=config.root.parent / 'restored-durable',
+                                backup_root=config.root.parent / 'restored-durable-backups'))
+    admin.disaster_restore(target, archive)
+    assert (target.config.root / 'community.db').is_file()
+    with sqlite3.connect(target.config.root / 'community.db') as db:
+        assert db.execute('SELECT payload FROM legacy_works').fetchone()[0] == 'fictional published work'
+    for entity, transfer, metadata in pending:
+        transfers = Transfers(target, None, entity=entity)
+        assert transfers.inspect(owner, transfer) == metadata
+
+
 @pytest.mark.asyncio
 async def test_cloud_text_card_import_and_tenant_isolation(config):
     response = {
