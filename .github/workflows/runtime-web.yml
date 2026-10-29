@@ -40,6 +40,7 @@ jobs:
       - run: uv run --no-sync python -m playwright install --with-deps chromium
       - run: uv run --no-sync python tests/e2e_outbox_guard.py
       - run: uv run --no-sync python tests/e2e_offline_cache.py
+      - run: uv run --no-sync python tests/e2e_device_quota.py
       - run: uv run --no-sync python tests/e2e_device_export.py
       - run: uv run --no-sync python tests/e2e_device_import.py
       - run: uv run --no-sync python tests/e2e_publications.py

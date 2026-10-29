@@ -17,7 +17,7 @@
 | 競合の共通履歴分岐、記憶を自動混合せず出典保持 | state/記憶/作品設定snapshot往復、記録済みrevisionの共通message列、同期済み/登録前のNative分岐のUUID継承と初回受領前のowner継承を隔離検証。証跡なしの旧分岐は推測で結合しない | 証跡のない旧分岐の扱い、祖先本文の復元、旧設定欠落、3方式の実UI確認 |
 | 同期削除・復元、未送信変更の保護 | 条件付き承認でNative-PC/Browserのowner/revision・撤回fence・永続受領を検証。Native論理復元とCore全体復元は現在outbox/受領/ownerを保護し、自動同期停止・旧受領照合・復元単位の別コピー確認を適用。Core/既存同期の関連132件で検証 | 強制終了時のDB/媒体の一括耐久性、配布版をまたぐ全面復旧、実容量・実機・本番復旧の確認が必要 |
 | 端末限定の外部送信禁止・共有記憶分離 | 部分検証 | 生成/記憶/同期/広告/外部AIの通信否定試験 |
-| 最近10件＋固定会話のオフライン保存、容量不足とアカウント分離 | 選択時は本文を1件ずつ走査し、置換も1件ずつatomic実行。実IndexedDBの6ケースで最近10件/未送信/固定/端末限定/生成中・別owner保持、競合8種、途中失敗の全体rollbackとページ再読込を確認 | 単一会話の分割保存、実quota不足、PWA/ブラウザ/実機の再起動と実容量試験は残る |
+| 最近10件＋固定会話のオフライン保存、容量不足とアカウント分離 | 選択/置換の1件ずつ処理・保護条件・競合8種を実IndexedDB6ケースで確認。実Chromiumの128KiB quota制限でも2 owner×新規/更新の4ケースでnative QuotaExceededError、原本/revision/outbox/receipts保持、制限解除後の再開・再読込を確認 | 単一会話の分割保存、実ディスク枯渇、既存DBへの後付quota、PWA/ブラウザ/実機の再起動と実容量試験は残る |
 | Remote端末別の管理権限、失効、対象PCでの管理・診断・実験 | 実装・限定検証 | 既存Remote接続を使った権限/失効/全機能確認 |
 | 旧Mobileの分割移行、SHA-256/revision/size、モデルCloud送信禁止 | 旧公開Workerを有効にした実originのloopback/Chromiumで中立popup・同意・分割会話転送・破損拒否・再送・明示更新・原本IDB/OPFS保持を確認。再取込み時の空下書き/送信待ち保護を修正 | 公開配信と実モデル容量・中断回復、Android/iPhoneでの直接コピー証拠。OPFS保持は架空markerでありモデル転送ではない |
 | PWA明示更新、/device/ の分離ヘッダー、広告との共存 | Native実配信と実Chromiumで日英の明示更新・別タブ拒否・下書き保持・オフラインのブラウザ全終了/復帰と分離状態を確認。生成中拒否はclient試験、オフライン表示はrenderer emulationで確認 | 広告と実提供元の共存、本番配信、実モデル・実機・OSネットワーク切替での受入れは残る |
@@ -149,3 +149,5 @@ owner・下書き・固定版を維持した証拠は
 [Device reads](validation/2026-10-29-unified-device-reads.md) に記録する。
 広告と残高不足導線の日英・幅・テーマ、owner切替と遅延応答の保持は
 [Commercial UI](validation/2026-10-29-unified-commercial-ui.md) に記録する。
+実Chromium quota拒否時の原本・未送信・receipts保持と解除後の同一保存再開は
+[Device quota](validation/2026-10-29-unified-device-quota.md) に記録する。
