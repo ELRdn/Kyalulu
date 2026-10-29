@@ -13,11 +13,11 @@
 | 実行先/モデル/保存/同期の表示、生成中切替の停止・保存確認 | 実装・限定検証 | 3方式での停止/保存/再開・自動転送なしのE2E |
 | Portable再利用、ブラウザ記憶/物語とPython共通fixture | World/cast/Lore、6形式export、JSON/PNG/CHARX/backup・ST/CAI/BYAF import、原本保持・選択履歴のatomic commit、媒体upload/再生取得を実装。48入力とLore条件、実decoder・実IDBの共通検証 | 各形式の追加実データ・全画面媒体操作、実容量・実モデル・実機を含むパリティ試験は残る |
 | 認証・課金経路とRuntime通信の分離、Cloud鍵をRemoteへ送らない | 実装・限定検証 | 認証切替・Remote通信捕捉・所有者分離試験 |
-| 安定ID/revisionと数値ID互換、永続outbox、自動同期 | Cloud/device/Native-PCを隔離検証。2MB超の分割転送・再開・競合・撤回と断片確認の索引化、実Chromium v1→v2移行を追加 | 分割保存/ストリーム化、250MB/1GB実容量・旧DB復元の全面照合、全方式の統合証拠 |
+| 安定ID/revisionと数値ID互換、永続outbox、自動同期 | Cloud/device/Native-PCを隔離検証。Browserの本文/固定outboxを1MiB断片へ分割し、v1/v2→v3混在読込・破損/容量不足時のatomic rollbackを実Chromiumで確認 | decoded tree/UI全体化、250MB/1GB/RSS・旧DB復元の全面照合、全方式の統合証拠 |
 | 競合の共通履歴分岐、記憶を自動混合せず出典保持 | state/記憶/作品設定snapshot往復、記録済みrevisionの共通message列、同期済み/登録前のNative分岐のUUID継承と初回受領前のowner継承を隔離検証。証跡なしの旧分岐は推測で結合しない | 証跡のない旧分岐の扱い、祖先本文の復元、旧設定欠落、3方式の実UI確認 |
 | 同期削除・復元、未送信変更の保護 | 条件付き承認でNative-PC/Browserのowner/revision・撤回fence・永続受領を検証。Native論理復元とCore全体復元は現在outbox/受領/ownerを保護し、自動同期停止・旧受領照合・復元単位の別コピー確認を適用。Core/既存同期の関連132件で検証 | 強制終了時のDB/媒体の一括耐久性、配布版をまたぐ全面復旧、実容量・実機・本番復旧の確認が必要 |
 | 端末限定の外部送信禁止・共有記憶分離 | 部分検証 | 生成/記憶/同期/広告/外部AIの通信否定試験 |
-| 最近10件＋固定会話のオフライン保存、容量不足とアカウント分離 | 選択/置換の1件ずつ処理・保護条件・競合8種を実IndexedDB6ケースで確認。実Chromiumの128KiB quota制限でも2 owner×新規/更新の4ケースでnative QuotaExceededError、原本/revision/outbox/receipts保持、制限解除後の再開・再読込を確認 | 単一会話の分割保存、実ディスク枯渇、既存DBへの後付quota、PWA/ブラウザ/実機の再起動と実容量試験は残る |
+| 最近10件＋固定会話のオフライン保存、容量不足とアカウント分離 | 選択/置換の1件ずつ処理・競合と実Chromium quota拒否時の原本/未送信/receipts保持、再開を確認。v3断片保存統合後もcache6・quota4ケース成功 | 実ディスク枯渇、既存DBへの後付quota、PWA/ブラウザ/実機の再起動と実容量試験は残る |
 | Remote端末別の管理権限、失効、対象PCでの管理・診断・実験 | 実装・限定検証 | 既存Remote接続を使った権限/失効/全機能確認 |
 | 旧Mobileの分割移行、SHA-256/revision/size、モデルCloud送信禁止 | 旧公開Workerを有効にした実originのloopback/Chromiumで中立popup・同意・分割会話転送・破損拒否・再送・明示更新・原本IDB/OPFS保持を確認。再取込み時の空下書き/送信待ち保護を修正 | 公開配信と実モデル容量・中断回復、Android/iPhoneでの直接コピー証拠。OPFS保持は架空markerでありモデル転送ではない |
 | PWA明示更新、/device/ の分離ヘッダー、広告との共存 | Native実配信と実Chromiumで日英の明示更新・別タブ拒否・下書き保持・オフラインのブラウザ全終了/復帰と分離状態を確認。生成中拒否はclient試験、オフライン表示はrenderer emulationで確認 | 広告と実提供元の共存、本番配信、実モデル・実機・OSネットワーク切替での受入れは残る |
@@ -164,3 +164,9 @@ PC未選択時にRuntime通信が同一originへ流れない境界と、通常�
 [Runtime routing](validation/2026-10-29-unified-runtime-routing.md) に記録する。
 Windows同梱CLIの隔離復元/rollbackと旧Mobile梱包、切替修正により旧候補を配布対象外とした記録は
 [Native/Mobile packages](validation/2026-10-30-unified-native-mobile.md) に記録する。
+
+新規WASMの固定ソース再ビルドと通常/互換/CPUの実モデル短文生成は
+[Fresh WASM](validation/2026-10-30-unified-wasm.md) に記録する。旧b133ce0候補は新WASMを含まない。
+Browser保存をIDB v3の1MiB断片へ分離し、原本/receipt/outboxのatomic性と深さ境界を確認した記録は
+[Segmented storage](validation/2026-10-30-unified-segmented-storage.md) に記録する。
+v3へ更新後はv2 clientへ戻せないため、復旧にもv3対応bundleが必要。decoded treeとUI clone、250MB/1GB/RSS、実機の受入れは残る。

@@ -1,7 +1,8 @@
+import { harness, decoded } from './idbHarness.test-support';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { AppEntity } from './appStore';
 
-const fixture=vi.hoisted(()=>({entities:new Map<string,any>(),meta:new Map<string,any>(),owner:'owner-a',busy:false,failAt:0,reads:[] as string[],
+const fixture=vi.hoisted(()=>({entities:new Map<string,any>(),meta:new Map<string,any>(),parts:new Map<string,any>(),owner:'owner-a',busy:false,failAt:0,reads:[] as string[],
   readHook:undefined as undefined|((mode:string,kind:string,id:string|null)=>void)}));
 vi.mock('./appContext',()=>({deviceOwner:()=>fixture.owner,generationBusy:()=>fixture.busy}));
 vi.mock('./transport',()=>({cloudFetch:vi.fn()}));
@@ -11,45 +12,24 @@ vi.mock('./appStore',async importOriginal=>({
   allEntities:async()=>{throw Error('Bulk sync reads forbidden');},
   getMeta:async(key:string)=>{fixture.reads.push(key);return structuredClone(fixture.meta.get(key));},
   setMeta:async(key:string,value:any)=>{fixture.meta.set(key,structuredClone(value));},
-  entity:async(id:string,owner:string)=>structuredClone(fixture.entities.get(JSON.stringify([owner,id]))),
-  openEntity:async(id:string,owner:string)=>structuredClone(fixture.entities.get(JSON.stringify([owner,id]))),
+  entity:async(id:string,owner:string)=>decoded(fixture.entities.get(JSON.stringify([owner,id])),fixture.parts),
+  openEntity:async(id:string,owner:string)=>decoded(fixture.entities.get(JSON.stringify([owner,id])),fixture.parts),
   saveEntity:async(value:AppEntity,expected?:number)=>{
     const key=JSON.stringify([value.owner,value.id]),previous=fixture.entities.get(key);
     if(value.owner!==fixture.owner||expected!==undefined&&expected!==(previous?.revision??0))throw Error('Transaction aborted');
     const saved={...value,revision:(previous?.revision??0)+1,dirty:value.payload.storage_policy==='sync'};fixture.entities.set(key,structuredClone(saved));return saved;
   },
   trimOfflineCache:vi.fn().mockResolvedValue(undefined),
-  appTransaction:(_stores:string[],_mode:string,action:any)=>new Promise((resolve,reject)=>{
-    const entities=structuredClone(fixture.entities),meta=structuredClone(fixture.meta);
-    let pending=0,aborted=false,finished=false,value:any,writes=0;
-    const finish=()=>{if(!pending&&!finished){finished=true;if(aborted)reject(Error('Transaction aborted'));else{fixture.entities=entities;fixture.meta=meta;resolve(value);}}};
-    const enqueue=(read:()=>any)=>{
-      const request:any={};pending++;
-      queueMicrotask(()=>{try{if(!aborted){request.result=structuredClone(read());request.onsuccess?.();}}catch{aborted=true;}finally{pending--;finish();}});
-      return request;
-    };
-    const tx={abort:()=>{aborted=true;},objectStore:(name:string)=>{
-      const map=name==='entities'?entities:meta,key=(k:any)=>name==='entities'?JSON.stringify(k):k;
-      return {get:(k:any)=>{fixture.reads.push(name==='meta'?String(k):'entity:'+k[1]);return enqueue(()=>{
-          if(name==='entities')fixture.readHook?.(_mode,'get',k[1]);return map.get(key(k));
-        });},getAllKeys:()=>enqueue(()=>[...map.keys()]),getAll:()=>{throw Error('Bulk sync reads forbidden');},
-        openCursor:(range:any)=>{
-          const matches=[...entities.values()].filter(e=>e.owner===range.lower[0]).sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0);
-          const request:any={};let index=0;
-          const next=()=>{pending++;queueMicrotask(()=>{try{if(!aborted){request.result=index<matches.length?{value:structuredClone(matches[index++]),continue:next}:null;fixture.readHook?.(_mode,'cursor',request.result?.value.id??null);request.onsuccess?.();}}catch{aborted=true;}finally{pending--;finish();}});};
-          next();return request;
-        },
-        index:()=>({openKeyCursor:(range:any)=>{
-          const matches=[...meta.entries()].filter(([,value])=>value?.request_id===range.lower[0]&&value?.withdrawn===range.lower[1]).map(([key])=>key).sort();
-          const request:any={};let index=0;
-          const next=()=>{pending++;queueMicrotask(()=>{try{if(!aborted){request.result=index<matches.length?{primaryKey:matches[index++],continue:next}:null;request.onsuccess?.();}}catch{aborted=true;}finally{pending--;finish();}});};
-          next();return request;
-        }}),
-        add:(v:any)=>{if(map.has(key([v.owner,v.id])))throw Error('Duplicate');if(fixture.failAt&&++writes===fixture.failAt)throw Error('Quota');map.set(key([v.owner,v.id]),structuredClone(v));},
-        put:(v:any,k:any)=>{if(fixture.failAt&&++writes===fixture.failAt)throw Error('Quota');map.set(name==='entities'?key([v.owner,v.id]):k,structuredClone(v));},delete:(k:any)=>map.delete(key(k))};
-    }};
-    try{action(tx,(v:any)=>{value=v;});finish();}catch{aborted=true;finish();}
-  }),
+  appTransaction:(_stores:string[],mode:string,action:any)=>{
+    let writes=0;return harness(fixture.entities,fixture.meta,fixture.parts,JSON.stringify,mode,action,{
+      write:()=>{if(fixture.failAt&&++writes===fixture.failAt)throw Error('Quota');},
+      read:(mode,name,k)=>{
+        if(name==='meta')fixture.reads.push(String(k));
+        if(name==='entities'){if(mode==='readonly')fixture.reads.push('entity:'+k[1]);fixture.readHook?.(mode,'get',k[1]);}
+        if(name==='cursor')fixture.readHook?.(mode,'cursor',k);
+      },
+    });
+  },
 }));
 
 import { acknowledgeEntity, receiveSyncPage, runtimeConsent, syncNow, syncState, reconfirmDeletion, hydrateConversation, setSyncConsent } from './appSync';
@@ -69,7 +49,7 @@ function local(id:string,owner='owner-a'):AppEntity {
   return {id,owner,kind:'conversation',revision:1,serverRevision:0,payload:{...payload(),settings:{session_id:id,library_binding:null}},dirty:false,deleted:false,pinned:false,opened:1};
 }
 const put=(e:AppEntity)=>fixture.entities.set(JSON.stringify([e.owner,e.id]),e);
-const get=(id:string,owner='owner-a')=>fixture.entities.get(JSON.stringify([owner,id]));
+const get=(id:string,owner='owner-a')=>decoded(fixture.entities.get(JSON.stringify([owner,id])),fixture.parts);
 function outgoingServer(sent:any[],reject=false){
   vi.mocked(cloudFetch).mockImplementation(async(path,init)=>{
     if(path==='/api/mobile/status')return Response.json({cloud_mode:true,authenticated:true,owner_scope:'owner-a'});
@@ -81,7 +61,7 @@ function outgoingServer(sent:any[],reject=false){
   });
 }
 beforeEach(()=>{
-  fixture.entities=new Map();fixture.meta=new Map([['sync:owner-a:consent',true]]);fixture.owner='owner-a';fixture.busy=false;fixture.failAt=0;fixture.reads=[];fixture.readHook=undefined;
+  fixture.entities=new Map();fixture.parts.clear();fixture.meta=new Map([['sync:owner-a:consent',true]]);fixture.owner='owner-a';fixture.busy=false;fixture.failAt=0;fixture.reads=[];fixture.readHook=undefined;
   vi.stubGlobal('IDBKeyRange',{bound:(lower:any,upper:any)=>({lower,upper}),only:(value:any)=>({lower:value,upper:value})});
   vi.stubGlobal('navigator',{locks:{request:async(_name:string,action:()=>any)=>action()}});
 });
@@ -330,8 +310,8 @@ it('imports unused characters and per-conversation snapshots once while retainin
   const conversation=get(first.sessions[0].id);
   expect(conversation.payload.migrated_draft).toBe('未送信');expect(conversation.payload.messages.at(-1).imported_state).toBe('stopped');
   expect(get(conversation.payload.settings.character_id).payload.document.name).toBe('Historical character');
-  expect([...fixture.entities.values()].filter(e=>e.kind==='character').map(e=>e.payload.document.name)).toContain('Unused');
-  expect([...fixture.entities.values()].every(e=>e.owner==='owner-a'&&e.payload.storage_policy==='local')).toBe(true);
+  expect([...fixture.entities.values()].map(value=>decoded(value,fixture.parts)).filter(e=>e.kind==='character').map(e=>e.payload.document.name)).toContain('Unused');
+  expect([...fixture.entities.values()].map(value=>decoded(value,fixture.parts)).every(e=>e.owner==='owner-a'&&e.payload.storage_policy==='local')).toBe(true);
 });
 it('rolls back the whole migration and receipt on failed storage and isolates the importing owner',async()=>{
   const data=initialData();data.conversations=[newConversation(data.characters[0],'kyalulu-iq3m')];fixture.failAt=2;
@@ -538,7 +518,7 @@ it('preserves unsent edits locally when a remote tombstone wins and scrubs retir
   const tombstone={id:'chat',kind:'conversation',revision:2,deleted:true,payload:{}};
   await receiveSyncPage('owner-a',[tombstone],3);
   expect(get('chat').deleted).toBe(true);expect(JSON.stringify(get('chat').payload)).not.toContain('UNSENT');
-  const recovery=[...fixture.entities.values()].find(e=>e.payload.recovery_from==='chat');
+  const recovery=[...fixture.entities.values()].map(value=>decoded(value,fixture.parts)).find(e=>e.payload.recovery_from==='chat');
   expect(recovery.payload.messages[0].content).toBe('UNSENT');expect(recovery.payload.storage_policy).toBe('local');expect(recovery.dirty).toBe(false);
   expect(fixture.meta.get('generation:owner-a:g')).toEqual({generation_id:'g',session_id:'chat',status:'deleted'});
   expect(fixture.meta.get('generation:owner-b:g').reply).toBe('OTHER-ACCOUNT');

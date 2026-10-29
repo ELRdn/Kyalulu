@@ -1,8 +1,9 @@
 <!doctype html><meta charset="utf-8"><title>Disposable sync selection acceptance</title>
 <p>Fictional accounts only. External requests and real APIs are forbidden.</p>
 <script type="module">
+import {logicalSnapshot,physicalSnapshot,fixedOutbox} from './storage-fixture.ts';
 import history from './unified-history.json';
-import {appTransaction,entity,getMeta} from '/src/lib/appStore.ts';
+import {appTransaction,entity,getMeta,writeEntity,writeOutbox} from '/src/lib/appStore.ts';
 import {rememberOwner,deviceOwner,setGenerationBusy} from '/src/lib/appContext.ts';
 import {receiveSyncPage,syncNow,syncState} from '/src/lib/appSync.ts';
 import {receiveLibrarySnapshot,receiveCreatorSnapshot,rebindConversation,canonical} from '/src/lib/appSyncData.ts';
@@ -73,22 +74,17 @@ IDBObjectStore.prototype.openCursor=function(...args){
 async function seed(records=[],batch){
   measuring=false;switchDuring='';switched=false;interrupt='owner';stats.readonlyScans=0;stats.referenceReads=[];concurrentUpdate=undefined;writerDone=undefined;rememberOwner(owner);
   await appTransaction(['entities','meta'],'readwrite',(tx,done)=>{
-    const entities=tx.objectStore('entities'),meta=tx.objectStore('meta');entities.clear();meta.clear();
-    for(let index=0;index<count;index++)entities.put(record('unrelated-'+String(index).padStart(3,'0'),basic('unrelated-'+index,maximum-count+1+index)));
+    const entities=tx.objectStore('entities'),meta=tx.objectStore('meta');entities.clear();meta.clear();tx.objectStore('parts').clear();
+    for(let index=0;index<count;index++){const row=record('unrelated-'+String(index).padStart(3,'0'),basic('unrelated-'+index,maximum-count+1+index));if(index%2)writeEntity(tx,row);else entities.put(row);}
     entities.put(record('foreign-chat',basic('foreign-chat',foreignMaximum),{owner:foreign}));
-    for(const item of records)entities.put(item);
+    for(const [index,item] of records.entries())if(index%2)writeEntity(tx,item);else entities.put(item);
     meta.put(true,prefix+'consent');meta.put(11,prefix+'cursor');meta.put(batch?maximum:7,'message-sequence:'+owner);
     meta.put({keep:'foreign receipt'},'sync:'+foreign+':remote:foreign-chat');
-    if(batch)meta.put(batch,prefix+'outbox');done();
+    if(batch)writeOutbox(tx,owner,batch);done();
   });
 }
 
-async function snapshot(){
-  return appTransaction(['entities','meta'],'readonly',(tx,done)=>{
-    const entities=tx.objectStore('entities').getAll(),meta=tx.objectStore('meta'),keys=meta.getAllKeys(),values=meta.getAll();
-    values.onsuccess=()=>done({entities:entities.result,meta:keys.result.map((key,index)=>[key,values.result[index]])});
-  });
-}
+async function snapshot(){const logical=await logicalSnapshot();return {...logical,physical:await physicalSnapshot()};}
 
 async function rejected(changes,label){
   const before=await snapshot();let failed=false;measuring=true;
@@ -265,7 +261,7 @@ async function outgoingDelete(){
     await seed([...outgoingRecords(),first,second,local]);const before=await snapshot();
     const sent=await outgoingSync(true);check(sent.length===1,'Deletion batch not sent');
     same(sent[0].changes,[{id:first.id,kind:'conversation',base_revision:3,payload:{},deleted:true,delete_confirmed:confirmed}],'First deletion/confirmation changed');
-    same((await getMeta(prefix+'outbox')).revisions,{[first.id]:4},'Deletion local revision changed');
+    same((await fixedOutbox(owner)).revisions,{[first.id]:4},'Deletion local revision changed');
     same((await snapshot()).entities,before.entities,'Rejected deletion destroyed local data');
     check(!stats.referenceReads.length,'Deletion resolved unused references');
   }
@@ -338,7 +334,7 @@ async function run(){
   check(stats.getAllAttempts===0&&stats.foreignCursorRows===0,'Bulk/foreign record reads detected');
   const request=indexedDB.open('kyalulu-app-v1');
   const db=await new Promise((resolve,reject)=>{request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});
-  check(db.version===2,'DB version changed');db.close();
+  check(db.version===3,'DB version changed');db.close();
   return {ok:true,scenario,probes,unrelatedConversations:count,maximum,foreignMaximum,stats,...details};
 }
 run().then(result=>window.__SYNC_SELECTION__=result).catch(error=>window.__SYNC_SELECTION__={ok:false,scenario,error:String(error),stack:error.stack,probes,stats})

@@ -1,10 +1,18 @@
 import { expect, it, vi } from 'vitest';
-import { uploadSync, downloadEntity } from './appTransfers';
+import { uploadSync, downloadEntity, jsonChunks } from './appTransfers';
+import { JsonStream } from './jsonStream';
 import { Sha256 } from '../mobile/sha256';
 import { encodeBytes, decodeBytes } from './remoteRpc';
 
 const chunkBytes=1024*1024,transfer='11111111-1111-4111-8111-111111111111';
 const hash=(raw:Uint8Array)=>new Sha256().update(raw).digest();
+it.each(['object','array'])('only serializes %s nesting that the reader can restore',kind=>{
+  const nested=(depth:number)=>{let value:any='original';for(let i=0;i<depth;i++)value=kind==='array'?[value]:{extension:value};return value;};
+  const value=nested(64),parser=new JsonStream();
+  for(const part of jsonChunks(value))parser.feed(part);
+  expect(parser.finish()).toEqual(value);
+  expect(()=>[...jsonChunks(nested(65))]).toThrow('Invalid sync transfer');
+});
 function fixture(){const payload={messages:[{content:'あ🙂'.repeat(330000)}]},body={request_id:'durable',changes:[{payload}]};return {payload,body,raw:new TextEncoder().encode(JSON.stringify(body))};}
 
 it('resumes the same upload and hashes the exact UTF-8 bytes before committing',async()=>{

@@ -66,12 +66,12 @@ async function run(){
     const unsent=await entity('fixture-unsent',owner);unsent.payload.storage_policy='sync';await saveEntity(unsent,unsent.revision);
     const quotaPreview=await request('/api/imports/text/preview',{text:JSON.stringify({name:'Quota',histories:[{name:'fixture-quota',messages:[{role:'user',content:'First'},{role:'assistant',content:'Second'}]}]})});
     const quotaPath='/api/imports/'+quotaPreview.preview_id+'/commit',quotaBody={request_id:'quota-retry',selections:[{index:0,document:quotaPreview.documents[0],history_indices:[0]}]};
-    const before=(await request('/api/library')).items.map(item=>item.id).sort().join(','),originalPut=IDBObjectStore.prototype.put;
+    const before=(await request('/api/library')).items.map(item=>item.id).sort().join(','),originalAdd=IDBObjectStore.prototype.add;
     let failed;
     try{
-      IDBObjectStore.prototype.put=function(value,...args){if(this.name==='entities'&&value.kind==='conversation'&&value.payload.title==='fixture-quota')throw new DOMException('Fixture quota','QuotaExceededError');return originalPut.call(this,value,...args);};
+      IDBObjectStore.prototype.add=function(value,...args){if(this.name==='entities'&&value.kind==='conversation')throw new DOMException('Fixture quota','QuotaExceededError');return originalAdd.call(this,value,...args);};
       failed=await deviceFetch(quotaPath,{method:'POST',body:JSON.stringify(quotaBody)});
-    }finally{IDBObjectStore.prototype.put=originalPut;}
+    }finally{IDBObjectStore.prototype.add=originalAdd;}
     check(!failed.ok&&(await request('/api/library')).items.map(item=>item.id).sort().join(',')===before,'Quota left a partial Library write');
     check(!await getMeta('import:'+owner+':quota-retry')&&!await getMeta('original:'+owner+':'+quotaPreview.source_hash),'Quota left a partial receipt/original');
     check((await entity('fixture-unsent',owner)).dirty,'Quota removed an unsent edit');

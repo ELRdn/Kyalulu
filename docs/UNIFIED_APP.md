@@ -417,6 +417,14 @@ fixture scenarios are recorded in
 [Outbox guards](validation/2026-10-25-unified-outbox-guards.md). Chunk checks no
 longer load the entire outbox; staging and projection still materialize JSON.
 
+Browser persistence now uses an additive IndexedDB v3 `parts` store for entity
+and immutable outbox payloads, with pieces up to 1 MiB. Existing inline records
+remain readable and are not eagerly rewritten at upgrade. See
+[segmented storage](validation/2026-10-30-unified-segmented-storage.md) for the
+transaction/owner/corruption checks and limits. A v2 client cannot reopen v3;
+recovery requires a v3-compatible bundle and must preserve all stores. Decoded
+trees and UI arrays remain whole; this is not 250 MB / 1 GB capacity acceptance.
+
 Research exports now use the same RuntimeDownload/apiFetch path as Library and
 Creator. Late bodies are rejected after account/target changes. Shared component
 and transport fixtures are recorded in

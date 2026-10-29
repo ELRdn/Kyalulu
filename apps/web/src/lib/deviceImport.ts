@@ -1,5 +1,5 @@
 import { ImportCommitSchema, PortableDocumentSchema, RuntimeStateSchema, LibraryBindingSchema, ConversationSettingsSchema } from '../../../../packages/schemas/src';
-import { appTransaction, getMeta, newEntity, type AppEntity } from './appStore';
+import { appTransaction, entitySelection, writeEntity, getMeta, newEntity, type AppEntity } from './appStore';
 import { deviceOwner } from './appContext';
 import { canonical } from './appSyncData';
 import { Sha256 } from '../mobile/sha256';
@@ -75,11 +75,24 @@ export async function commitDeviceImport(owner:string,previewId:string,input:unk
       if(owner!==deviceOwner()){abort(conflict('Account changed'));return;}
       const receipt=read.result;
       if(receipt){if(receipt.request_fingerprint!==fingerprint)abort(conflict('Import request already used'));else done({items:receipt.items,sessions:receipt.sessions});return;}
-      const library=store.getAll(IDBKeyRange.bound([owner,''],[owner,'\uffff']));
+      const library=store.openCursor(IDBKeyRange.bound([owner,''],[owner,'\uffff']));
+      const candidates:Record<string,unknown>[]=[];let maximumMessageId=0;
       library.onsuccess=()=>{
-        for(const selection of body.selections)if(!selection.target_id&&selection.duplicate_action!=='copy'
-          &&deviceSourceMatches(preview.documents[selection.index],library.result,owner).length){
-          abort(conflict('Already imported; select an existing item or explicitly copy'));return;
+        if(owner!==deviceOwner()){abort(conflict('Account changed'));return;}
+        const cursor=library.result;
+        if(cursor){
+          const value=cursor.value,selection=entitySelection(value);
+          if(!selection.messageIdsValid){abort(Error('Invalid stored message ID'));return;}
+          maximumMessageId=Math.max(maximumMessageId,selection.maximumMessageId);
+          if(!value.deleted&&selection.source)candidates.push(selection.source);
+          cursor.continue();return;
+        }
+        for(const selection of body.selections)if(!selection.target_id&&selection.duplicate_action!=='copy'){
+          const remote=preview.documents[selection.index].source.remote;
+          if(remote&&['source','source_id','sha256'].every(field=>typeof remote[field]==='string'&&remote[field])
+            &&candidates.some(value=>['source','source_id','sha256','document_index'].every(field=>(value[field]??null)===(remote[field]??null)))){
+            abort(conflict('Already imported; select an existing item or explicitly copy'));return;
+          }
         }
         let pending=updates.length;
         for(const update of updates){
@@ -90,14 +103,11 @@ export async function commitDeviceImport(owner:string,previewId:string,input:unk
               try{
                 if(owner!==deviceOwner())throw conflict('Account changed');
                 let number=sequence.result??0;
-                if(!Number.isSafeInteger(number)||number<0)throw Error('Invalid message sequence');
-                for(const record of records)for(const message of record.payload.messages??[]){
-                  if(!Number.isSafeInteger(message.id)||message.id<1)throw Error('Invalid stored message ID');
-                  number=Math.max(number,message.id);
-                }
-                for(const {value} of updates){
+                if(!Number.isSafeInteger(number)||number<0||!Number.isSafeInteger(maximumMessageId))throw Error('Invalid message sequence');
+                number=Math.max(number,maximumMessageId);
+                for(const {value,base} of updates){
                   if(value.kind==='conversation')for(const message of value.payload.messages){if(!Number.isSafeInteger(++number))throw Error('Message ID limit reached');message.id=number;}
-                  store.put(value);
+                  writeEntity(tx,value,base?'put':'add');
                 }
                 meta.put(number,'message-sequence:'+owner);
                 if(preview.original)meta.put(preview.original,'original:'+owner+':'+preview.source_hash);

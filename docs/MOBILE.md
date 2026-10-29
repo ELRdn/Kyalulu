@@ -46,7 +46,7 @@ pnpm --filter web build:mobile
 WASMビルド入力はwllama 3.8.1、llama.cpp `46ca246de9bb1c35269722a6240d37d9dfd79cad`、Emscripten 4.0.20、Dawn `v20260317.182325`です。
 `scripts/mobile_wasm/bootstrap.py`で作業領域へ取得し、WSLでEmscriptenをinstall/activateしてから、
 `scripts/mobile_wasm/prepare.py`と`build.sh`を実行します。`ple.patch`が固定ソースとの差分です。
-既存の成果物を保護して再ビルドする場合、`prepare.py`には隔離したプロジェクトrootを渡し、
+既存の成果物を保護して再ビルドする場合、`prepare.py`を隔離プロジェクトの`scripts/mobile_wasm/`へコピーして実行し、
 `build.sh <隔離root>/.artifacts/mobile-wasm <既存toolsのmobile-wasm root>`でソース・出力とツールを分けます。
 既定では従来の`.artifacts/mobile-wasm`を使います。`CMAKE_BUILD_PARALLEL_LEVEL`で並列数を指定できます。
 モデル準備は`python scripts/mobile_models.py --publish`。依存ツールはプロジェクト内`.artifacts/mobile-python`へ隔離します。

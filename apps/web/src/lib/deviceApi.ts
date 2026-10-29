@@ -2,7 +2,7 @@ import { PortableDocumentSchema, DeviceGenerationOutputSchema, RuntimeStateSchem
 import catalog from '../mobile/app-catalog.generated.json';
 import { MobileRuntime } from '../mobile/runtime';
 import { MODELS, readyModels } from '../mobile/models';
-import { allEntities, entity, openEntity, saveEntity, newEntity, getMeta, setMeta, appTransaction, scrubGenerationRecords, trimOfflineCache, type AppEntity } from './appStore';
+import { allEntities, entity, openEntity, saveEntity, newEntity, getMeta, setMeta, appTransaction, writeEntity, scrubGenerationRecords, trimOfflineCache, type AppEntity } from './appStore';
 import { deviceOwner, setGenerationBusy } from './appContext';
 import { estimateTokens, retrieveMemories, prepareRpg, validateProposals, refreshSummaries, type DeviceMemory } from './deviceCore';
 import { receiveConversation, rebindConversation } from './appSyncData';
@@ -315,7 +315,7 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
         const store=tx.objectStore('entities'),read=store.get([source.owner,source.id]);
         read.onsuccess=()=>{
           if(deviceOwner()!==source.owner||read.result?.revision!==source.revision){tx.abort();return;}
-          store.put({...source,deleted:true,dirty:false,revision:source.revision+1,payload:{storage_policy:'local'}});
+          writeEntity(tx,{...source,deleted:true,dirty:false,revision:source.revision+1,payload:{storage_policy:'local'}});
           scrubGenerationRecords(tx,source.owner,source.id);done();
         };
       });
@@ -340,7 +340,7 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
           try {
             let number=sequence.result??0;
             const copy=rebindConversation(receiveConversation(payload,undefined,()=>++number),id);
-            store.add({...newEntity('conversation',id,copy),owner,revision:1,dirty:copy.storage_policy==='sync'});
+            writeEntity(tx,{...newEntity('conversation',id,copy),owner,revision:1,dirty:copy.storage_policy==='sync'},'add');
             meta.put(number,'message-sequence:'+owner);done();
           }catch{tx.abort();}
         };
