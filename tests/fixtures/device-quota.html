@@ -1,0 +1,106 @@
+<!doctype html><meta charset="utf-8"><title>Disposable real device quota fixture</title>
+<p>Fictional accounts only. Quota is controlled by CDP; no IndexedDB prototype patches.</p>
+<script type="module">
+import {allEntities,appTransaction,entity,newEntity,saveEntity} from '/src/lib/appStore.ts';
+import {rememberOwner} from '/src/lib/appContext.ts';
+
+const owners=['quota-owner-a','quota-owner-b'];
+const params=new URL(location.href).searchParams,owner=params.get('owner'),operation=params.get('operation');
+const check=(value,message)=>{if(!value)throw Error(message);};
+check(owners.includes(owner)&&['new','update'].includes(operation),'Invalid fixture scenario');
+rememberOwner(owner);
+const receiptKey='import:'+owner+':quota-retry';
+const receipt={items:[{id:operation==='new'?'new-chat':'shared-chat',revision:operation==='new'?1:4}],request_id:'quota-retry'};
+const equal=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+// Deterministic, poorly compressible 1 MiB text: the same operation survives page reload.
+let state=0x12345678;
+const chunks=[];
+for(let part=0;part<64;part++){
+  const bytes=new Uint8Array(16384);
+  for(let index=0;index<bytes.length;index++){state^=state<<13;state^=state>>>17;state^=state<<5;bytes[index]=33+(state>>>0)%64;}
+  chunks.push(String.fromCharCode(...bytes));
+}
+const content=chunks.join('');
+const original=account=>({...newEntity('conversation','shared-chat',{
+  storage_policy:'sync',title:'UNSYNCED '+account,rating:'general',settings:{session_id:'shared-chat'},
+  messages:[{id:1,uuid:account+'-original',role:'user',content:'KEEP 原本🙂 '+account}],memories:[],summaries:[]
+},account),revision:3,serverRevision:1,dirty:true,opened:1});
+const candidate=operation==='update'?{...original(owner),payload:{...original(owner).payload,
+  messages:[...original(owner).payload.messages,{id:2,uuid:'quota-retry',role:'user',content}]}}
+  :{...newEntity('conversation','new-chat',{storage_policy:'sync',title:'NEW',settings:{session_id:'new-chat'},
+    messages:[{id:1,uuid:'quota-retry',role:'user',content}],memories:[],summaries:[]},owner),opened:0};
+
+async function snapshot(){
+  return appTransaction(['entities','meta'],'readonly',(tx,done)=>{
+    const rows=tx.objectStore('entities').getAll(),meta=tx.objectStore('meta');
+    const keys=meta.getAllKeys(),values=meta.getAll();
+    values.onsuccess=()=>done({entities:rows.result,meta:keys.result.map((key,index)=>[key,values.result[index]])});
+  });
+}
+async function seed(){
+  const empty=await snapshot();check(empty.entities.length===0&&empty.meta.length===0,'Origin is not fresh');
+  await appTransaction(['entities','meta'],'readwrite',(tx,done)=>{
+    for(const account of owners){
+      const row=original(account),meta=tx.objectStore('meta');
+      tx.objectStore('entities').put(row);
+      meta.put({request_id:'unsent-'+account,withdrawn:0,revisions:{'shared-chat':3},
+        changes:[{id:row.id,kind:row.kind,base_revision:1,payload:row.payload,deleted:false}],
+        receipt:{changes:[{id:row.id,revision:2,deleted:false}]}},'sync:'+account+':outbox');
+      meta.put({request_id:'existing-'+account,items:[{id:'shared-chat',revision:1}]},'import:'+account+':existing');
+      meta.put(true,'sync:'+account+':consent');
+    }
+    done();
+  });
+  return snapshot();
+}
+async function preserved(before){
+  check(equal(await snapshot(),before),'Quota failure changed entities, revisions, outboxes or receipts');
+  for(const account of owners){
+    rememberOwner(account);
+    check(equal(await allEntities(),before.entities.filter(row=>row.owner===account)),'Owner-scoped list leaked or lost a record');
+    check(equal(await entity('shared-chat'),original(account)),'Owner-scoped lookup returned a different original');
+    check(!await entity('new-chat'),'Rejected new conversation exists');
+  }
+  rememberOwner(owner);
+  return {originalsPreserved:true,ownersIsolated:true,outboxesPreserved:true,receiptsPreserved:true};
+}
+async function probe(){
+  const events=[];let failure=null,terminal;
+  try{
+    await appTransaction(['entities','meta'],'readwrite',(tx,done)=>{
+      const record=(event)=>events.push({event:event.type,name:tx.error?.name??event.target.error?.name??null});
+      tx.addEventListener('error',record);
+      terminal=new Promise(resolve=>{
+        tx.addEventListener('abort',event=>{record(event);resolve();});
+        tx.addEventListener('complete',()=>resolve());
+      });
+      tx.objectStore('meta').put({probe:true},'quota-probe-marker');
+      tx.objectStore('entities').put({...candidate,id:'quota-probe'});
+      done();
+    });
+  }catch(error){failure=String(error);}
+  // appTransaction's rejection can run before later native event listeners.
+  await terminal;
+  return {failure,events,payloadBytes:new TextEncoder().encode(content).length};
+}
+async function attempt(){
+  try{
+    const saved=await saveEntity(candidate,operation==='new'?0:3,{[receiptKey]:receipt});
+    return {ok:true,revision:saved.revision};
+  }catch(error){return {ok:false,error:String(error)};}
+}
+async function recovered(before){
+  const after=await snapshot(),saved=after.entities.find(row=>row.owner===owner&&row.id===candidate.id);
+  check(saved&&saved.revision===(operation==='new'?1:4)&&saved.serverRevision===candidate.serverRevision&&saved.dirty,'Retry revision/dirty state is wrong');
+  check(saved.opened>0&&equal({...saved,revision:candidate.revision,dirty:candidate.dirty,opened:candidate.opened},candidate),'Retry changed the intended operation');
+  check(equal(after.entities.filter(row=>row!==saved),before.entities.filter(row=>row.owner!==owner||row.id!==candidate.id)),'Retry changed an unrelated original or owner');
+  check(equal(after.meta.filter(([key])=>key!==receiptKey),before.meta),'Retry changed an existing outbox or receipt');
+  check(equal(after.meta.find(([key])=>key===receiptKey)?.[1],receipt),'Retry did not atomically save its new receipt');
+  rememberOwner(owner);check(equal(await entity(candidate.id),saved),'Retry not readable by its owner');
+  rememberOwner(owners.find(account=>account!==owner));
+  check(equal(await allEntities(),before.entities.filter(row=>row.owner!==owner)),'Retry leaked across owners');
+  rememberOwner(owner);
+  return {retryPersisted:true,revision:saved.revision,ownersIsolated:true,existingOutboxesAndReceiptsPreserved:true};
+}
+window.quotaFixture={seed,snapshot,preserved,probe,attempt,recovered};
+</script>

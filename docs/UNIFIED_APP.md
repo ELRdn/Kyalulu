@@ -24,6 +24,12 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 
 ## Delivered Behavior
 
+- Native Chromium IndexedDB quota errors now have explicit acceptance coverage:
+  two owners each retain originals, revisions, durable outboxes and receipts
+  after new/update saves fail at a 128 KiB origin quota; identical saves succeed
+  after release and survive page reload. Physical disk/device acceptance remains
+  separate. See [quota validation](validation/2026-10-29-unified-device-quota.md).
+
 - Commercial UI now has actual-app JA/EN Chromium coverage at mobile/light and
   desktop/dark widths: home/explore/chat banners, 15-second/150-credit disclosure,
   insufficient-balance recovery, draft preservation, no automatic resend, and
