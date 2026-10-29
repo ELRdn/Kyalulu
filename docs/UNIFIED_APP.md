@@ -24,6 +24,13 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 
 ## Delivered Behavior
 
+- Commercial UI now has actual-app JA/EN Chromium coverage at mobile/light and
+  desktop/dark widths: home/explore/chat banners, 15-second/150-credit disclosure,
+  insufficient-balance recovery, draft preservation, no automatic resend, and
+  delayed responses across account switches. All 24 fixture cases passed; real
+  advertising, payments and provider completion remain gated. See
+  [commercial UI validation](validation/2026-10-29-unified-commercial-ui.md).
+
 - Browser Runtime health/capability calls no longer load account entities, and
   selected conversation/Library operations skip unrelated conversation bodies.
   Lists and imports retain their required owner-wide reads. Captured-owner
