@@ -173,3 +173,9 @@ v3へ更新後はv2 clientへ戻せないため、復旧にもv3対応bundleが�
 別の任意実行Windows試験では250MBの架空payload保存/ブラウザ再起動/復元は成功。
 1GBは保存/断片照合まで成功し、本文復元は4GiBの試験安全予算下で未合格。
 この予算を製品上限と扱わない。decoded tree/UI clone、全chat/sync/RSSと実機の受入れは残る。
+
+2026-10-30の追加許可で固定897737fのVPS別imageを作成し、実image210ファイル/新WASM4点・
+12項目・既定Uvicorn実HTTPと、3サービス/DB表hash/残高集計/設定フラグの前後一致を確認した。
+[Current image](validation/2026-10-30-unified-container.md) に記録する。本番切替ではない。
+Android/iPhone実機は本人の指定で後日とした。復旧計画用のvolume/Compose配置メタデータ保存は
+自動承認レビューで今回の範囲外とされ、未取得。
