@@ -423,7 +423,9 @@ remain readable and are not eagerly rewritten at upgrade. See
 [segmented storage](validation/2026-10-30-unified-segmented-storage.md) for the
 transaction/owner/corruption checks and limits. A v2 client cannot reopen v3;
 recovery requires a v3-compatible bundle and must preserve all stores. Decoded
-trees and UI arrays remain whole; this is not 250 MB / 1 GB capacity acceptance.
+trees and UI arrays remain whole. A separate opt-in Windows storage measurement
+passed a 250 MB save/browser-restart/restore; 1 GB restored bodies did not pass
+under the test's 4 GiB safety cap. Full chat/sync/phone capacity remains open.
 
 Research exports now use the same RuntimeDownload/apiFetch path as Library and
 Creator. Late bodies are rejected after account/target changes. Shared component

@@ -54,6 +54,25 @@ The 20 new browser scenarios cover Unicode/huge scalar/historical/unknown-field 
 
 No known connected-slice check failure remains. This is bounded persistence acceptance, not a deployment or capacity acceptance.
 
+## Optional Windows capacity measurement
+
+The later opt-in driver `tests/e2e_storage_capacity.py` uses a fresh owned Chromium 151 profile, a random loopback origin, fictional independently generated message strings, and the real `appStore` API. Exact UTF-8 JSON sizes are generated without creating a whole JSON string. Only counts/hashes cross CDP. API/external requests, WebSockets and Service Workers are blocked. It is deliberately outside default CI; `--self-check` runs a small save/exit/relaunch/hash case and `--run` opts into 250,000,000 bytes followed by a headroom-gated 1,000,000,000 bytes.
+
+Each size has a 480-second budget, a sampled **4 GiB sum of owned processes' working sets**, a **4 GiB hard Windows Job committed-memory cap**, and a system-available-memory floor. Working-set sums may double-count shared pages; they are neither private bytes nor JS heap. All owned descendants are terminated on failure, and no unrelated process is stopped. These are test safety limits, **not user-specified product capacity requirements**.
+
+| Fictional single payload | Save | Full browser exit/relaunch and verification | Measured peak working-set sum (save / reload) |
+| --- | --- | --- | --- |
+| 250,000,000 JSON bytes; 3,810 messages, 239 parts | pass, 6,849.6 ms | all part hashes + restored body hash/count pass; restore 4,964.8 ms | 1,456,377,856 / 2,116,321,280 bytes |
+| 1,000,000,000 JSON bytes; 15,240 messages, 954 parts | pass, 33,732.8 ms | physical part/hash checks pass; full `entity()` restore stopped at the safety limit | 2,934,947,840 / 4,306,423,808 bytes |
+
+Maximum physical part: **1,048,576 bytes**. In a separate fresh-browser diagnostic, `entity()` restore was attempted *before* the physical verification scan. It also did not complete under the same limits: target closed near the hard Job cap (peak committed bytes 4,298,362,880; sampled working-set sum 4,277,788,672). Thus the preceding verification scan alone does not explain the unaccepted restore. No forced GC, raised limits or product-code workaround was used. This does not establish that 1 GB can never be read on another budget or device; **1 GB restoration is unaccepted under this test configuration**.
+
+Main evidence: `.artifacts/unified-capacity-20261030/20261030-015835-84dac275/results.json`; restore-first diagnosis: `20261030-020434-diagnostic-712c6bf3/results.json` under the same evidence root. Small final self-check: `20261030-020705-474e4aaf/results.json`, pass. Initial sandbox browser startup refusal and earlier intermediate driver revisions remain separate, unaccepted records. Production data was never used. Both large-size runs and the diagnosis ended with zero owned PIDs remaining. Stored fictional profiles are retained.
+
+Final evidence index: `.artifacts/unified-capacity-20261030/acceptance-summary.json`. The driver now explicitly isolates Vite caches and checks this path; the initial attempt's temporary cache-write scope was not established. It did not use production data. The `previous_case` bookkeeping regression checks passed 3/3 after the rename.
+
+This checks persistence for this synthetic distribution, not full chat UI/rendering, generation, sync transfer, private memory, physical-phone capacity or a universal maximum. Decoded object trees remain resident. A later driver bookkeeping fix separates the diagnostic input from the preceding-case variable; the recorded 1 GB restore failure remains unchanged.
+
 ## DB compatibility and rollback
 
 **An old client calling `indexedDB.open('kyalulu-app-v1',2)` cannot reopen an upgraded v3 DB**; the browser returns `VersionError`. Never delete, clear, downgrade, or recreate the user's DB as a rollback technique. Preserve `entities`, `meta` and `parts` together.

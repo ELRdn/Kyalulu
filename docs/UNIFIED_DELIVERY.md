@@ -169,4 +169,7 @@ Windows同梱CLIの隔離復元/rollbackと旧Mobile梱包、切替修正によ�
 [Fresh WASM](validation/2026-10-30-unified-wasm.md) に記録する。旧b133ce0候補は新WASMを含まない。
 Browser保存をIDB v3の1MiB断片へ分離し、原本/receipt/outboxのatomic性と深さ境界を確認した記録は
 [Segmented storage](validation/2026-10-30-unified-segmented-storage.md) に記録する。
-v3へ更新後はv2 clientへ戻せないため、復旧にもv3対応bundleが必要。decoded treeとUI clone、250MB/1GB/RSS、実機の受入れは残る。
+v3へ更新後はv2 clientへ戻せないため、復旧にもv3対応bundleが必要。
+別の任意実行Windows試験では250MBの架空payload保存/ブラウザ再起動/復元は成功。
+1GBは保存/断片照合まで成功し、本文復元は4GiBの試験安全予算下で未合格。
+この予算を製品上限と扱わない。decoded tree/UI clone、全chat/sync/RSSと実機の受入れは残る。

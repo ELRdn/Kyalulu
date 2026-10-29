@@ -73,6 +73,8 @@ FILES = (
     "tests/e2e_unified_pwa.py",
     "tests/e2e_mobile_migration.py",
     "tests/e2e_segmented_storage.py",
+    "tests/e2e_storage_capacity.py",
+    "tests/fixtures/storage-capacity.html",
     "tests/fixtures/segmented-storage.html",
     "tests/fixtures/storage-fixture.ts",
     "tests/fixtures/session-policy.tsx",

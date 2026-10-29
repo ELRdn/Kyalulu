@@ -48,3 +48,33 @@ deploy lockを取得し、開始前後に既存Cloudのhealth・OOM・再起動�
 同じVPSのCPU・RAM・diskを使うため、一時的な資源競合の可能性は残る。
 この承認には、本番切替・DNS/OAuth/Caddy変更・本番DBのbackup転送/復元・
 既存image/volume削除・Docker更新・factory resetは含めない。
+
+## 後続897737f候補の範囲（前回許可とは別、まだ未実行）
+
+前回の明示許可は固定bf83d03とその保存先に限定される。下記は内容と保存先が
+変わるため、同じ許可を流用しない。既にローカルの配布監査・PWA/旧Mobile移行・
+Windows同梱CLI確認まで完了した具体的な候補を対象にする。
+
+- 公開済みコード: `897737fbe63e424f51b225467a81685ef0b7bccd`。
+- 転送元: `.artifacts/unified-canonical-897737f/kyalulu-cloud.tar.gz`、
+  **66,009,824 bytes**、SHA-256
+  `fb88a3d1bab219372e78f518bc082959678abd78ceee0aec55b72f1b49f15e52`。
+  223 manifest・220 productファイル・572 committed source・新WASM4点を照合済み。
+- 保存先: 同じVPSの `/opt/kyalulu-cloud/validation/unified-897737f-20261030/`。
+  新規に作り、同パスが存在する場合は上書きせず停止する。
+- 別image tag: `kyalulu-cloud:unified-897737f-validation`。
+  前回と同じbuild上限（memory384MiB、swap込み512MiB、CPU50%）を守る。
+- `tests/fixtures/unified-container.py` と既定Uvicorn CMDの架空データ試験だけを
+  network none・read-only・公開port/host bindなし・tmpfs・memory256MiB・CPU25%・
+  pids64で行い、専用コンテナは終了・削除を確認する。
+- ホスト鍵照合・deploy lock・資源/health/OOM/再起動の前後照合と悪化時の専用処理停止を
+  維持する。前回の508MiBは過去の値なので、開始前に余力を再確認する。
+- 許可済み読取集計・hashの保存先は前回と同じ
+  `.artifacts/unified-vps-preflight-20261029/` 内の新しい識別名に限定する。
+  会話・鍵・DB本体は取得しない。codeとhash以外の私的情報は公開しない。
+- 本番image/設定/volume/DB、DNS/Caddy/OAuth、残高/台帳/予算は変更しない。
+  本番backupの取得/復元や本番への切替は対象外。契約/広告/決済/実推論も行わない。
+
+この工程の成功でも、実機・大容量/RSS・署名/ライセンス・独立backup復旧や
+本番切替の受入れを代替しない。候補の正本は
+[新規WASMとv3候補の検証](validation/2026-10-30-unified-native-mobile.md) を参照。
