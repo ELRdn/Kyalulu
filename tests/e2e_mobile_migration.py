@@ -1,4 +1,5 @@
 """Real migration pages and production Mobile shell in a private loopback profile."""
+from browser_storage import READ_ENTITIES_JS
 import argparse
 import asyncio
 import base64
@@ -46,13 +47,9 @@ async def source_state(page):
 
 
 async def target_state(page):
-    return await page.evaluate('''async()=>{
-      if(!(await indexedDB.databases()).some(db=>db.name==='kyalulu-app-v1'))return [];
-      return new Promise((resolve,reject)=>{const r=indexedDB.open('kyalulu-app-v1',2);r.onerror=reject;r.onsuccess=()=>{
-        const db=r.result,tx=db.transaction('entities'),read=tx.objectStore('entities').getAll();
-        tx.oncomplete=()=>{db.close();resolve(read.result.sort((a,b)=>a.id.localeCompare(b.id)));};tx.onerror=reject;
-      };});
-    }''')
+    if not await page.evaluate("async()=> (await indexedDB.databases()).some(db=>db.name==='kyalulu-app-v1')"):
+        return []
+    return await page.evaluate(READ_ENTITIES_JS)
 
 
 async def confirm_import(page):

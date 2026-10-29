@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useExecutionTarget, useLanguage, labels, deviceOwner, useDeviceOwner } from '../lib/appContext';
-import { entity, saveEntity, appTransaction } from '../lib/appStore';
+import { entity, saveEntity, entitySelection, appTransaction } from '../lib/appStore';
 import { syncNow, syncState, subscribeSync, setSyncConsent, hydrateConversation } from '../lib/appSync';
 import { apiFetch, cloudFetch } from '../lib/transport';
 import { useConfirm } from './ui/Dialog';
@@ -61,7 +61,7 @@ export default function SessionPolicy({sessionId,model,disabled}:{sessionId:stri
         try{
           if(next&&(await entity(sessionId,owner))?.payload.cache_evicted)await hydrateConversation(sessionId,owner);
           await appTransaction<void>(['entities'],'readwrite',(tx,done)=>{const store=tx.objectStore('entities'),r=store.get([owner,sessionId]);r.onsuccess=()=>{
-            if(owner!==deviceOwner()||!r.result||r.result.deleted||next&&r.result.payload.cache_evicted){tx.abort();return;}
+            if(owner!==deviceOwner()||!r.result||r.result.deleted||next&&entitySelection(r.result).cache_evicted){tx.abort();return;}
             store.put({...r.result,pinned:next});done();};});setPinned(next);
         }catch(e){setError(String(e));}finally{setBusy(false);}
       }}/>{t.offline}</label>

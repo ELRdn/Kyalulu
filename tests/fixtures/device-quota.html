@@ -1,7 +1,9 @@
 <!doctype html><meta charset="utf-8"><title>Disposable real device quota fixture</title>
 <p>Fictional accounts only. Quota is controlled by CDP; no IndexedDB prototype patches.</p>
 <script type="module">
-import {allEntities,appTransaction,entity,newEntity,saveEntity} from '/src/lib/appStore.ts';
+import {allEntities,appTransaction,entity,newEntity,saveEntity,writeEntity,writeOutbox} from '/src/lib/appStore.ts';
+import {logicalSnapshot,physicalSnapshot} from './storage-fixture.ts';
+import {canonical} from '/src/lib/appSyncData.ts';
 import {rememberOwner} from '/src/lib/appContext.ts';
 
 const owners=['quota-owner-a','quota-owner-b'];
@@ -11,7 +13,7 @@ check(owners.includes(owner)&&['new','update'].includes(operation),'Invalid fixt
 rememberOwner(owner);
 const receiptKey='import:'+owner+':quota-retry';
 const receipt={items:[{id:operation==='new'?'new-chat':'shared-chat',revision:operation==='new'?1:4}],request_id:'quota-retry'};
-const equal=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+const equal=(a,b)=>canonical(a)===canonical(b);
 // Deterministic, poorly compressible 1 MiB text: the same operation survives page reload.
 let state=0x12345678;
 const chunks=[];
@@ -30,22 +32,17 @@ const candidate=operation==='update'?{...original(owner),payload:{...original(ow
   :{...newEntity('conversation','new-chat',{storage_policy:'sync',title:'NEW',settings:{session_id:'new-chat'},
     messages:[{id:1,uuid:'quota-retry',role:'user',content}],memories:[],summaries:[]},owner),opened:0};
 
-async function snapshot(){
-  return appTransaction(['entities','meta'],'readonly',(tx,done)=>{
-    const rows=tx.objectStore('entities').getAll(),meta=tx.objectStore('meta');
-    const keys=meta.getAllKeys(),values=meta.getAll();
-    values.onsuccess=()=>done({entities:rows.result,meta:keys.result.map((key,index)=>[key,values.result[index]])});
-  });
-}
+async function snapshot(){return {...await logicalSnapshot(),physical:await physicalSnapshot()};}
 async function seed(){
   const empty=await snapshot();check(empty.entities.length===0&&empty.meta.length===0,'Origin is not fresh');
   await appTransaction(['entities','meta'],'readwrite',(tx,done)=>{
     for(const account of owners){
       const row=original(account),meta=tx.objectStore('meta');
-      tx.objectStore('entities').put(row);
-      meta.put({request_id:'unsent-'+account,withdrawn:0,revisions:{'shared-chat':3},
+      if(account===owners[0])writeEntity(tx,row);else tx.objectStore('entities').put(row);
+      const batch={request_id:'unsent-'+account,withdrawn:0,revisions:{'shared-chat':3},
         changes:[{id:row.id,kind:row.kind,base_revision:1,payload:row.payload,deleted:false}],
-        receipt:{changes:[{id:row.id,revision:2,deleted:false}]}},'sync:'+account+':outbox');
+        receipt:{changes:[{id:row.id,revision:2,deleted:false}]}};
+      if(account===owners[0])writeOutbox(tx,account,batch);else meta.put(batch,'sync:'+account+':outbox');
       meta.put({request_id:'existing-'+account,items:[{id:'shared-chat',revision:1}]},'import:'+account+':existing');
       meta.put(true,'sync:'+account+':consent');
     }
@@ -75,7 +72,7 @@ async function probe(){
         tx.addEventListener('complete',()=>resolve());
       });
       tx.objectStore('meta').put({probe:true},'quota-probe-marker');
-      tx.objectStore('entities').put({...candidate,id:'quota-probe'});
+      writeEntity(tx,{...candidate,id:'quota-probe'});
       done();
     });
   }catch(error){failure=String(error);}

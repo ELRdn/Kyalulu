@@ -21,7 +21,7 @@ function* jsonText(value:any,ancestors=new Set<object>()):Generator<string> {
     yield '"';return;
   }
   if(value===null||typeof value!=='object') {const text=JSON.stringify(value);if(text===undefined)throw Error('Invalid sync transfer');yield text;return;}
-  if(ancestors.has(value)||ancestors.size>64||!Array.isArray(value)&&![Object.prototype,null].includes(Object.getPrototypeOf(value)))throw Error('Invalid sync transfer');
+  if(ancestors.has(value)||ancestors.size>=64||!Array.isArray(value)&&![Object.prototype,null].includes(Object.getPrototypeOf(value)))throw Error('Invalid sync transfer');
   ancestors.add(value);
   if(Array.isArray(value)){
     yield '[';
@@ -38,8 +38,8 @@ function* jsonText(value:any,ancestors=new Set<object>()):Generator<string> {
   ancestors.delete(value);
 }
 
-// shortcut: outboxes remain whole objects; segment their storage before 1 GB single-entity acceptance.
-function* jsonChunks(value:unknown):Generator<Uint8Array> {
+// shortcut: decoded trees and scalar strings stay whole; bound them before large-memory acceptance.
+export function* jsonChunks(value:unknown):Generator<Uint8Array> {
   const encoder=new TextEncoder();let buffer=new Uint8Array(CHUNK_BYTES),used=0;
   for(const text of jsonText(value)){
     const raw=encoder.encode(text);let offset=0;

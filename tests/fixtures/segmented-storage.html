@@ -1,0 +1,234 @@
+<!doctype html><meta charset="utf-8"><title>Disposable segmented persistence acceptance</title>
+<p>Fictional accounts, fresh contexts and loopback modules only. Bounded fixtures; no capacity claim.</p>
+<script type="module">
+import history from './unified-history.json';
+import {appTransaction,entity,allEntities,newEntity,saveEntity,openEntity,writeEntity,writeOutbox,restoreOutbox,getMeta,setMeta} from '/src/lib/appStore.ts';
+import {rememberOwner,setGenerationBusy} from '/src/lib/appContext.ts';
+import {Sha256} from '/src/mobile/sha256.ts';
+import {receiveSyncPage,syncNow,syncState,setSyncConsent,reconfirmDeletion} from '/src/lib/appSync.ts';
+import {canonical} from '/src/lib/appSyncData.ts';
+import {fixedOutbox} from './storage-fixture.ts';
+const scenario=new URL(location.href).searchParams.get('scenario'),owner='segmented-fiction-a',foreign='segmented-fiction-b',dbName='kyalulu-app-v1';
+const check=(value,message)=>{if(!value)throw Error(message);},same=(a,b,message)=>check(canonical(a)===canonical(b),message);
+const probes=[],metrics={};rememberOwner(owner);
+const seed=()=>({...newEntity('conversation','history',structuredClone(history.payload),owner),revision:7,serverRevision:4,dirty:true,opened:1,unknown_header:{keep:'茶🙂'}});
+const huge=()=>{const value=seed();value.payload.unknown={text:'茶🙂é\\"\n'.repeat(270000),nested:JSON.parse('{"__proto__":{"retain":true},"extension":[null,true,0]}')};return value;};
+const open=(version)=>new Promise((resolve,reject)=>{const request=indexedDB.open(dbName,version);request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});
+const save=value=>appTransaction(['entities'],'readwrite',(tx,done)=>writeEntity(tx,value,'put',done));
+const physical=()=>appTransaction(['entities','meta','parts'],'readonly',(tx,done)=>{
+  const result={},entities=tx.objectStore('entities').getAll(),meta=tx.objectStore('meta'),keys=meta.getAllKeys(),values=meta.getAll();
+  values.onsuccess=()=>{result.entities=entities.result;result.meta=keys.result.map((key,index)=>[key,values.result[index]]);
+    const pieces=[],request=tx.objectStore('parts').openCursor();request.onsuccess=()=>{const cursor=request.result;
+      if(!cursor){result.parts=pieces;done(result);return;}
+      pieces.push([cursor.key,cursor.value.length,new Sha256().update(cursor.value).digest()]);cursor.continue();};
+  };
+});
+const header=()=>appTransaction(['entities'],'readonly',(tx,done)=>{const read=tx.objectStore('entities').get([owner,'history']);read.onsuccess=()=>done(read.result);});
+async function rejected(action,message){let failed=false;try{await action();}catch{failed=true;}check(failed,message);}
+async function run(){
+  if(scenario.startsWith('upgrade-')||scenario==='blocked'){
+    const version=scenario==='upgrade-v2'?2:1;
+    const request=indexedDB.open(dbName,version);request.onupgradeneeded=()=>{const db=request.result;db.createObjectStore('entities',{keyPath:['owner','id']});const meta=db.createObjectStore('meta');if(version===2)meta.createIndex('sync-outbox-state',['request_id','withdrawn']);};
+    const old=await new Promise((resolve,reject)=>{request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});
+    const value=seed(),batch={request_id:'legacy-fixed',revisions:{history:7},changes:[{id:value.id,kind:value.kind,base_revision:4,payload:value.payload,deleted:false}]};
+    await new Promise((resolve,reject)=>{const tx=old.transaction(['entities','meta'],'readwrite');tx.objectStore('entities').put(value);tx.objectStore('meta').put(batch,'sync:'+owner+':outbox');tx.oncomplete=resolve;tx.onabort=reject;});
+    if(scenario==='blocked'){
+      await rejected(()=>entity(value.id,owner),'Blocked upgrade did not reject');old.close();
+    }else old.close();
+    same(await entity(value.id,owner),value,'Legacy data changed at upgrade');
+    const raw=await physical();check(!raw.parts.length&&raw.entities[0].payload&&!raw.entities[0].payloadParts,'Upgrade eagerly rewrote inline body');
+    same(await getMeta('sync:'+owner+':outbox'),batch,'Upgrade rewrote old outbox');
+    const mixed=huge();mixed.id='segmented';await save(mixed);
+    same(await entity('segmented',owner),mixed,'Mixed segmented body lost');same(await entity(value.id,owner),value,'Mixed inline body lost');
+    const db=await open();check(db.version===3&&db.objectStoreNames.contains('parts'),'v3 missing');db.close();
+    await rejected(()=>open(2),'v2 client reopened v3');probes.push('lazy-upgrade','mixed-inline-parts','v2-reopen-fails');return;
+  }
+  if(scenario==='late-success'){
+    const original=indexedDB.open.bind(indexedDB);let late;
+    indexedDB.open=(...args)=>{const request=original(...args);request.addEventListener('success',()=>{late=request.result;request.onblocked?.(new Event('blocked'));});return request;};
+    try{await rejected(()=>entity('history',owner),'Late success resolved rejected open');}finally{indexedDB.open=original;}
+    await new Promise(resolve=>setTimeout(resolve,0));
+    let closed=false;try{late.transaction('entities');}catch{closed=true;}check(closed,'Late connection leaked');
+    await entity('history',owner);probes.push('late-success-closed','retry');return;
+  }
+  if(scenario==='depth-boundary'){
+    const value=seed();let payload='original';for(let i=0;i<64;i++)payload={extension:payload};value.payload=payload;
+    await save(value);same(await entity(value.id,owner),value,'64-level payload failed to restore');
+    const before=await physical(),deeper={...value,revision:8,payload:{extension:payload}};
+    await rejected(()=>save(deeper),'65-level replacement was saved');same(await physical(),before,'Rejected depth replacement changed original');
+    await rejected(()=>save({...deeper,id:'too-deep'}),'65-level new record was saved');same(await physical(),before,'Rejected depth insert left parts');
+    same(await allEntities(owner),[value],'Library unreadable after rejected depth');probes.push('64-level-roundtrip','65-level-rollback','library-readable');return;
+  }
+  const value=huge();await save(value);same(await entity(value.id,owner),value,'Unicode/history/huge scalar roundtrip changed');
+  let raw=await physical();metrics.payloadBytes=raw.entities[0].payloadParts.size;metrics.maximumPartBytes=Math.max(...raw.parts.map(part=>part[1]));check(raw.parts.length>=3&&raw.parts.every(part=>part[1]<=1024*1024),'Parts exceed 1 MiB or fixture too small');
+  check(!raw.entities[0].payload&&raw.entities[0].payloadParts,'Body still inline');
+  if(['receive-quota','receive-generation','ack-quota','deletion-controls','migration','pin-ui','device-branch','outbox-corrupt'].includes(scenario)){
+    const prefix='sync:'+owner+':';await setMeta(prefix+'consent',true);await setMeta(prefix+'cursor',10);await setMeta('message-sequence:'+owner,50);
+    const inject=async(action,generation=false,opensSource=false)=>{
+      const before=await physical(),add=IDBObjectStore.prototype.add;let writes=0;
+      IDBObjectStore.prototype.add=function(value,key){
+        if(this.name==='parts'&&++writes===3&&!generation)throw new DOMException('After two successful parts','QuotaExceededError');
+        const request=add.call(this,value,key);
+        if(this.name==='parts'&&writes===2&&generation)request.addEventListener('success',()=>setGenerationBusy(true));
+        return request;
+      };
+      try{await action();}finally{IDBObjectStore.prototype.add=add;if(generation)setGenerationBusy(false);}
+      check(writes>=2,'Fault did not reach multiple part writes');const after=await physical();
+      if(opensSource)before.entities.find(row=>row.id===value.id).opened=after.entities.find(row=>row.id===value.id).opened;
+      same(after,before,'Connected operation left partial parts/body/control commit');
+    };
+    if(scenario.startsWith('receive-')){
+      await setMeta('generation:'+owner+':old',{generation_id:'old',session_id:value.id,status:'completed',reply:'PRIVATE'});
+      const tombstone={id:value.id,kind:'conversation',revision:5,deleted:true,payload:{}};
+      await inject(()=>rejected(()=>receiveSyncPage(owner,[tombstone],11),'Receive fault committed'),scenario==='receive-generation');
+      await receiveSyncPage(owner,[tombstone],11);const rows=await allEntities(owner),recovery=rows.find(row=>row.payload.recovery_from===value.id);
+      check(recovery?.payload.unknown.text===value.payload.unknown.text&&(await entity(value.id,owner)).deleted,'Recovery lost original/history');
+      check(await getMeta(prefix+'cursor')===11&&(await getMeta('generation:'+owner+':old')).status==='deleted','Receive receipt/cursor/scrub missing');
+      probes.push('receive-recovery-atomic-rollback','retry-preserves-historical-source');return;
+    }
+    if(scenario==='ack-quota'){
+      const batch={request_id:'fixed-ack',withdrawn:0,revisions:{history:7},changes:[{id:value.id,kind:value.kind,base_revision:4,payload:value.payload,deleted:false}],
+        receipt:{changes:[{id:'fork',source_id:value.id,revision:6,deleted:false,branched:true}]}};
+      await appTransaction(['meta','parts'],'readwrite',(tx,done)=>writeOutbox(tx,owner,batch,done));
+      const fetch=globalThis.fetch;globalThis.fetch=async(path,init)=>{check(!init?.method,'Cached ACK resent payload');return Response.json(String(path)==='/api/mobile/status'?{cloud_mode:true,authenticated:true,owner_scope:owner}:{changes:[],cursor:10,has_more:false});};
+      try{
+        await inject(async()=>{await syncNow(owner);check(syncState().phase==='error','ACK fault reported saved');});
+        await syncNow(owner);check(syncState().phase==='saved'&&!await getMeta(prefix+'outbox'),'ACK retry not settled');
+        check((await entity('fork',owner)).payload.unknown.text===value.payload.unknown.text,'ACK branch lost unknown field');
+        check(!(await physical()).parts.some(part=>part[0][1]==='outbox'),'ACK parts leaked');
+      }finally{globalThis.fetch=fetch;}
+      probes.push('ack-branch-parts-receipt-sequence-rollback','cached-ack-retry-cleanup');return;
+    }
+    if(scenario==='deletion-controls'){
+      const deleted=await saveEntity({...value,deleted:true},7);
+      const fetch=globalThis.fetch;globalThis.fetch=async(path,init)=>{
+        if(String(path)==='/api/mobile/status')return Response.json({cloud_mode:true,authenticated:true,owner_scope:owner});
+        if(String(path).includes('/cancel/'))return Response.json({state:'canceled'});
+        return init?.method==='POST'?Response.json({error:'confirmation required'},{status:409}):Response.json({changes:[],cursor:10,has_more:false});
+      };
+      try{
+        await syncNow(owner);const first=await fixedOutbox(owner);check(!first.changes[0].delete_confirmed,'Unconfirmed deletion escalated');
+        check((await entity(value.id,owner)).payload.unknown.text===value.payload.unknown.text,'Unconfirmed deletion lost body');
+        await setMeta(prefix+'remote:'+value.id,{revision:6,deleted:false,count:4});
+        await inject(()=>rejected(()=>reconfirmDeletion(owner,value.id,deleted.revision,6),'Reconfirmation fault committed'));
+        await reconfirmDeletion(owner,value.id,deleted.revision,6);const fixed=await getMeta(prefix+'outbox');
+        check(fixed.request_id!==first.request_id&&(await fixedOutbox(owner)).changes[0].delete_confirmed,'Exact revision confirmation missing');
+        await setSyncConsent(owner,false);same((await getMeta(prefix+'outbox')).changesParts,fixed.changesParts,'Withdrawal rewrote fixed bytes');
+        const get=IDBObjectStore.prototype.get;let bodyReads=0;
+        IDBObjectStore.prototype.get=function(key){if(this.name==='parts')bodyReads++;return get.call(this,key);};
+        try{await syncNow(owner);}finally{IDBObjectStore.prototype.get=get;}check(bodyReads===0,'Cancellation reconstructed or read fixed body');
+        check(!await getMeta(prefix+'outbox')&&!(await physical()).parts.some(part=>part[0][1]==='outbox'),'Cancel left parts');
+        check((await entity(value.id,owner)).payload.unknown.text===value.payload.unknown.text,'Cancel discarded unconfirmed body');
+      }finally{globalThis.fetch=fetch;}
+      probes.push('unconfirmed-body-retained','exact-reconfirmation-atomic','withdrawal-manifest','cancel-owned-parts');return;
+    }
+    if(scenario==='outbox-corrupt'){
+      const batch={request_id:'corrupt-fixed',changes:[{id:value.id,kind:value.kind,base_revision:4,payload:value.payload,deleted:false}]};
+      await appTransaction(['meta','parts'],'readwrite',(tx,done)=>writeOutbox(tx,owner,batch,done));
+      const ref=(await getMeta(prefix+'outbox')).changesParts;
+      await appTransaction(['parts'],'readwrite',(tx,done)=>{tx.objectStore('parts').delete([owner,'outbox','fixed',ref.token,1]);done();});
+      const before=await physical();await rejected(()=>fixedOutbox(owner),'Corrupt outbox read succeeded');
+      await rejected(()=>appTransaction(['meta','parts'],'readwrite',(tx,done)=>writeOutbox(tx,owner,batch,done)),'Corrupt outbox replaced');
+      same(await physical(),before,'Corrupt fixed source changed');probes.push('fixed-outbox-fail-closed','replacement-rollback');return;
+    }
+    const refresh=await import('/@react-refresh');refresh.default.injectIntoGlobalHook(window);window.$RefreshReg$=()=>{};window.$RefreshSig$=()=>type=>type;window.__vite_plugin_react_preamble_installed__=true;
+    if(scenario==='migration'){
+      const {importMobile}=await import('/src/pages/Migration.tsx'),{initialData,newConversation}=await import('/src/mobile/store.ts');
+      const data=initialData();data.conversations=[newConversation(data.characters[0],'fictional-model')];data.conversations[0].draft='KEEP draft';
+      data.conversations[0].messages=[{id:'legacy',role:'user',content:value.payload.unknown.text,state:'complete'}];
+      await inject(()=>rejected(()=>importMobile(data,'fixture-migration',owner),'Migration quota committed'));
+      const first=await importMobile(data,'fixture-migration',owner),again=await importMobile(data,'fixture-migration',owner);
+      check(again.repeated&&again.sessions[0].id===first.sessions[0].id,'Migration replay duplicated');
+      const saved=await entity(first.sessions[0].id,owner);check(saved.payload.messages[0].id>50&&saved.payload.messages[0].legacy_id==='legacy'&&saved.payload.migrated_draft==='KEEP draft','Migration identity/draft/sequence lost');
+      const before=await physical(),random=crypto.randomUUID;crypto.randomUUID=()=>value.id;
+      try{await rejected(()=>importMobile(data,'collision-migration',owner),'Migration add collision succeeded');}finally{crypto.randomUUID=random;}
+      same(await physical(),before,'Migration collision changed original/receipt');probes.push('migration-parts-receipt-sequence-rollback','migration-replay','migration-add-collision');return;
+    }
+    if(scenario==='device-branch'){
+      const {deviceFetch}=await import('/src/lib/deviceApi.ts');localStorage.setItem('kyalulu-execution-target','device');
+      const request=()=>deviceFetch('/api/chat/sessions/'+value.id+'/branch',{method:'POST',body:JSON.stringify({message_id:2})});
+      await inject(async()=>check(!(await request()).ok,'Branch quota succeeded'),false,true);
+      const response=await request(),result=await response.json();check(response.ok,'Branch failed');const copy=await entity(result.session_id,owner);
+      check(copy.payload.messages.length===2&&copy.payload.unknown.text===value.payload.unknown.text&&copy.payload.settings.session_id===copy.id,'Historical branch lost state/unknown fields');
+      const before=await physical(),random=crypto.randomUUID;crypto.randomUUID=()=>value.id;
+      try{check(!(await request()).ok,'Branch add collision succeeded');}finally{crypto.randomUUID=random;}
+      const after=await physical();before.entities.find(row=>row.id===value.id).opened=after.entities.find(row=>row.id===value.id).opened;
+      same(after,before,'Branch collision changed source');
+      const local={...value,payload:{...value.payload,storage_policy:'local'}};await save(local);
+      const removal=await deviceFetch('/api/chat/sessions/'+value.id+'/data',{method:'DELETE'});check(removal.ok,'Local permanent deletion failed');
+      check((await entity(value.id,owner)).deleted&&!(await entity(value.id,owner)).payload.unknown,'Local body not erased after explicit permanent deletion');
+      check((await physical()).parts.filter(part=>part[0][1]==='entity'&&part[0][2]===value.id).length===1,'Local old parts leaked');
+      probes.push('device-branch-atomic-rollback','historical-branch','branch-add-collision','explicit-local-body-removal');return;
+    }
+    localStorage.setItem('kyalulu-execution-target','device');
+    const {mountSessionPolicy}=await import('./session-policy.tsx');
+    const node=document.createElement('div');document.body.append(node);const root=mountSessionPolicy(node,value.id);
+    const wait=async(test)=>{for(let index=0;index<200;index++){if(await test())return;await new Promise(resolve=>setTimeout(resolve,10));}throw Error('Pin UI did not settle');};
+    await wait(()=>node.querySelector('input[type=checkbox]'));await wait(async()=>!(node.querySelector('input').disabled));
+    const before=await header();node.querySelector('input').click();await wait(async()=>(await header()).pinned);
+    same((await header()).payloadParts,before.payloadParts,'Production pin UI changed manifest');same((await entity(value.id,owner)).payload,value.payload,'Pin UI lost history');root.unmount();
+    probes.push('production-session-policy-pin','manifest-preserved');return;
+  }
+  if(scenario==='roundtrip'){
+    let status;try{await appTransaction(['meta'],'readwrite',()=>{throw Object.assign(Error('Fictional conflict'),{status:409});});}catch(error){status=error.status;}
+    check(status===409,'Transaction lost original error status');
+    const before=await header(),opened=await openEntity(value.id,owner);same(opened.payload,value.payload,'Open changed historical body');
+    await appTransaction(['entities'],'readwrite',(tx,done)=>{const store=tx.objectStore('entities'),read=store.get([owner,value.id]);read.onsuccess=()=>{store.put({...read.result,pinned:true});done();};});
+    same((await header()).payloadParts,before.payloadParts,'Metadata update changed manifest');
+    const batch={request_id:'fixed-independent',withdrawn:0,revisions:{history:7},changes:[{id:value.id,kind:value.kind,base_revision:4,payload:value.payload,deleted:false}]};
+    await appTransaction(['meta','parts'],'readwrite',(tx,done)=>writeOutbox(tx,owner,batch,done));
+    const fixed=await getMeta('sync:'+owner+':outbox');check(fixed.changesParts.token!==before.payloadParts.token&&fixed.changes[0].payload&&Object.keys(fixed.changes[0].payload).length===0,'Outbox shares live payload or retains inline body');
+    const shortened={...value,payload:{storage_policy:'sync',messages:[{id:9,uuid:'retain',content:'short'}]}};
+    await save(shortened);same(await entity(value.id,owner),shortened,'Shortened write failed');same(await fixedOutbox(owner),batch,'Fixed outbox bytes changed with live entity');
+    raw=await physical();check(raw.parts.filter(part=>part[0][1]==='entity').length===1,'Surplus entity parts leaked');
+    await appTransaction(['meta','parts'],'readwrite',(tx,done)=>writeOutbox(tx,owner,null,done));
+    check(!(await physical()).parts.some(part=>part[0][1]==='outbox'),'Outbox parts leaked');
+    same(await entity(value.id,owner),shortened,'Removal changed live body');probes.push('unicode-huge-scalar-historical','metadata-manifest','independent-outbox','shorten-cleanup','remove-cleanup','reopen');return;
+  }
+  if(scenario.startsWith('corrupt-')){
+    const ref=(await header()).payloadParts,key=[owner,'entity',value.id,ref.token,1];
+    await appTransaction(['parts'],'readwrite',(tx,done)=>{const store=tx.objectStore('parts'),read=store.get(key);read.onsuccess=()=>{
+      if(scenario==='corrupt-missing')store.delete(key);
+      else if(scenario==='corrupt-size')store.put(read.result.subarray(1),key);
+      else {read.result[0]^=1;store.put(read.result,key);}done();};});
+    const before=await physical();await rejected(()=>entity(value.id,owner),'Corruption became empty/successful history');
+    await rejected(()=>save({...value,payload:{messages:[]}}),'Replacement erased corrupt original');same(await physical(),before,'Corrupt originals changed');probes.push('read-fail-closed','replacement-rollback');return;
+  }
+  if(scenario==='owner-fence'){
+    const other={...value,owner:foreign,payload:{messages:[{id:900000,content:'FOREIGN'}]}};await save(other);
+    check((await allEntities(owner)).length===1&&(await allEntities(foreign)).length===1,'Owner list leaked');
+    const before=await physical(),get=IDBObjectStore.prototype.get;let changed=false;
+    IDBObjectStore.prototype.get=function(key){const request=get.call(this,key);if(this.name==='parts'&&!changed)request.addEventListener('success',()=>{changed=true;rememberOwner(foreign);});return request;};
+    try{await rejected(()=>saveEntity({...value,payload:{...value.payload,title:'EDIT'}},7,{'receipt':true}),'Owner change committed');}finally{IDBObjectStore.prototype.get=get;rememberOwner(owner);}
+    check(changed,'Owner fault not reached');same(await physical(),before,'Owner switch leaked a write');probes.push('owner-isolation','part-callback-owner-fence');return;
+  }
+  if(scenario==='quota'){
+    const before=await physical(),add=IDBObjectStore.prototype.add;let writes=0;
+    IDBObjectStore.prototype.add=function(value,key){if(this.name==='parts'&&++writes===3)throw new DOMException('Fixture after two successful parts','QuotaExceededError');return add.call(this,value,key);};
+    try{await rejected(()=>saveEntity({...value,payload:{...value.payload,title:'EDIT'}},7,{'receipt':true,['message-sequence:'+owner]:999}),'Quota write succeeded');}finally{IDBObjectStore.prototype.add=add;}
+    check(writes===3,'Did not fail after two successful part writes');same(await physical(),before,'Quota changed body/parts/receipt/sequence');
+    await saveEntity({...value,payload:{...value.payload,title:'EDIT'}},7,{'receipt':true});
+    check((await entity(value.id,owner)).revision===8&&await getMeta('receipt')===true,'Reopen/retry did not persist');probes.push('quota-after-two-parts','atomic-rollback','reopen-retry');return;
+  }
+  if(scenario==='collisions'){
+    const before=await physical();await rejected(()=>appTransaction(['entities','meta'],'readwrite',(tx,done)=>{writeEntity(tx,{...value,payload:{messages:[]}},'add');tx.objectStore('meta').put(true,'receipt');done();}),'Add collision overwrote');
+    same(await physical(),before,'Add collision changed records');
+    const random=crypto.randomUUID,token=(await header()).payloadParts.token;crypto.randomUUID=()=>token;
+    try{await rejected(()=>save(value),'Part identity collision overwrote');}finally{crypto.randomUUID=random;}
+    same(await physical(),before,'Part collision changed records');probes.push('entity-add-collision','part-add-collision');return;
+  }
+  if(scenario==='versionchange'){
+    let upgrade,connection,seen=false;
+    const reading=appTransaction(['entities'],'readonly',(tx,done)=>{
+      connection=tx.db;const handler=connection.onversionchange;connection.onversionchange=event=>{seen=true;handler.call(connection,event);};
+      const next=()=>{const read=tx.objectStore('entities').get([owner,value.id]);read.onsuccess=()=>seen?done(read.result):next();};
+      next();upgrade=open(4);
+    });
+    await reading;const db=await upgrade;db.close();check(seen,'Connection did not observe versionchange');
+    let closed=false;try{connection.transaction('entities');}catch{closed=true;}check(closed,'Old connection still open');
+    await rejected(()=>entity(value.id,owner),'Old app opened newer DB');probes.push('versionchange-close','no-downgrade');return;
+  }
+  throw Error('Unknown scenario');
+}
+run().then(()=>window.__SEGMENTED__={ok:true,scenario,probes,...metrics}).catch(error=>window.__SEGMENTED__={ok:false,scenario,error:String(error),stack:error.stack});
+</script>

@@ -1,7 +1,8 @@
 <!doctype html><meta charset="utf-8"><title>Disposable outbox guard fixture</title>
 <p>Local fixture with fake accounts and conversations. No providers.</p>
 <script type="module">
-import {appTransaction,getMeta,entity} from '/src/lib/appStore.ts';
+import {appTransaction,getMeta,entity,writeOutbox,writeEntity} from '/src/lib/appStore.ts';
+import {fixedOutbox} from './storage-fixture.ts';
 import {rememberOwner} from '/src/lib/appContext.ts';
 import {syncNow,syncState,receiveSyncPage} from '/src/lib/appSync.ts';
 import {downloadEntity} from '/src/lib/appTransfers.ts';
@@ -58,8 +59,9 @@ async function run(){
     tx.objectStore('meta').put(pending,root);tx.objectStore('meta').put(true,'sync:'+owner+':consent');
     tx.objectStore('meta').put({request_id:pending.request_id,withdrawn:0,private:'OTHER ACCOUNT BODY'},foreign);
     tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);});old.close();
+  if(scenario!=='legacy')await appTransaction(['entities','meta','parts'],'readwrite',(tx,done)=>{writeEntity(tx,source);writeOutbox(tx,owner,pending,done);});
   let bodyReads=0,foreignReads=0,keyProbes=0,committed=false,startedReads=0;
-  const counts=[],chunks=[],api=[];
+  const counts=[],partCounts=[],chunks=[],api=[];
   let measuring=true,maxEncodedText=0,wholeBatchWrites=0,hashAccountChanged=false;
   const originalEncode=TextEncoder.prototype.encode,originalStringify=JSON.stringify;
   TextEncoder.prototype.encode=function(text){
@@ -68,8 +70,8 @@ async function run(){
     return originalEncode.call(this,text);
   };
   JSON.stringify=function(value,...args){if(measuring&&value?.request_id===pending.request_id&&Array.isArray(value.changes))wholeBatchWrites++;return originalStringify.call(this,value,...args);};
-  const originalGet=IDBObjectStore.prototype.get,originalKeys=IDBIndex.prototype.openKeyCursor;
-  IDBObjectStore.prototype.get=function(key){if(this.name==='meta'){if(key===root)bodyReads++;if(key===foreign)foreignReads++;}return originalGet.call(this,key);};
+  let storagePartReads=0;const originalGet=IDBObjectStore.prototype.get,originalKeys=IDBIndex.prototype.openKeyCursor;
+  IDBObjectStore.prototype.get=function(key){if(this.name==='parts')storagePartReads++;if(this.name==='meta'){if(key===root)bodyReads++;if(key===foreign)foreignReads++;}return originalGet.call(this,key);};
   IDBIndex.prototype.openKeyCursor=function(...args){if(this.name==='sync-outbox-state')keyProbes++;return originalKeys.apply(this,args);};
   globalThis.fetch=async(input,init={})=>{
     const path=String(input);api.push(path);
@@ -78,12 +80,12 @@ async function run(){
     if(path==='/api/mobile/status')return reply({cloud_mode:true,authenticated:true,owner_scope:owner});
     check(new Headers(init.headers).get('X-Kyalulu-Owner')===owner,'Wrong account header');
     if(path==='/api/cloud/app/sync/transfers'){
-      const current=await getMeta(root);check(current.request_id===pending.request_id&&current.withdrawn===0,'Legacy index normalization failed');
+      const current=await fixedOutbox(owner);check(current.request_id===pending.request_id&&current.withdrawn===0,'Legacy index normalization failed');
       check(JSON.stringify(current.changes)===JSON.stringify(pending.changes),'Migration changed private data');
       startedReads=bodyReads;return reply({transfer_id:transfer,next:0,chunk_bytes:1024*1024});
     }
     if(path.includes('/parts/')){
-      counts.push(bodyReads);const part=JSON.parse(init.body),raw=Uint8Array.from(atob(part.data),c=>c.charCodeAt(0));
+      counts.push(bodyReads);partCounts.push(storagePartReads);const part=JSON.parse(init.body),raw=Uint8Array.from(atob(part.data),c=>c.charCodeAt(0));
       check(await digest(raw)===part.sha256,'Part hash mismatch');chunks.push(raw);
       if(chunks.length===1&&scenario!=='legacy'&&scenario!=='fresh'){
         if(scenario==='account')rememberOwner('fixture-owner-b');
@@ -91,7 +93,7 @@ async function run(){
       }
       return reply({next:chunks.length});
     }
-    if(path.endsWith('/commit')){counts.push(bodyReads);committed=true;return reply({changes:[{id:'chat',revision:1,deleted:false}]});}
+    if(path.endsWith('/commit')){counts.push(bodyReads);partCounts.push(storagePartReads);committed=true;return reply({changes:[{id:'chat',revision:1,deleted:false}]});}
     check(path.startsWith('/api/cloud/app/sync?'),'Unexpected API');return reply({changes:[],cursor:committed?1:0,has_more:false});
   };
   try{
@@ -100,7 +102,7 @@ async function run(){
     const saved=await entity('chat',owner),remaining=await getMeta(root);
     if(scenario==='legacy'||scenario==='fresh'){
       check(chunks.length===3&&committed,'Transfer did not complete');
-      check(counts.every(count=>count===startedReads),'A part reloaded the entire outbox');
+      check(counts.every(count=>count===startedReads)&&partCounts.every(count=>count===partCounts[0]),'A part reloaded the entire outbox');
       check(!remaining&&!saved.dirty&&saved.serverRevision===1,'Receipt did not settle atomically');
       const raw=new Uint8Array(chunks.reduce((total,chunk)=>total+chunk.length,0));let offset=0;for(const chunk of chunks){raw.set(chunk,offset);offset+=chunk.length;}
       check(JSON.stringify(JSON.parse(new TextDecoder().decode(raw)))===JSON.stringify({request_id:pending.request_id,changes:pending.changes}),'Body changed during migration');
@@ -114,7 +116,7 @@ async function run(){
     check(maxEncodedText<=4096*6&&wholeBatchWrites===0,'Serializer buffered the entire batch');
     check(localStorage.getItem('fixture-existing-storage')==='retain','Unrelated storage changed');
     const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('kyalulu-app-v1');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
-    check(db.version===2&&db.transaction('meta').objectStore('meta').indexNames.contains('sync-outbox-state'),'Index upgrade missing');db.close();
+    check(db.version===3&&db.transaction('meta').objectStore('meta').indexNames.contains('sync-outbox-state'),'Index upgrade missing');db.close();
     return {ok:true,scenario,parts:chunks.length,committed,keyProbes,bodyReads,foreignReads,maxEncodedText,wholeBatchWrites,state:syncState().phase,networkCalls:api.length};
   }finally{IDBObjectStore.prototype.get=originalGet;IDBIndex.prototype.openKeyCursor=originalKeys;TextEncoder.prototype.encode=originalEncode;JSON.stringify=originalStringify;}
 }

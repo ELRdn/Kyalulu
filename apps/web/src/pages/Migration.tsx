@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { parseMigration } from '../mobile/migration';
-import { appTransaction, newEntity, type AppEntity } from '../lib/appStore';
+import { appTransaction, writeEntity, newEntity, type AppEntity } from '../lib/appStore';
 import { deviceOwner, preferences, savePreferences, useDeviceOwner, useLanguage } from '../lib/appContext';
 import { MODELS, fingerprint, importModel, formatBytes } from '../mobile/models';
 import { APP_ORIGIN, MOBILE_ORIGIN, connectMigration, validateManifest, type MigrationReader, type MigrationManifest } from '../mobile/migrationChannel';
@@ -14,7 +14,7 @@ import '../mobile/migration.css';
 export async function importMobile(data:MobileData,hash:string,owner=deviceOwner()) {
   const job='mobile-import:'+owner+':'+hash;
   return appTransaction<{sessions:{id:string;draft:string}[];repeated:boolean}>(['entities','meta'],'readwrite',(tx,done)=>{
-    const meta=tx.objectStore('meta'),store=tx.objectStore('entities'),request=meta.get(job);
+    const meta=tx.objectStore('meta'),request=meta.get(job);
     request.onsuccess=()=>{
       if(deviceOwner()!==owner){tx.abort();return;}
       if(request.result){done({...request.result,repeated:true});return;}
@@ -44,7 +44,7 @@ export async function importMobile(data:MobileData,hash:string,owner=deviceOwner
         }
         if(!Number.isSafeInteger(number)){tx.abort();return;}
         if(deviceOwner()!==owner){tx.abort();return;}
-        for(const record of records)store.add({...record,owner,revision:1});
+        for(const record of records)writeEntity(tx,{...record,owner,revision:1},'add');
         const result={sessions,repeated:false};meta.put(number,'message-sequence:'+owner);meta.put(result,job);done(result);
         }catch{tx.abort();}
       };

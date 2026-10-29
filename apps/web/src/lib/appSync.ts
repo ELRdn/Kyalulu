@@ -1,4 +1,4 @@
-import { appTransaction, entity, getMeta, scrubGenerationRecords, trimOfflineCache, type AppEntity, type Outbox } from './appStore';
+import { appTransaction, entity, getMeta, entitySelection, guardStorage, restoreEntity, readEntity, writeEntity, restoreOutbox, writeOutbox, scrubGenerationRecords, trimOfflineCache, type StoredEntity, type AppEntity, type Outbox } from './appStore';
 import { cloudFetch } from './transport';
 import { deviceOwner, generationBusy } from './appContext';
 import { receiveConversation, receiveLibrarySnapshot, receiveCreatorSnapshot, rebindConversation, withLibrarySnapshots, conversationSettings } from './appSyncData';
@@ -103,18 +103,18 @@ function selectSyncRecords(tx:IDBTransaction,owner:string,required:Set<string>,
       if(owner!==deviceOwner()||generationBusy()){tx.abort();return;}
       const cursor=read.result;
       if(!cursor){finish(records,identities,number);return;}
-      const record=cursor.value as AppEntity;
-      identities.add(record.id);
-      if(required.has(record.id))records.set(record.id,record);
-      for(const message of record.payload.messages??[])number=Math.max(number,message.id);
-      cursor.continue();
+      const record=cursor.value as StoredEntity;
+      identities.add(record.id);number=Math.max(number,entitySelection(record).maximumMessageId);
+      if(required.has(record.id))restoreEntity(tx,record,value=>{records.set(record.id,value!);cursor.continue();});
+      else cursor.continue();
     };
   };
 }
 
 export async function receiveSyncPage(owner:string, changes:any[], cursor:number) {
   await appTransaction<void>(['entities','meta'],'readwrite',(tx,done)=>{
-    const store=tx.objectStore('entities'),meta=tx.objectStore('meta');
+    guardStorage(tx,()=>owner===deviceOwner()&&!generationBusy());
+    const meta=tx.objectStore('meta');
     const consent=meta.get(key(owner,'consent'));
     consent.onsuccess=()=>{
       if(owner!==deviceOwner()||!consent.result||generationBusy()){tx.abort();return;}
@@ -155,11 +155,11 @@ export async function receiveSyncPage(owner:string, changes:any[], cursor:number
                   const payload=local.kind==='conversation'?rebindConversation(receiveConversation(local.payload,undefined,allocate),id):structuredClone(local.payload);
                   payload.storage_policy='local';payload.recovery_from=local.id;payload.last_generation=null;
                   const recovery={...local,id,payload,revision:1,serverRevision:0,dirty:false,deleted:false};
-                  records.set(id,recovery);store.put(recovery);
+                  records.set(id,recovery);writeEntity(tx,recovery);
                 }
                 const retired={...remote,owner,payload:{storage_policy:'sync',deleted_revision:remote.revision},
                   revision:(local?.revision??0)+1,serverRevision:remote.revision,dirty:false,pinned:false,opened:Date.now()};
-                records.set(retired.id,retired);store.put(retired);
+                records.set(retired.id,retired);writeEntity(tx,retired);
                 scrubGenerationRecords(tx,owner,remote.id);
                 continue;
               }
@@ -178,7 +178,7 @@ export async function receiveSyncPage(owner:string, changes:any[], cursor:number
                     const snapshot=payload.creator_snapshots?.[reference];
                     if(!snapshot||snapshot.kind!==kind)throw Error('Setting snapshot missing');
                     const id=reference.split('@')[0],setting=receiveCreatorSnapshot(records.get(id),owner,reference,kind,snapshot.document);
-                    records.set(id,setting);store.put(setting);
+                    records.set(id,setting);writeEntity(tx,setting);
                   }
                 }
                 for(const settings of conversationSettings(payload)){
@@ -192,7 +192,7 @@ export async function receiveSyncPage(owner:string, changes:any[], cursor:number
                       continue;
                     }
                     const library=receiveLibrarySnapshot(records.get(ref.id),owner,ref.id,ref.revision,snapshot);
-                    records.set(library.id,library);store.put(library);
+                    records.set(library.id,library);writeEntity(tx,library);
                   }
                 }
               }
@@ -203,7 +203,7 @@ export async function receiveSyncPage(owner:string, changes:any[], cursor:number
                   current_revision:payload.current_revision??Math.max(...Object.keys(payload.versions).map(Number))};
               }
               const updated={...remote,owner,payload,revision:(local?.revision??0)+1,serverRevision:remote.revision,dirty:false,pinned:local?.pinned??false,opened:local?.opened??0};
-              records.set(updated.id,updated);store.put(updated);
+              records.set(updated.id,updated);writeEntity(tx,updated);
             }
             meta.put(number,'message-sequence:'+owner);
             const position=meta.get(key(owner,'cursor'));position.onsuccess=()=>meta.put(Math.max(position.result??0,cursor),key(owner,'cursor'));done();
@@ -226,19 +226,29 @@ export async function setSyncConsent(owner:string,enabled:boolean) {
   if(!enabled)report({phase:'off',pending,error:''},owner);
 }
 async function updateOutbox(owner:string,batch:Batch,next:Batch|null) {
-  await appTransaction<void>(['meta'],'readwrite',(tx,done)=>{
+  await appTransaction<void>(['meta','parts'],'readwrite',(tx,done)=>{
     const meta=tx.objectStore('meta'),read=meta.get(key(owner,'outbox'));
     read.onsuccess=()=>{
       if(owner!==deviceOwner()||generationBusy()||read.result?.request_id!==batch.request_id){tx.abort();return;}
-      if(next)meta.put(next.withdrawn?next:{...next,withdrawn:0},key(owner,'outbox'));else meta.delete(key(owner,'outbox'));done();
+      if(next){meta.put({...read.result,withdrawn:next.withdrawn?true:0,...(next.receipt?{receipt:next.receipt}:{})},key(owner,'outbox'));done();}
+      else writeOutbox(tx,owner,null,done);
     };
   });
 }
 function prepareSyncBatch(owner:string) {
   return appTransaction<Batch|undefined>(['entities'],'readonly',(tx,done)=>{
-    const store=tx.objectStore('entities'),dirty:AppEntity[]=[];
+    const store=tx.objectStore('entities'),selected:StoredEntity[]=[],dirty:AppEntity[]=[];
     const current=()=>{if(owner!==deviceOwner()||generationBusy()){tx.abort();return false;}return true;};
     const prepare=()=>{
+      let index=0;
+      const next=()=>{
+        if(!current())return;
+        const value=selected[index++];if(!value){references();return;}
+        if(value.deleted){dirty.push({...value,payload:{delete_confirmation_revision:entitySelection(value).delete_confirmation_revision}} as AppEntity);next();}
+        else restoreEntity(tx,value,record=>{dirty.push(record!);next();});
+      };next();
+    };
+    const references=()=>{
       try {
         const required=new Set<string>(),records:AppEntity[]=[];
         for(const record of dirty){
@@ -263,15 +273,12 @@ function prepareSyncBatch(owner:string) {
           }catch{tx.abort();}
         };
         if(!required.size){finish();return;}
-        let remaining=required.size;
-        for(const id of required){
-          const read=store.get([owner,id]);
-          read.onsuccess=()=>{
-            if(!current())return;
-            if(read.result)records.push(read.result);
-            if(!--remaining)finish();
-          };
-        }
+        const ids=[...required];let index=0;
+        const next=()=>{
+          if(!current())return;
+          const id=ids[index++];if(id===undefined){finish();return;}
+          readEntity(tx,owner,id,record=>{if(record)records.push(record);next();});
+        };next();
       }catch{tx.abort();}
     };
     const read=store.openCursor(IDBKeyRange.bound([owner,''],[owner,'\uffff']));
@@ -279,11 +286,11 @@ function prepareSyncBatch(owner:string) {
       if(!current())return;
       const cursor=read.result;
       if(!cursor){prepare();return;}
-      const record=cursor.value as AppEntity;
-      if(record.dirty&&record.payload.storage_policy==='sync'){
+      const record=cursor.value as StoredEntity;
+      if(record.dirty&&entitySelection(record).storage_policy==='sync'){
         // Keep scanning beyond the cap: the first deletion takes the entire batch.
-        if(record.deleted){dirty.length=0;dirty.push(record);prepare();return;}
-        if(dirty.length<50)dirty.push(record);
+        if(record.deleted){selected.length=0;selected.push(record);prepare();return;}
+        if(selected.length<50)selected.push(record);
       }
       cursor.continue();
     };
@@ -330,17 +337,19 @@ async function synchronize(owner:string) {
       }
     };
     await download();current();
-    batch=await getMeta<Batch>(key(owner,'outbox'));
+    batch=await appTransaction<Batch|undefined>(['meta','parts'],'readonly',(tx,done)=>{
+      const read=tx.objectStore('meta').get(key(owner,'outbox'));read.onsuccess=()=>restoreOutbox(tx,owner,read.result,done);
+    });
     if(!batch) {
       batch=await prepareSyncBatch(owner);
       if(batch) {
         const staged=batch;
-        batch=await appTransaction<Batch|undefined>(['meta'],'readwrite',(tx,done)=>{
+        batch=await appTransaction<Batch|undefined>(['meta','parts'],'readwrite',(tx,done)=>{
           const meta=tx.objectStore('meta'),existing=meta.get(key(owner,'outbox')),consent=meta.get(key(owner,'consent'));
           consent.onsuccess=()=>{
             if(owner!==deviceOwner()||generationBusy()){tx.abort();return;}
             if(!consent.result){done(undefined);return;}
-            if(!existing.result)meta.put(staged,key(owner,'outbox'));done(existing.result??staged);
+            if(!existing.result)writeOutbox(tx,owner,staged,()=>done(staged));else restoreOutbox(tx,owner,existing.result,done);
           };
         });
       }
@@ -356,7 +365,8 @@ async function synchronize(owner:string) {
       const deleted=result.changes.filter((ack:Ack)=>ack.deleted).map((ack:Ack)=>({id:ack.source_id??ack.id,revision:ack.revision,kind:pending.changes.find(c=>c.id===(ack.source_id??ack.id))?.kind,deleted:true,payload:{}}));
       if(deleted.length)await receiveSyncPage(owner,deleted,await getMeta<number>(key(owner,'cursor'))??0);
       await appTransaction<void>(['entities','meta'],'readwrite',(tx,done)=>{
-        const store=tx.objectStore('entities'),meta=tx.objectStore('meta'),queued=meta.get(key(owner,'outbox')),consent=meta.get(key(owner,'consent'));
+        guardStorage(tx,()=>owner===deviceOwner()&&!generationBusy());
+        const meta=tx.objectStore('meta'),queued=meta.get(key(owner,'outbox')),consent=meta.get(key(owner,'consent'));
         consent.onsuccess=()=>{
           if(!consent.result||owner!==deviceOwner()||generationBusy()||queued.result?.request_id!==pending.request_id){tx.abort();return;}
           const required=new Set<string>(result.changes.map((ack:Ack)=>ack.source_id??ack.id));
@@ -377,13 +387,13 @@ async function synchronize(owner:string) {
                     updated.payload=rebindConversation(receiveConversation(updated.payload,undefined,()=>++number),ack.id);
                     updated.payload.last_generation=null;
                     // Retain the source until its Cloud revision is received; the copy contains every local edit.
-                    store.put(local.deleted?local:{...local,dirty:false});
+                    writeEntity(tx,local.deleted?local:{...local,dirty:false});
                   }
-                  records.set(updated.id,updated);store.put(updated);
+                  records.set(updated.id,updated);writeEntity(tx,updated);
                 }
                 meta.put(number,'message-sequence:'+owner);
                 if(result.changes.some((ack:Ack)=>ack.branched))meta.put(0,key(owner,'cursor'));
-                meta.delete(key(owner,'outbox'));done();
+                writeOutbox(tx,owner,null,done);
               }catch{tx.abort();}
           });
         };
@@ -433,9 +443,10 @@ export async function hydrateConversation(id:string,owner=deviceOwner()) {
 export async function reconfirmDeletion(owner:string,id:string,localRevision:number,serverRevision:number) {
   if(owner!==deviceOwner()||owner==='guest'||generationBusy())throw Error('Account or generation changed');
   await appTransaction<void>(['entities','meta'],'readwrite',(tx,done)=>{
-    const store=tx.objectStore('entities'),meta=tx.objectStore('meta'),read=store.get([owner,id]);
-    read.onsuccess=()=>{
-      const value=read.result as AppEntity|undefined,remote=meta.get(key(owner,'remote:'+id));
+    guardStorage(tx,()=>owner===deviceOwner()&&!generationBusy());
+    const meta=tx.objectStore('meta');
+    readEntity(tx,owner,id,value=>{
+      const remote=meta.get(key(owner,'remote:'+id));
       remote.onsuccess=()=>{
         if(owner!==deviceOwner()||!value?.deleted||!value.dirty||value.revision!==localRevision
           ||remote.result?.revision!==serverRevision||remote.result.deleted){tx.abort();return;}
@@ -443,11 +454,11 @@ export async function reconfirmDeletion(owner:string,id:string,localRevision:num
         consent.onsuccess=()=>{
           if(!consent.result||outbox.result?.withdrawn||outbox.result&&(outbox.result.changes.length!==1||outbox.result.changes[0].id!==id)){tx.abort();return;}
           const revision=value.revision+1;
-          store.put({...value,revision,serverRevision,payload:{...value.payload,delete_confirmation_revision:revision}});
-          meta.put({request_id:crypto.randomUUID(),withdrawn:0,revisions:{[id]:revision},changes:[{id,kind:value.kind,base_revision:serverRevision,
-            payload:{},deleted:true,delete_confirmed:true}]},key(owner,'outbox'));done();
+          writeEntity(tx,{...value,revision,serverRevision,payload:{...value.payload,delete_confirmation_revision:revision}});
+          writeOutbox(tx,owner,{request_id:crypto.randomUUID(),withdrawn:0,revisions:{[id]:revision},changes:[{id,kind:value.kind,base_revision:serverRevision,
+            payload:{},deleted:true,delete_confirmed:true}]} as Batch,done);
         };
       };
-    };
+    });
   });
 }

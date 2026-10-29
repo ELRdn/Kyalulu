@@ -1,6 +1,7 @@
 <!doctype html><meta charset="utf-8"><title>Disposable offline cache fixture</title>
 <script type="module">
-import {allEntities,appTransaction,trimOfflineCache} from '/src/lib/appStore.ts';
+import {allEntities,appTransaction,trimOfflineCache,writeEntity,readEntity,entitySelection} from '/src/lib/appStore.ts';
+import {physicalSnapshot} from './storage-fixture.ts';
 import {rememberOwner} from '/src/lib/appContext.ts';
 
 const scenario=new URL(location.href).searchParams.get('scenario')??'normal';
@@ -23,8 +24,9 @@ async function run(){
   rows.push({...rows[45],id:'deleted',deleted:true,opened:100});
   rows.push({...rows[45],id:'library',kind:'character',opened:101});
   rows.push({...rows[45],owner:foreign,id:'FOREIGN PRIVATE'});
-  await appTransaction(['entities'],'readwrite',(tx,done)=>{for(const row of rows)tx.objectStore('entities').put(row);done();});
-  const before=await allEntities(owner),otherBefore=await allEntities(foreign);
+  await appTransaction(['entities'],'readwrite',(tx,done)=>{for(const [index,row] of rows.entries())if(index%2)writeEntity(tx,row);else tx.objectStore('entities').put(row);done();});
+  const physicalBefore=await physicalSnapshot(),before=await allEntities(owner),otherBefore=await allEntities(foreign);
+  const raceTransactions=new WeakSet();
   let getAllCalls=0,scanned=0,reads=0,writes=0,outstanding=0,maxOutstanding=0,raced=false;
   const getAll=IDBObjectStore.prototype.getAll,openCursor=IDBObjectStore.prototype.openCursor;
   const get=IDBObjectStore.prototype.get,put=IDBObjectStore.prototype.put,transaction=IDBDatabase.prototype.transaction;
@@ -43,11 +45,11 @@ async function run(){
   };
   IDBObjectStore.prototype.get=function(key){
     const request=get.call(this,key);
-    if(this.name==='entities'){check(key[0]===owner,'Foreign body read');reads++;return track(request);}
+    if(this.name==='entities'&&!raceTransactions.has(this.transaction)){check(key[0]===owner,'Foreign body read');reads++;return track(request);}
     return request;
   };
   IDBObjectStore.prototype.put=function(value,...args){
-    if(this.name==='entities'&&value.payload.cache_evicted){
+    if(this.name==='entities'&&entitySelection(value).cache_evicted){
       writes++;
       if(scenario==='quota'&&writes===2)return track(this.add(value));
       return track(put.call(this,value,...args));
@@ -59,13 +61,11 @@ async function run(){
       raced=true;
       if(scenario==='account')rememberOwner(foreign);
       if(scenario==='race'){
-        const edit=transaction.call(this,'entities','readwrite'),store=edit.objectStore('entities');
+        const edit=transaction.call(this,['entities','parts'],'readwrite'),store=edit.objectStore('entities');raceTransactions.add(edit);
         for(const [index,change] of [[6,{opened:999}],[7,{dirty:true,revision:3}],[8,{pinned:true}],
           [9,{payload:{pending_generation:{id:'late'}}}],[10,{payload:{storage_policy:'local'}}],
           [11,{serverRevision:2}],[12,{deleted:true}],[13,{kind:'character'}]]){
-          const read=get.call(store,[owner,id(index)]);read.onsuccess=()=>{
-            const value=read.result;put.call(store,{...value,...change,payload:{...value.payload,...change.payload}});
-          };
+          readEntity(edit,owner,id(index),value=>writeEntity(edit,{...value,...change,payload:{...value.payload,...change.payload}}));
         }
       }
     }
@@ -83,6 +83,7 @@ async function run(){
   check(getAllCalls===0&&maxOutstanding<=1,'Eviction queued multiple conversation bodies');
   if(['quota','account','scan-account'].includes(scenario)){
     check(failed&&JSON.stringify(before)===JSON.stringify(after),'Failed cache transaction lost data');
+    check(JSON.stringify(physicalBefore)===JSON.stringify(await physicalSnapshot()),'Failed trim changed physical parts');
     if(scenario==='quota')check(writes===2,'Failure did not occur after a successful write');
   }else{
     check(!failed,'Cache trim failed');

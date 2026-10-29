@@ -1,29 +1,22 @@
+import { harness, decoded } from './idbHarness.test-support';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
-const fixture=vi.hoisted(()=>({owner:'owner-a',records:new Map<string,any>(),meta:new Map<string,any>()}));
+const fixture=vi.hoisted(()=>({owner:'owner-a',records:new Map<string,any>(),parts:new Map<string,any>(),meta:new Map<string,any>()}));
 vi.mock('./appContext',()=>({deviceOwner:()=>fixture.owner,setGenerationBusy:vi.fn()}));
 vi.mock('./appSync',()=>({hydrateConversation:vi.fn()}));
 vi.mock('../mobile/runtime',()=>({MobileRuntime:class{}}));
 vi.mock('../mobile/models',()=>({MODELS:[{id:'fixture',name:'Fixture',runtime:'gguf'}],readyModels:async()=>new Set(['fixture'])}));
 vi.mock('./appStore',async original=>{
-  const read=async(id:string,owner=fixture.owner)=>structuredClone(fixture.records.get(owner+':'+id));
+  const read=async(id:string,owner=fixture.owner)=>decoded(fixture.records.get(owner+':'+id),fixture.parts);
   return {...await original<typeof import('./appStore')>(),
-    allEntities:vi.fn(async(owner:string)=>structuredClone([...fixture.records.values()].filter(e=>e.owner===owner))),
+    allEntities:vi.fn(async(owner:string)=>[...fixture.records.values()].filter(e=>e.owner===owner).map(value=>decoded(value,fixture.parts))),
     entity:vi.fn(read),openEntity:vi.fn(read),trimOfflineCache:vi.fn(async()=>{}),
     getMeta:vi.fn(async(key:string)=>structuredClone(fixture.meta.get(key))),
     setMeta:vi.fn(async(key:string,value:unknown)=>{fixture.meta.set(key,structuredClone(value));}),
     saveEntity:vi.fn(async(value:any)=>{
       const saved=structuredClone({...value,revision:value.revision+1});fixture.records.set(value.owner+':'+value.id,saved);return saved;
     }),
-    appTransaction:vi.fn(async(_stores:string[],_mode:string,action:any)=>new Promise((resolve,reject)=>{
-      const records=structuredClone(fixture.records),metadata=structuredClone(fixture.meta);let aborted=false;
-      const tx={abort:()=>{aborted=true;reject(Error('Transaction aborted'));},objectStore:(name:string)=>({
-        get:(key:any)=>{const read={result:undefined as any,onsuccess:null as any};queueMicrotask(()=>{if(aborted)return;read.result=structuredClone((name==='entities'?records:metadata).get(name==='entities'?key.join(':'):key));try{read.onsuccess?.();}catch(error){aborted=true;reject(error);}});return read;},
-        getAll:(range:any)=>{const read={result:undefined as any,onsuccess:null as any};queueMicrotask(()=>{if(aborted)return;read.result=structuredClone([...records.values()].filter(record=>record.owner===range.lower[0]&&record.id>=range.lower[1]&&record.id<=range.upper[1]));try{read.onsuccess?.();}catch(error){aborted=true;reject(error);}});return read;},
-        put:(value:any,key?:string)=>(name==='entities'?records:metadata).set(name==='entities'?value.owner+':'+value.id:key!,structuredClone(value)),
-      })};
-      action(tx,(value:any)=>{if(!aborted){fixture.records=records;fixture.meta=metadata;resolve(value);}});
-    })),
+    appTransaction:vi.fn((_stores:string[],mode:string,action:any)=>harness(fixture.records,fixture.meta,fixture.parts,key=>key.join(':'),mode,action)),
   };
 });
 
@@ -37,13 +30,13 @@ const request=async(path:string,body?:unknown,method=body?'POST':'GET')=>{
   return {status:response.status,body:await response.json()};
 };
 const put=(value:ReturnType<typeof newEntity>)=>fixture.records.set(value.owner+':'+value.id,value);
-const saved=()=>fixture.records.get('owner-a:requested');
+const saved=()=>decoded(fixture.records.get('owner-a:requested'),fixture.parts);
 const remote={source:'github',source_id:'fixture/card.json',sha256:'a'.repeat(64),document_index:0,content_rating:'sfw'};
 const document=PortableDocumentSchema.parse({name:'Saved character',source:{remote},data:{description:'Known character'}});
 const creatorId='created_'+'a'.repeat(32);
 
 beforeEach(()=>{
-  vi.clearAllMocks();fixture.owner='owner-a';fixture.records.clear();fixture.meta.clear();
+  vi.clearAllMocks();fixture.owner='owner-a';fixture.records.clear();fixture.parts.clear();fixture.meta.clear();
   vi.stubGlobal('IDBKeyRange',{bound:(lower:unknown,upper:unknown)=>({lower,upper})});
   vi.stubGlobal('indexedDB',{open:vi.fn(()=>{throw Error('Storage unavailable');})});
   vi.stubGlobal('location',{href:'https://device.test/device/',origin:'https://device.test'});
@@ -127,8 +120,8 @@ it.each([
 it('keeps Library revisions immutable without reading conversations',async()=>{
   const response=await request('/api/library/saved',{expected_revision:1,document:{...document,name:'Updated'}},'PUT');
   expect(response.status).toBe(200);expect(response.body).toMatchObject({id:'saved',revision:2,document:{name:'Updated'}});
-  expect(fixture.records.get('owner-a:saved').payload.versions['1']).toEqual(document);
-  expect(fixture.records.get('owner-b:saved').payload.document.name).toBe('Foreign character');
+  expect(decoded(fixture.records.get('owner-a:saved'),fixture.parts).payload.versions['1']).toEqual(document);
+  expect(decoded(fixture.records.get('owner-b:saved'),fixture.parts).payload.document.name).toBe('Foreign character');
   expect(entity).toHaveBeenCalledExactlyOnceWith('saved','owner-a');expect(allEntities).not.toHaveBeenCalled();expect(openEntity).not.toHaveBeenCalled();
 });
 
@@ -156,7 +149,7 @@ it.each([
   ['/api/memory/memory-unrelated',{content:'Edited memory'},'PUT','memories'],
 ])('retains owner-wide ID lookup for %s',async(path,body,method,key)=>{
   const response=await request(path,body,method);expect(response.status).toBe(200);
-  expect(fixture.records.get('owner-a:unrelated').payload[key][0].content).toBe(body.content);
+  expect(decoded(fixture.records.get('owner-a:unrelated'),fixture.parts).payload[key][0].content).toBe(body.content);
   expect(saved().payload.messages[0].content).toBe('Requested history');
   expect(allEntities).toHaveBeenCalledExactlyOnceWith('owner-a');expect(openEntity).toHaveBeenCalledExactlyOnceWith('unrelated','owner-a');
 });
@@ -168,7 +161,7 @@ it('retains duplicate detection and owner-wide message IDs when importing histor
   expect(allEntities).toHaveBeenCalledExactlyOnceWith('owner-a');vi.mocked(allEntities).mockClear();
   const imported=await request('/api/imports/'+preview.body.preview_id+'/commit',{request_id:'read-test',selections:[{index:0,document:preview.body.documents[0],history_indices:[0],duplicate_action:'copy'}]});
   expect(imported.status).toBe(200);expect(imported.body.items).toHaveLength(1);expect(imported.body.sessions).toHaveLength(1);
-  const history=fixture.records.get('owner-a:'+imported.body.sessions[0].session_id);
+  const history=decoded(fixture.records.get('owner-a:'+imported.body.sessions[0].session_id),fixture.parts);
   expect(history.payload.messages.map((message:any)=>[message.id,message.content])).toEqual([[901,'Imported user'],[902,'Imported reply']]);
   expect(saved().payload.draft).toBe('Unsent draft');expect(allEntities).toHaveBeenCalledExactlyOnceWith('owner-a');
 });
@@ -187,7 +180,7 @@ it.each([
 });
 
 it('hydrates only the requested evicted conversation',async()=>{
-  const original=structuredClone(saved());saved().payload.cache_evicted=true;
+  const original=structuredClone(saved());const evicted=saved();evicted.payload.cache_evicted=true;fixture.records.set('owner-a:requested',evicted);
   vi.mocked(hydrateConversation).mockResolvedValueOnce(original);
   const response=await request('/api/chat/history?session_id=requested');
   expect(response.status).toBe(200);expect(response.body.history[0].content).toBe('Requested history');

@@ -54,6 +54,60 @@ def test_source_contains_browser_fixture_imports(tmp_path, monkeypatch):
         assert (tmp_path / 'source' / name).read_bytes() == (root / name).read_bytes()
 
 
+def test_source_contains_fixture_module_imports(tmp_path, monkeypatch):
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.syspath_prepend(str(root / 'scripts'))
+    import collect_release_sources as sources
+
+    required = {'tests/fixtures/segmented-storage.html'}
+    # Only static from/side-effect imports and literal dynamic imports are used here.
+    pattern = r'''(?:\bfrom\s*|\bimport\s*(?:\(\s*)?)["'](\.\.?/[^"']+)["']'''
+    for name in sources.FILES:
+        file = root / name
+        if name.startswith('tests/fixtures/') and file.suffix in {'.html', '.ts', '.tsx'}:
+            for module in re.findall(pattern, file.read_text(encoding='utf-8')):
+                target = (file.parent / module).resolve()
+                if not target.suffix:
+                    target = next((path for suffix in ('.ts', '.tsx')
+                                   if (path := target.with_suffix(suffix)).is_file()), target)
+                assert target.is_file(), f'{name}: missing import {module}'
+                required.add(target.relative_to(root).as_posix())
+    assert {'tests/fixtures/storage-fixture.ts', 'tests/fixtures/session-policy.tsx',
+            'apps/web/src/components/SessionPolicy.tsx'} <= required
+    missing = {name for name in required if name not in sources.FILES
+               and not any((root / name).is_relative_to(root / directory)
+                           for directory in sources.DIRECTORIES)}
+    assert not missing, f'Uncollected fixture imports: {sorted(missing)}'
+    monkeypatch.setattr(sources, 'DIRECTORIES', ())
+    monkeypatch.setattr(sources, 'FILES', tuple(sorted(required)))
+    sources.collect(tmp_path / 'source')
+    for name in required:
+        assert (tmp_path / 'source' / name).read_bytes() == (root / name).read_bytes()
+
+
+def test_source_contains_local_python_helpers(tmp_path, monkeypatch):
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.syspath_prepend(str(root / 'scripts'))
+    import collect_release_sources as sources
+
+    required = {'tests/e2e_segmented_storage.py'}
+    # Only simple imports of sibling Python modules are used by these tests.
+    for name in sources.FILES:
+        if name.startswith('tests/') and name.endswith('.py'):
+            file = root / name
+            for module in re.findall(r'^\s*(?:from|import) (\w+)\b', file.read_text(encoding='utf-8'), re.M):
+                helper = file.with_name(module + '.py')
+                if helper.is_file():
+                    required.add(helper.relative_to(root).as_posix())
+    assert {'tests/browser_fixture_server.py', 'tests/browser_storage.py'} <= required
+    assert required <= set(sources.FILES)
+    monkeypatch.setattr(sources, 'DIRECTORIES', ())
+    monkeypatch.setattr(sources, 'FILES', tuple(sorted(required)))
+    sources.collect(tmp_path / 'source')
+    for name in required:
+        assert (tmp_path / 'source' / name).read_bytes() == (root / name).read_bytes()
+
+
 def test_mobile_packages_shared_corresponding_source(tmp_path, monkeypatch):
     root = Path(__file__).resolve().parents[1]
     monkeypatch.syspath_prepend(str(root / 'scripts'))

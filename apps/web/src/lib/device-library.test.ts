@@ -1,5 +1,6 @@
+import { harness, decoded } from './idbHarness.test-support';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-const fixture=vi.hoisted(()=>({owner:'owner-a',records:new Map<string,any>(),meta:new Map<string,any>(),sequence:0,turns:[] as any[],settings:{} as any,putFailure:undefined as number|undefined}));
+const fixture=vi.hoisted(()=>({owner:'owner-a',records:new Map<string,any>(),parts:new Map<string,any>(),meta:new Map<string,any>(),sequence:0,turns:[] as any[],settings:{} as any,putFailure:undefined as number|undefined}));
 vi.mock('./appContext',()=>({deviceOwner:()=>fixture.owner,setGenerationBusy:vi.fn()}));
 vi.mock('./appSync',()=>({hydrateConversation:vi.fn()}));
 vi.mock('../mobile/models',()=>({MODELS:[{id:'fixture',runtime:'gguf',temperature:.8,topK:64,topP:.95}],readyModels:async()=>new Set(['fixture'])}));
@@ -9,28 +10,23 @@ vi.mock('../mobile/runtime',()=>({MobileRuntime:class{
 }}));
 vi.mock('./appStore',async original=>({
   ...await original<typeof import('./appStore')>(),
-  allEntities:async(owner:string)=>structuredClone([...fixture.records.values()].filter(e=>e.owner===owner)),
-  entity:async(id:string,owner=fixture.owner)=>structuredClone(fixture.records.get(owner+':'+id)),
-  openEntity:async(id:string,owner=fixture.owner)=>structuredClone(fixture.records.get(owner+':'+id)),
+  allEntities:async(owner:string)=>[...fixture.records.values()].filter(e=>e.owner===owner).map(value=>decoded(value,fixture.parts)),
+  entity:async(id:string,owner=fixture.owner)=>decoded(fixture.records.get(owner+':'+id),fixture.parts),
+  openEntity:async(id:string,owner=fixture.owner)=>decoded(fixture.records.get(owner+':'+id),fixture.parts),
   getMeta:async(key:string)=>structuredClone(fixture.meta.get(key)),
   setMeta:async(key:string,value:unknown)=>{fixture.meta.set(key,structuredClone(value));},
-  appTransaction:async(_stores:string[],_mode:string,action:any)=>new Promise((resolve,reject)=>{
-    const records=structuredClone(fixture.records),metadata=structuredClone(fixture.meta);let aborted=false;
-    const tx={abort:()=>{aborted=true;reject(Error('Transaction aborted'));},objectStore:(name:string)=>({
-      get:(key:any)=>{const read={result:undefined as any,onsuccess:null as any};queueMicrotask(()=>{if(aborted)return;read.result=structuredClone((name==='entities'?records:metadata).get(name==='entities'?key.join(':'):key));try{read.onsuccess?.();}catch(error){aborted=true;reject(error);}});return read;},
-      getAll:(range:any)=>{const read={result:undefined as any,onsuccess:null as any};queueMicrotask(()=>{if(aborted)return;read.result=structuredClone([...records.values()].filter(record=>!range||record.owner===range.lower[0]&&record.id>=range.lower[1]&&record.id<=range.upper[1]));try{read.onsuccess?.();}catch(error){aborted=true;reject(error);}});return read;},
-      put:(value:any,key?:string)=>{if(fixture.putFailure!==undefined&&--fixture.putFailure===0)throw Error('Device quota exceeded');(name==='entities'?records:metadata).set(name==='entities'?value.owner+':'+value.id:key!,structuredClone(value));},
-    })};
-    action(tx,(value:any)=>{if(!aborted){fixture.records=records;fixture.meta=metadata;resolve(value);}});
+  appTransaction:(_stores:string[],mode:string,action:any)=>harness(fixture.records,fixture.meta,fixture.parts,key=>key.join(':'),mode,action,{
+    write:()=>{if(fixture.putFailure!==undefined&&--fixture.putFailure===0)throw Error('Device quota exceeded');},
   }),
   saveEntity:async(value:any,expected?:number,metadata={})=>{
-    const key=value.owner+':'+value.id,previous=fixture.records.get(key);
+    const key=value.owner+':'+value.id,previous=decoded(fixture.records.get(key),fixture.parts);
     if(value.owner!==fixture.owner||expected!==undefined&&(previous?.revision??0)!==expected)throw Error('Owner/revision changed');
     const saved=structuredClone({...value,revision:(previous?.revision??0)+1});fixture.records.set(key,saved);
     for(const [key,item] of Object.entries(metadata))fixture.meta.set(key,structuredClone(item));return saved;
   },
 }));
 import { deviceFetch } from './deviceApi';
+import { appTransaction, writeEntity, newEntity } from './appStore';
 import exportCases from '../../../../tests/fixtures/device-exports.json';
 import importCases from '../../../../tests/fixtures/device-imports.json';
 import mediaCases from '../../../../tests/fixtures/device-media.json';
@@ -38,7 +34,7 @@ import { fromBase64 } from './portableBinary';
 const request=async(path:string,body?:unknown,method=body?'POST':'GET')=>{
   const response=await deviceFetch(path,{method,...(body?{body:JSON.stringify(body)}:{})});return {status:response.status,body:await response.json()};
 };
-beforeEach(()=>{fixture.records.clear();fixture.meta.clear();fixture.owner='owner-a';fixture.sequence=0;fixture.turns=[];fixture.putFailure=undefined;vi.stubGlobal('IDBKeyRange',{bound:(lower:unknown,upper:unknown)=>({lower,upper})});vi.stubGlobal('location',{href:'https://device.test/device/'});vi.stubGlobal('fetch',vi.fn(()=>{throw Error('No external calls allowed');}));});
+beforeEach(()=>{fixture.records.clear();fixture.parts.clear();fixture.meta.clear();fixture.owner='owner-a';fixture.sequence=0;fixture.turns=[];fixture.putFailure=undefined;vi.stubGlobal('IDBKeyRange',{bound:(lower:unknown,upper:unknown)=>({lower,upper})});vi.stubGlobal('location',{href:'https://device.test/device/'});vi.stubGlobal('fetch',vi.fn(()=>{throw Error('No external calls allowed');}));});
 afterEach(()=>{vi.unstubAllGlobals();});
 const form=(raw:Uint8Array)=>{const value=new FormData();value.set('file',new File([new Uint8Array(raw)],'fake.html',{type:'text/html'}));return value;};
 it('requires media rights, sniffs uploaded bytes and isolates asset retrieval by owner',async()=>{
@@ -79,7 +75,7 @@ it('imports BYAF scenarios and their chosen histories separately with original p
   expect(response.status).toBe(200);expect(preview.documents).toHaveLength(2);
   const selections=preview.documents.map((document:any,index:number)=>({index,document,history_indices:[0]})),saved=await request('/api/imports/'+preview.preview_id+'/commit',{request_id:'byaf-scenarios',selections});
   expect(saved.status).toBe(200);expect(saved.body.items).toHaveLength(2);expect(saved.body.sessions).toHaveLength(2);
-  const histories=saved.body.sessions.map((item:any)=>fixture.records.get('owner-a:'+item.session_id));
+  const histories=saved.body.sessions.map((item:any)=>decoded(fixture.records.get('owner-a:'+item.session_id),fixture.parts));
   expect(histories[0].payload.messages[1].content).toBe('前の候補');expect(histories[1].payload.messages[1].content).toBe('選択された返答');
   expect(histories[0].payload.messages[1].imported_from.origin.selected_active_timestamp).toBe('2026-01-01T00:00:00.123456Z');
   expect(new Set(histories.flatMap((record:any)=>record.payload.messages.map((message:any)=>message.id))).size).toBe(4);
@@ -141,7 +137,7 @@ it('commits selected histories and original bytes once, rejects changed replays,
   expect(fixture.meta.get('import:owner-a:history-once')).toMatchObject(first.body);
   expect(fixture.meta.get('import:owner-a:history-once').request_fingerprint).toMatch(/^[a-f0-9]{64}$/);
   expect(first.body.sessions).toHaveLength(1);expect(first.body.items[0].document.source).toEqual({future:'SOURCE'});
-  const history=fixture.records.get('owner-a:'+first.body.sessions[0].session_id);
+  const history=decoded(fixture.records.get('owner-a:'+first.body.sessions[0].session_id),fixture.parts);
   expect(history.payload.messages.map((message:any)=>message.content)).toEqual(['First','Second']);
   expect(new Set(history.payload.messages.map((message:any)=>message.id)).size).toBe(2);
   expect(history.payload.messages.map((message:any)=>message.id)).toEqual([901,902]);
@@ -166,7 +162,7 @@ it('rolls back all import items, originals and receipts on quota failure and kee
   expect(fixture.records).toEqual(before);expect(fixture.meta).toEqual(metadata);
   fixture.putFailure=undefined;
   const saved=await request('/api/imports/'+preview.preview_id+'/commit',body);expect(saved.body.items).toHaveLength(2);
-  expect(fixture.records.get('owner-a:unsent').dirty).toBe(true);
+  expect(decoded(fixture.records.get('owner-a:unsent'),fixture.parts).dirty).toBe(true);
 });
 it('updates only a selected matching Library revision and refuses unverifiable legacy receipts',async()=>{
   const original=(await request('/api/library',{name:'Before'})).body;
@@ -201,7 +197,7 @@ it('compiles selected library revisions and fails closed on missing, mistyped or
   expect(compiled.status).toBe(200);expect(compiled.body.system_prompt).toContain('Profile main');expect(compiled.body.system_prompt).not.toContain('Known harbor');
   expect((await request('/api/prompt/compile',{character_id:character.id,library_binding:{...binding,profile:{id:character.id,revision:1}}})).status).toBe(409);
   expect((await request('/api/prompt/compile',{character_id:character.id,library_binding:{...binding,lorebooks:[{id:lore.id,revision:99}]}})).status).toBe(409);
-  fixture.records.get('owner-a:'+profile.id).payload.versions['1'].nsfw=true;
+  const adult=decoded(fixture.records.get('owner-a:'+profile.id),fixture.parts);adult.payload.versions['1'].nsfw=true;fixture.records.set('owner-a:'+profile.id,adult);
   expect((await request('/api/prompt/compile',{character_id:character.id,library_binding:binding})).status).toBe(403);
   expect(fetch).not.toHaveBeenCalled();
 });
@@ -219,7 +215,7 @@ it('keeps created World revisions immutable and applies selected cast, Lore, RPG
   const content=fixture.turns.map(m=>m.content).join('\n');
   expect(content).toContain('OLD RULE');expect(content).not.toContain('NEW RULE');expect(content).toContain('Known harbor');expect(content).toContain('船長');expect(content).toContain('ONE OFF');
   expect(fixture.settings).toMatchObject({temperature:.25,top_p:.8,top_k:7,max_tokens:512});
-  const saved=fixture.records.get('owner-a:chat');expect(saved.payload.state.rpg.hp).toBe(90);expect(saved.payload.state.rpg.rolls).toHaveLength(1);
+  const saved=decoded(fixture.records.get('owner-a:chat'),fixture.parts);expect(saved.payload.state.rpg.hp).toBe(90);expect(saved.payload.state.rpg.rolls).toHaveLength(1);
   expect(saved.payload.last_generation.generation_config.unsupported).toEqual(['stop']);expect(saved.payload.settings.system_prompt).toBe('');
   fixture.owner='owner-b';expect((await request('/api/creator/world/'+first.body.id)).status).toBe(404);expect((await request('/api/worlds')).body.worlds.some((w:any)=>w.id===second.body.id)).toBe(false);
   expect(fetch).not.toHaveBeenCalled();
@@ -231,11 +227,21 @@ it('rejects ambiguous cast and invalid World properties before saving',async()=>
 });
 it('never overwrites a synchronized immutable version when an editable head has not advanced',async()=>{
   const world=(await request('/api/creator/world',{display_name:'World'})).body;
-  const source=fixture.records.get('owner-a:'+world.asset_id);source.payload.versions['2']={...source.payload.creator,rules:'SYNCED'};
+  const source=decoded(fixture.records.get('owner-a:'+world.asset_id),fixture.parts);source.payload.versions['2']={...source.payload.creator,rules:'SYNCED'};fixture.records.set('owner-a:'+world.asset_id,source);
   expect((await request('/api/creator/world/'+world.id,{display_name:'Overwrite'},'PUT')).status).toBe(409);
   expect(source.payload.versions['2'].rules).toBe('SYNCED');
-  const character=(await request('/api/library',{name:'Character'})).body,record=fixture.records.get('owner-a:'+character.id);
-  record.payload.versions['2']={...record.payload.document,name:'SYNCED'};
+  const character=(await request('/api/library',{name:'Character'})).body,record=decoded(fixture.records.get('owner-a:'+character.id),fixture.parts);
+  record.payload.versions['2']={...record.payload.document,name:'SYNCED'};fixture.records.set('owner-a:'+character.id,record);
   expect((await request('/api/library/'+character.id,{expected_revision:1,document:{name:'Overwrite'}},'PUT')).status).toBe(409);
   expect(record.payload.versions['2'].name).toBe('SYNCED');
+});
+
+it.each([false,true])('rejects invalid stored message IDs through inline and segmented headers (segmented=%s)',async segmented=>{
+  const invalid={...newEntity('conversation','invalid',{messages:[{id:0,content:'KEEP'}]},'owner-a'),revision:1};
+  if(segmented)await appTransaction<void>(['entities'],'readwrite',(tx,done)=>writeEntity(tx,invalid,'add',done));
+  else fixture.records.set('owner-a:invalid',invalid);
+  const preview=(await request('/api/imports/text/preview',{text:'{"name":"Fictional import"}'})).body;
+  const records=structuredClone(fixture.records),parts=structuredClone(fixture.parts),meta=structuredClone(fixture.meta);
+  const result=await request('/api/imports/'+preview.preview_id+'/commit',{request_id:'invalid-sequence',selections:[{index:0,document:preview.documents[0]}]});
+  expect(result.status).toBe(400);expect(fixture.records).toEqual(records);expect(fixture.parts).toEqual(parts);expect(fixture.meta).toEqual(meta);
 });
