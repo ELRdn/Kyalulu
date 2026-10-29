@@ -3,7 +3,7 @@
 <script type="module">
 import history from './unified-history.json';
 import {appTransaction,entity,getMeta} from '/src/lib/appStore.ts';
-import {rememberOwner,deviceOwner} from '/src/lib/appContext.ts';
+import {rememberOwner,deviceOwner,setGenerationBusy} from '/src/lib/appContext.ts';
 import {receiveSyncPage,syncNow,syncState} from '/src/lib/appSync.ts';
 import {receiveLibrarySnapshot,receiveCreatorSnapshot,rebindConversation,canonical} from '/src/lib/appSyncData.ts';
 
@@ -17,19 +17,38 @@ const record=(id,payload,extra={})=>({id,owner,kind:'conversation',revision:1,se
 const basic=(id,number=1)=>({storage_policy:'sync',settings:{session_id:id,library_binding:null},
   state:{session_id:id},messages:[{id:number,uuid:id+'-message',role:'user',content:'FICTIONAL '+id}],memories:[],summaries:[]});
 const remote=(id='received')=>({id,kind:'conversation',revision:2,deleted:false,payload:rebindConversation(history.payload,id)});
-const stats={getAllAttempts:0,foreignCursorRows:0,receiveRows:0,ackRows:0,cursors:0,switches:0};
+const stats={getAllAttempts:0,foreignCursorRows:0,receiveRows:0,ackRows:0,selectionRows:0,maintenanceRows:0,countRows:0,
+  readonlyScans:0,referenceReads:[],referenceSnapshot:true,cursors:0,switches:0};
 const probes=[];
-let measuring=false,switchDuring='',switched=false;
-const ackTransactions=new WeakSet();
+let measuring=false,switchDuring='',switched=false,interrupt='owner',concurrentUpdate,writerDone;
+const ackTransactions=new WeakSet(),selectionTransactions=new WeakSet();
 const originals={get:IDBObjectStore.prototype.get,getAll:IDBObjectStore.prototype.getAll,openCursor:IDBObjectStore.prototype.openCursor};
-const guarded=store=>measuring&&store.transaction.mode==='readwrite'&&store.transaction.objectStoreNames.contains('entities')&&store.transaction.objectStoreNames.contains('meta');
+const guarded=store=>measuring&&store.transaction.objectStoreNames.contains('entities');
+function interruptContext(tx){
+  switched=true;stats.switches++;
+  if(interrupt==='generation')setGenerationBusy(true);
+  else if(interrupt==='consent')tx.db.transaction('meta','readwrite').objectStore('meta').put(false,prefix+'consent');
+  else rememberOwner(foreign);
+}
 IDBObjectStore.prototype.get=function(key){
   if(guarded(this)&&this.name==='meta'&&key===prefix+'outbox')ackTransactions.add(this.transaction);
-  return originals.get.call(this,key);
+  const request=originals.get.call(this,key);
+  if(guarded(this)&&this.name==='entities'&&this.transaction.mode==='readonly'){
+    stats.referenceReads.push(key[1]);stats.referenceSnapshot&&=selectionTransactions.has(this.transaction);
+    const tx=this.transaction;
+    request.addEventListener('success',()=>{
+      if(switchDuring==='reference'&&!switched)interruptContext(tx);
+    });
+    if(concurrentUpdate){
+      const writer=tx.db.transaction('entities','readwrite');writer.objectStore('entities').put(concurrentUpdate);concurrentUpdate=undefined;
+      writerDone=new Promise((resolve,reject)=>{writer.oncomplete=resolve;writer.onabort=()=>reject(Error('Concurrent fixture write failed'));});
+    }
+  }
+  return request;
 };
 IDBObjectStore.prototype.getAll=function(...args){
   if(guarded(this)&&this.name==='entities'){
-    stats.getAllAttempts++;this.transaction.abort();throw Error('entities.getAll forbidden during sync writes');
+    stats.getAllAttempts++;this.transaction.abort();throw Error('entities.getAll forbidden during sync selection/count/writes');
   }
   return originals.getAll.apply(this,args);
 };
@@ -37,20 +56,22 @@ IDBObjectStore.prototype.openCursor=function(...args){
   const request=originals.openCursor.apply(this,args);
   if(guarded(this)&&this.name==='entities'){
     stats.cursors++;
-    const phase=ackTransactions.has(this.transaction)?'ack':'receive';let rows=0;
+    const phase=this.transaction.mode==='readonly'?['selection','maintenance','count'][stats.readonlyScans++]:ackTransactions.has(this.transaction)?'ack':'receive';let rows=0;
+    if(phase==='selection')selectionTransactions.add(this.transaction);
+    const tx=this.transaction;
     request.addEventListener('success',()=>{
       const cursor=request.result;if(!cursor)return;
       stats[phase+'Rows']++;rows++;
       if(cursor.value.owner!==owner)stats.foreignCursorRows++;
       // Switch before the production success handler consumes this cursor row.
-      if(switchDuring===phase&&!switched&&rows===23){switched=true;stats.switches++;rememberOwner(foreign);}
+      if(switchDuring===phase&&!switched&&rows===23)interruptContext(tx);
     });
   }
   return request;
 };
 
 async function seed(records=[],batch){
-  measuring=false;switchDuring='';switched=false;rememberOwner(owner);
+  measuring=false;switchDuring='';switched=false;interrupt='owner';stats.readonlyScans=0;stats.referenceReads=[];concurrentUpdate=undefined;writerDone=undefined;rememberOwner(owner);
   await appTransaction(['entities','meta'],'readwrite',(tx,done)=>{
     const entities=tx.objectStore('entities'),meta=tx.objectStore('meta');entities.clear();meta.clear();
     for(let index=0;index<count;index++)entities.put(record('unrelated-'+String(index).padStart(3,'0'),basic('unrelated-'+index,maximum-count+1+index)));
@@ -202,6 +223,105 @@ async function ownerSwitch(){
   same(await snapshot(),ackBefore,'Ack owner change committed body, cursor, sequence or receipt removal');probes.push('cursor-owner-switch-ack');
 }
 
+async function outgoingSync(reject=false){
+  const fetch=globalThis.fetch,sent=[];
+  globalThis.fetch=async(input,init)=>{
+    const path=String(input);
+    if(path==='/api/mobile/status')return Response.json({cloud_mode:true,authenticated:true,owner_scope:owner});
+    check(new Headers(init?.headers).get('X-Kyalulu-Owner')===owner,'Wrong outgoing owner');
+    if(init?.method==='POST'){
+      check(path==='/api/cloud/app/sync','Unexpected outgoing API '+path);
+      const batch=JSON.parse(String(init.body));sent.push(batch);
+      return reject?Response.json({error:'fixture rejection'},{status:409}):Response.json({changes:batch.changes.map(e=>({id:e.id,revision:2,deleted:e.deleted}))});
+    }
+    check(path.startsWith('/api/cloud/app/sync?cursor='),'Unexpected outgoing download '+path);
+    return Response.json({changes:[],cursor:11,has_more:false});
+  };
+  measuring=true;try{await syncNow(owner);}finally{measuring=false;globalThis.fetch=fetch;}
+  return sent;
+}
+
+const outgoingRecords=()=>Array.from({length:55},(_,index)=>record('chat-'+String(index).padStart(2,'0'),basic('chat-'+index),{dirty:true}));
+async function outgoing(){
+  const records=outgoingRecords(),local=record('device-only',{...basic('device-only'),storage_policy:'local'},{dirty:true});
+  // The first unselected conversation must never resolve its missing reference.
+  records[50].payload.settings.library_binding={character:{id:'unselected-missing',revision:1}};
+  const other=record('foreign-dirty',basic('foreign-dirty'),{owner:foreign,dirty:true});
+  await seed([...records.reverse(),local,other]);const before=await snapshot();
+  const sent=await outgoingSync();check(sent.length===1,'Auto-sent a second batch or skipped outgoing');
+  same(sent[0].changes.map(e=>e.id),Array.from({length:50},(_,i)=>'chat-'+String(i).padStart(2,'0')),'Cap/order changed');
+  check(syncState().phase==='saved'&&syncState().pending===6,'Dirty count omitted device-only or included foreign records');
+  check(stats.selectionRows>=count&&stats.countRows>=count&&stats.referenceReads.length===0,'Selection/count cursor or reference bound failed');
+  for(const id of ['chat-50','chat-54','device-only'])same(await entity(id,owner),before.entities.find(e=>e.owner===owner&&e.id===id),'Unselected body changed');
+  same(await entity(other.id,foreign),other,'Foreign dirty record changed');
+  probes.push('outgoing-cap50-key-order','no-automatic-second-batch','device-only-pending-count','unselected-references-not-read');
+}
+
+async function outgoingDelete(){
+  for(const confirmed of [true,false]){
+    const first=record('z-delete-first',{...basic('z-delete-first'),delete_confirmation_revision:confirmed?4:3},{dirty:true,deleted:true,revision:4,serverRevision:3});
+    const second=record('z-delete-second',basic('z-delete-second'),{dirty:true,deleted:true});
+    const local=record('a-local-delete',{...basic('a-local-delete'),storage_policy:'local'},{dirty:true,deleted:true});
+    await seed([...outgoingRecords(),first,second,local]);const before=await snapshot();
+    const sent=await outgoingSync(true);check(sent.length===1,'Deletion batch not sent');
+    same(sent[0].changes,[{id:first.id,kind:'conversation',base_revision:3,payload:{},deleted:true,delete_confirmed:confirmed}],'First deletion/confirmation changed');
+    same((await getMeta(prefix+'outbox')).revisions,{[first.id]:4},'Deletion local revision changed');
+    same((await snapshot()).entities,before.entities,'Rejected deletion destroyed local data');
+    check(!stats.referenceReads.length,'Deletion resolved unused references');
+  }
+  probes.push('first-deletion-beyond-cap','exact-deletion-confirmation','rejected-deletion-preserves-bodies');
+}
+
+function outgoingHistory(){
+  const payload=remote('chat').payload,library='historical-character',setting='created_'+'b'.repeat(32);
+  payload.messages[1].before.settings.library_binding.character.id=library;
+  payload.messages[1].before.state.world_id=setting+'@1';
+  payload.library_snapshots[library+'@1']=structuredClone(payload.library_snapshots['character@1']);
+  payload.creator_snapshots[setting+'@1']=structuredClone(payload.creator_snapshots[creator+'@1']);
+  const fixed=fixedRecords();
+  fixed.push({...structuredClone(fixed[0]),id:library},{...structuredClone(fixed[1]),id:setting});
+  return {chat:record('chat',payload,{dirty:true}),fixed,library,setting};
+}
+
+async function outgoingReferences(){
+  for(const source of ['stored','embedded','invalid']){
+    const {chat,fixed,library,setting}=outgoingHistory(),payload=chat.payload;
+    const expectedLibrary=structuredClone(payload.library_snapshots),expectedCreator=structuredClone(payload.creator_snapshots);
+    if(source==='stored'){payload.library_snapshots={};payload.creator_snapshots={};}
+    if(source==='invalid')payload.settings.library_binding.character.revision=0;
+    await seed([chat,...(source==='embedded'?fixed.map(e=>({...e,deleted:true})):fixed)]);
+    if(source==='stored'){
+      concurrentUpdate=structuredClone(fixed[2]);concurrentUpdate.payload.versions['1'].name='CONCURRENT WRITER';
+    }
+    const sent=await outgoingSync(true);if(writerDone)await writerDone;
+    same([...stats.referenceReads].sort(),['character',creator,library,setting].sort(),'Read unrelated/missing references or skipped history');
+    check(stats.referenceSnapshot,'Reference reads escaped selection readonly snapshot');
+    if(source==='invalid'){
+      check(!sent.length&&!await getMeta(prefix+'outbox'),'Invalid reference revision was staged/sent');continue;
+    }
+    check(sent.length===1,'Referenced batch not sent');const outgoing=sent[0].changes[0].payload;
+    same(Object.keys(outgoing.library_snapshots).sort(),Object.keys(expectedLibrary).sort(),'Historical Library reference lost');
+    same(Object.keys(outgoing.creator_snapshots).sort(),Object.keys(expectedCreator).sort(),'Historical creator reference lost');
+    for(const [id,document] of Object.entries(expectedLibrary))same(outgoing.library_snapshots[id].name,document.name,'Fixed Library revision lost');
+    for(const [id,snapshot] of Object.entries(expectedCreator))same(outgoing.creator_snapshots[id].document.rules,snapshot.document.rules,'Fixed creator revision lost');
+    same(await entity(chat.id,owner),chat,'Outgoing reference resolution mutated conversation');
+    if(source==='stored')check((await entity(library,owner)).payload.versions['1'].name==='CONCURRENT WRITER','Concurrent writer did not exercise snapshot');
+  }
+  probes.push('outgoing-current-historical-references','embedded-deleted-reference-fallback','reference-revision-validation','single-readonly-snapshot-with-concurrent-writer');
+}
+
+async function outgoingFences(){
+  for(const [phase,change] of [['selection','owner'],['reference','owner'],['count','owner'],['selection','generation'],['reference','generation'],['count','generation'],['selection','consent'],['reference','consent'],['count','consent']]){
+    const {chat,fixed}=outgoingHistory();if(phase==='count')chat.dirty=false;
+    await seed([chat,...fixed]);const before=await snapshot();switchDuring=phase;interrupt=change;
+    let sent;try{sent=await outgoingSync();}finally{if(change==='generation')setGenerationBusy(false);}
+    check(switched,'No injected '+change+' change at '+phase);check(!sent.length,'Sent body after '+change+' at '+phase);
+    check(!await getMeta(prefix+'outbox'),'Staged stale outgoing batch');
+    same((await snapshot()).entities,before.entities,'Fence changed entity bodies');
+    check(syncState().phase!=='saved','Reported saved after context changed');probes.push('outgoing-'+phase+'-'+change+'-fence');
+  }
+}
+
 async function run(){
   check(localStorage.length===0&&(await indexedDB.databases()).length===0,'Context was not empty');
   let details={};
@@ -210,6 +330,10 @@ async function run(){
   else if(scenario==='protections')await protections();
   else if(scenario==='ack')await ack();
   else if(scenario==='owner-switch')await ownerSwitch();
+  else if(scenario==='outgoing')await outgoing();
+  else if(scenario==='outgoing-delete')await outgoingDelete();
+  else if(scenario==='outgoing-references')await outgoingReferences();
+  else if(scenario==='outgoing-fences')await outgoingFences();
   else throw Error('Unknown scenario');
   check(stats.getAllAttempts===0&&stats.foreignCursorRows===0,'Bulk/foreign record reads detected');
   const request=indexedDB.open('kyalulu-app-v1');
