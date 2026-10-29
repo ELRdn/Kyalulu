@@ -24,6 +24,10 @@ source files were compared before upload. The remote archive and extracted
 manifest hashes also passed. WASM inputs remain reused fixed outputs, not a
 fresh WASM rebuild. The quota-test follow-up changes tests/docs/CI/source
 collection only; it does not change the candidate's renderer/Runtime code.
+Later selective-sync client changes in `6c8cdf4` are **not included** in this
+image. Their separately audited local archive is recorded in
+[sync selection](2026-10-29-unified-sync-selection.md); the image results here
+apply only to the fixed candidate above.
 
 ## Image and application acceptance
 

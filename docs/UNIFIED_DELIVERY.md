@@ -156,4 +156,7 @@ owner・下書き・固定版を維持した証拠は
 Browser同期受信/ack確定時の全owner本文の一括保持を除き、参照作品・数値ID上限・
 衝突/owner切替とatomic rollbackを維持した証拠は
 [Selective sync](validation/2026-10-29-unified-sync-selection.md) に記録する。
-この修正はbf83d03イメージ候補の後続であり、最終配布候補は再生成が必要。
+固定6c8cdf4はclean sourceの831試験と統合build、Cloud候補223項目とprecache61項目の照合まで確認済み。
+bf83d03イメージはこのclient修正を含まない。以降の変更は候補を再生成し、同じ版のimage検証と区別する。
+PC未選択時にRuntime通信が同一originへ流れない境界と、通常の暗号化接続/失効の維持は
+[Runtime routing](validation/2026-10-29-unified-runtime-routing.md) に記録する。
