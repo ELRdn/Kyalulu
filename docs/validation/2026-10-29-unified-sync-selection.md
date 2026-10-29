@@ -48,7 +48,7 @@ existing readonly sync orchestration reads are outside this guard.
 
 ## Execution
 
-The final strengthened fixture was rerun after the skipped-payload compatibility
+The receive/ack fixture at `6c8cdf4` was rerun after the skipped-payload compatibility
 adjustment and passed **6/6 scenarios** on installed **Chromium 151.0.7922.34**,
 using real IndexedDB. Exit code: **0**. Web typecheck and **53 appSync unit tests**
 also passed. The added unit cases preserve handling of malformed remote payloads
@@ -83,6 +83,39 @@ python -B tests/e2e_sync_selection.py
 The host's installed Chromium was used because the sandbox has no browser
 installation. No new dependency is installed.
 
+## Outgoing selection and count follow-up
+
+The remaining `allEntities(owner)` calls in `synchronize` are removed. A readonly
+owner-ranged cursor retains the first 50 dirty sync entities in key order while
+continuing to search for the first deletion, which still takes the entire batch.
+It resolves only the selected conversations' current/historical Library/creator
+references with individual reads in that same readonly transaction. Embedded
+snapshot fallback, immutable validation, source revisions and exact deletion
+confirmation fields retain the existing behavior. Final dirty counts include
+device-only records and exclude foreign accounts without retaining body arrays.
+
+Four additional real IndexedDB scenarios cover:
+
+- 55 dirty sync conversations plus a dirty device-only and foreign conversation;
+  one batch of 50 in key order, six remaining owner records and no automatic
+  second batch. An unselected missing reference is never resolved.
+- The first deletion beyond the 50-record cap, both exact/mismatched confirmation
+  revisions, and retained bodies/outbox after the fictional peer rejects it.
+- Current/historical references from stored or embedded snapshots, deleted-source
+  fallback, invalid revisions, and a concurrent writer proving all reference
+  reads use the selection transaction's snapshot.
+- Nine owner/generation/consent changes during selection, reference lookup and
+  final counts. No stale batch is sent or staged and entity bodies stay intact.
+
+The final-count consent case first reproduced a stale `saved` status after
+withdrawal (**9/10 scenarios passed**). Rechecking consent before reporting the
+final status fixed it. The final fixture passed **10/10 scenarios** on Chromium
+**151.0.7922.34**, with **0 forbidden getAll calls**, **0 foreign cursor rows**,
+**0 real API/external requests** and **0 uncaught page errors**. The final
+**63 appSync unit tests** also passed. LF-normalized `appSync.ts` SHA-256:
+`b980d6ead603f1d6e9b3a42d8f883832696f02e038dc772c9238998897a1421c`.
+Local JSON evidence is `.artifacts/sync-selection-outgoing-20261029.json`.
+
 ## Fixed source and package provenance
 
 The clean corresponding-source export of
@@ -106,9 +139,10 @@ require a new build, audit and matching image evidence before deployment.
 
 This is functional and read-method evidence on synthetic local IndexedDB data.
 It does not measure peak memory/RSS or prove that no full-body references remain
-elsewhere. Outgoing batch preparation, final pending counts, UI lists and other
-storage paths still include account-wide reads. Selected/decoded bodies and one
-cursor row still load complete entities. It does not accept
+elsewhere. UI lists and other storage paths still include account-wide reads.
+Sync still scans account records and retains identity sets; selected/decoded
+bodies, up to 50 outgoing entities plus referenced documents, and one cursor row
+still load complete entities. It does not accept
 250MB/1GB capacity, production authentication/wire interoperability, physical
 devices, process termination durability or deployment readiness. DB version 2 is
 asserted; product wire/schema compatibility requires the parent's separate checks.

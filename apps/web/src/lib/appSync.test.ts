@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { AppEntity } from './appStore';
 
-const fixture=vi.hoisted(()=>({entities:new Map<string,any>(),meta:new Map<string,any>(),owner:'owner-a',failAt:0,reads:[] as string[]}));
-vi.mock('./appContext',()=>({deviceOwner:()=>fixture.owner,generationBusy:()=>false}));
+const fixture=vi.hoisted(()=>({entities:new Map<string,any>(),meta:new Map<string,any>(),owner:'owner-a',busy:false,failAt:0,reads:[] as string[],
+  readHook:undefined as undefined|((mode:string,kind:string,id:string|null)=>void)}));
+vi.mock('./appContext',()=>({deviceOwner:()=>fixture.owner,generationBusy:()=>fixture.busy}));
 vi.mock('./transport',()=>({cloudFetch:vi.fn()}));
 // Unit transaction harness: queued requests, owner ranges, commit and abort; browser quota remains an E2E gate.
 vi.mock('./appStore',async importOriginal=>({
   ...await importOriginal<typeof import('./appStore')>(),
-  allEntities:async(owner:string)=>[...fixture.entities.values()].filter(e=>e.owner===owner).map(e=>structuredClone(e)),
+  allEntities:async()=>{throw Error('Bulk sync reads forbidden');},
   getMeta:async(key:string)=>{fixture.reads.push(key);return structuredClone(fixture.meta.get(key));},
   setMeta:async(key:string,value:any)=>{fixture.meta.set(key,structuredClone(value));},
   entity:async(id:string,owner:string)=>structuredClone(fixture.entities.get(JSON.stringify([owner,id]))),
@@ -29,11 +30,13 @@ vi.mock('./appStore',async importOriginal=>({
     };
     const tx={abort:()=>{aborted=true;},objectStore:(name:string)=>{
       const map=name==='entities'?entities:meta,key=(k:any)=>name==='entities'?JSON.stringify(k):k;
-      return {get:(k:any)=>{if(name==='meta')fixture.reads.push(String(k));return enqueue(()=>map.get(key(k)));},getAllKeys:()=>enqueue(()=>[...map.keys()]),getAll:(range:any)=>enqueue(()=>[...entities.values()].filter(e=>e.owner===range.lower[0])),
+      return {get:(k:any)=>{fixture.reads.push(name==='meta'?String(k):'entity:'+k[1]);return enqueue(()=>{
+          if(name==='entities')fixture.readHook?.(_mode,'get',k[1]);return map.get(key(k));
+        });},getAllKeys:()=>enqueue(()=>[...map.keys()]),getAll:()=>{throw Error('Bulk sync reads forbidden');},
         openCursor:(range:any)=>{
           const matches=[...entities.values()].filter(e=>e.owner===range.lower[0]).sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0);
           const request:any={};let index=0;
-          const next=()=>{pending++;queueMicrotask(()=>{try{if(!aborted){request.result=index<matches.length?{value:structuredClone(matches[index++]),continue:next}:null;request.onsuccess?.();}}catch{aborted=true;}finally{pending--;finish();}});};
+          const next=()=>{pending++;queueMicrotask(()=>{try{if(!aborted){request.result=index<matches.length?{value:structuredClone(matches[index++]),continue:next}:null;fixture.readHook?.(_mode,'cursor',request.result?.value.id??null);request.onsuccess?.();}}catch{aborted=true;}finally{pending--;finish();}});};
           next();return request;
         },
         index:()=>({openKeyCursor:(range:any)=>{
@@ -57,6 +60,7 @@ import { initialData, newConversation } from '../mobile/store';
 import { deviceFetch } from './deviceApi';
 import { Sha256 } from '../mobile/sha256';
 import sharedHistory from '../../../../tests/fixtures/unified-history.json';
+import { PortableDocumentSchema, CreatorDocumentSchema } from '../../../../packages/schemas/src';
 
 const payload=()=>({storage_policy:'sync',rating:'general',settings:{session_id:'chat',library_binding:{character:{id:'character',revision:3}}},state:{session_id:'chat'},
   messages:[{id:1,uuid:'message',role:'user',content:'tea'}],memories:[],summaries:[],library_snapshots:{'character@3':{name:'Tea'}}});
@@ -66,10 +70,86 @@ function local(id:string,owner='owner-a'):AppEntity {
 }
 const put=(e:AppEntity)=>fixture.entities.set(JSON.stringify([e.owner,e.id]),e);
 const get=(id:string,owner='owner-a')=>fixture.entities.get(JSON.stringify([owner,id]));
+function outgoingServer(sent:any[],reject=false){
+  vi.mocked(cloudFetch).mockImplementation(async(path,init)=>{
+    if(path==='/api/mobile/status')return Response.json({cloud_mode:true,authenticated:true,owner_scope:'owner-a'});
+    if(init?.method==='POST'){
+      const batch=JSON.parse(String(init.body));sent.push(batch);
+      return reject?Response.json({error:'fixture rejected'},{status:409}):Response.json({changes:batch.changes.map((e:any)=>({id:e.id,revision:1,deleted:e.deleted}))});
+    }
+    return Response.json({changes:[],cursor:0,has_more:false});
+  });
+}
 beforeEach(()=>{
-  fixture.entities=new Map();fixture.meta=new Map([['sync:owner-a:consent',true]]);fixture.owner='owner-a';fixture.failAt=0;fixture.reads=[];
+  fixture.entities=new Map();fixture.meta=new Map([['sync:owner-a:consent',true]]);fixture.owner='owner-a';fixture.busy=false;fixture.failAt=0;fixture.reads=[];fixture.readHook=undefined;
   vi.stubGlobal('IDBKeyRange',{bound:(lower:any,upper:any)=>({lower,upper}),only:(value:any)=>({lower:value,upper:value})});
   vi.stubGlobal('navigator',{locks:{request:async(_name:string,action:()=>any)=>action()}});
+});
+
+it('sends only the first 50 dirty sync records in key order and counts device-only dirty records',async()=>{
+  const sent:any[]=[];outgoingServer(sent);
+  for(let index=54;index>=0;index--)put({...local('chat-'+String(index).padStart(2,'0')),dirty:true});
+  put({...local('device-only'),dirty:true,payload:{...local('device-only').payload,storage_policy:'local'}});
+  put({...local('foreign','owner-b'),dirty:true});
+  await syncNow('owner-a');
+  expect(sent).toHaveLength(1);expect(sent[0].changes.map((e:any)=>e.id)).toEqual(Array.from({length:50},(_,i)=>'chat-'+String(i).padStart(2,'0')));
+  expect(syncState()).toMatchObject({phase:'saved',pending:6});expect(get('chat-50').dirty).toBe(true);
+});
+
+it.each([true,false])('prioritizes the first deletion beyond the cap and preserves exact confirmation (%s)',async confirmed=>{
+  const sent:any[]=[];outgoingServer(sent,true);
+  for(let index=0;index<55;index++)put({...local('chat-'+index),dirty:true});
+  const first={...local('z-first'),dirty:true,deleted:true,revision:4,serverRevision:3};
+  first.payload.delete_confirmation_revision=confirmed?4:3;put(first);
+  put({...local('z-second'),dirty:true,deleted:true});
+  await syncNow('owner-a');
+  expect(sent[0].changes).toEqual([{id:'z-first',kind:'conversation',base_revision:3,payload:{},deleted:true,delete_confirmed:confirmed}]);
+  expect(fixture.meta.get('sync:owner-a:outbox').revisions).toEqual({'z-first':4});expect(get('z-first')).toEqual(first);
+  expect(fixture.reads.filter(key=>key.startsWith('entity:'))).toEqual([]);
+});
+
+it.each(['stored','embedded','invalid'])('resolves only selected current/historical references and keeps snapshot validation (%s)',async source=>{
+  const sent:any[]=[];outgoingServer(sent,true);
+  const selected={...local('chat'),dirty:true,payload:structuredClone(sharedHistory.payload)};
+  const creator='created_'+'b'.repeat(32),library='historical-character';
+  selected.payload.messages[1].before!.settings!.library_binding!.character!.id=library;
+  selected.payload.messages[1].before!.state.world_id=creator+'@1';
+  const p=selected.payload as Record<string,any>;
+  p.library_snapshots[library+'@1']=structuredClone(p.library_snapshots['character@1']);
+  p.creator_snapshots[creator+'@1']=structuredClone(p.creator_snapshots['created_'+'a'.repeat(32)+'@1']);
+  const expectedLibrary=Object.fromEntries(Object.entries(p.library_snapshots).map(([id,value])=>[id,PortableDocumentSchema.parse(value)]));
+  const expectedCreator=Object.fromEntries(Object.entries(p.creator_snapshots).map(([id,value]:[string,any])=>[id,{...value,document:CreatorDocumentSchema.parse(value.document)}]));
+  for(const [id,kind,versions] of [
+    ['character','character',{'1':p.library_snapshots['character@1'],'2':p.library_snapshots['character@2']}],
+    [library,'character',{'1':p.library_snapshots[library+'@1']}],
+    ['created_'+'a'.repeat(32),'world',{'1':p.creator_snapshots['created_'+'a'.repeat(32)+'@1'].document,'2':p.creator_snapshots['created_'+'a'.repeat(32)+'@2'].document}],
+    [creator,'world',{'1':p.creator_snapshots[creator+'@1'].document}],
+  ] as const)if(source!=='embedded')put({...local(id),kind,payload:{storage_policy:'local',versions}});
+  if(source==='stored'){p.library_snapshots={};p.creator_snapshots={};}
+  if(source==='invalid')p.settings.library_binding.character.revision=0;
+  put(selected);put({...local('unrelated'),payload:{storage_policy:'local',versions:{invalid:'unused'}}});
+  await syncNow('owner-a');
+  expect(fixture.reads.filter(key=>key.startsWith('entity:')).sort()).toEqual(['character',library,'created_'+'a'.repeat(32),creator].map(id=>'entity:'+id).sort());
+  if(source==='invalid'){expect(sent).toEqual([]);expect(fixture.meta.has('sync:owner-a:outbox')).toBe(false);return;}
+  const outgoing=sent[0].changes[0].payload;
+  expect(outgoing.library_snapshots).toEqual(expectedLibrary);expect(outgoing.creator_snapshots).toEqual(expectedCreator);
+  expect(get('chat')).toEqual(selected);
+});
+
+it.each(['selection','reference','count','generation'])('aborts outgoing readonly work if captured context changes during %s',async phase=>{
+  const sent:any[]=[];outgoingServer(sent);
+  const selected={...local('chat'),dirty:phase!=='count'};
+  selected.payload.settings.library_binding={character:{id:'character',revision:1}};put(selected);
+  let changed=false,scans=0;
+  fixture.readHook=(mode,kind,id)=>{
+    if(mode==='readonly'&&kind==='cursor'&&id===null){scans++;return;}
+    if(phase==='count'&&!scans)return;
+    if(mode!=='readonly'||changed||kind!==(phase==='reference'?'get':'cursor'))return;
+    changed=true;if(phase==='generation')fixture.busy=true;else fixture.owner='owner-b';
+  };
+  await syncNow('owner-a');
+  expect(changed).toBe(true);expect(sent).toEqual([]);expect(fixture.meta.has('sync:owner-a:outbox')).toBe(false);
+  expect(get('chat')).toEqual(selected);expect(syncState().phase).not.toBe('saved');
 });
 
 it('keeps a large browser outbox through a lost part receipt and resumes without duplicating the first part',async()=>{

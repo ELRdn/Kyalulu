@@ -9,7 +9,8 @@ from playwright.async_api import async_playwright
 from browser_fixture_server import local_vite
 
 ROOT = Path(__file__).resolve().parents[1]
-SCENARIOS = ('receive', 'missing', 'mismatch', 'protections', 'ack', 'owner-switch')
+SCENARIOS = ('receive', 'missing', 'mismatch', 'protections', 'ack', 'owner-switch',
+             'outgoing', 'outgoing-delete', 'outgoing-references', 'outgoing-fences')
 
 
 async def main():
