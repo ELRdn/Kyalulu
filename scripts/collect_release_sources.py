@@ -26,6 +26,7 @@ DIRECTORIES = (
     "docs/licenses",
 )
 FILES = (
+    ".gitattributes",
     "LICENSE",
     "README.md",
     "README.jp.md",
@@ -105,6 +106,7 @@ FILES = (
     "docs/validation/2026-10-29-unified-sync-selection.md",
     "docs/validation/2026-10-29-unified-runtime-routing.md",
     "docs/validation/2026-10-30-unified-native-mobile.md",
+    "docs/validation/2026-10-30-unified-wasm.md",
     "deploy/cloud/Dockerfile",
     "deploy/cloud/Dockerfile.prebuilt",
     "deploy/cloud/compose.yml",
