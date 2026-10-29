@@ -82,20 +82,39 @@ export function offlineStub(record:AppEntity):AppEntity {
     summaries:[],cache_preview:{count:p.messages?.length??0,last_at:last?.created_at??null,last_preview:String(last?.content??'').slice(0,160)}}};
 }
 export async function trimOfflineCache(owner=deviceOwner()) {
-  const records=await allEntities(owner);
-  const conversations=records.filter(e=>e.kind==='conversation'&&!e.deleted).sort((a,b)=>b.opened-a.opened||a.id.localeCompare(b.id));
+  const conversations=await appTransaction<(Pick<AppEntity,'id'|'revision'|'opened'|'serverRevision'>&{disposable:boolean})[]>(['entities'],'readonly',(tx,done)=>{
+    const records:(Pick<AppEntity,'id'|'revision'|'opened'|'serverRevision'>&{disposable:boolean})[]=[];
+    const read=tx.objectStore('entities').openCursor(IDBKeyRange.bound([owner,''],[owner,'\uffff']));
+    read.onsuccess=()=>{
+      if(owner!==deviceOwner()){tx.abort();return;}
+      const cursor=read.result;
+      if(!cursor){done(records);return;}
+      const e=cursor.value as AppEntity;
+      if(e.kind==='conversation'&&!e.deleted)records.push({id:e.id,revision:e.revision,opened:e.opened,serverRevision:e.serverRevision,
+        disposable:!e.pinned&&!e.dirty&&e.serverRevision>0&&e.payload.storage_policy==='sync'&&!e.payload.cache_evicted&&!e.payload.pending_generation});
+      cursor.continue();
+    };
+  });
+  conversations.sort((a,b)=>b.opened-a.opened||a.id.localeCompare(b.id));
   const recent=new Set(conversations.slice(0,10).map(e=>e.id));
-  const disposable=conversations.filter(e=>!recent.has(e.id)&&!e.pinned&&!e.dirty&&e.serverRevision>0
-    &&e.payload.storage_policy==='sync'&&!e.payload.cache_evicted&&!e.payload.pending_generation);
+  const disposable=conversations.filter(e=>!recent.has(e.id)&&e.disposable);
   if(!disposable.length)return;
   await appTransaction<void>(['entities'],'readwrite',(tx,done)=>{
-    const store=tx.objectStore('entities');
-    for(const e of disposable){const read=store.get([owner,e.id]);read.onsuccess=()=>{
-      const current=read.result as AppEntity|undefined;
+    const store=tx.objectStore('entities');let index=0;
+    // Wait for each write so eviction never queues all conversation bodies at once.
+    const next=()=>{
       if(owner!==deviceOwner()){tx.abort();return;}
-      if(current&&!current.deleted&&!current.dirty&&!current.pinned&&!current.payload.pending_generation
-        &&current.revision===e.revision&&current.opened===e.opened&&current.serverRevision===e.serverRevision)store.put(offlineStub(current));
-    };}
-    done();
+      const e=disposable[index++];if(!e){done();return;}
+      const read=store.get([owner,e.id]);read.onsuccess=()=>{
+        const current=read.result as AppEntity|undefined;
+        if(owner!==deviceOwner()){tx.abort();return;}
+        if(current&&current.kind==='conversation'&&!current.deleted&&!current.dirty&&!current.pinned&&!current.payload.pending_generation
+          &&current.payload.storage_policy==='sync'&&!current.payload.cache_evicted&&current.serverRevision>0
+          &&current.revision===e.revision&&current.opened===e.opened&&current.serverRevision===e.serverRevision){
+          const write=store.put(offlineStub(current));write.onsuccess=next;
+        }else next();
+      };
+    };
+    next();
   });
 }
