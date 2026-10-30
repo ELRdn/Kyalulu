@@ -13,6 +13,7 @@ import { newEntity,appTransaction,readEntity,writeEntity,scrubGenerationRecords 
 import { readDeviceMemoryDomain,commitDeviceMemoryDomain,recoverDeviceMemoryGeneration,validateMemoryDomain,type OwnedMemoryDomain } from './deviceMemoryStore';
 import { deviceExecutionLockName } from './deviceExecution';
 import { JsonStream } from './jsonStream';
+import { Sha256 } from '../mobile/sha256';
 import { bindMemoryScope,memoryIdentity,memoryBinding,ownScopeMemories,memoryDomainKey,reconcileScopeMemories,eraseMemoryDomain } from './deviceMemoryScopes';
 
 beforeEach(()=>{fixture.owner='owner-a';fixture.records.clear();fixture.meta.clear();fixture.parts.clear();fixture.failAt=0;fixture.partReads=[];
@@ -54,16 +55,17 @@ it('rolls back entity body, domain chunks and receipt when domain-header persist
 it('verifies every source part without retaining decoded message bodies or rewriting canonical sources',async()=>{
   const session={...record('source'),revision:4};session.payload.messages=Array.from({length:120},(_,i)=>({id:i+1,uuid:'verify-'+i,role:'user',content:'Keep 茶🙂'.repeat(800),before:{state:{turn:i}}}));
   await appTransaction<void>(['entities'],'readwrite',(tx,done)=>writeEntity(tx,session,'put',done));
-  const before=structuredClone(fixture.records),pieces=structuredClone(fixture.parts),domain=await readDeviceMemoryDomain(fixture.owner,'local');
+  const before=structuredClone(fixture.records),pieces=new Map([...fixture.parts].map(([key,bytes])=>[key,{size:bytes.length,sha256:new Sha256().update(bytes).digest()}])),domain=await readDeviceMemoryDomain(fixture.owner,'local');
   fixture.meta.set('sync:owner-a:outbox',{request_id:'fixed',changes:[]});
   const finish=JsonStream.prototype.finish,retained:number[]=[];
   const spy=vi.spyOn(JsonStream.prototype,'finish').mockImplementation(function(this:JsonStream){const value=finish.call(this);if(Array.isArray(value.messages))retained.push(value.messages.length);return value;});
   try{const result=await commitDeviceMemoryDomain(fixture.owner,'local',domain,[{id:session.id,revision:4}]);expect(result.sessions).toEqual([]);expect(result.domain.revision).toBe(1);}
   finally{spy.mockRestore();}
   expect(retained).toEqual([0]);expect(fixture.records).toEqual(before);
-  for(const [key,value] of pieces)expect(fixture.parts.get(key)).toEqual(value);
+  for(const [key,value] of pieces){const bytes=fixture.parts.get(key);expect({size:bytes.length,sha256:new Sha256().update(bytes).digest()}).toEqual(value);}
   expect(fixture.meta.get('sync:owner-a:outbox')).toEqual({request_id:'fixed',changes:[]});
   const manifest=fixture.records.get(JSON.stringify([fixture.owner,session.id])).payloadParts;
+  expect(manifest.chunks).toBeGreaterThan(1);
   expect(fixture.partReads.filter(key=>key.includes(manifest.token))).toHaveLength(manifest.chunks);
 });
 
