@@ -102,3 +102,13 @@ it('uses the current browser preference, preserves unknown details and accepts e
     expect(friendlyMessage('Specific provider detail')).toBe('Specific provider detail');
   } finally { vi.unstubAllGlobals(); }
 });
+
+it.each([400, 401, 500])('localizes the exact capabilities failure and retains HTTP %s', status => {
+  const raw = `機能情報の取得に失敗しました (HTTP ${status})`;
+  expect(friendlyMessage(Error(raw), 'en')).toBe(`Could not retrieve feature information (HTTP ${status})`);
+  expect(friendlyMessage(Error(raw), 'ja')).toBe(raw);
+});
+it('preserves an unknown diagnostic containing the capabilities template', () => {
+  const raw = 'CUSTOM: 機能情報の取得に失敗しました (HTTP 400) upstream detail';
+  expect(friendlyMessage(raw, 'en')).toBe(raw);
+});

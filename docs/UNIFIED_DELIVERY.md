@@ -227,3 +227,9 @@ packed CLI `3fa9cd62…5b48b4` を検証。実CLI復元/rollback、Mockブラウ
 既定Python3.14で生成した先行候補はcasefold差分で監査不合格とし、配布対象外にした。
 手動成果物CIの初回40993302006はemsdk ZIP実行権限の欠落で失敗。bootstrapを修正し、
 関連9件とLinux権限fixtureを確認。Windows/macOS runnerでの梱包受入れは再実行の別gate。
+
+日英表示を診断・PC公開設定・物語表示・Studio/Status・旧公開作品/作者画面まで補完。
+原文・下書き・request IDと権限境界を保ち、診断は既知の完全テンプレートだけ翻訳する。
+Web全986件/75ファイルと、共有エラー修正後91件・型検査が成功。
+[Auxiliary language](validation/2026-10-30-unified-auxiliary-language.md) に記録する。
+梱包後Nativeの新しい日英/物語表示試験は、同一版の再梱包後に別途実行する。

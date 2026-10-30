@@ -94,6 +94,8 @@ export function friendlyError(raw: unknown, language: Language = typeof window =
     return { message: en ? 'Server conversation data was erased, but cleanup of the draft and reply history on this device could not be verified. ' + (knownEnglish[detail] ?? detail) : text };
   }
   if (en && knownEnglish[text]) return { message: knownEnglish[text] };
+  const capabilityFailure = text.match(/^機能情報の取得に失敗しました \(HTTP (\d{3})\)$/);
+  if (capabilityFailure) return { message: en ? `Could not retrieve feature information (HTTP ${capabilityFailure[1]})` : text };
   const generationCheck = text.match(/^送信結果の確認に失敗しました \(HTTP (\d{3})\)$/);
   if (generationCheck) return { message: en ? `Could not check the send result (HTTP ${generationCheck[1]}).` : text };
   if (text === 'Stop generation and confirm its saved result before switching.') return { message: en ? text : '生成を停止し、保存結果を確認してから切り替えてください。' };
