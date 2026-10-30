@@ -2,7 +2,7 @@
 <p>Fictional accounts, fresh contexts and loopback modules only. Bounded fixtures; no capacity claim.</p>
 <script type="module">
 import history from './unified-history.json';
-import {appTransaction,entity,allEntities,newEntity,saveEntity,openEntity,writeEntity,writeOutbox,restoreOutbox,getMeta,setMeta} from '/src/lib/appStore.ts';
+import {appTransaction,entity,allEntities,newEntity,saveEntity,openEntity,conversationPage,writeEntity,writeOutbox,restoreOutbox,getMeta,setMeta} from '/src/lib/appStore.ts';
 import {rememberOwner,setGenerationBusy} from '/src/lib/appContext.ts';
 import {Sha256} from '/src/mobile/sha256.ts';
 import {receiveSyncPage,syncNow,syncState,setSyncConsent,reconfirmDeletion} from '/src/lib/appSync.ts';
@@ -26,6 +26,74 @@ const physical=()=>appTransaction(['entities','meta','parts'],'readonly',(tx,don
 const header=()=>appTransaction(['entities'],'readonly',(tx,done)=>{const read=tx.objectStore('entities').get([owner,'history']);read.onsuccess=()=>done(read.result);});
 async function rejected(action,message){let failed=false;try{await action();}catch{failed=true;}check(failed,message);}
 async function run(){
+  if(scenario.startsWith('page-')){
+    const value=seed(),messages=Array.from({length:25},(_,i)=>({id:100-i*3,uuid:'page-'+i,role:i%2?'assistant':'user',content:'茶🙂'.repeat(20000)+i,unknown:{keep:i}}));
+    value.payload={messages,title:'Page fixture',storage_policy:'local',unknown:JSON.parse('{"__proto__":{"keep":true}}')};await save(value);
+    let raw=await physical(),ref=raw.entities[0].payloadParts;const stamp={owner,id:value.id,revision:value.revision,bodyToken:ref.token,start:15,end:25};
+    if(scenario==='page-read'){
+      const {messages:_,...metadata}=value.payload,latest=await conversationPage(value.id,owner,10);
+      same(latest.messages,messages.slice(15),'Latest window changed');same(latest.metadata,metadata,'Metadata changed');
+      check(latest.total===25&&latest.start===15&&!latest.next,'Latest position changed');
+      const middle=await conversationPage(value.id,owner,10,latest.previous),first=await conversationPage(value.id,owner,10,middle.previous);
+      same([...first.messages,...middle.messages,...latest.messages],messages,'Backwards pages overlap or lose history');
+      check(!first.previous&&first.start===0&&first.messages.length===5,'First page boundary changed');
+      same((await conversationPage(value.id,owner,10,first.next)).messages,middle.messages,'Forward page changed');
+      const forward=await conversationPage(value.id,owner,10,{...stamp,start:0,end:10}),forwardNext=await conversationPage(value.id,owner,10,forward.next),forwardLast=await conversationPage(value.id,owner,10,forwardNext.next);
+      same([...forward.messages,...forwardNext.messages,...forwardLast.messages],messages,'Short final page overlaps or loses messages');check(forwardLast.start===20&&forwardLast.end===25,'Final range changed');
+      const legacy={...value,id:'legacy-page'};
+      await appTransaction(['entities'],'readwrite',(tx,done)=>{tx.objectStore('entities').put(legacy);done();});
+      const inline=await conversationPage(legacy.id,owner,10);same(inline.messages,latest.messages,'Inline page differs');same(inline.metadata,metadata,'Inline metadata differs');check(inline.bodyToken===null,'Inline token changed');
+      await appTransaction(['entities'],'readwrite',(tx,done)=>{const read=tx.objectStore('entities').get([owner,value.id]);read.onsuccess=()=>{tx.objectStore('entities').put({...read.result,pinned:true,opened:99});done();};});
+      same((await conversationPage(value.id,owner,10,latest.previous)).messages,middle.messages,'Metadata-only update invalidated cursor');
+      const before=await physical();await conversationPage(value.id,owner,10);same(await physical(),before,'Page read modified storage');
+      check(await conversationPage('missing',owner)===undefined,'Missing page created history');
+      for(const bad of [{...stamp,owner:foreign},{...stamp,id:'wrong'},{...stamp,start:-1},{...stamp,start:0},{...stamp,end:26},{...stamp,end:14},{...stamp,revision:6},{...stamp,bodyToken:'wrong'}])await rejected(()=>conversationPage(value.id,owner,10,bad),'Invalid cursor accepted');
+      await rejected(()=>conversationPage(value.id,foreign,10),'Foreign owner read accepted');
+      for(const limit of [0,101,1.5])await rejected(()=>conversationPage(value.id,owner,limit),'Invalid page size accepted');
+      same(await entity(value.id,owner),{...value,pinned:true,opened:99},'Full read contract changed');
+      for(const [id,fields] of [['deleted-page',{deleted:true}],['wrong-kind',{kind:'character'}],['evicted-page',{payload:{...legacy.payload,cache_evicted:true}}],['missing-messages',{payload:{title:'Invalid'}}]]){
+        await appTransaction(['entities'],'readwrite',(tx,done)=>{tx.objectStore('entities').put({...legacy,id,...fields});done();});
+        await rejected(()=>conversationPage(id,owner,10),'Unavailable history became an empty page');
+      }
+      probes.push('latest-and-bidirectional-pages','legacy-inline','metadata-and-unknown-fields','read-only','cursor-fence','full-read-retained');return;
+    }
+    if(scenario==='page-cursor'){
+      const before=await conversationPage(value.id,owner,10);
+      await save(value);await rejected(()=>conversationPage(value.id,owner,10,before.previous),'Old token accepted');
+      const fresh=await conversationPage(value.id,owner,10);
+      await appTransaction(['entities'],'readwrite',(tx,done)=>{const read=tx.objectStore('entities').get([owner,value.id]);read.onsuccess=()=>{tx.objectStore('entities').put({...read.result,revision:8});done();};});
+      await rejected(()=>conversationPage(value.id,owner,10,fresh.previous),'Old revision accepted');
+      probes.push('token-and-revision-fence');return;
+    }
+    if(scenario==='page-owner'){
+      const get=IDBObjectStore.prototype.get;let changed=false;
+      IDBObjectStore.prototype.get=function(key){const request=get.call(this,key);if(this.name==='parts'&&!changed)request.addEventListener('success',()=>{changed=true;rememberOwner(foreign);},{once:true});return request;};
+      try{await rejected(()=>conversationPage(value.id,owner,10),'Owner change during parts accepted');}finally{IDBObjectStore.prototype.get=get;rememberOwner(owner);}
+      check(changed,'Parts owner fault not reached');
+      const transaction=IDBDatabase.prototype.transaction;
+      IDBDatabase.prototype.transaction=function(...args){const tx=transaction.apply(this,args);tx.addEventListener('complete',()=>rememberOwner(foreign),{once:true});return tx;};
+      try{await rejected(()=>conversationPage(value.id,owner,10),'Owner change on transaction completion accepted');}finally{IDBDatabase.prototype.transaction=transaction;rememberOwner(owner);}
+      same(await physical(),raw,'Account fault changed stored data');probes.push('part-and-complete-owner-fence');return;
+    }
+    if(scenario==='page-corrupt-json'){
+      const encoder=new TextEncoder();
+      const invalid=[encoder.encode('{"messages":[{"content":"\\q"},{"content":"ok"}]}'),encoder.encode('{"messages":[{"content":"ok"},{"content":"ok"}]} trailing')];
+      const utf8=encoder.encode('{"messages":[{"content":"X"},{"content":"ok"}]}');utf8[utf8.indexOf(88)]=255;invalid.push(utf8);
+      for(const bytes of invalid){
+        const parts={token:crypto.randomUUID(),chunks:1,size:bytes.length,sha256:new Sha256().update(bytes).digest()};
+        await appTransaction(['entities','parts'],'readwrite',(tx,done)=>{tx.objectStore('entities').put({...value,payload:undefined,payloadParts:parts});tx.objectStore('parts').put(bytes,[owner,'entity',value.id,parts.token,0]);done();});
+        const before=await physical();await rejected(()=>conversationPage(value.id,owner,1,{...stamp,bodyToken:parts.token,start:1,end:2}),'Valid hash bypassed syntax/UTF-8 validation');same(await physical(),before,'Syntax failure changed data');
+      }
+      probes.push('discarded-syntax-and-utf8','trailing-json','valid-hash-not-sufficient');return;
+    }
+    if(scenario==='page-corrupt-first'||scenario==='page-corrupt-last'){
+      const index=scenario==='page-corrupt-first'?0:ref.chunks-1;
+      await appTransaction(['parts'],'readwrite',(tx,done)=>{const key=[owner,'entity',value.id,ref.token,index],read=tx.objectStore('parts').get(key);read.onsuccess=()=>{const bytes=read.result;bytes[Math.min(100,bytes.length-1)]^=1;tx.objectStore('parts').put(bytes,key);done();};});
+      const before=await physical();await rejected(()=>conversationPage(value.id,owner,1),'Corruption outside/inside page accepted');same(await physical(),before,'Hash failure changed data');
+      probes.push('all-parts-checksum-before-result');return;
+    }
+    throw Error('Unknown page scenario');
+  }
   if(scenario==='kind-selection'||scenario==='kind-selection-owner'){
     const conversation=huge(),character=newEntity('character','saved-character',{document:{name:'Saved character'}},owner);
     await save(conversation);await save(character);await save({...character,owner:foreign,payload:{document:{name:'FOREIGN'}}});

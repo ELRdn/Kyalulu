@@ -4,6 +4,7 @@ import { memoryDomainKey,eraseMemoryDomain,eraseDeviceMemoryReferences,type Memo
 import { readMemoryDomainTx,writeMemoryDomainTx } from './deviceMemoryDomainIO';
 import { canonical } from './appSyncData';
 import { Sha256 } from '../mobile/sha256';
+import { JsonStream } from './jsonStream';
 
 export type EntityKind = 'conversation' | 'character' | 'persona' | 'world' | 'preset' | 'profile';
 export type AppEntity = { id: string; owner: string; kind: EntityKind; revision: number; serverRevision: number;
@@ -151,6 +152,42 @@ export const allEntities=(owner=deviceOwner(),kinds?:readonly EntityKind[])=>app
   });
 });
 export const entity=(id:string,owner=deviceOwner())=>appTransaction<AppEntity|undefined>(['entities'],'readonly',(tx,done)=>readEntity(tx,owner,id,done));
+export type ConversationPageCursor={owner:string;id:string;revision:number;bodyToken:string|null;start:number;end:number};
+export type ConversationPage={owner:string;id:string;revision:number;bodyToken:string|null;metadata:Record<string,unknown>;
+  messages:unknown[];total:number;start:number;end:number;previous?:ConversationPageCursor;next?:ConversationPageCursor};
+export async function conversationPage(id:string,owner=deviceOwner(),limit=50,cursor?:ConversationPageCursor):Promise<ConversationPage|undefined> {
+  if(typeof id!=='string'||!id||owner!==deviceOwner()||!Number.isSafeInteger(limit)||limit<1||limit>100)throw Error('Invalid conversation page');
+  if(cursor!==undefined&&(!cursor||cursor.owner!==owner||cursor.id!==id||!Number.isSafeInteger(cursor.revision)||cursor.revision<0
+    ||!Number.isSafeInteger(cursor.start)||cursor.start<0||!Number.isSafeInteger(cursor.end)||cursor.end<cursor.start||cursor.end-cursor.start>limit
+    ||cursor.bodyToken!==null&&typeof cursor.bodyToken!=='string'))throw Error('Invalid conversation cursor');
+  cursor=cursor&&{...cursor};
+  const parser=new JsonStream(cursor?{start:cursor.start,limit:cursor.end-cursor.start}:{limit});
+  const page=await appTransaction<ConversationPage|undefined>(['entities'],'readonly',(tx,done)=>{
+    const read=tx.objectStore('entities').get([owner,id]);
+    read.onsuccess=()=>storageStep(tx,()=>{
+      const header=read.result as StoredEntity|undefined;
+      if(!header){if(cursor)throw Error('Conversation page changed');done(undefined);return;}
+      const bodyToken=header.payloadParts?.token??null;
+      if(header.owner!==owner||header.id!==id||header.kind!=='conversation'||header.deleted||!Number.isSafeInteger(header.revision)||header.revision<0
+        ||cursor&&(cursor.revision!==header.revision||cursor.bodyToken!==bodyToken))throw Error('Conversation page changed');
+      const finish=(payload:any,total:number|undefined)=>{
+        if(!payload||typeof payload!=='object'||Array.isArray(payload)||!Array.isArray(payload.messages)||total===undefined||payload.cache_evicted
+          ||cursor&&cursor.end>total)throw Error('Conversation page unavailable');
+        const {messages,...metadata}=payload,end=cursor?.end??total,start=cursor?.start??Math.max(0,end-limit);
+        if(messages.length!==end-start)throw Error('Conversation page changed');
+        const position=(start:number,end:number):ConversationPageCursor=>({owner,id,revision:header.revision,bodyToken,start,end});
+        done({owner,id,revision:header.revision,bodyToken,metadata,messages,total,start,end,
+          ...(start>0?{previous:position(Math.max(0,start-limit),start)}:{}),...(end<total?{next:position(end,Math.min(total,end+limit))}:{})});
+      };
+      if(header.payloadParts)readParts(tx,[owner,'entity',id],header.payloadParts,payload=>finish(payload,parser.totalMessages),parser);
+      else{
+        const payload=header.payload,total=Array.isArray(payload?.messages)?payload.messages.length:undefined,end=cursor?.end??total??0;
+        finish({...payload,messages:payload?.messages?.slice(cursor?.start??Math.max(0,end-limit),end)},total);
+      }
+    });
+  });
+  if(owner!==deviceOwner())throw Error('Account changed');return page;
+}
 export async function saveEntity(value:AppEntity,expectedRevision?:number,metadata:Record<string,unknown>={}) {
   return appTransaction<AppEntity>(['entities','meta'],'readwrite',(tx,done)=>{
     const read=tx.objectStore('entities').get([value.owner,value.id]);
