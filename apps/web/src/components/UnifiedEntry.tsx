@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { deviceOwner, preferences, savePreferences, useLanguage, useDeviceOwner, labels, isUnifiedEntry, isDesktop, useExecutionTarget,
+import { deviceOwner, preferences, savePreferences, useLanguage, useDeviceOwner, labels, isUnifiedEntry, hasLocalRuntime, useExecutionTarget,
   useGenerationBusy, switchTarget, type AppPreferences, type ExecutionTarget } from '../lib/appContext';
 import { cloudFetch } from '../lib/transport';
 import Button from './ui/Button';
@@ -33,27 +33,30 @@ function InterestChoices({owner,onDone}:{owner:string;onDone:()=>void}) {
 export function ExecutionPicker() {
   const language=useLanguage(),target=useExecutionTarget(),busy=useGenerationBusy(),t=labels[language];
   const [dialog,confirm]=useConfirm();
-  if (!isUnifiedEntry() && !isDesktop()) return null;
+  if (!isUnifiedEntry() && !hasLocalRuntime()) return null;
+  const choose=async(next:ExecutionTarget)=>{
+    const cloud=next==='cloud'&&hasLocalRuntime();
+    if(await confirm({title:cloud?(language==='ja'?'Cloudをブラウザーで開きますか？':'Open Cloud in your browser?'):(language==='ja'?'実行先を切り替えますか？':'Switch execution target?'),
+      description:cloud?(language==='ja'?'https://app.kyalulu.com/ を別画面で開きます。保存済みの会話と下書きはこのPCに残り、認証情報も転送しません。':'Open https://app.kyalulu.com/ separately. Saved conversations and drafts stay on this PC. No sign-in information is transferred.'):(language==='ja'?'保存済みの会話と下書きは元の場所に残ります。会話を自動転送しません。':'Saved conversations and drafts stay in their original location. Nothing is transferred automatically.'),confirmLabel:t.next})) switchTarget(next);
+  };
   return <div className="k-execution-picker">{dialog}<label>{t.target}
-    <select aria-label={t.target} value={target} disabled={busy} onChange={async e=>{
-      const next=e.target.value as ExecutionTarget;
-      if(await confirm({title:language==='ja'?'実行先を切り替えますか？':'Switch execution target?',
-        description:language==='ja'?'保存済みの会話と下書きは元の場所に残ります。会話を自動転送しません。':'Saved conversations and drafts stay in their original location. Nothing is transferred automatically.',confirmLabel:t.next})) switchTarget(next);
-    }}>
-      {(['cloud','device','pc',...(isDesktop()?['local']:[])] as ExecutionTarget[]).map(v=><option key={v} value={v}>{t[v]}</option>)}
-    </select></label></div>;
+    <select aria-label={t.target} value={target} disabled={busy} onChange={e=>choose(e.target.value as ExecutionTarget)}>
+      {(['cloud','device','pc',...(hasLocalRuntime()?['local']:[])] as ExecutionTarget[]).map(v=><option key={v} value={v}>{t[v]}</option>)}
+    </select></label>{hasLocalRuntime()&&target==='cloud'&&<Button disabled={busy} onClick={()=>choose('cloud')}>{language==='ja'?'Cloudを開く':'Open Cloud'}</Button>}</div>;
 }
 
 export default function UnifiedEntry({children}:{children:ReactNode}) {
   const language=useLanguage(),[draft,setDraft]=useState(preferences),[stage,setStage]=useState<'legal'|'interests'|'ready'>(()=>preferences().accepted?'ready':'legal');
   const [busy,setBusy]=useState(false),[error,setError]=useState<''|'eligibility'|'guardian'|'scope'>('');
-  if(!isUnifiedEntry()||stage==='ready')return <>{children}</>;
+  const target=useExecutionTarget(),hostedCloud=hasLocalRuntime()&&target==='cloud';
+  if((!isUnifiedEntry()||stage==='ready')&&!hostedCloud)return <>{children}</>;
   const en=language==='en',t=labels[language];
   return <main className="k-unified-entry" lang={language}><header><img src="/mascot/v1.2/face-default.png" alt="" width={56} height={56}/><h1>Kyalulu</h1></header>
-    {stage==='interests'?<Interests onDone={()=>setStage('ready')}/>:<form onSubmit={async e=>{
+    <ExecutionPicker/>
+    {hostedCloud?<p>{en?'Cloud runs at app.kyalulu.com. Open Cloud or select another execution target.':'Cloudは app.kyalulu.com で利用します。Cloudを開くか、別の実行先を選んでください。'}</p>:stage==='interests'?<Interests onDone={()=>setStage('ready')}/>:<form onSubmit={async e=>{
       e.preventDefault();if(busy)return;const owner=deviceOwner();setBusy(true);setError('');
       try {
-        const response=await cloudFetch('/api/cloud/app/eligibility',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({country:draft.country,age:draft.age})});
+        const response=await cloudFetch(hasLocalRuntime()?'/api/local/eligibility':'/api/cloud/app/eligibility',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({country:draft.country,age:draft.age})});
         const result=await response.json();if(!response.ok)throw result?.error;
         if(owner!==deviceOwner())throw Error('Account changed');
         if(typeof result?.ticket!=='string'||!result.ticket||result.ticket.length>4000||result.country!==draft.country||!['adult','teen'].includes(result.age_band)||typeof result.policy!=='string'||!result.policy)throw Error('Invalid eligibility response');

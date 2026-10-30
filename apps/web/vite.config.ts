@@ -144,7 +144,8 @@ function shellPrecache(mobile = false, device = false): Plugin {
 }
 
 export default defineConfig(({ mode, command }) => {
-  if (command === 'build' && mode === 'unified') {
+  const unified = mode === 'unified' || mode === 'native';
+  if (command === 'build' && unified) {
     const relay = process.env.VITE_RELAY_ORIGIN ?? '';
     const parsed = URL.canParse(relay) ? new URL(relay) : null;
     if (!parsed || parsed.protocol !== 'https:' || parsed.origin !== relay || parsed.username || parsed.password) {
@@ -153,9 +154,11 @@ export default defineConfig(({ mode, command }) => {
   }
   return {
   base: "./",
-  plugins: [react(), ...(mode === 'mobile' ? [{ name: 'kyalulu-mobile-entry', transformIndexHtml: { order: 'pre' as const, handler: (html: string) => html.replace('/src/main.tsx', '/src/mobile/main.tsx').replace('<title>Kyalulu — キャラクターと物語をつむぐ場所</title>', '<title>Kyalulu Mobile — スマホで動くキャラクターAI</title>') } }] : []), shellPrecache(mode === 'mobile', mode === 'unified')],
+  plugins: [react(), ...(mode === 'mobile' ? [{ name: 'kyalulu-mobile-entry', transformIndexHtml: { order: 'pre' as const, handler: (html: string) => html.replace('/src/main.tsx', '/src/mobile/main.tsx').replace('<title>Kyalulu — キャラクターと物語をつむぐ場所</title>', '<title>Kyalulu Mobile — スマホで動くキャラクターAI</title>') } }] : []),
+    ...(mode === 'native' ? [{ name: 'kyalulu-native-entry', transformIndexHtml: { order: 'pre' as const, handler: (html: string) => html.replace('<head>', '<head><meta name="kyalulu-ui" content="native">') } }] : []),
+    shellPrecache(mode === 'mobile', unified)],
   worker: { format: 'es' },
-  build: { rollupOptions: { input: mode==='mobile'||mode==='unified'?{main:resolve('index.html'),migration:resolve('migration/index.html')}:resolve('index.html') } },
+  build: { rollupOptions: { input: mode==='mobile'||unified?{main:resolve('index.html'),migration:resolve('migration/index.html')}:resolve('index.html') } },
   server: {
     port: 5173,
     proxy: {

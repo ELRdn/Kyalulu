@@ -49,6 +49,20 @@ CREATE TABLE IF NOT EXISTS app_publications(id TEXT PRIMARY KEY,owner TEXT,revis
 """
 
 
+def general_eligibility(regions, country, age, *, guardian=False):
+    if not isinstance(country, str) or len(country) != 2:
+        raise CloudError('region_policy_pending', 403)
+    policy = regions.get(country)
+    if not policy or policy.get("accepted") is not True:
+        raise CloudError("region_policy_pending", 403)
+    if type(age) is not int or not max(13, policy.get("minimum_age", 13)) <= age <= 120:
+        raise CloudError("minimum_age_required", 403)
+    if age < policy.get("guardian_below", 18) and not guardian:
+        raise CloudError("verified_guardian_consent_required", 403)
+    return {"country": country, "age_band": "adult" if age >= 18 else "teen",
+            "policy": policy["version"]}
+
+
 class UnifiedService:
     def __init__(self, store, *, region_policies=None, ad_provider=None):
         self.store = store
@@ -69,17 +83,7 @@ class UnifiedService:
             raise CloudError("unified_app_awaiting_acceptance", 503)
 
     def general_eligibility(self, country, age, *, guardian=False):
-        if not isinstance(country, str) or len(country) != 2:
-            raise CloudError('region_policy_pending', 403)
-        policy = self.regions.get(country)
-        if not policy or policy.get("accepted") is not True:
-            raise CloudError("region_policy_pending", 403)
-        if type(age) is not int or not max(13, policy.get("minimum_age", 13)) <= age <= 120:
-            raise CloudError("minimum_age_required", 403)
-        if age < policy.get("guardian_below", 18) and not guardian:
-            raise CloudError("verified_guardian_consent_required", 403)
-        return {"country": country, "age_band": "adult" if age >= 18 else "teen",
-                "policy": policy["version"]}
+        return general_eligibility(self.regions, country, age, guardian=guardian)
 
     def eligibility_ticket(self, country, age):
         result = self.general_eligibility(country, age)

@@ -11,6 +11,7 @@ changes remain outside the integration commits.
 ```powershell
 pnpm --filter web typecheck
 pnpm --filter web test -- --pool threads --maxWorkers 1
+$env:VITE_RELAY_ORIGIN='https://relay.kyalulu.com'
 pnpm --filter web build:app
 .venv/Scripts/python.exe scripts/unified_preview.py
 ```
@@ -19,6 +20,10 @@ Preview: http://127.0.0.1:5187/. This loopback-only fixture server has no login,
 payment, advertisement, age-verification or inference connector. JP/US and age 18+
 in its onboarding are **test fixtures, not approved regional policies**. Do not
 publish this server. The built application is `.artifacts/unified-app`.
+For the packed PC Runtime, use `pnpm --filter web build:native` and
+`.artifacts/native-app`; a hosted App build is not a Native entry. Local first-use
+uses the Runtime's explicitly configured `KYALULU_REGION_POLICIES`; absent regional
+approval stays closed. No Cloud account or online policy lookup is required.
 Existing `build` and `build:mobile` entry points remain separate and supported.
 Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:app`.
 

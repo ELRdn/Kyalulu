@@ -1,6 +1,6 @@
 # Native and Mobile package validation — 2026-10-30
 
-Current fixed code candidate: **`897737f`**, recorded in the final section. The earlier candidates below remain historical; they lack the newly built WASM and IndexedDB v3 client.
+Historical fixed code candidate: **`897737f`**. The a22984a packaging follow-up is recorded below, but fresh Native browser entry exposed a separate defect. Neither old packaging success nor green CI proves Native first-use acceptance; see the dedicated Native-entry record.
 
 The first, historical record below uses clean corresponding source from
 `232c2ee0afbef784791e6b07530d4291590e78d2`. That source passed 845 Web tests and
@@ -127,3 +127,38 @@ Built PWA: **4/4** JA/EN, 393/1280, light/dark scenarios passed including explic
 Local evidence: `.artifacts/unified-release-897737f-audit.json`, `.artifacts/unified-mobile-897737f-audit.json`, `.artifacts/unified-native-897737f-audit.json`, `.artifacts/unified-native-897737f-report.md`. The dedicated clean build is `C:/Users/hiron/AppData/Local/Temp/kyalulu-release-897737f-me7wgynn`. Generated/private evidence remains outside Git.
 
 The operator subsequently authorized the fixed 897737f archive for a new isolated Linux image. Its 210 copied files, four fresh WASM outputs, twelve fictional-data checks, unmodified Uvicorn command and production preservation passed; see [current image verification](2026-10-30-unified-container.md). Production was not selected. Real-phone/long-model, large-capacity/RSS, macOS/clean-OS, signing/license, independent production-backup restore, canonical cutover and provider contracts remain separate gates. Physical-phone evidence was explicitly deferred. Returning a v3-upgraded browser to a v2-only UI is unsupported; preserve the stores and retain a v3-compatible recovery bundle.
+
+
+## a22984a packaging, and the missing browser gate
+
+The clean a22984a97c8fb30d94752d884bb9eeed454ad87e outputs were regenerated.
+
+| Candidate | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Cloud tar | 66,052,116 | `89a8b90efbee103e3fb22331b4dc654d374f64d9542cb2d2aa89ffb9147d2710` |
+| Windows tar | 140,294,804 | `8357308102192fea04e0496f3d0f552839d829e0faca38a48c02f51a86ccc0a7` |
+| Mobile source ZIP | See private audit | `01ca07ebc4d24c4bb2a04cff15b085ed811d230448e72fff7cfe2f6f0f67d49c` |
+
+The Windows archive has 8,727 safe members and 217 product files; 86 Web files
+match Cloud and all four WASM outputs match the fixed provenance. Python 3.13.7,
+33 locked dependencies, 61 precache hashes and packed CLI isolation/recovery/
+seven pointer faults passed. Test-owned Runtime processes were stopped.
+
+Mobile has 78 Pages files, 77 manifest entries, 40 precache assets, eight checked
+license copies and four checked WASM outputs. Its largest file remains 16,811,691
+bytes. Cloud, Windows and Mobile corresponding-source members compare equal:
+806 files, including the latest Vite config tests. **581 match the Git export**;
+against raw Git blobs only **31** match and **550** differ solely by strict UTF-8
+CRLF-to-LF normalization. Export equality is not raw Git-blob equality. The earlier
+Cloud report's raw-equality label has been corrected in its private evidence.
+
+The actual packed Native browser then contradicted first-use readiness: fresh
+entry called hosted `/api/cloud/app/eligibility` (404), defaulted to Cloud and
+omitted This PC. This candidate is therefore **not accepted for Native delivery**.
+The CLI/API check did not cover that UI. The [Native entry correction](2026-10-30-unified-native-entry.md)
+adds the missing build/first-use gate. a22984a CI passed both OS, independently of
+this defect. Do not equate that CI result with full product acceptance.
+
+Private evidence: `.artifacts/unified-{native,mobile}-a22984a-*`,
+`.artifacts/unified-native-a22984a-ui/result.json` and
+`.artifacts/unified-canonical-a22984a/cloud-verification.json`.

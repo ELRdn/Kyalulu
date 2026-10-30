@@ -10,14 +10,15 @@ const MODE = 'kyalulu-execution-target';
 const PREFS = 'kyalulu-app-preferences-v1';
 const OWNER = 'kyalulu-app-owner';
 export const isDesktop = () => typeof window !== 'undefined' && ('electronAPI' in window || /Electron\//.test(navigator.userAgent));
+export const hasLocalRuntime = () => import.meta.env.MODE === 'native' || isDesktop();
 export const isUnifiedEntry = () => typeof location !== 'undefined' &&
-  (import.meta.env.MODE === 'unified' || import.meta.env.VITE_UNIFIED_APP === '1' || /^(app|mobile)\.kyalulu\.com$/.test(location.hostname) || location.pathname.startsWith('/device/'));
+  (['unified','native'].includes(import.meta.env.MODE) || import.meta.env.VITE_UNIFIED_APP === '1' || /^(app|mobile)\.kyalulu\.com$/.test(location.hostname) || location.pathname.startsWith('/device/'));
 function read(key: string) { try { return localStorage.getItem(key); } catch { return null; } }
 export function executionTarget(): ExecutionTarget {
   if (typeof location !== 'undefined' && location.pathname.startsWith('/device/')) return 'device';
   const value = read(MODE);
   return value === 'cloud' || value === 'device' || value === 'pc' || value === 'local' ? value
-    : read('kyalulu-active-remote') ? 'pc' : isUnifiedEntry() && !isDesktop() ? 'cloud' : 'local';
+    : read('kyalulu-active-remote') ? 'pc' : isUnifiedEntry() && !hasLocalRuntime() ? 'cloud' : 'local';
 }
 export function deviceOwner() { return read(OWNER) || 'guest'; }
 export function rememberOwner(owner: string) {
@@ -50,6 +51,10 @@ export function savePreferences(value: AppPreferences) {
 }
 export function switchTarget(target: ExecutionTarget) {
   if (generationBusy()) throw Error('Stop generation and confirm its saved result before switching.');
+  if (target === 'cloud' && hasLocalRuntime()) {
+    window.open('https://app.kyalulu.com/', '_blank', 'noopener,noreferrer');
+    return;
+  }
   localStorage.setItem(MODE, target);
   const destination = target === 'device' ? '/device/' : '/';
   if (isDesktop() || location.protocol === 'file:') { location.reload(); return; }

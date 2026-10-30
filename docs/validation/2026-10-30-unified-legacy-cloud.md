@@ -76,7 +76,7 @@ backup operator package remains unchanged; it does not deliver this site config.
 A fresh clean 5ace6a7 Cloud build used the explicit existing managed Relay origin.
 It produced 66,044,982 bytes, SHA-256
 `67803314f9f1a1c72dbe8910e699424ab548dd51f0982c5666ec8cb737003389`.
-All **224** manifest files, **61** precache hashes and **580** raw-equal committed
+All **224** manifest files, **61** precache hashes and **580** byte-equal Git-export
 source files were checked; its source archive has **805** files. Runtime Python
 bytes match 897737f, but Web bytes do not. This is an intermediate local candidate,
 not an accepted Linux image or a production selection.
