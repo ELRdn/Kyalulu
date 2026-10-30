@@ -281,14 +281,14 @@ async def test_cumulative_usage_is_not_added_and_unknown_final_retains_reservati
 @pytest.mark.parametrize("fault", ["cancel", "read-error", "runtime-error"])
 async def test_screen_client_exit_failure_retains_received_bill_and_stops_next_operation(tmp_path, fault):
     calls = []
-    closing = asyncio.Event()
 
     class FailingClose(httpx.MockTransport):
         async def aclose(self):
             await super().aclose()
             if fault == "cancel":
-                closing.set()
-                await asyncio.Event().wait()
+                # Inject cancellation after billing is received, independent of setup speed.
+                asyncio.current_task().cancel()
+                await asyncio.sleep(0)
             if fault == "read-error":
                 raise httpx.ReadError("synthetic private text")
             raise RuntimeError("synthetic private text")
@@ -300,13 +300,10 @@ async def test_screen_client_exit_failure_retains_received_bill_and_stops_next_o
     cfg = config(tmp_path)
     app = create_app(cfg, transport=FailingClose(respond))
     owner = enroll(app)
-    if fault == "cancel":
-        task = asyncio.create_task(run_job(app, owner))
-        await asyncio.wait_for(closing.wait(), 3)
-        task.cancel()
-        _, result = await task
-    else:
+    try:
         _, result = await run_job(app, owner)
+    finally:
+        await app.state.jobs.shutdown()
     assert result["status"] == ("cancelled" if fault == "cancel" else "failed")
     assert result["charged_credits"] == 0 and "synthetic private text" not in json.dumps(result)
     assert len(calls) == 1 and app.state.store.balance(owner) == 500

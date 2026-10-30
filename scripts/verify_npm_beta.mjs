@@ -39,7 +39,7 @@ const env={...Object.fromEntries(Object.entries(process.env).filter(([key])=>/^(
   UV_PYTHON_INSTALL_DIR:'',KYALULU_OWNER_TOKEN:''};
 let cli;
 async function invoke(executable,args,options={}){
-  console.info('Native verification command:',path.basename(executable),JSON.stringify(args));
+  console.error('Native verification command:',path.basename(executable),JSON.stringify(args));
   return new Promise((resolve,reject)=>{
     const p=spawn(executable,args,{env,windowsHide:true,...options});let out='',err='';
     const timer=setTimeout(()=>{p.kill();reject(Error('Verification command timed out: '+JSON.stringify(args)+'\nstdout: '+out.slice(-4096)+'\nstderr: '+err.slice(-4096)));},60000);
