@@ -47,13 +47,15 @@ def build(output, release, target, web_dist=None):
     )
     if target != host:
         raise ValueError("Build each artifact on its native target OS and architecture")
-    web_dist = (web_dist or ROOT / "apps/web/dist").resolve()
+    web_dist = (web_dist or ROOT / ".artifacts/native-app").resolve()
     if not web_dist.is_relative_to(ROOT) or not (web_dist / "index.html").is_file():
         raise ValueError("Build Web UI inside the workspace before assembling the runtime")
     artifact = output / f"kyalulu-{release}-{target}.tar.gz"
     manifest_file = output / (target + ".manifest.json")
     if artifact.exists() or manifest_file.exists():
         raise ValueError("Release output already exists; use a fresh output directory")
+    if '<meta name="kyalulu-ui" content="native">' not in (web_dist / 'index.html').read_text(encoding='utf-8'):
+        raise ValueError('Build Native Web UI with pnpm --filter web build:native before assembling the runtime')
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=output) as tmp:
         stage = Path(tmp) / "bundle"

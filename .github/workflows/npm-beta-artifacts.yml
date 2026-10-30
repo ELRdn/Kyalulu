@@ -1,8 +1,53 @@
 name: npm local beta artifacts (no publication)
 on:
   workflow_dispatch:
+permissions:
+  contents: read
 jobs:
+  wasm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.8.22'
+          python-version: '3.13.7'
+      - run: python scripts/mobile_wasm/bootstrap.py
+      - run: |
+          python .artifacts/mobile-wasm/emsdk/emsdk.py install 4.0.20
+          python .artifacts/mobile-wasm/emsdk/emsdk.py activate 4.0.20
+          python scripts/mobile_wasm/prepare.py
+          CMAKE_BUILD_PARALLEL_LEVEL=2 bash scripts/mobile_wasm/build.sh
+          cp scripts/mobile_wasm/ple.patch .artifacts/mobile-wasm/ple.patch
+      - name: Hash exact Native WASM and license inputs
+        working-directory: .artifacts/mobile-wasm
+        run: |
+          sha256sum build-standard/wllama.js build-standard/wllama.wasm \
+            build-compat/wllama.js build-compat/wllama.wasm \
+            wllama/LICENCE wllama/llama.cpp/LICENSE \
+            wllama/llama.cpp/licenses/LICENSE-jsonhpp \
+            emdawn/emdawnwebgpu_pkg/webgpu/src/LICENSE \
+            emdawn/emdawnwebgpu_pkg/webgpu_cpp/LICENSE ple.patch > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-wasm-inputs
+          include-hidden-files: true
+          path: |
+            .artifacts/mobile-wasm/SHA256SUMS
+            .artifacts/mobile-wasm/downloads.json
+            .artifacts/mobile-wasm/ple.patch
+            .artifacts/mobile-wasm/build-standard/wllama.js
+            .artifacts/mobile-wasm/build-standard/wllama.wasm
+            .artifacts/mobile-wasm/build-compat/wllama.js
+            .artifacts/mobile-wasm/build-compat/wllama.wasm
+            .artifacts/mobile-wasm/wllama/LICENCE
+            .artifacts/mobile-wasm/wllama/llama.cpp/LICENSE
+            .artifacts/mobile-wasm/wllama/llama.cpp/licenses/LICENSE-jsonhpp
+            .artifacts/mobile-wasm/emdawn/emdawnwebgpu_pkg/webgpu/src/LICENSE
+            .artifacts/mobile-wasm/emdawn/emdawnwebgpu_pkg/webgpu_cpp/LICENSE
   bundle:
+    needs: wasm
     strategy:
       matrix:
         include:
@@ -23,9 +68,36 @@ jobs:
           python-version: '3.13.7'
       - run: pnpm install --frozen-lockfile
       - run: uv sync --frozen --all-packages --all-extras --no-install-workspace
-      - run: pnpm --filter web build
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-wasm-inputs
+          path: .artifacts/mobile-wasm
+      - name: Verify Native WASM and license inputs
+        shell: bash
+        run: |
+          python - <<'PY'
+          from hashlib import sha256
+          from pathlib import Path
+          root = Path('.artifacts/mobile-wasm').resolve()
+          lines = (root / 'SHA256SUMS').read_text().splitlines()
+          assert len(lines) == 10
+          for line in lines:
+              digest, name = line.split('  ', 1)
+              source = root / name
+              assert source.resolve().is_relative_to(root) and not source.is_symlink()
+              assert sha256(source.read_bytes()).hexdigest() == digest, name
+          PY
+      - name: Match compiled patch to corresponding source
+        run: python -c "from pathlib import Path; assert Path('scripts/mobile_wasm/ple.patch').read_text(encoding='utf-8') == Path('.artifacts/mobile-wasm/ple.patch').read_text(encoding='utf-8'), 'Compiled patch differs from corresponding source'"
+      - run: uv run --no-sync python scripts/build_app_catalog.py
+      - run: pnpm --filter web build:native
+        env:
+          VITE_RELAY_ORIGIN: https://relay.kyalulu.com
       - run: uv run --no-sync python scripts/build_local_bundle.py --output .artifacts/npm-beta --target ${{ matrix.target }}
       - run: node scripts/verify_npm_beta.mjs
+      - run: uv run --no-sync python -m playwright install chromium
+      - name: Exercise the packed Native browser entry
+        run: uv run --no-sync python -c "from pathlib import Path; import subprocess,sys; records=list(Path('.artifacts').glob('npm-verify-*/acceptance.json')); assert len(records)==1; subprocess.run([sys.executable,'tests/e2e_native_entry.py','--acceptance',str(records[0]),'--output','.artifacts/native-entry-acceptance'],check=True)"
       - uses: actions/upload-artifact@v4
         with:
           name: kyalulu-${{ matrix.target }}
@@ -38,4 +110,7 @@ jobs:
         if: always()
         with:
           name: acceptance-${{ matrix.target }}
-          path: .artifacts/npm-verify-*/acceptance.json
+          path: |
+            .artifacts/npm-verify-*/acceptance.json
+            .artifacts/native-entry-acceptance/result.json
+            .artifacts/native-entry-acceptance/local-chat.png

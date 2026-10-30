@@ -67,6 +67,8 @@ FILES = (
     "tests/fixtures/rp-format.json",
     "tests/fixtures/json-stream.json",
     "tests/e2e_unified_entry.py",
+    "tests/e2e_native_entry.py",
+    "tests/test_native_onboarding.py",
     "tests/e2e_cloud_login.py",
     "tests/e2e_commercial_ui.py",
     "tests/e2e_outbox_guard.py",
@@ -118,6 +120,7 @@ FILES = (
     "docs/validation/2026-10-29-unified-sync-selection.md",
     "docs/validation/2026-10-29-unified-runtime-routing.md",
     "docs/validation/2026-10-30-unified-native-mobile.md",
+    "docs/validation/2026-10-30-unified-native-entry.md",
     "docs/validation/2026-10-30-unified-wasm.md",
     "docs/validation/2026-10-30-unified-container.md",
     "docs/validation/2026-10-30-unified-disaster-recovery.md",
@@ -209,7 +212,7 @@ def collect(destination):
         "For the unified app, regenerate the catalog with `python scripts/build_app_catalog.py`, build pinned WASM using `scripts/mobile_wasm/bootstrap.py`, `prepare.py` and `build.sh`, set `VITE_RELAY_ORIGIN` to the exact managed HTTPS Relay origin, then run `pnpm --filter web build:app`. See `docs/MOBILE.md` and `docs/UNIFIED_APP.md`.\n"
         "For the legacy Mobile app, use the same catalog/WASM preparation and `pnpm --filter web build:mobile`.\n"
         "`uv sync --frozen --all-packages --all-extras --no-install-workspace` for Python.\n"
-        "On the native target: `uv run --no-sync python scripts/build_local_bundle.py --output .artifacts/npm-beta --target win32-x64` (or darwin-arm64).\n"
+        "For Native, keep the pinned WASM and Relay origin, run `pnpm --filter web build:native`, then on the native target `uv run --no-sync python scripts/build_local_bundle.py --output .artifacts/npm-beta --target win32-x64` (or darwin-arm64). The builder requires the Native UI marker and refuses a hosted-only UI.\n"
         "Operator keys/data/model weights are excluded. Artifacts are not published by these steps.\n",
         encoding="utf-8",
     )

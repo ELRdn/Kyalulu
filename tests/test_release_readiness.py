@@ -81,6 +81,8 @@ def test_local_bundle_rejects_unsafe_release_wrong_host_and_existing_output(tmp_
         builder.build(output, "0.1.0", "darwin-arm64", web)
     with pytest.raises(ValueError, match="inside the workspace"):
         builder.build(output, "0.1.0", "win32-x64", tmp_path.parent)
+    with pytest.raises(ValueError, match="Build Native Web UI"):
+        builder.build(output, "0.1.0", "win32-x64", web)
     assert not output.exists()
     output.mkdir()
     artifact = output / "kyalulu-0.1.0-win32-x64.tar.gz"

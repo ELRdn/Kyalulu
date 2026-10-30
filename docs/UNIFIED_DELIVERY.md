@@ -204,3 +204,11 @@ clean 5ace6a7候補の実梱包を照合したところ、旧897737f候補のJS�
 3方式の完成配布物として選択しない。新しい明示設定buildでは未登録PC画面を実表示し、
 HTTPS17項目が成功。統合本番buildにはRelay originの必須検証を追加し、11ケースと
 型検査・Web全866件/67ファイルが成功。最終配布物/imageの同一版検証は別途必要。
+
+Native a22984aの梱包/CLIとMobileの静的監査は成功したが、実Nativeブラウザ初回起動で
+Cloud確認APIの404・Local既定なし・このPC選択なしを再現したため、Native配布の合格ではない。
+Native専用build/marker・Local初期値・ローカル地域確認・明示Cloud別画面の修正を追加。
+設定なし地域の閉鎖は維持し、架空ポリシー以外を承認していない。Backend88件とWeb910件が成功。
+[Native entry](validation/2026-10-30-unified-native-entry.md) の梱包後ブラウザ試験は別の必須gate。
+対応ソース581件はGit export一致であり、raw blobは31件一致・550件は改行だけの差と訂正。
+ローカルDockerはInference socket起動エラーで新Linux imageを検証できていない。

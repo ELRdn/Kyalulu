@@ -116,3 +116,22 @@ loopback services, uses a private fixture CA and pins its verified leaf key in
 Chromium without installing OS trust. It is not public TLS, Cloudflare behavior,
 OAuth, deployment or production recovery evidence. See the delivery checklist
 and the separate validation record before changing any production configuration.
+
+
+## Native distribution uses its own entry context
+
+Do not package `.artifacts/unified-app` as the standalone PC UI. After the same
+pinned WASM/catalog preparation and explicit `VITE_RELAY_ORIGIN`, run
+`pnpm --filter web build:native`; `scripts/build_local_bundle.py` uses
+`.artifacts/native-app` and requires its Native HTML marker. The manual native
+artifact workflow builds/verifies WASM inputs before Windows/macOS packaging.
+Already-built legacy archives are not rewritten by this change.
+
+Native browser first-use calls `/api/local/eligibility` on its own Runtime.
+`KYALULU_REGION_POLICIES` supplies explicit, versioned, approved regional rules;
+absence is a closed state, not an implicit country approval. This check needs no
+Cloud account, Cloud master key or online lookup. A general-use `native:` receipt
+does not authenticate to Cloud or establish verified adult status. Real regional
+policy approval is still a separate operator gate; fixture policies are not that
+approval. For Cloud, explicit confirmation opens the canonical app separately,
+without moving the local target/draft/receipt or forwarding sign-in information.

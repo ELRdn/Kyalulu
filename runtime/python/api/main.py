@@ -105,6 +105,8 @@ from python.api.cloud_sync import router as cloud_sync_router
 app.include_router(cloud_sync_router, prefix="/api")
 from python.api.native_sync import router as native_sync_router
 app.include_router(native_sync_router,prefix='/api')
+from python.api.onboarding import router as onboarding_router
+app.include_router(onboarding_router, prefix='/api')
 
 # Security wraps CORS and all routes, including future APIs and static responses.
 from python.api.mobile import Config, Devices, MobileSecurity, WebDist, router as mobile_router
