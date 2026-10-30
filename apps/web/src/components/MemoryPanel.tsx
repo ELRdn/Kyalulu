@@ -102,7 +102,7 @@ export default function MemoryPanel({ sessionId, refreshKey, scopeOverride }: { 
       const text = draft.trim();
       if (!text || !scope) return;
       if (id) await updateMemory(id, { content: text });
-      else await createMemory(scope, newType, text);
+      else await createMemory(scope, newType, text,scopeOverride?undefined:sessionId);
       setEditing(null);
       setAdding(false);
       setDraft("");

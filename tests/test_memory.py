@@ -80,6 +80,168 @@ async def test_memory_crud_keeps_versions_and_an_operation_log(isolated):
         assert scopes == [{"scope": "char:x|persona:default", "active": 0, "total": 1, "updated_at": scopes[0]["updated_at"]}]
 
 
+@pytest.mark.parametrize("share", [False, True])
+async def test_manual_memory_source_is_atomic_and_erased_with_session(isolated, monkeypatch, share):
+    from python.storage import memories
+
+    checked_db = None
+    session_scope, create = memories.session_scope, memories._create
+
+    async def checked_scope(settings, *, db=None):
+        nonlocal checked_db
+        if db is not None:
+            assert db.in_transaction
+            checked_db = db
+        return await session_scope(settings, db=db)
+
+    async def checked_create(db, *args, **kwargs):
+        assert db is checked_db and db.in_transaction
+        return await create(db, *args, **kwargs)
+
+    async with client() as c:
+        assert (await c.put("/api/chat/settings", json={"session_id": "manual-source",
+            "character_id": "mocha_sfw", "world_id": "beast_world"})).status_code == 200
+        if share:
+            preview = (await c.get("/api/memory/session/manual-source/scope-preview")).json()
+            assert (await c.post("/api/memory/session/manual-source/scope-migrate", json={
+                "expected_revision": preview["preview_revision"], "share": True})).status_code == 200
+        scope = (await c.get("/api/memory/session/manual-source")).json()["scope"]
+        assert scope.startswith("char:" if share else "work:")
+        body = {"scope": scope, "type": "semantic", "content": "  manual   fact "}
+        global_memory = (await c.post("/api/memory", json=body)).json()
+        assert global_memory["source_session_id"] is None
+        monkeypatch.setattr(memories, "session_scope", checked_scope)
+        monkeypatch.setattr(memories, "_create", checked_create)
+        response = await c.post("/api/memory", json={**body, "source_session_id": "manual-source"})
+        assert response.status_code == 200
+        linked = response.json()
+        assert linked["source_session_id"] == "manual-source" and linked["content"] == "manual fact"
+        assert linked["source_quote"] == "manual fact" and linked["source_revision"] == "manual:1"
+        assert linked["confirmation"] == "user_confirmed" and linked["origin"] == "user"
+        assert (await c.delete("/api/chat/sessions/manual-source/data")).status_code == 200
+        assert (await c.get(f"/api/memory/{linked['id']}")).status_code == 404
+        assert await memories.events(memory_id=linked["id"]) == []
+        assert [m["id"] for m in await memories.list_memories(scope)] == [global_memory["id"]]
+
+
+@pytest.mark.parametrize("case", ["missing", "scope-only", "mismatch", "deleted", "source-pending", "peer-pending"])
+async def test_manual_memory_source_rejects_invalid_or_busy_session(isolated, case):
+    from python.storage import generations, memories
+
+    async with client() as c:
+        for sid in ("source", "peer", "__global__"):
+            assert (await c.put("/api/chat/settings", json={
+                "session_id": sid, "character_id": "mocha_sfw"})).status_code == 200
+        scope = (await c.get("/api/memory/session/source")).json()["scope"]
+        sid = "source"
+        if case in {"missing", "scope-only"}:
+            sid = "absent"
+            if case == "scope-only":
+                assert (await c.get(f"/api/memory/session/{sid}")).status_code == 200
+        elif case == "mismatch":
+            scope = "session:other"
+            async with generations.transaction() as db:
+                await db.execute("DELETE FROM session_scopes WHERE session_id=?", (sid,))
+        elif case == "deleted":
+            assert (await c.delete("/api/chat/sessions/source/data")).status_code == 200
+            # Even stale restored settings must not bypass the deletion tombstone.
+            async with generations.transaction() as db:
+                await db.execute("INSERT INTO session_settings(session_id) VALUES('source')")
+        else:
+            await generations.reserve("busy", "peer" if case == "peer-pending" else sid, {})
+        response = await c.post("/api/memory", json={
+            "scope": scope, "type": "semantic", "content": "rejected fact", "source_session_id": sid})
+        assert response.status_code == (404 if case in {"missing", "scope-only"} else 409)
+        if case.endswith("pending"):
+            assert "stop generation" in response.json()["error"]
+        assert await memories.list_memories(scope) == []
+        assert await memories.events(scope=scope) == []
+        if case == "mismatch":
+            async with generations.transaction() as db:
+                assert await (await db.execute("SELECT 1 FROM session_scopes WHERE session_id=?", (sid,))).fetchone() is None
+
+
+@pytest.mark.parametrize("invalid_source", ["", "x" * 301])
+async def test_manual_memory_source_id_is_bounded(isolated, invalid_source):
+    async with client() as c:
+        assert (await c.post("/api/memory", json={"scope": "session:test", "type": "semantic", "content": "fact", "source_session_id": invalid_source})).status_code == 422
+
+
+async def test_manual_memory_source_stays_in_tenant_and_accepts_history_only(isolated):
+    from python.storage import db, generations
+    from python.storage.context import CloudStorageContext, storage_context
+
+    async with client() as c:
+        with storage_context(CloudStorageContext("tenant-a", isolated / "tenant-a")):
+            assert (await c.put("/api/chat/settings", json={"session_id": "foreign"})).status_code == 200
+        with storage_context(CloudStorageContext("tenant-b", isolated / "tenant-b")):
+            await db.init_db()
+            async with generations.transaction() as connection:
+                await connection.execute("INSERT INTO session_settings(session_id,character_id) VALUES('__global__','mocha_sfw')")
+                await connection.execute("INSERT INTO chat_history(session_id,role,content) VALUES('history-only','user','hello')")
+            body = {"scope": "char:mocha_sfw|persona:default", "type": "semantic", "content": "tenant fact"}
+            assert (await c.post("/api/memory", json={**body, "source_session_id": "foreign"})).status_code == 404
+            response = await c.post("/api/memory", json={**body, "source_session_id": "history-only"})
+            assert response.status_code == 200 and response.json()["source_session_id"] == "history-only"
+            assert (await c.post("/api/memory", json={**body, "source_session_id": None})).json()["source_session_id"] is None
+
+
+@pytest.mark.parametrize("private_scope,explicit_source", [(True, False), (True, True), (False, True)])
+async def test_migrate_equal_manual_facts_preserves_sources_and_repeat_dedup(isolated, private_scope, explicit_source):
+    from python.storage import conversation, memories
+
+    settings = {}
+    target = "char:mocha_sfw|persona:default"
+    for sid in ("source-a", "source-b"):
+        settings[sid] = {"session_id": sid}
+        if not private_scope:
+            settings[sid].update(character_id="mocha_sfw", world_id=sid)
+        original_scope = await memories.session_scope(settings[sid])
+        await memories.create(original_scope, "semantic", "same manual fact",
+                              source_session_id=sid if explicit_source else None)
+        settings[sid].update(character_id="mocha_sfw", world_id="beast_world")
+        preview = await memories.scope_preview(settings[sid])
+        assert await memories.migrate_scope(settings[sid], preview["preview_revision"], share=True) == {
+            "scope": target, "copied": 1}
+
+    shared = await memories.list_memories(target)
+    assert len(shared) == 2
+    assert {m["source_session_id"] for m in shared} == {"source-a", "source-b"}
+    assert all(m["source_generation_id"] is None and m["origin"] == "user" for m in shared)
+
+    # A real round trip exercises dedup while source and target scopes differ.
+    preview = await memories.scope_preview(settings["source-a"])
+    await memories.migrate_scope(settings["source-a"], preview["preview_revision"])
+    preview = await memories.scope_preview(settings["source-a"])
+    assert await memories.migrate_scope(settings["source-a"], preview["preview_revision"], share=True) == {
+        "scope": target, "copied": 0}
+    assert [m["id"] for m in await memories.list_memories(target)] == [m["id"] for m in shared]
+
+    await conversation.purge("source-a")
+    remaining = await memories.list_memories(target)
+    assert [m["id"] for m in remaining] == [m["id"] for m in shared if m["source_session_id"] == "source-b"]
+    assert remaining[0]["content"] == "same manual fact"
+
+
+async def test_migrate_unowned_world_fact_does_not_infer_session_source(isolated):
+    from python.storage import conversation, memories
+
+    settings = {"session_id": "source-a", "character_id": "mocha_sfw", "world_id": "beast_world"}
+    scope = await memories.session_scope(settings)
+    await memories.create(scope, "semantic", "same manual fact")
+    target = "char:mocha_sfw|persona:default"
+    attributed = await memories.create(target, "semantic", "same manual fact", source_session_id="source-a")
+    preview = await memories.scope_preview(settings)
+    assert await memories.migrate_scope(settings, preview["preview_revision"], share=True) == {
+        "scope": target, "copied": 1}
+    shared = await memories.list_memories(target)
+    assert [m["source_session_id"] for m in shared] == ["source-a", None]
+    await conversation.purge("source-a")
+    remaining = await memories.list_memories(target)
+    assert [m["id"] for m in remaining] == [shared[1]["id"]]
+    assert remaining[0]["source_session_id"] is None and remaining[0]["id"] != attributed["id"]
+
+
 async def test_chat_stores_restores_across_sessions_and_evidences(isolated):
     async with client() as c:
         for sid in ("day1", "day2", "off"):

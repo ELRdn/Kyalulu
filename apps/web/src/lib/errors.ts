@@ -106,8 +106,13 @@ export function friendlyError(raw: unknown, language: Language = typeof window =
   if (text === 'Memory must have 1-200 characters') return { message: en ? text : '記憶は1〜200文字で入力してください。' };
   if (text === 'Invalid memory type') return { message: en ? text : '記憶の種類が不正です。' };
   if (text === 'Invalid memory source') return { message: en ? text : '記憶の出典が不正です。' };
+  if (text === 'Memory source does not match this conversation' || text === 'source session memory scope does not match request scope') return { message: en ? text : '記憶の保存範囲と出典の会話が一致しません。' };
+  if (text === 'Memory source session not found' || text === 'source session not found') return { message: en ? text : '出典の会話が見つかりません。' };
+  if (text === 'source session was deleted') return { message: en ? text : '出典の会話は完全消去されています。' };
+  if (text === 'stop generation before creating memories') return { message: en ? text : '記憶を追加する前に生成を停止してください。' };
   if (text === 'Choose whether memory is enabled') return { message: en ? text : '記憶を有効にするか選んでください。' };
   if (text === 'Stop generation before editing') return { message: en ? text : '編集する前に生成を停止してください。' };
+  if (text === 'Stop generation and confirm its saved result before receiving conversation deletions') return { message: en ? text : '生成を停止して保存結果を確認すると、削除の同期を続けられます。' };
   if (text === 'Web Locks are required for on-device generation') return { message: en ? text : '安全に端末内で生成するため、Web Locksに対応したブラウザーで開いてください。' };
   if (text === 'A generation is already running in another tab') return { message: en ? text : '別のタブで生成中です。完了するか、そのタブで停止してから送信してください。' };
   if (text === 'Generation is running in another tab; stop it there') return { message: en ? text : '別のタブで生成中です。そのタブで停止してください。' };

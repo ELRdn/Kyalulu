@@ -1,5 +1,9 @@
 import { deviceOwner } from './appContext';
 import { readParts, writeParts, removeParts, storageStep, storageWrite, type Parts } from './segmentedStorage';
+import { memoryDomainKey,eraseMemoryDomain,eraseDeviceMemoryReferences,type MemoryPolicy } from './deviceMemoryScopes';
+import { readMemoryDomainTx,writeMemoryDomainTx } from './deviceMemoryDomainIO';
+import { canonical } from './appSyncData';
+import { Sha256 } from '../mobile/sha256';
 
 export type EntityKind = 'conversation' | 'character' | 'persona' | 'world' | 'preset' | 'profile';
 export type AppEntity = { id: string; owner: string; kind: EntityKind; revision: number; serverRevision: number;
@@ -9,8 +13,31 @@ export { guardStorage } from './segmentedStorage';
 const DB = 'kyalulu-app-v1';
 export type EntitySelection={storage_policy?:string;cache_evicted:boolean;pending_generation:boolean;maximumMessageId:number;messageIdsValid:boolean;
   delete_confirmation_revision?:number;source?:Record<string,unknown>};
-export type StoredEntity=Omit<AppEntity,'payload'>&{payload?:AppEntity['payload'];payloadParts?:Parts;selection?:EntitySelection};
+type MemoryReferences={sources:string[];memories:string[];hash:string};
+export type StoredEntity=Omit<AppEntity,'payload'>&{payload?:AppEntity['payload'];payloadParts?:Parts;selection?:EntitySelection;memoryReferences?:MemoryReferences|null};
 export type StoredOutbox=Outbox&{changesParts?:Parts;count?:number};
+function memoryReferences(payload:AppEntity['payload']) {
+  const sources=new Set<string>(),memories=new Set<string>();
+  for(const trace of [payload.last_generation?.memory,payload.last_generation?.telemetry?.memory]){
+    if(trace==null)continue;if(typeof trace!=='object')return null;
+    if(['candidates','decisions','injected','evidenced'].some(key=>trace[key]!==undefined&&!Array.isArray(trace[key])))return null;
+    for(const candidate of trace.candidates??[]){
+      if(typeof candidate?.source_session_id==='string')sources.add(candidate.source_session_id);
+      if(candidate?.id!=null){if(typeof candidate.id!=='string')return null;memories.add(candidate.id);}
+    }
+    for(const id of [...(trace.decisions??[]).map((d:any)=>d?.memory_id),...(trace.injected??[]),...(trace.evidenced??[])]){
+      if(id==null)continue;if(typeof id!=='string')return null;memories.add(id);
+    }
+  }
+  return {sources:[...sources].sort(),memories:[...memories].sort()};
+}
+const referenceHash=(token:string,refs:Omit<MemoryReferences,'hash'>)=>new Sha256().update(new TextEncoder().encode(canonical([token,refs.sources,refs.memories]))).digest();
+function referencesSource(header:StoredEntity,source:string,removed:Set<string>) {
+  const refs=header.memoryReferences;
+  if(!header.payloadParts||!refs||!Array.isArray(refs.sources)||!Array.isArray(refs.memories)
+    ||refs.sources.some(id=>typeof id!=='string')||refs.memories.some(id=>typeof id!=='string')||refs.hash!==referenceHash(header.payloadParts.token,refs))return true;
+  return refs.sources.includes(source)||refs.memories.some(id=>removed.has(id));
+}
 export function entitySelection(value:StoredEntity):EntitySelection {
   if(value.payloadParts){if(!value.selection)throw Error('Missing entity selection');return value.selection;}
   const p=value.payload!,remote=p.document?.source?.remote;let maximumMessageId=0,messageIdsValid=true;
@@ -26,7 +53,7 @@ export function restoreEntity(tx:IDBTransaction,value:StoredEntity|undefined,don
       if(value&&(!value.payload||typeof value.payload!=='object'||Array.isArray(value.payload)))throw Error('Missing entity body');
       done(value as AppEntity|undefined);return;
     }
-    const {payloadParts,selection,...header}=value;
+    const {payloadParts,selection,memoryReferences:_,...header}=value;
     readParts(tx,[value.owner,'entity',value.id],payloadParts,payload=>{
       if(!payload||typeof payload!=='object'||Array.isArray(payload)){tx.abort();return;}
       done({...header,payload});
@@ -36,18 +63,27 @@ export function restoreEntity(tx:IDBTransaction,value:StoredEntity|undefined,don
 export function readEntity(tx:IDBTransaction,owner:string,id:string,done:(value:AppEntity|undefined)=>void) {
   const read=tx.objectStore('entities').get([owner,id]);read.onsuccess=()=>restoreEntity(tx,read.result,done);
 }
-export function writeEntity(tx:IDBTransaction,value:AppEntity,mode:'put'|'add'='put',done:()=>void=()=>{}) {
-  storageWrite(tx,next=>{
+function persistEntity(tx:IDBTransaction,value:AppEntity,mode:'put'|'add',done:()=>void) {
     const store=tx.objectStore('entities'),read=store.get([value.owner,value.id]);
     read.onsuccess=()=>storageStep(tx,()=>{
       const previous=read.result as StoredEntity|undefined;
       if(mode==='add'&&previous)throw Error('Entity identity conflict');
       const {payload,...header}=value,selection=entitySelection(value);
       const write=()=>writeParts(tx,[value.owner,'entity',value.id],payload,payloadParts=>{
-        const write=store[mode]({...header,selection,payloadParts});
-        write.onsuccess=()=>removeParts(tx,[value.owner,'entity',value.id],previous?.payloadParts,()=>{done();next();});
+        const refs=value.kind==='conversation'?memoryReferences(payload):null;
+        const write=store[mode]({...header,selection,payloadParts,memoryReferences:refs?{...refs,hash:referenceHash(payloadParts.token,refs)}:null});
+        write.onsuccess=()=>removeParts(tx,[value.owner,'entity',value.id],previous?.payloadParts,done);
       });
       if(previous?.payloadParts)readParts(tx,[value.owner,'entity',value.id],previous.payloadParts,write,false);else write();
+    });
+}
+export function writeEntity(tx:IDBTransaction,value:AppEntity,mode:'put'|'add'='put',done:()=>void=()=>{},verifiedMemoryCommit=false) {
+  storageWrite(tx,next=>{
+    const write=()=>persistEntity(tx,value,mode,()=>{done();next();});
+    if(verifiedMemoryCommit||value.kind!=='conversation'){write();return;}
+    const meta=tx.objectStore('meta'),local=meta.get(memoryDomainKey(value.owner,'local')),sync=meta.get(memoryDomainKey(value.owner,'sync'));
+    sync.onsuccess=()=>storageStep(tx,()=>{
+      if(local.result?.pending||sync.result?.pending)throw Error('Stop generation before editing');write();
     });
   });
 }
@@ -98,7 +134,7 @@ export async function appTransaction<T>(stores:string[],mode:IDBTransactionMode,
   const db=await database();
   return new Promise((resolve,reject)=>{
     let tx:IDBTransaction;
-    try{tx=db.transaction(stores.includes('entities')?[...new Set([...stores,'parts'])]:stores,mode);}
+    try{tx=db.transaction(stores.includes('entities')?[...new Set([...stores,'parts',...(mode==='readwrite'?['meta']:[])])]:stores,mode);}
     catch(error){db.close();reject(error);return;}
     let value:T,failure:unknown;
     tx.oncomplete=()=>{db.close();resolve(value);};
@@ -158,15 +194,45 @@ export function copyMemoryEvents(tx:IDBTransaction,source:AppEntity,target:AppEn
   };
 }
 export function scrubGenerationRecords(tx:IDBTransaction,owner:string,sessionId:string) {
-  const meta=tx.objectStore('meta'),keys=meta.getAllKeys();
-  meta.delete(memoryEventsKey(owner,sessionId));
-  keys.onsuccess=()=>{
-    for(const key of keys.result)if(typeof key==='string'&&key.startsWith('generation:'+owner+':')) {
-      const read=meta.get(key);read.onsuccess=()=>{
-        if(read.result?.session_id===sessionId)meta.put({generation_id:read.result.generation_id,session_id:sessionId,status:'deleted'},key);
+  storageWrite(tx,next=>{
+    const meta=tx.objectStore('meta'),removed=new Set<string>(),policies:MemoryPolicy[]=['local','sync'];let index=0;
+    meta.delete(memoryEventsKey(owner,sessionId));
+    const domains=()=>{
+      const policy=policies[index++];if(!policy){generations();return;}
+      readMemoryDomainTx(tx,owner,policy,domain=>{
+        const result=eraseMemoryDomain(domain,sessionId);for(const id of result.removed)removed.add(id);
+        if(result.changed)writeMemoryDomainTx(tx,domain,domains);else domains();
+      });
+    };
+    const generations=()=>{
+      const keys=meta.getAllKeys();keys.onsuccess=()=>{
+        const selected=keys.result.filter(key=>typeof key==='string'&&key.startsWith('generation:'+owner+':'));let index=0;
+        const scan=()=>{
+          const key=selected[index++];if(key===undefined){conversations();return;}
+          const read=meta.get(key);read.onsuccess=()=>storageStep(tx,()=>{
+            const value=read.result;
+            if(value?.session_id===sessionId)meta.put({generation_id:value.generation_id,session_id:sessionId,status:'deleted'},key);
+            else {const redacted=eraseDeviceMemoryReferences(value,sessionId,removed);if(redacted!==value)meta.put(redacted,key);}
+            scan();
+          });
+        };scan();
       };
-    }
-  };
+    };
+    const conversations=()=>{
+      const cursor=tx.objectStore('entities').openCursor(IDBKeyRange.bound([owner,''],[owner,'\uffff']));
+      cursor.onsuccess=()=>storageStep(tx,()=>{
+        const current=cursor.result;if(!current){next();return;}
+        const header=current.value as StoredEntity;
+        if(header.id===sessionId||header.kind!=='conversation'||header.deleted||!referencesSource(header,sessionId,removed)){current.continue();return;}
+        restoreEntity(tx,header,value=>{
+          const result=value!.payload.last_generation,redacted=eraseDeviceMemoryReferences(result,sessionId,removed);
+          if(redacted===result){current.continue();return;}
+          persistEntity(tx,{...value!,revision:value!.revision+1,payload:{...value!.payload,last_generation:redacted}},'put',()=>current.continue());
+        });
+      });
+    };
+    domains();
+  });
 }
 export function newEntity(kind:EntityKind,id:string,payload:Record<string,any>,owner=deviceOwner()):AppEntity {
   return {owner,id,kind,payload,revision:0,serverRevision:0,deleted:false,dirty:false,pinned:false,opened:Date.now()};

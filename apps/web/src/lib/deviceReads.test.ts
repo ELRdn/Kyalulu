@@ -111,6 +111,29 @@ it('uses a single conversation for manual memory writes',async()=>{
   expect(openEntity).toHaveBeenCalledExactlyOnceWith('requested','owner-a');expect(allEntities).not.toHaveBeenCalled();
 });
 
+it('attributes explicit manual sources only to the existing idle conversation',async()=>{
+  const source=saved();source.payload.pending_generation=null;put(source);
+  const result=await request('/api/memory',{scope:'requested',type:'semantic',content:'Attributed fact',source_session_id:'requested'});
+  expect(result.status).toBe(200);expect(result.body.source_session_id).toBe('requested');expect(result.body.source_message_ids).toEqual([]);
+  const before=structuredClone(saved());
+  expect((await request('/api/memory',{scope:'requested',type:'semantic',content:'forged',source_session_id:'foreign'})).status).toBe(409);
+  expect((await request('/api/memory',{scope:'absent',type:'semantic',content:'missing',source_session_id:'absent'})).status).toBe(404);
+  expect(saved()).toEqual(before);expect(fixture.records.has('owner-a:absent')).toBe(false);
+  source.payload.pending_generation='orphan';put(source);
+  expect((await request('/api/memory',{scope:'requested',type:'semantic',content:'wait',source_session_id:'requested'})).status).toBe(409);
+});
+
+it('distinguishes an unavailable generation prompt from a current-settings preview after sync',async()=>{
+  const source=saved();source.payload.last_generation={generation_id:'synced-summary',status:'completed',reply:'Saved reply'};put(source);
+  const result=await request('/api/chat/debug?session_id=requested');
+  expect(result.status).toBe(200);expect(result.body.prompt_source).toBe('unavailable');
+  expect(result.body.generation.raw_prompt).toBeUndefined();expect(result.body.compiled).toBeTruthy();
+});
+
+it.each([['/api/chat/sessions/requested/data','GET'],['/api/chat/sessions/requested/branch','DELETE']])('requires the explicit mutation method for conversation operations: %s',async(path,method)=>{
+  const before=structuredClone(saved());expect((await request(path,undefined,method)).status).toBe(405);expect(saved()).toEqual(before);
+});
+
 it.each([
   ['/api/library/saved',{id:'saved',document:{name:'Saved character'}}],
   ['/api/library/saved/revisions',{items:[{revision:1,document:{name:'Saved character'}}]}],

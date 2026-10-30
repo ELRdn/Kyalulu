@@ -1,4 +1,5 @@
 import { appTransaction, entity, getMeta, entitySelection, guardStorage, restoreEntity, readEntity, writeEntity, restoreOutbox, writeOutbox, scrubGenerationRecords, copyMemoryEvents, trimOfflineCache, type StoredEntity, type AppEntity, type Outbox } from './appStore';
+import { deviceExecutionLockName } from './deviceExecution';
 import { cloudFetch } from './transport';
 import { deviceOwner, generationBusy } from './appContext';
 import { receiveConversation, receiveLibrarySnapshot, receiveCreatorSnapshot, rebindConversation, withLibrarySnapshots, conversationSettings } from './appSyncData';
@@ -112,6 +113,15 @@ function selectSyncRecords(tx:IDBTransaction,owner:string,required:Set<string>,
 }
 
 export async function receiveSyncPage(owner:string, changes:any[], cursor:number) {
+  if(changes.some(change=>change?.deleted)&&typeof navigator!=='undefined'&&navigator.locks){
+    return navigator.locks.request(deviceExecutionLockName(owner),{ifAvailable:true},async lock=>{
+      if(!lock)throw Error('Stop generation and confirm its saved result before receiving conversation deletions');
+      return receiveSyncPageTransaction(owner,changes,cursor);
+    });
+  }
+  return receiveSyncPageTransaction(owner,changes,cursor);
+}
+async function receiveSyncPageTransaction(owner:string,changes:any[],cursor:number) {
   await appTransaction<void>(['entities','meta'],'readwrite',(tx,done)=>{
     guardStorage(tx,()=>owner===deviceOwner()&&!generationBusy());
     const meta=tx.objectStore('meta');

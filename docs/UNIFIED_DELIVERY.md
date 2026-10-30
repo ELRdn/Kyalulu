@@ -258,3 +258,15 @@ Web型検査が成功した。共通デバッグドロワーの日英ラベル�
 独立コピーは元Workerのpendingを解除し、メッセージと下書きを保持する。Web1120件・型検査、
 実IDBの同期10ケース・記憶2ケースが成功。ed8e3c7のUbuntu CIで見つかったタブ終了と
 lock解放の順序差は、試験が実lock状態を待ってから検証するよう訂正した。新CIは別確認。
+
+共有記憶のidentity・版・論理scope IDをPythonと固定fixtureで照合し、owner/保存方針別の
+分割ドメイン、source revision CAS、会話投影/生成記録の同時保存、消去連携を実装した。
+手入力の会話来歴も日常UIとPython/Browser APIへ接続。実IDBでコピー/重複排除、原本保護、
+pending fence、消去rollback、>1MiBの分割/破損検出/再読込を確認。Web1187件・型と
+Python関連128件が成功。[Scope contract](validation/2026-10-30-unified-memory-scope-contract.md)
+に記録。通常Device生成/移行APIへの共有プール接続はまだ未完了で、移行409を維持する。
+0deaa87のWindows CIは成功、Ubuntuの新試験はlock解放待ちの判定で失敗したため、
+試験を実queued lock取得のawaitへ訂正した。新CI/配布物の合格ではない。
+監査行に出典を保持し、記憶行の除去後も本文を完全消去できるようにした。同文の手動記憶は
+Python/Browserとも出典別に重複判定する。共有pendingの孤立復旧は共通生成APIへ接続し、
+新しい下書き/記憶/返信の保持、source削除時の非復活、部分保存失敗rollbackを確認した。

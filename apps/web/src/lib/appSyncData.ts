@@ -1,12 +1,27 @@
 import { PortableDocumentSchema, RuntimeStateSchema, CreatorDocumentSchema, ConversationSettingsSchema } from '../../../../packages/schemas/src';
 import type { AppEntity } from './appStore';
 
+function removeLocalGenerationDiagnostics(payload:AppEntity['payload']) {
+  const generation=payload.last_generation;
+  if(generation){
+    for(const key of ['raw_prompt','compiled','attempts','memory','execution_lock'])delete generation[key];
+    if(generation.validation)generation.validation.errors=[];
+    if(generation.telemetry)delete generation.telemetry.memory;
+  }
+}
+
 export function rebindConversation(payload: AppEntity['payload'], id: string) {
   const result = structuredClone(payload);
+  const sourceIds=new Set([payload.settings?.session_id??payload.state?.session_id,payload.branch_of,payload.recovery_from].filter(value=>typeof value==='string'&&value!==id));
   const bind = (snapshot: any) => {
     if(snapshot?.settings)snapshot.settings.session_id=id;
     if (snapshot?.state) snapshot.state.session_id = id;
-    for (const memory of snapshot?.memories ?? []) if (memory.scope) memory.scope = id;
+    for (const memory of snapshot?.memories ?? []) {
+      if(memory.scope)memory.scope=id;
+      if(sourceIds.has(memory.source_session_id)){
+        memory.original_source_session_id??=memory.source_session_id;memory.source_session_id=id;
+      }
+    }
   };
   bind(result);
   for (const message of result.messages ?? []) { bind(message.before); bind(message.after); }
@@ -71,6 +86,7 @@ export function receiveConversation(payload: AppEntity['payload'], previous: App
     const id = result.last_generation[key];
     if (id != null) { if (!ids.has(id)) throw Error('Missing generation message'); result.last_generation[key] = ids.get(id); }
   }
+  removeLocalGenerationDiagnostics(result);
   return result;
 }
 
@@ -79,6 +95,7 @@ export function conversationSettings(payload:AppEntity['payload']):Record<string
 }
 export function withLibrarySnapshots(payload: AppEntity['payload'], records: AppEntity[]) {
   const result=structuredClone(payload),settings=conversationSettings(result);
+  removeLocalGenerationDiagnostics(result);
   result.library_snapshots={};
   result.creator_snapshots={};
   for(const sourceSettings of [...settings,...(result.messages??[]).flatMap((message:any)=>[message.before?.state,message.after?.state].filter(Boolean))]){
