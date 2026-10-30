@@ -425,6 +425,14 @@ async def run():
                             try{switchTarget('device');return false;}
                             catch(error){return String(error).includes('Stop generation and confirm its saved result');}
                         }''')
+                        await page.evaluate('location.hash="/profile"')
+                        await expect(composer).to_have_count(0)
+                        await expect(picker).to_be_disabled()
+                        await page.reload()
+                        await page.get_by_role('region', name='Remoteの接続先', exact=True).wait_for()
+                        await expect(picker).to_be_disabled()
+                        await page.get_by_role('link', name='送信結果を確認', exact=True).click()
+                        await expect(composer).to_be_visible()
                         release_saved.set()
                         await expect(picker).to_be_enabled(timeout=30000)
                         await expect(composer).to_have_value('REMOTE_STOP_keep_input')

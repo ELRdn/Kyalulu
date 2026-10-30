@@ -10,13 +10,13 @@
 | 共通UI、Cloud初期選択、地域・年齢確認、3画面の任意設定 | 実Appの日英・393明/1280暗で、サーバー拒否・規約同意・確認票・3画面の戻る/スキップ/保存し直し・Cloud会話時ログイン・ログインなし端末会話の実DB作成を確認。言語/お気に入りの上書き、owner持越し、確認中の遅延応答を保護 | 元の要件に対応するローカル証拠は初回設定記録を参照。実地域条件・実OAuth・本番/実機の受入れは別途必要 |
 | 好み・お気に入り・興味なしのタグ推薦、先行する年齢/公開/ブロック制限 | 共通タグ別名・先行絞り込みと順位、公開一覧の別タブ即時反映、ブロック/owner切替をASGI/Chromiumで確認。実ホームのゲストお気に入り・再読込・興味なしの除外/復帰も検証し、アカウント書込み/作成を増やさない | 元の要件に対応するローカル証拠は推薦記録を参照。本番・実機・実OAuthの全体受入れは別途必要 |
 | PC単体・オフライン維持と3方式の機能対応表 | 部分実装。Device研究の実行/結果/採点/再実行・実験別記憶と、BenchmarkLabのペア行列・進捗・別タブ中止・期限・中断回復を追加。共通生成、実IndexedDB/Web Locks/BroadcastChannel、架空推論の100ターンで隔離検証 | 会話・制作・記憶・要約・World・分岐・入出力・研究の全行確認。実モデル/実機と運用規模の証拠は残る。Deviceジョブは実行元の文書を開いている必要がある |
-| 実行先/モデル/保存/同期の表示、生成中切替の停止・保存確認 | 暗号化PC実通信で生成中の3方向切替拒否・停止後の保存結果確認待ち・入力復帰、PC/Device往復の下書き/履歴保持と自動転送なしを確認 | Cloud/Deviceを生成元とする停止/保存/再開と、日英/実モデル/実機を含む3方式の受入れは残る |
+| 実行先/モデル/保存/同期の表示、生成中切替の停止・保存確認 | 暗号化PC実通信とDevice実保存/架空推論で生成中・保存結果確認待ちの3方向切替拒否、入力復帰、往復の下書き/履歴保持と自動転送なしを確認。PCで画面離脱/再読込時の切替迂回も修正・実確認 | Cloudを生成元とする停止/保存/再開、実モデル/実機を含む3方式の受入れは残る |
 | Portable再利用、ブラウザ記憶/物語とPython共通fixture | World/cast/Lore、6形式export、JSON/PNG/CHARX/backup・ST/CAI/BYAF import、原本保持・選択履歴のatomic commit、媒体upload/再生取得を実装。48入力とLore条件、実decoder・実IDBの共通検証 | 各形式の追加実データ・全画面媒体操作、実容量・実モデル・実機を含むパリティ試験は残る |
-| 認証・課金経路とRuntime通信の分離、Cloud鍵をRemoteへ送らない | 実装・限定検証 | 認証切替・Remote通信捕捉・所有者分離試験 |
+| 認証・課金経路とRuntime通信の分離、Cloud鍵をRemoteへ送らない | 実Chromium/Noise/Relay/HostでCloud cookie/bearer/owner/CSRFの正の対照とRemote復号前後の2要求を検証し、認証canary混入0を確認 | 本番HTTPS/OAuth、全API/ブラウザー・認証切替の全面受入れは残る |
 | 安定ID/revisionと数値ID互換、永続outbox、自動同期 | Cloud/device/Native-PCを隔離検証。Browserの本文/固定outboxを1MiB断片へ分割し、v1/v2→v3混在読込・破損/容量不足時のatomic rollbackを実Chromiumで確認 | decoded tree/UI全体化、250MB/1GB/RSS・旧DB復元の全面照合、全方式の統合証拠 |
 | 競合の共通履歴分岐、記憶を自動混合せず出典保持 | state/記憶/作品設定snapshot往復、記録済みrevisionの共通message列、同期済み/登録前のNative分岐のUUID継承と初回受領前のowner継承を隔離検証。証跡なしの旧分岐は推測で結合しない | 証跡のない旧分岐の扱い、祖先本文の復元、旧設定欠落、3方式の実UI確認 |
 | 同期削除・復元、未送信変更の保護 | 条件付き承認でNative-PC/Browserのowner/revision・撤回fence・永続受領を検証。Native論理復元とCore全体復元は現在outbox/受領/ownerを保護し、自動同期停止・旧受領照合・復元単位の別コピー確認を適用。Core/既存同期の関連132件で検証 | 強制終了時のDB/媒体の一括耐久性、配布版をまたぐ全面復旧、実容量・実機・本番復旧の確認が必要 |
-| 端末限定の外部送信禁止・共有記憶分離 | 部分検証 | 生成/記憶/同期/広告/外部AIの通信否定試験 |
+| 端末限定の外部送信禁止・共有記憶分離 | 実Device保存/架空推論で生成・手動記憶、外部モデル拒否、同期未同意時の自動Cloud/同期/広告通信0を実Chromiumで確認 | 実Worker/モデルの通信、共有記憶の全面隔離、全機能/実機の否定試験は残る |
 | 最近10件＋固定会話のオフライン保存、容量不足とアカウント分離 | 選択/置換の1件ずつ処理・競合と実Chromium quota拒否時の原本/未送信/receipts保持、再開を確認。v3断片保存統合後もcache6・quota4ケース成功 | 実ディスク枯渇、既存DBへの後付quota、PWA/ブラウザ/実機の再起動と実容量試験は残る |
 | Remote端末別の管理権限、失効、対象PCでの管理・診断・実験 | 実装・限定検証 | 既存Remote接続を使った権限/失効/全機能確認 |
 | 旧Mobileの分割移行、SHA-256/revision/size、モデルCloud送信禁止 | 旧公開Workerを有効にした実originのloopback/Chromiumで中立popup・同意・分割会話転送・破損拒否・再送・明示更新・原本IDB/OPFS保持を確認。再取込み時の空下書き/送信待ち保護を修正 | 公開配信と実モデル容量・中断回復、Android/iPhoneでの直接コピー証拠。OPFS保持は架空markerでありモデル転送ではない |
@@ -57,6 +57,8 @@ Cloud設定と旧バックアップ同期の日英表示は
 この表は公開合格や全計画完了の宣言ではない。
 暗号化PC接続の明示停止・保存結果確認待ちと、端末内への切替/PC復帰の証拠は
 [Target switching](validation/2026-10-31-unified-target-switch.md) に記録する。
+Device生成元の日英停止・保存確認・PC往復は [Device target switching](validation/2026-10-31-unified-device-target-switch.md)、
+認証canaryの暗号化Remote捕捉と端末限定会話の通信否定は [Runtime privacy](validation/2026-10-31-unified-runtime-privacy.md) に記録する。
 分割送信中の本文再読込除去と旧outbox/DBの互換性・復旧条件は
 [Outbox guards](validation/2026-10-25-unified-outbox-guards.md) に記録する。
 転送一時データの起動時/定期清掃、期限切れ後のNative outbox再開、

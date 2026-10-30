@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { deviceOwner, preferences, savePreferences, useLanguage, useDeviceOwner, labels, isUnifiedEntry, hasLocalRuntime, useExecutionTarget,
-  useGenerationBusy, switchTarget, type AppPreferences, type ExecutionTarget } from '../lib/appContext';
+  generationBusy, useGenerationBusy, usePendingConversation, switchTarget, type AppPreferences, type ExecutionTarget } from '../lib/appContext';
 import { cloudFetch } from '../lib/transport';
 import Button from './ui/Button';
 import { useConfirm } from './ui/Dialog';
@@ -32,17 +32,19 @@ function InterestChoices({owner,onDone}:{owner:string;onDone:()=>void}) {
 
 export function ExecutionPicker() {
   const language=useLanguage(),target=useExecutionTarget(),busy=useGenerationBusy(),t=labels[language];
+  const pending=usePendingConversation(),en=language==='en';
   const [dialog,confirm]=useConfirm();
   if (!isUnifiedEntry() && !hasLocalRuntime()) return null;
   const choose=async(next:ExecutionTarget)=>{
     const cloud=next==='cloud'&&hasLocalRuntime();
     if(await confirm({title:cloud?(language==='ja'?'Cloudをブラウザーで開きますか？':'Open Cloud in your browser?'):(language==='ja'?'実行先を切り替えますか？':'Switch execution target?'),
-      description:cloud?(language==='ja'?'https://app.kyalulu.com/ を別画面で開きます。保存済みの会話と下書きはこのPCに残り、認証情報も転送しません。':'Open https://app.kyalulu.com/ separately. Saved conversations and drafts stay on this PC. No sign-in information is transferred.'):(language==='ja'?'保存済みの会話と下書きは元の場所に残ります。会話を自動転送しません。':'Saved conversations and drafts stay in their original location. Nothing is transferred automatically.'),confirmLabel:t.next})) switchTarget(next);
+      description:cloud?(language==='ja'?'https://app.kyalulu.com/ を別画面で開きます。保存済みの会話と下書きはこのPCに残り、認証情報も転送しません。':'Open https://app.kyalulu.com/ separately. Saved conversations and drafts stay on this PC. No sign-in information is transferred.'):(language==='ja'?'保存済みの会話と下書きは元の場所に残ります。会話を自動転送しません。':'Saved conversations and drafts stay in their original location. Nothing is transferred automatically.'),confirmLabel:t.next,cancelLabel:en?'Cancel':'キャンセル'})&&!generationBusy()) switchTarget(next);
   };
   return <div className="k-execution-picker">{dialog}<label>{t.target}
     <select aria-label={t.target} value={target} disabled={busy} onChange={e=>choose(e.target.value as ExecutionTarget)}>
       {(['cloud','device','pc',...(hasLocalRuntime()?['local']:[])] as ExecutionTarget[]).map(v=><option key={v} value={v}>{t[v]}</option>)}
-    </select></label>{hasLocalRuntime()&&target==='cloud'&&<Button disabled={busy} onClick={()=>choose('cloud')}>{language==='ja'?'Cloudを開く':'Open Cloud'}</Button>}</div>;
+    </select></label>{hasLocalRuntime()&&target==='cloud'&&<Button disabled={busy} onClick={()=>choose('cloud')}>{language==='ja'?'Cloudを開く':'Open Cloud'}</Button>}
+    {pending!==null&&<p role="status">{pending?<a href={`#/chats/${encodeURIComponent(pending)}`}>{en?'Check send result':'送信結果を確認'}</a>:(en?'Draft recovery could not be read. Check browser storage before switching.':'下書きの復旧記録を読み込めません。切替前にブラウザーの保存状態を確認してください。')}</p>}</div>;
 }
 
 export default function UnifiedEntry({children}:{children:ReactNode}) {

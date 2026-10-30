@@ -3,6 +3,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import UnifiedEntry, { ExecutionPicker } from './UnifiedEntry';
 import { executionTarget, preferences, rememberOwner } from '../lib/appContext';
+import { ChatRecovery } from '../lib/chatRecovery';
+import { connectionScope } from '../lib/remoteStore';
 
 const fixture = vi.hoisted(() => ({ states: [] as any[], next: 0, request: vi.fn(), confirm: vi.fn() }));
 vi.mock('react', async original => ({ ...await original<typeof import('react')>(),
@@ -38,12 +40,45 @@ beforeEach(() => {
   vi.stubEnv('MODE', 'native');
   vi.stubGlobal('navigator', { language: 'en', userAgent: 'Chromium' });
   vi.stubGlobal('window', { open: vi.fn(), dispatchEvent: vi.fn() });
-  vi.stubGlobal('location', { hostname: '127.0.0.1', protocol: 'http:', pathname: '/', search: '', assign: vi.fn(), reload: vi.fn() });
-  vi.stubGlobal('localStorage', { getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, value: string) => stored.set(key, value) });
+  vi.stubGlobal('location', { origin: 'http://127.0.0.1', hostname: '127.0.0.1', protocol: 'http:', pathname: '/', search: '', assign: vi.fn(), reload: vi.fn() });
+  Object.assign(window, { location });
+  vi.stubGlobal('localStorage', { get length() { return stored.size; }, key: (index: number) => [...stored.keys()][index] ?? null,
+    getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, value: string) => stored.set(key, value) });
   fixture.confirm.mockResolvedValue(false);
   fixture.request.mockResolvedValue(eligibility());
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+
+it('offers a scoped JA/EN return path without changing or resending pending work', () => {
+  const recovery = new ChatRecovery(localStorage, connectionScope(), 'pending:茶'); recovery.begin('generation');
+  for (const language of ['ja', 'en']) {
+    stored.set('kyalulu-app-preferences-v1', JSON.stringify({version:1,language}));
+    const before=[...stored], picker=ExecutionPicker(), html=renderToStaticMarkup(picker);
+    expect(find(picker, node=>node.type==='select').props.disabled).toBe(true);
+    expect(html).toContain(language==='en'?'Check send result':'送信結果を確認');
+    expect(find(picker, node=>node.type==='a').props.href).toBe('#/chats/pending%3A%E8%8C%B6');
+    expect([...stored]).toEqual(before); expect(fixture.request).not.toHaveBeenCalled();
+  }
+});
+
+it('localizes destination review cancellation without changing the destination', async () => {
+  for (const language of ['ja', 'en']) {
+    stored.set('kyalulu-app-preferences-v1', JSON.stringify({version:1,language}));
+    const before=[...stored];
+    await find(ExecutionPicker(),node=>node.type==='select').props.onChange({target:{value:'device'}});
+    expect(fixture.confirm).toHaveBeenLastCalledWith(expect.objectContaining({cancelLabel:language==='en'?'Cancel':'キャンセル'}));
+    expect([...stored]).toEqual(before); expect(location.assign).not.toHaveBeenCalled();
+  }
+});
+
+it('rechecks pending work admitted while the destination confirmation was open', async () => {
+  fixture.confirm.mockImplementationOnce(async () => {
+    new ChatRecovery(localStorage, connectionScope(), 'concurrent').begin('generation'); return true;
+  });
+  await find(ExecutionPicker(),node=>node.type==='select').props.onChange({target:{value:'device'}});
+  expect(location.assign).not.toHaveBeenCalled(); expect(window.open).not.toHaveBeenCalled();
+  expect(executionTarget()).toBe('local');
+});
 
 it('offers This PC on native browsers and keeps the region/age/consent form', () => {
   const picker = ExecutionPicker(), html = renderToStaticMarkup(picker);
