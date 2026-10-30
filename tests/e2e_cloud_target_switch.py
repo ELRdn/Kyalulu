@@ -36,6 +36,8 @@ async def run_case(browser, vite, directory, language, width, theme):
     entered, release_provider = threading.Event(), threading.Event()
     late_success = threading.Event()
     checked, release_status = asyncio.Event(), asyncio.Event()
+    routes_idle, delivered_reply, release_delivery = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    routes_idle.set()
     provider_calls, calls, errors, blocked, active_routes, cancelled_routes, hmr_sockets = [], [], [], [], {}, [], []
 
     class ProviderStream(httpx.AsyncByteStream):
@@ -88,6 +90,7 @@ async def run_case(browser, vite, directory, language, width, theme):
             cleanup.push_async_callback(asyncio.wait_for, context.unroute_all(behavior='wait'), 10)
             cleanup.callback(release_status.set)
             cleanup.callback(release_provider.set)
+            cleanup.callback(release_delivery.set)
             async def dispatch(route):
                 request, url = route.request, urlsplit(route.request.url)
                 if url.scheme != 'https' or url.netloc != urlsplit(ORIGIN).netloc:
@@ -110,6 +113,10 @@ async def run_case(browser, vite, directory, language, width, theme):
                         await route.fulfill(status=response.status_code, headers=dict(response.headers), body=response.content)
                     else:
                         await route.abort()
+                    if (url.path == '/api/chat/stream' and request.failure is None
+                            and call.get('body', {}).get('messages', [{}])[-1].get('content') == 'CLOUD_EXPLICIT_resume'):
+                        delivered_reply.set()
+                        await release_delivery.wait()
                 else:
                     response = await assets.get(url.path + ('?' + url.query if url.query else ''))
                     headers = {key: value for key, value in response.headers.items()
@@ -117,6 +124,7 @@ async def run_case(browser, vite, directory, language, width, theme):
                     await route.fulfill(status=response.status_code, headers=headers, body=response.content)
 
             async def guard(route):
+                routes_idle.clear()
                 active_routes[id(route)] = route.request.method + ' ' + urlsplit(route.request.url).path
                 try:
                     await dispatch(route)
@@ -128,6 +136,8 @@ async def run_case(browser, vite, directory, language, width, theme):
                     raise
                 finally:
                     active_routes.pop(id(route), None)
+                    if not active_routes:
+                        routes_idle.set()
 
             await context.route('**/*', guard)
             async def close_socket(socket):
@@ -222,7 +232,8 @@ async def run_case(browser, vite, directory, language, width, theme):
             await page.goto(ORIGIN + '/#/chats/' + SESSION)
             await expect(composer).to_have_value(DRAFT)
             await page.wait_for_load_state('networkidle')
-            assert not active_routes, active_routes
+            await asyncio.wait_for(routes_idle.wait(), 15)
+            assert not active_routes, dict(active_routes)
             verified = await page.evaluate('''async ([sid,gid])=>{
               const {apiFetch}=await import('/src/lib/transport.ts');
               const status=await apiFetch('/api/chat/generations/'+gid+'?session_id='+sid);
@@ -246,8 +257,12 @@ async def run_case(browser, vite, directory, language, width, theme):
             with app.state.store.transaction() as db:
                 operations = db.execute('SELECT state,charged_credits FROM operations ORDER BY created').fetchall()
                 assert [tuple(row) for row in operations] == [('failed', 0), ('completed', 1)]
+            await asyncio.wait_for(delivered_reply.wait(), 15)
             await page.wait_for_load_state('networkidle')
-            assert not active_routes, active_routes
+            assert not routes_idle.is_set() and active_routes, dict(active_routes)
+            release_delivery.set()
+            await asyncio.wait_for(routes_idle.wait(), 15)
+            assert not active_routes, dict(active_routes)
             await expect(page.locator('.k-session-row__preview').get_by_text('hello', exact=True)).to_have_count(1)
             await expect(page.get_by_text('hello', exact=True)).to_have_count(2)
             await expect(reply).to_have_count(1)
@@ -258,6 +273,7 @@ async def run_case(browser, vite, directory, language, width, theme):
                 'late_success_fenced': True, 'explicit_resume_credits': 1,
                 'profile_reload_keeps_guard': True, 'draft_retained': True, 'automatic_resend': False,
                 'reply_locator_ignores_sidebar_preview': True,
+                'post_fulfill_route_drain': True,
                 'blocked_requests': blocked, 'page_errors': errors, 'cancelled_route_callbacks': cancelled_routes,
                 'owned_development_websockets_closed': len(hmr_sockets)}
     except BaseException as error:
@@ -265,7 +281,7 @@ async def run_case(browser, vite, directory, language, width, theme):
                           'blocked': blocked, 'calls': [{key: value for key, value in c.items() if key != 'body'} for c in calls]}), flush=True)
         raise
     finally:
-        release_status.set(); release_provider.set()
+        release_status.set(); release_provider.set(); release_delivery.set()
         print(json.dumps({'language': language, 'stage': 'cleanup', 'active_routes': list(active_routes.values())}), flush=True)
         try:
             await context.close()
