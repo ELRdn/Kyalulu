@@ -14,6 +14,7 @@ import os
 import socket
 import subprocess
 import sys
+import threading
 import uuid
 from pathlib import Path
 
@@ -90,10 +91,23 @@ async def run():
             port=relay_port,
             log_level="error",
             access_log=False,
+            loop="asyncio:SelectorEventLoop" if os.name == "nt" else "auto",
+            timeout_graceful_shutdown=10,
         )
     )
-    server_task = asyncio.create_task(server.serve())
+    server_errors = []
+
+    def serve_relay():
+        try:
+            server.run()
+        except BaseException as error:
+            server_errors.append(error)
+
+    # Keep Playwright's subprocess-capable loop separate from the Windows Relay loop.
+    server_thread = threading.Thread(target=serve_relay, daemon=True)
+    server_thread.start()
     vite = None
+    log = None
     report = {
         "checks": [],
         "limits": ["Mock model", "emulated Android", "loopback development origins"],
@@ -466,19 +480,36 @@ async def run():
                         )
                     raise
                 finally:
-                    await browser.close()
-            await host.stop()
+                    await asyncio.wait_for(browser.close(), timeout=10)
+            await asyncio.wait_for(host.stop(), timeout=15)
     finally:
-        await host.stop()
-        server.should_exit = True
-        await server_task
-        if vite:
-            vite.terminate()
-            await asyncio.to_thread(vite.wait, 10)
-            log.close()
-        (output / "acceptance.json").write_text(
-            json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        try:
+            await asyncio.wait_for(host.stop(), timeout=15)
+        finally:
+            try:
+                server.should_exit = True
+                await asyncio.to_thread(server_thread.join, 15)
+                assert not server_thread.is_alive(), "Relay fixture did not stop"
+                if server_errors:
+                    raise server_errors[0]
+                report["relay_shutdown_complete"] = True
+            finally:
+                try:
+                    if vite:
+                        if vite.poll() is None:
+                            vite.terminate()
+                        try:
+                            await asyncio.to_thread(vite.wait, 10)
+                        except subprocess.TimeoutExpired:
+                            vite.kill()
+                            await asyncio.to_thread(vite.wait, 5)
+                            raise
+                finally:
+                    if log:
+                        log.close()
+    (output / "acceptance.json").write_text(
+        json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     print(
         json.dumps(
             {

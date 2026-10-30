@@ -150,3 +150,57 @@ with an offline ZIP regression. All nine source-collection tests passed, and a
 separate Linux/WSL fixture confirmed actual POSIX mode/content. This build-helper
 correction is later than the fixed Native artifact above; it does not retroactively
 accept that failed workflow. Its fresh dispatch remains a separate gate.
+
+## 82099da local candidates and CI lifecycle corrections
+
+Both candidates below use the exact committed source
+`82099da158d88a571d7798fcf51bcc529ee6587a`, pinned Python 3.13.7 catalog generation,
+explicit Relay origin and the previously verified four WASM inputs. Native again
+passed packed CLI/browser/actual-exit checks and the complete archive/source audit.
+Cloud and Native have identical 812-member corresponding-source offers. All 225
+Cloud manifest entries, 214 product files, 61 precache hashes (including inflated
+gzip members), four WASM outputs and the compiled Relay origin were verified.
+
+| Candidate | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Windows Native tar | 140,338,874 | `4c910aab65e5076f3242fddb9f241f72ed392353375cea767977d61ea9ef8a3b` |
+| Cloud tar | 66,072,505 | `fd04ac0f0170e6562538c414647fbe0ff30e7690240fcdf5dde790dbab4693ad` |
+
+The unpublished packed CLI remains the same 18,794-byte `3fa9cd62...5b48b4`
+candidate. No updated Linux image or production selection is claimed by this
+local packaging audit. Evidence is `.artifacts/unified-native-82099da-audit.json`
+and `.artifacts/unified-canonical-82099da/cloud-verification.json`.
+
+Manual run 40994190016 actually completed both WASM builds, exact hash/license
+checks and artifact upload, but failed in setup-uv's post-job cache save because
+this WASM-only job creates no uv dependency cache. Its platform jobs were skipped.
+Disable that unused cache for the WASM job only. Downloaded artifact checks passed
+all ten hashes and matched the repository patch text; source archive hashes also
+match the earlier wllama/llama.cpp inputs. No bit-for-bit equality of binaries
+against the earlier local build or real-model acceptance of these CI binaries is
+claimed.
+
+The same workflow now includes an isolated Ubuntu Cloud image job using that
+run's verified WASM. It checks extracted code hashes and copied image files,
+then runs the existing fictional fixture with network disabled, read-only rootfs,
+UID 10002, no capabilities/privilege escalation and resource limits. A separate
+owned container exercises the image's unmodified default Uvicorn command with
+only fictional env, no mapped port and loopback health. Evidence is emitted only
+after owned-container cleanup. Ten offline workflow/verifier checks passed;
+actual image execution remains pending its fresh dispatch.
+
+Windows PR run 40993200551 passed Python tests but failed publications E2E while
+waiting for text also present in an uncommitted hide confirmation. A 300 ms fake
+API delay reproduces that old assertion failure; waiting for the returned Hidden
+queue status passes the full browser fixture, including block/adult/recommendation
+boundaries. The backend behavior was not changed.
+
+Separately, a Windows Remote fixture reproduced the Proactor reset/transport
+detach failure in `Server.wait_closed()` with no Uvicorn connections/tasks left.
+Run only its Relay in an owned Selector-loop thread, retain Playwright's Proactor
+loop, bound shutdown and always clean Vite. Emit acceptance after cleanup. The
+actual Windows 3.13.7 browser passed all 12 checks and normal shutdown in 28.16 s,
+with zero remaining fixture children and no forced Job cleanup. Offline failure
+cases also rejected false success. Linux and CI acceptance of that fixture change
+remain separate. All changes here are validation infrastructure, not new product
+features or production mutations.
