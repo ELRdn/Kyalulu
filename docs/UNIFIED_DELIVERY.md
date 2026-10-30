@@ -326,3 +326,8 @@ Device生成前の履歴選択では、既定の保守的カウンターだけ�
 context取得も完全復元を避け、保存tx内でowner・revision・本文tokenを再照合する。
 [Metadata rewrite](validation/2026-10-31-unified-metadata-rewrite.md) に実IDB48ケース、
 本文/状態/未知フィールド/未送信分の保持、競合・破損・容量不足・記憶生成ガードの検証と限界を記録する。
+
+共有記憶commitの参照元照合は、全履歴を復元せず、0件windowで全断片・構文・hashと本文の保存方針を検証する。
+[Memory source verification](validation/2026-10-31-unified-memory-source-verification.md) に
+全Web1,325件・実IDB53ケースと、参照元/固定outbox保持、破損・owner切替・方針偽装・quota時の拒否を記録する。
+生成本体・共有元context・更新projectionの全体保持は残り、この変更だけで大容量生成を合格とはしない。

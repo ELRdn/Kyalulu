@@ -28,6 +28,52 @@ const physical=()=>appTransaction(['entities','meta','parts'],'readonly',(tx,don
 const header=()=>appTransaction(['entities'],'readonly',(tx,done)=>{const read=tx.objectStore('entities').get([owner,'history']);read.onsuccess=()=>done(read.result);});
 async function rejected(action,message){let failed=false;try{await action();}catch{failed=true;}check(failed,message);}
 async function run(){
+  if(scenario.startsWith('memory-verify-')){
+    const {readDeviceMemoryDomain,commitDeviceMemoryDomain}=await import('/src/lib/deviceMemoryStore.ts');
+    const value=huge();value.payload.storage_policy='local';value.payload.messages=Array.from({length:120},(_,i)=>({id:i+1,uuid:'source-'+i,role:i%2?'assistant':'user',
+      content:'検証🙂'.repeat(4000)+i,before:{state:{turn:i}},after:{state:{turn:i+1}},unknown:{keep:i}}));
+    await save(value);await setMeta('sync:'+owner+':outbox',{request_id:'fixed',payload:'Unsent independent snapshot'});
+    const domain=await readDeviceMemoryDomain(owner,'local'),stored=await header(),commit=()=>commitDeviceMemoryDomain(owner,'local',domain,[{id:value.id,revision:7}]);
+    if(scenario==='memory-verify-stream'){
+      const before=await physical(),finish=JsonStream.prototype.finish,feed=JsonStream.prototype.feed;let retained=[],verified=false;
+      JsonStream.prototype.finish=function(){const root=finish.call(this);if(Array.isArray(root.messages)){retained.push(root.messages.length);check(this.totalMessages===120,'Source verification count changed');}return root;};
+      JsonStream.prototype.feed=function(bytes){const result=feed.call(this,bytes);if(this.window?.limit===0&&Array.isArray(this.root?.messages)){verified=true;check(this.root.messages.length===0,'Source verification retained decoded history');}return result;};
+      let result;try{result=await commit();}finally{JsonStream.prototype.finish=finish;JsonStream.prototype.feed=feed;}
+      same(retained,[0],'Source verification restored history');check(verified&&result.domain.revision===1&&result.sessions.length===0,'Metadata-only verification failed');
+      const after=await physical();same(after.entities,before.entities,'Verification rewrote canonical source');
+      same(after.parts.filter(([key])=>key[1]==='entity'),before.parts,'Verification changed source parts');
+      same(await getMeta('sync:'+owner+':outbox'),before.meta.find(([key])=>key==='sync:'+owner+':outbox')[1],'Verification changed fixed outbox');
+      same((await entity(value.id,owner)).payload,value.payload,'Verification changed source history/metadata');
+      probes.push('zero-retained-message-bodies','all-source-parts-validated','canonical-and-fixed-outbox-unchanged');return;
+    }
+    if(scenario==='memory-verify-corrupt'){
+      await appTransaction(['parts'],'readwrite',(tx,done)=>{tx.objectStore('parts').delete([owner,'entity',value.id,stored.payloadParts.token,stored.payloadParts.chunks-1]);done();});
+      const before=await physical();await rejected(commit,'Missing final source part accepted');same(await physical(),before,'Corrupt source committed domain');
+      const raw=new TextEncoder().encode('{"messages":[{"content":"bad'+String.fromCharCode(92)+'q"}],"storage_policy":"local"}'),ref={token:crypto.randomUUID(),size:raw.length,chunks:1,sha256:new Sha256().update(raw).digest()};
+      await appTransaction(['entities','parts'],'readwrite',(tx,done)=>{tx.objectStore('parts').put(raw,[owner,'entity',value.id,ref.token,0]);tx.objectStore('entities').put({...stored,payloadParts:ref});done();});
+      const malformed=await physical();await rejected(commit,'Malformed discarded message string accepted');same(await physical(),malformed,'Malformed source committed domain');
+      probes.push('final-source-part-required','discarded-message-json-validated','domain-and-original-rollback');return;
+    }
+    if(scenario==='memory-verify-policy'){
+      value.payload.storage_policy='sync';await save(value);const next=await header();
+      await appTransaction(['entities'],'readwrite',(tx,done)=>{tx.objectStore('entities').put({...next,selection:{...next.selection,storage_policy:'local'}});done();});
+      const before=await physical();await rejected(commit,'Forged header storage policy trusted');same(await physical(),before,'Policy mismatch changed source/domain');
+      probes.push('policy-checked-from-verified-body');return;
+    }
+    if(scenario==='memory-verify-owner'){
+      const before=await physical(),get=IDBObjectStore.prototype.get;let changed=false;
+      IDBObjectStore.prototype.get=function(key){const request=get.call(this,key);if(this.name==='parts'&&!changed)request.addEventListener('success',()=>{changed=true;rememberOwner(foreign);},{once:true});return request;};
+      try{await rejected(commit,'Owner-switched source committed');}finally{IDBObjectStore.prototype.get=get;rememberOwner(owner);}
+      check(changed,'Owner source read not reached');same(await physical(),before,'Owner switch changed source/domain');probes.push('source-read-owner-fence');return;
+    }
+    if(scenario==='memory-verify-quota'){
+      const before=await physical(),add=IDBObjectStore.prototype.add;let writes=0;
+      IDBObjectStore.prototype.add=function(...args){if(this.name==='parts'&&++writes===1)throw new DOMException('Fictional domain quota','QuotaExceededError');return add.apply(this,args);};
+      try{await rejected(commit,'Domain quota fault committed');}finally{IDBObjectStore.prototype.add=add;}
+      check(writes===1,'Domain quota not reached');same(await physical(),before,'Domain quota changed source/outbox');probes.push('domain-write-failure-retains-source');return;
+    }
+    throw Error('Unknown source verification scenario');
+  }
   if(scenario.startsWith('metadata-')){
     const value=huge();value.payload.settings={session_id:value.id,system_prompt:'KEEP',temperature:.8};
     value.payload.messages=Array.from({length:120},(_,i)=>({id:300-i*2,uuid:'metadata-'+i,role:i%2?'assistant':'user',content:'保管🙂'.repeat(4000)+i,
