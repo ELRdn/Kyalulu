@@ -10,7 +10,7 @@
 | 共通UI、Cloud初期選択、地域・年齢確認、3画面の任意設定 | 実Appの日英・393明/1280暗で、サーバー拒否・規約同意・確認票・3画面の戻る/スキップ/保存し直し・Cloud会話時ログイン・ログインなし端末会話の実DB作成を確認。言語/お気に入りの上書き、owner持越し、確認中の遅延応答を保護 | 元の要件に対応するローカル証拠は初回設定記録を参照。実地域条件・実OAuth・本番/実機の受入れは別途必要 |
 | 好み・お気に入り・興味なしのタグ推薦、先行する年齢/公開/ブロック制限 | 共通タグ別名・先行絞り込みと順位、公開一覧の別タブ即時反映、ブロック/owner切替をASGI/Chromiumで確認。実ホームのゲストお気に入り・再読込・興味なしの除外/復帰も検証し、アカウント書込み/作成を増やさない | 元の要件に対応するローカル証拠は推薦記録を参照。本番・実機・実OAuthの全体受入れは別途必要 |
 | PC単体・オフライン維持と3方式の機能対応表 | 部分実装。Device研究の実行/結果/採点/再実行・実験別記憶と、BenchmarkLabのペア行列・進捗・別タブ中止・期限・中断回復を追加。共通生成、実IndexedDB/Web Locks/BroadcastChannel、架空推論の100ターンで隔離検証 | 会話・制作・記憶・要約・World・分岐・入出力・研究の全行確認。実モデル/実機と運用規模の証拠は残る。Deviceジョブは実行元の文書を開いている必要がある |
-| 実行先/モデル/保存/同期の表示、生成中切替の停止・保存確認 | 暗号化PC実通信とDevice実保存/架空推論で生成中・保存結果確認待ちの3方向切替拒否、入力復帰、往復の下書き/履歴保持と自動転送なしを確認。PCで画面離脱/再読込時の切替迂回も修正・実確認 | Cloudを生成元とする停止/保存/再開、実モデル/実機を含む3方式の受入れは残る |
+| 実行先/モデル/保存/同期の表示、生成中切替の停止・保存確認 | Cloud実API/DB/台帳、暗号化PC実通信、Device実保存で、架空推論による生成中・保存結果確認待ちの3方向切替拒否、入力復帰、往復の下書き/履歴保持と自動転送なしを確認。Cloud/PCは画面離脱/再読込も実確認。Cloudの遅延成功は取消0消費、明示再送は成功精算 | 実モデル/提供元、実機、本番配信を含む3方式の全面受入れは残る |
 | Portable再利用、ブラウザ記憶/物語とPython共通fixture | World/cast/Lore、6形式export、JSON/PNG/CHARX/backup・ST/CAI/BYAF import、原本保持・選択履歴のatomic commit、媒体upload/再生取得を実装。48入力とLore条件、実decoder・実IDBの共通検証 | 各形式の追加実データ・全画面媒体操作、実容量・実モデル・実機を含むパリティ試験は残る |
 | 認証・課金経路とRuntime通信の分離、Cloud鍵をRemoteへ送らない | 実Chromium/Noise/Relay/HostでCloud cookie/bearer/owner/CSRFの正の対照とRemote復号前後の2要求を検証し、認証canary混入0を確認 | 本番HTTPS/OAuth、全API/ブラウザー・認証切替の全面受入れは残る |
 | 安定ID/revisionと数値ID互換、永続outbox、自動同期 | Cloud/device/Native-PCを隔離検証。Browserの本文/固定outboxを1MiB断片へ分割し、v1/v2→v3混在読込・破損/容量不足時のatomic rollbackを実Chromiumで確認 | decoded tree/UI全体化、250MB/1GB/RSS・旧DB復元の全面照合、全方式の統合証拠 |
@@ -59,6 +59,8 @@ Cloud設定と旧バックアップ同期の日英表示は
 [Target switching](validation/2026-10-31-unified-target-switch.md) に記録する。
 Device生成元の日英停止・保存確認・PC往復は [Device target switching](validation/2026-10-31-unified-device-target-switch.md)、
 認証canaryの暗号化Remote捕捉と端末限定会話の通信否定は [Runtime privacy](validation/2026-10-31-unified-runtime-privacy.md) に記録する。
+Cloud生成元の実API/台帳・日英停止/再開/切替は [Cloud target switching](validation/2026-10-31-unified-cloud-target-switch.md)、
+取消後の遅延成功・再精算・見積/owner/session境界は [Cloud stop accounting](validation/2026-10-31-unified-cloud-stop-accounting.md) に記録する。
 分割送信中の本文再読込除去と旧outbox/DBの互換性・復旧条件は
 [Outbox guards](validation/2026-10-25-unified-outbox-guards.md) に記録する。
 転送一時データの起動時/定期清掃、期限切れ後のNative outbox再開、
