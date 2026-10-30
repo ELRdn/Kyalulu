@@ -142,12 +142,13 @@ export async function appTransaction<T>(stores:string[],mode:IDBTransactionMode,
     storageStep(tx,()=>{try{action(tx,v=>{value=v;});}catch(error){failure=error;tx.abort();}});
   });
 }
-export const allEntities=(owner=deviceOwner())=>appTransaction<AppEntity[]>(['entities'],'readonly',(tx,done)=>{
+export const allEntities=(owner=deviceOwner(),kinds?:readonly EntityKind[])=>appTransaction<AppEntity[]>(['entities'],'readonly',(tx,done)=>{
   const values:AppEntity[]=[],read=tx.objectStore('entities').openCursor(IDBKeyRange.bound([owner,''],[owner,'\uffff']));
-  read.onsuccess=()=>{
+  read.onsuccess=()=>storageStep(tx,()=>{
     const cursor=read.result;if(!cursor){done(values);return;}
+    if(kinds&&!kinds.includes(cursor.value.kind)){cursor.continue();return;}
     restoreEntity(tx,cursor.value,value=>{values.push(value!);cursor.continue();});
-  };
+  });
 });
 export const entity=(id:string,owner=deviceOwner())=>appTransaction<AppEntity|undefined>(['entities'],'readonly',(tx,done)=>readEntity(tx,owner,id,done));
 export async function saveEntity(value:AppEntity,expectedRevision?:number,metadata:Record<string,unknown>={}) {

@@ -299,3 +299,8 @@ Device生成前の履歴選択では、既定の保守的カウンターだけ�
 全system・最新user以降・出力予約・省略件数を維持し、ONNX等の独自カウンターは従来経路を維持。
 [Context selection](validation/2026-10-30-unified-context-selection.md) に旧結果との比較、
 50,000件を省略する計数検証、全Web1,252件と全体化が残る境界を記録する。
+
+端末内のキャラ・Persona・World・Library・プリセット一覧は、種類を保存ヘッダーで
+絞ってから本文を復元する。無関係な巨大/破損会話で一覧が開けなくなる問題を修正した。
+[Catalog reads](validation/2026-10-31-unified-catalog-reads.md) に7ケースの修正前再現、
+全Web1,259件・実IDB23ケースと、会話全体の容量対応とは別の境界を記録する。
