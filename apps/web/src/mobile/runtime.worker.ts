@@ -79,7 +79,7 @@ async function load(modelId:string,cpu:boolean,base:string) {
   model=candidate;loadMs=performance.now()-start;
 }
 
-async function generate(id:number,turns:ChatTurn[],settings:Record<string,unknown>={}) {
+async function generate(id:number,turns:ChatTurn[],settings:Record<string,unknown>={},responseGrammar?:string) {
   if(!model)throw Error('モデルを読み込んでください。');
   abort=new AbortController();
   if(!Array.isArray(turns)||turns.some(t=>!t||!['system','user','assistant'].includes(t.role)||typeof t.content!=='string'||t.content.length>128000))throw Error('会話データが不正です。');
@@ -91,6 +91,7 @@ async function generate(id:number,turns:ChatTurn[],settings:Record<string,unknow
   send(id,'context',{omitted:fitted.omitted});
   if(gguf) {
     const stream=await gguf.createChatCompletion({messages:fitted.messages,stream:true,...ggufSampling(applied),
+      ...(responseGrammar?{grammar:responseGrammar,reasoning_budget_tokens:0,reasoning_format:'none'}:{}),
       abortSignal:abort.signal,chat_template_kwargs:{enable_thinking:false},cache_prompt:true});
     for await(const chunk of stream) {
       const text=chunk.choices?.[0]?.delta?.content;
@@ -112,7 +113,7 @@ async function generate(id:number,turns:ChatTurn[],settings:Record<string,unknow
   const debug=gguf?await gguf._getDebugInfo():null;
   const generationMs=performance.now()-start;
   const measurement:Measurement={modelId:active.id,revision:active.distributionRevision??active.revision,backend,runtimeVariant,userAgent:navigator.userAgent,
-    contextTokens:CONTEXT_TOKENS,loadMs,firstTokenMs:first,generationMs,outputTokens,tokensPerSecond:outputTokens===null?null:outputTokens/(generationMs/1000),
+    contextTokens:CONTEXT_TOKENS,structuredOutput:responseGrammar?(gguf?'grammar':'prompt'):'text',loadMs,firstTokenMs:first,generationMs,outputTokens,tokensPerSecond:outputTokens===null?null:outputTokens/(generationMs/1000),
     wasmBytes:debug?.wasmBytes??null,gpuBytes:null,kvBytes:null,physicalBytes:null,residentWeightBytes:null,pleLazy,
     weightBufferBytes:debug?.weightBufferBytes??null,pleBytesRead:debug?.pleBytesRead??null};
   return {measurement};
@@ -126,7 +127,7 @@ ctx.onmessage=async({data})=>{
     let result:Record<string,unknown>={};
     if(type==='load'){await load(data.modelId,data.cpu,data.base);result={backend};}
     else if(type==='unload')await unload();
-    else if(type==='generate')result=await generate(id,data.messages,data.settings);
+    else if(type==='generate')result=await generate(id,data.messages,data.settings,data.responseGrammar);
     else throw Error('未対応の推論操作');
     send(id,'done',result);
   } catch(e) {
