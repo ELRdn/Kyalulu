@@ -14,17 +14,25 @@ vi.mock('./deviceMemoryStore',()=>({recoverDeviceMemoryGeneration:async()=>null}
 vi.mock('./appContext',()=>({deviceOwner:()=> 'fixture-owner',setGenerationBusy:fixture.busy}));
 vi.mock('./appStore',async importOriginal=>({
   ...await importOriginal<typeof import('./appStore')>(),
-  allEntities:vi.fn(async()=>[]),getMeta:async(key:string)=>structuredClone(fixture.meta.get(key)),entity:async()=>structuredClone(fixture.saved),openEntity:async()=>structuredClone(fixture.saved??{id:'chat',owner:'fixture-owner',revision:0,payload:{settings:{},state:{turn:0},messages:[],memories:fixture.memories,summaries:[],memory_enabled:fixture.memory}}),
+  allEntities:vi.fn(async()=>[]),getMeta:async(key:string)=>structuredClone(fixture.meta.get(key)),entity:vi.fn(async()=>structuredClone(fixture.saved)),openEntity:async()=>structuredClone(fixture.saved??{id:'chat',owner:'fixture-owner',revision:0,payload:{settings:{},state:{turn:0},messages:[],memories:fixture.memories,summaries:[],memory_enabled:fixture.memory}}),
+  conversationPage:vi.fn(async()=>fixture.saved&&{revision:fixture.saved.revision,metadata:fixture.saved.payload}),
+  recoverConversationGeneration:vi.fn(async(owner:string,id:string,_sessionId:string,revision?:number)=>{
+    if(revision!==undefined&&revision!==fixture.saved.revision)throw Error('Stale confirmation');
+    const key='generation:'+owner+':'+id,recovered={...fixture.meta.get(key),status:'failed'};
+    const {saveEntity}=await import('./appStore');
+    await saveEntity({...fixture.saved,payload:{...fixture.saved.payload,pending_generation:null}},fixture.saved.revision,{[key]:recovered});return recovered;
+  }),
   appTransaction:async(_stores:any,_mode:any,_action:any)=>++fixture.sequence,
   saveEntity:vi.fn(async(value:any,_revision:number,metadata:Record<string,unknown>={})=>{if(fixture.fail&&fixture.saved)throw Error('fixture storage failed');
     fixture.saved=structuredClone({...value,revision:value.revision+1});for(const [key,item] of Object.entries(metadata))fixture.meta.set(key,structuredClone(item));return fixture.saved;}),
 }));
 import { deviceFetch } from './deviceApi';
-import { allEntities } from './appStore';
+import { allEntities,entity,recoverConversationGeneration } from './appStore';
 import { deviceExecutionLockName } from './deviceResearch';
 
 beforeEach(()=>{fixture.saved=undefined;fixture.sequence=0;fixture.fail=true;fixture.memory=false;fixture.memories=[];fixture.reply='fixture reply';fixture.proposals=[];fixture.meta.clear();fixture.busy.mockClear();fixture.locks.clear();fixture.paused=undefined;fixture.started=false;
   vi.mocked(allEntities).mockResolvedValue([]);
+  vi.mocked(entity).mockClear();vi.mocked(recoverConversationGeneration).mockClear();
   vi.stubGlobal('navigator',{locks:{request:async(name:string,_options:any,fn:any)=>{
     if(fixture.locks.has(name))return fn(null);fixture.locks.add(name);try{return await fn({name});}finally{fixture.locks.delete(name);}
   }}});
@@ -60,6 +68,7 @@ it('keeps another document pending and recovers only after its execution lock is
   fixture.locks.delete(lock);
   const recovered=await (await deviceFetch('/api/chat/generations/remote?session_id=chat')).json();
   expect(recovered.status).toBe('failed');expect(fixture.saved.payload.pending_generation).toBeNull();
+  expect(recoverConversationGeneration).toHaveBeenCalledExactlyOnceWith('fixture-owner','remote','chat',undefined);expect(entity).not.toHaveBeenCalled();
   expect(fixture.saved.payload.messages).toEqual(before.payload.messages);expect(fixture.saved.payload.draft).toBe('keep draft');
   const revision=fixture.saved.revision;
   await deviceFetch('/api/chat/generations/remote?session_id=chat');expect(fixture.saved.revision).toBe(revision);

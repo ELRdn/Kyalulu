@@ -3,6 +3,7 @@
 <script type="module">
 import history from './unified-history.json';
 import {appTransaction,entity,allEntities,newEntity,saveEntity,openEntity,conversationInfo,conversationSummary,readConversationSummary,conversationPage,generationHistory,writeEntity,writeOutbox,restoreOutbox,getMeta,setMeta} from '/src/lib/appStore.ts';
+import {deviceExecutionLockName} from '/src/lib/deviceExecution.ts';
 import {rememberOwner,setGenerationBusy} from '/src/lib/appContext.ts';
 import {Sha256} from '/src/mobile/sha256.ts';
 import {JsonStream} from '/src/lib/jsonStream.ts';
@@ -27,6 +28,67 @@ const physical=()=>appTransaction(['entities','meta','parts'],'readonly',(tx,don
 const header=()=>appTransaction(['entities'],'readonly',(tx,done)=>{const read=tx.objectStore('entities').get([owner,'history']);read.onsuccess=()=>done(read.result);});
 async function rejected(action,message){let failed=false;try{await action();}catch{failed=true;}check(failed,message);}
 async function run(){
+  if(scenario.startsWith('pending-')){
+    const value=huge(),generation='stream-orphan',key='generation:'+owner+':'+generation;
+    value.payload.pending_generation=generation;value.payload.messages=Array.from({length:40},(_,i)=>({id:300-i*2,uuid:'pending-'+i,role:i%2?'assistant':'user',
+      content:'保管🙂'.repeat(4000)+i,unknown:{keep:i},before:{state:{turn:i},memories:[]},after:{state:{turn:i+1},memories:[]}}));
+    const legacy=scenario==='pending-legacy',receipt={generation_id:generation,session_id:value.id,status:'pending',assistant_id:null,user_id:300,
+      ...(legacy?{}:{execution_lock:deviceExecutionLockName(owner)})};
+    await save(value);await setMeta(key,receipt);await setMeta('sync:'+owner+':outbox',{request_id:'must-not-replace',payload:'Independent fixed snapshot'});
+    const before=await physical(),stored=await header(),{deviceFetch}=await import('/src/lib/deviceApi.ts');
+    const path='/api/chat/generations/'+generation,query='?session_id='+value.id;
+    if(scenario==='pending-stream'){
+      const feed=JsonStream.prototype.feed,finish=JsonStream.prototype.finish;let observed=false;
+      JsonStream.prototype.feed=function(bytes){const result=feed.call(this,bytes);if(this.onMessage){observed=true;check(this.root.messages.length===0,'Rewrite retained full history');}return result;};
+      JsonStream.prototype.finish=function(){const result=finish.call(this);if(this.onMessage)check(result.messages.length===0&&this.totalMessages===40,'Rewrite retained finished history');return result;};
+      try{const response=await deviceFetch(path+query);check(response.ok&&(await response.json()).status==='failed','Streaming orphan recovery failed');}
+      finally{JsonStream.prototype.feed=feed;JsonStream.prototype.finish=finish;}
+      check(observed,'Streaming parser not used');const recovered=await entity(value.id,owner),raw=await physical(),next=await header();
+      same(recovered.payload,{...value.payload,pending_generation:null},'Recovery changed canonical payload');
+      check(recovered.revision===8&&recovered.dirty===true&&recovered.serverRevision===4,'Recovery lost unsent/revision fields');
+      check(next.unknown_header.keep==='茶🙂'&&next.payloadParts.token!==stored.payloadParts.token&&!next.selection.pending_generation,'Recovery header not refreshed');
+      check(next.selection.maximumMessageId===300&&next.selection.messageIdsValid&&next.selection.summary.count===40&&next.selection.summary.token===next.payloadParts.token,'Recovery selection changed message IDs/count');
+      check(raw.parts.every(([k])=>k[3]===next.payloadParts.token)&&raw.parts.every(([,size])=>size<=1048576),'Recovery leaked old/oversized parts');
+      same(await getMeta('sync:'+owner+':outbox'),before.meta.find(([k])=>k==='sync:'+owner+':outbox')[1],'Recovery changed fixed outbox');
+      const after=await physical();check((await deviceFetch(path+query)).ok,'Repeated terminal read failed');same(await physical(),after,'Recovery applied twice');
+      probes.push('streamed-history-preserved','bounded-callback','header-and-parts-atomic','dirty-and-fixed-outbox-preserved','idempotent');return;
+    }
+    if(scenario==='pending-legacy'){
+      const inspection=await deviceFetch(path+query);check(inspection.ok&&(await inspection.json()).legacy_recovery_revision===7,'Legacy inspection missing revision');same(await physical(),before,'Legacy inspection wrote data');
+      const edited={...value,revision:8,payload:{...value.payload,title:'Later canonical edit'}};await save(edited);const changed=await physical();
+      const stale=await deviceFetch(path+'/cancel'+query,{method:'POST',body:JSON.stringify({legacy_recovery_confirmed:true,expected_revision:7})});
+      check(stale.status===409,'Stale recovery confirmation accepted');same(await physical(),changed,'Stale confirmation rewrote data');
+      const accepted=await deviceFetch(path+'/cancel'+query,{method:'POST',body:JSON.stringify({legacy_recovery_confirmed:true,expected_revision:8})});
+      check(accepted.ok,'Exact legacy confirmation rejected');same((await entity(value.id,owner)).payload,{...edited.payload,pending_generation:null},'Legacy recovery lost newer data');
+      probes.push('readonly-legacy-inspection','exact-revision-confirmation','newer-canonical-data-preserved');return;
+    }
+    if(scenario==='pending-quota'){
+      const add=IDBObjectStore.prototype.add;let writes=0;
+      IDBObjectStore.prototype.add=function(...args){if(this.name==='parts'&&++writes===3)throw new DOMException('Fictional recovery quota','QuotaExceededError');return add.apply(this,args);};
+      try{check(!(await deviceFetch(path+query)).ok,'Quota recovery committed');}finally{IDBObjectStore.prototype.add=add;}
+      check(writes===3,'Quota fault did not reach tentative output');same(await physical(),before,'Quota recovery lost original/receipt/outbox');
+      probes.push('tentative-part-quota-rollback');return;
+    }
+    if(scenario==='pending-corrupt'){
+      await appTransaction(['parts'],'readwrite',(tx,done)=>{tx.objectStore('parts').delete([owner,'entity',value.id,stored.payloadParts.token,stored.payloadParts.chunks-1]);done();});
+      const damaged=await physical();check(!(await deviceFetch(path+query)).ok,'Corrupt final part accepted');same(await physical(),damaged,'Corrupt read adopted tentative output');
+      probes.push('final-part-failure-rollback');return;
+    }
+    if(scenario==='pending-owner'){
+      const get=IDBObjectStore.prototype.get;let changed=false;
+      IDBObjectStore.prototype.get=function(key){const request=get.call(this,key);if(this.name==='parts'&&!changed)request.addEventListener('success',()=>{changed=true;rememberOwner(foreign);},{once:true});return request;};
+      try{check(!(await deviceFetch(path+query)).ok,'Owner change accepted');}finally{IDBObjectStore.prototype.get=get;rememberOwner(owner);}
+      check(changed,'Owner fault not reached');same(await physical(),before,'Owner fault changed original');probes.push('rewrite-owner-rollback');return;
+    }
+    if(scenario==='pending-json'){
+      const raw=new TextEncoder().encode('{"messages":[{"id":1,"content":"keep"}],"messages":[],"pending_generation":"'+generation+'"}');
+      const ref={token:crypto.randomUUID(),chunks:1,size:raw.length,sha256:new Sha256().update(raw).digest()};
+      await appTransaction(['entities','parts'],'readwrite',(tx,done)=>{for(let i=0;i<stored.payloadParts.chunks;i++)tx.objectStore('parts').delete([owner,'entity',value.id,stored.payloadParts.token,i]);tx.objectStore('parts').add(raw,[owner,'entity',value.id,ref.token,0]);tx.objectStore('entities').put({...stored,payloadParts:ref});done();});
+      const duplicate=await physical();check(!(await deviceFetch(path+query)).ok,'Streaming rewrite accepted duplicate messages keys');same(await physical(),duplicate,'Duplicate-key failure changed original');
+      probes.push('duplicate-root-array-fails-closed');return;
+    }
+    throw Error('Unknown pending scenario');
+  }
   if(scenario.startsWith('proof-')){
     const value=seed(),messages=Array.from({length:120},(_,i)=>({id:1000-i*3,role:i%2?'assistant':'user',content:'茶🙂'.repeat(2000)+i}));
     const user=messages[8],assistant=messages[9],generation='proof-generation',key='generation:'+owner+':'+generation;

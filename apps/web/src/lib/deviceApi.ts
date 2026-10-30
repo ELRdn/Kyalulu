@@ -2,7 +2,7 @@ import { PortableDocumentSchema, DeviceGenerationOutputSchema, RuntimeStateSchem
 import catalog from '../mobile/app-catalog.generated.json';
 import { MobileRuntime } from '../mobile/runtime';
 import { MODELS, readyModels } from '../mobile/models';
-import { allEntities, entity, openEntity, conversationInfo, conversationPage, conversationSummary, readConversationSummary, generationHistory, saveEntity, newEntity, getMeta, setMeta, appTransaction, writeEntity, scrubGenerationRecords, memoryEventsKey, trimOfflineCache, type AppEntity, type EntityKind, type ConversationPage, type ConversationPageCursor, type ConversationSummary } from './appStore';
+import { allEntities, entity, openEntity, conversationInfo, conversationPage, conversationSummary, readConversationSummary, generationHistory, recoverConversationGeneration, saveEntity, newEntity, getMeta, setMeta, appTransaction, writeEntity, scrubGenerationRecords, memoryEventsKey, trimOfflineCache, type AppEntity, type EntityKind, type ConversationPage, type ConversationPageCursor, type ConversationSummary } from './appStore';
 import { deviceOwner, setGenerationBusy } from './appContext';
 import { estimateTokens, retrieveMemories, renderMemoryBlock, prepareRpg, memoryDecisions, evidenced, refreshSummaries,deviceResponseGrammar, type DeviceMemory } from './deviceCore';
 import { receiveConversation, rebindConversation } from './appSyncData';
@@ -518,16 +518,15 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
         if(latest?.status!=='pending')return;
         const recoveredDomain=await recoverDeviceMemoryGeneration(owner,generation[1],latest.session_id);
         if(recoveredDomain){status=recoveredDomain;return;}
-        const session=await entity(status.session_id,owner);
-        if(!session||session.deleted||session.payload.pending_generation!==generation[1])throw fail('Pending generation changed; reload before recovery',409);
         if(latest.execution_lock!==deviceExecutionLockName(owner)){
+          const session=await conversationPage(status.session_id,owner,1);
+          if(!session||session.metadata.pending_generation!==generation[1])throw fail('Pending generation changed; reload before recovery',409);
           if(!generation[2]){status={...latest,legacy_recovery_revision:session.revision};return;}
           if(body.legacy_recovery_confirmed!==true||!Number.isSafeInteger(body.expected_revision)||body.expected_revision!==session.revision)
             throw fail('Close the original app tabs and confirm the saved result before recovering this older generation',409);
         }
-        const recovered={...latest,status:'failed'};
-        await saveEntity({...session,payload:{...session.payload,pending_generation:null}},session.revision,{[key]:recovered});
-        status=recovered;
+        status=await recoverConversationGeneration(owner,generation[1],latest.session_id,
+          latest.execution_lock===deviceExecutionLockName(owner)?undefined:body.expected_revision);
       });
     }
     return json(status);

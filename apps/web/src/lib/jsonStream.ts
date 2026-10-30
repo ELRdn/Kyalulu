@@ -21,8 +21,14 @@ export class JsonStream {
   private duplicateMessageIds=false;
   private window?:MessageWindow;
   private ids?:readonly number[];
-  constructor(window?:MessageWindow|{ids:readonly number[]}) {
-    if(window&&'ids' in window){
+  private onMessage?:(value:unknown,index:number)=>void;
+  // Callers must validate all parts and complete finish() successfully before accepting callback output.
+  constructor(window?:MessageWindow|{ids:readonly number[]}|{onMessage:(value:unknown,index:number)=>void}) {
+    if(window&&'onMessage' in window){
+      const onMessage=window.onMessage;
+      if(typeof onMessage!=='function')throw Error('Invalid message callback');
+      this.onMessage=onMessage;
+    }else if(window&&'ids' in window){
       if(!Array.isArray(window.ids)||window.ids.length<1||window.ids.length>2)throw Error('Invalid message IDs');
       const ids=[...window.ids];
       if(ids.some(id=>!Number.isSafeInteger(id)||id<=0)||new Set(ids).size!==ids.length)throw Error('Invalid message IDs');
@@ -37,7 +43,7 @@ export class JsonStream {
 
   private keepValue() {
     const frame=this.stack.at(-1);
-    return !frame||frame.keep&&(!frame.messages||!!this.ids||this.window!.limit>0&&(this.window!.start===undefined
+    return !frame||frame.keep&&(!frame.messages||!!this.ids||!!this.onMessage||this.window!.limit>0&&(this.window!.start===undefined
       ||frame.index>=this.window!.start&&frame.index-this.window!.start<this.window!.limit));
   }
   private piece(text:string) {
@@ -93,7 +99,7 @@ export class JsonStream {
     if(frame.state!=='value'&&frame.state!=='valueOrEnd')this.invalid();
     if(this.stack.length===1&&!Array.isArray(frame.value)&&frame.key==='messages'){this.messageCount=undefined;this.duplicateMessageIds=false;}
     if(Array.isArray(frame.value)){
-      if(this.keepValue()&&!(frame.messages&&this.ids)){
+      if(this.keepValue()&&!(frame.messages&&(this.ids||this.onMessage))){
         frame.value.push(value);
         if(frame.messages&&this.window!.start===undefined&&frame.value.length>this.window!.limit)frame.value.shift();
       }
@@ -109,14 +115,19 @@ export class JsonStream {
     const value=this.tokenKeep?JSON.parse(this.pieces.join('')):this.mode==='string'?'':undefined;this.pieces=[];this.mode='';
     const frame=this.stack.at(-1);
     if(frame&&(frame.state==='key'||frame.state==='keyOrEnd')){
-      if(typeof value!=='string')this.invalid();frame.key=value;frame.state='colon';
-    }else this.value(value);
+      if(typeof value!=='string')this.invalid();
+      if(this.onMessage&&this.stack.length===1&&!Array.isArray(frame.value)&&value==='messages'&&Object.hasOwn(frame.value,'messages'))throw Error('Duplicate root messages key');
+      frame.key=value;frame.state='colon';
+    }else{
+      this.value(value);
+      if(this.onMessage&&frame?.messages)this.onMessage(value,frame.index-1);
+    }
   }
   private punctuation(char:string) {
     const frame=this.stack.at(-1);
     if(char==='{'||char==='['){
       if(this.stack.length>=64)this.invalid();
-      const keep=this.keepValue()&&!(frame?.messages&&this.ids&&char==='['),messages=!!(this.window||this.ids)&&this.stack.length===1&&!Array.isArray(frame!.value)&&frame!.key==='messages'&&char==='[';
+      const keep=this.keepValue()&&!(frame?.messages&&this.ids&&char==='['),messages=!!(this.window||this.ids||this.onMessage)&&this.stack.length===1&&!Array.isArray(frame!.value)&&frame!.key==='messages'&&char==='[';
       const value=char==='{'?{}:[];this.value(value);
       this.stack.push({value,state:char==='{'?'keyOrEnd':'valueOrEnd',keep,index:0,messages});return;
     }
@@ -125,6 +136,7 @@ export class JsonStream {
       if(frame.messages)this.messageCount=frame.index;
       this.stack.pop();
       const parent=this.stack.at(-1);
+      if(this.onMessage&&parent?.messages)this.onMessage(frame.value,parent.index-1);
       // A message's final id is only known after its object closes (duplicate keys use the last value).
       if(this.ids&&parent?.messages&&char==='}'&&Object.hasOwn(frame.value,'id')&&this.ids.includes(frame.value.id)){
         if(parent.value.some((message:any)=>message.id===frame.value.id))this.duplicateMessageIds=true;
