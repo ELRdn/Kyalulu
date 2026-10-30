@@ -10,7 +10,7 @@
 | 共通UI、Cloud初期選択、地域・年齢確認、3画面の任意設定 | 実Appの日英・393明/1280暗で、サーバー拒否・規約同意・確認票・3画面の戻る/スキップ/保存し直し・Cloud会話時ログイン・ログインなし端末会話の実DB作成を確認。言語/お気に入りの上書き、owner持越し、確認中の遅延応答を保護 | 元の要件に対応するローカル証拠は初回設定記録を参照。実地域条件・実OAuth・本番/実機の受入れは別途必要 |
 | 好み・お気に入り・興味なしのタグ推薦、先行する年齢/公開/ブロック制限 | 共通タグ別名・先行絞り込みと順位、公開一覧の別タブ即時反映、ブロック/owner切替をASGI/Chromiumで確認。実ホームのゲストお気に入り・再読込・興味なしの除外/復帰も検証し、アカウント書込み/作成を増やさない | 元の要件に対応するローカル証拠は推薦記録を参照。本番・実機・実OAuthの全体受入れは別途必要 |
 | PC単体・オフライン維持と3方式の機能対応表 | 部分実装。Device研究の実行/結果/採点/再実行・実験別記憶と、BenchmarkLabのペア行列・進捗・別タブ中止・期限・中断回復を追加。共通生成、実IndexedDB/Web Locks/BroadcastChannel、架空推論の100ターンで隔離検証 | 会話・制作・記憶・要約・World・分岐・入出力・研究の全行確認。実モデル/実機と運用規模の証拠は残る。Deviceジョブは実行元の文書を開いている必要がある |
-| 実行先/モデル/保存/同期の表示、生成中切替の停止・保存確認 | 実装・限定検証 | 3方式での停止/保存/再開・自動転送なしのE2E |
+| 実行先/モデル/保存/同期の表示、生成中切替の停止・保存確認 | 暗号化PC実通信で生成中の3方向切替拒否・停止後の保存結果確認待ち・入力復帰、PC/Device往復の下書き/履歴保持と自動転送なしを確認 | Cloud/Deviceを生成元とする停止/保存/再開と、日英/実モデル/実機を含む3方式の受入れは残る |
 | Portable再利用、ブラウザ記憶/物語とPython共通fixture | World/cast/Lore、6形式export、JSON/PNG/CHARX/backup・ST/CAI/BYAF import、原本保持・選択履歴のatomic commit、媒体upload/再生取得を実装。48入力とLore条件、実decoder・実IDBの共通検証 | 各形式の追加実データ・全画面媒体操作、実容量・実モデル・実機を含むパリティ試験は残る |
 | 認証・課金経路とRuntime通信の分離、Cloud鍵をRemoteへ送らない | 実装・限定検証 | 認証切替・Remote通信捕捉・所有者分離試験 |
 | 安定ID/revisionと数値ID互換、永続outbox、自動同期 | Cloud/device/Native-PCを隔離検証。Browserの本文/固定outboxを1MiB断片へ分割し、v1/v2→v3混在読込・破損/容量不足時のatomic rollbackを実Chromiumで確認 | decoded tree/UI全体化、250MB/1GB/RSS・旧DB復元の全面照合、全方式の統合証拠 |
@@ -55,6 +55,8 @@ Cloud設定と旧バックアップ同期の日英表示は
 2MB超の統合会話・永続outboxの分割転送と再開は
 [Entity transfers](validation/2026-10-25-unified-entity-transfers.md) に記録する。
 この表は公開合格や全計画完了の宣言ではない。
+暗号化PC接続の明示停止・保存結果確認待ちと、端末内への切替/PC復帰の証拠は
+[Target switching](validation/2026-10-31-unified-target-switch.md) に記録する。
 分割送信中の本文再読込除去と旧outbox/DBの互換性・復旧条件は
 [Outbox guards](validation/2026-10-25-unified-outbox-guards.md) に記録する。
 転送一時データの起動時/定期清掃、期限切れ後のNative outbox再開、

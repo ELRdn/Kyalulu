@@ -371,6 +371,97 @@ async def run():
                         )
                     finally:
                         MockProvider.stream_events = original_stream
+
+                    # Hold a separate generation until explicit cancellation; never race a short Mock reply.
+                    cancel_sid = 'remote-stop-' + uuid.uuid4().hex
+                    entered, checking_saved, release_saved = asyncio.Event(), asyncio.Event(), asyncio.Event()
+                    from python.storage import generations
+                    original_status = generations.status
+
+                    async def held_status(generation_id, session_id):
+                        result = await original_status(generation_id, session_id)
+                        if session_id == cancel_sid and result['status'] == 'cancelled':
+                            checking_saved.set()
+                            await release_saved.wait()
+                        return result
+
+                    async def held_stream(self, *args, **kwargs):
+                        entered.set()
+                        await asyncio.Event().wait()
+                        async for event in original_stream(self, *args, **kwargs):
+                            yield event
+
+                    MockProvider.stream_events = held_stream
+                    generations.status = held_status
+                    try:
+                        await page.goto(web_origin + '/#/chats/' + cancel_sid)
+                        composer = page.locator('.k-composer__input')
+                        await expect(composer).to_be_enabled()
+                        await composer.fill('REMOTE_STOP_keep_input')
+                        await page.get_by_role('button', name='送信', exact=True).click()
+                        await asyncio.wait_for(entered.wait(), 15)
+                        picker = page.get_by_role('combobox', name='実行先', exact=True)
+                        await expect(picker).to_be_disabled()
+                        assert await page.evaluate('''async()=>{
+                            const {switchTarget,generationBusy}=await import('/src/lib/appContext.ts');
+                            const before=JSON.stringify({...localStorage}),url=location.href;
+                            if(!generationBusy())throw Error('Generation must still be pending');
+                            for(const target of ['cloud','device','pc']){
+                                try{switchTarget(target);return false;}
+                                catch(error){if(!String(error).includes('Stop generation and confirm its saved result'))throw error;}
+                            }
+                            return location.href===url&&JSON.stringify({...localStorage})===before;
+                        }''')
+                        generation_id = await page.evaluate('''sid=>{
+                            const key=Object.keys(localStorage).find(key=>key.startsWith('kyalulu:chat-recovery:v1:')&&key.endsWith(':'+sid));
+                            return JSON.parse(localStorage.getItem(key)).pending.id;
+                        }''', cancel_sid)
+                        await page.get_by_role('button', name='停止', exact=True).click()
+                        await asyncio.wait_for(checking_saved.wait(), 15)
+                        await expect(picker).to_be_disabled()
+                        await expect(page.get_by_role('button', name='停止して確認', exact=True)).to_be_visible()
+                        assert await page.evaluate('''async()=>{
+                            const {switchTarget}=await import('/src/lib/appContext.ts');
+                            try{switchTarget('device');return false;}
+                            catch(error){return String(error).includes('Stop generation and confirm its saved result');}
+                        }''')
+                        release_saved.set()
+                        await expect(picker).to_be_enabled(timeout=30000)
+                        await expect(composer).to_have_value('REMOTE_STOP_keep_input')
+                        stopped_history = json.loads((await api('/api/chat/history?session_id=' + cancel_sid))['body'])['history']
+                        assert stopped_history == [], 'Cancelled uncommitted turn must not appear as a saved reply'
+                        terminal = json.loads((await api('/api/chat/generations/' + generation_id + '?session_id=' + cancel_sid))['body'])
+                        assert terminal == {'generation_id': generation_id, 'session_id': cancel_sid, 'status': 'cancelled', 'user_id': None, 'assistant_id': None}
+                    finally:
+                        release_saved.set()
+                        generations.status = original_status
+                        MockProvider.stream_events = original_stream
+                    report['checks'].append('pending generation and delayed saved-result check reject target switching; verified cancellation restores input before unlocking')
+
+                    # Canceling the destination review cannot mutate the current route or draft.
+                    await composer.fill('REMOTE_UNSENT_after_stop')
+                    await picker.select_option('device')
+                    review = page.get_by_role('dialog')
+                    await review.get_by_role('button', name='キャンセル', exact=True).click()
+                    await expect(picker).to_have_value('pc')
+                    await expect(composer).to_have_value('REMOTE_UNSENT_after_stop')
+                    await picker.select_option('device')
+                    await review.get_by_role('button', name='次へ', exact=True).click()
+                    await page.wait_for_url(web_origin + '/device/#/')
+                    await expect(page.get_by_role('combobox', name='実行先', exact=True)).to_have_value('device')
+                    assert await page.evaluate('''async sid=>{
+                        const {entity}=await import('/src/lib/appStore.ts');
+                        return !await entity(sid);
+                    }''', cancel_sid), 'Switching must not copy the PC conversation to Device'
+                    await page.get_by_role('combobox', name='実行先', exact=True).select_option('pc')
+                    await page.get_by_role('dialog').get_by_role('button', name='次へ', exact=True).click()
+                    await page.wait_for_url(web_origin + '/#/')
+                    await page.goto(web_origin + '/#/chats/' + cancel_sid)
+                    await expect(page.locator('.k-composer__input')).to_have_value('REMOTE_UNSENT_after_stop', timeout=30000)
+                    assert json.loads((await api('/api/chat/history?session_id=' + cancel_sid))['body'])['history'] == stopped_history
+                    report['checks'].append('review cancellation and PC/Device roundtrip preserve scoped draft, keys and authoritative history without copying or resending')
+                    await page.goto(web_origin + '/#/chats/' + sid)
+                    await expect(page.locator('.k-composer__input')).to_be_enabled()
                     from PIL import Image
 
                     png = io.BytesIO()
