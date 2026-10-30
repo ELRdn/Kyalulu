@@ -331,3 +331,8 @@ context取得も完全復元を避け、保存tx内でowner・revision・本文t
 [Memory source verification](validation/2026-10-31-unified-memory-source-verification.md) に
 全Web1,325件・実IDB53ケースと、参照元/固定outbox保持、破損・owner切替・方針偽装・quota時の拒否を記録する。
 生成本体・共有元context・更新projectionの全体保持は残り、この変更だけで大容量生成を合格とはしない。
+
+生成時の章/arc要約は20発言ずつ受け取るcollectorへ接続し、巨大本文のexcerptのための全Unicode配列化を除去した。
+[Incremental summaries](validation/2026-10-31-unified-incremental-summaries.md) に旧処理との比較20ケース、
+全Web1,346件、日英実UIの160発言・8章確定/再生成の出典revisionと下書き保持を記録する。
+要約・文字走査の変更であり、生成元の全履歴保持を解消したものとは扱わない。

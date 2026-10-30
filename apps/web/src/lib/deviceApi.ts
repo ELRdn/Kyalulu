@@ -4,7 +4,7 @@ import { MobileRuntime } from '../mobile/runtime';
 import { MODELS, readyModels } from '../mobile/models';
 import { allEntities, entity, openEntity, conversationInfo, conversationPage, conversationSummary, readConversationSummary, generationHistory, recoverConversationGeneration, saveEntity, newEntity, getMeta, setMeta, appTransaction, writeEntity, writeConversationMetadata, scrubGenerationRecords, memoryEventsKey, trimOfflineCache, type AppEntity, type EntityKind, type ConversationPage, type ConversationPageCursor, type ConversationSummary } from './appStore';
 import { deviceOwner, setGenerationBusy } from './appContext';
-import { estimateTokens, retrieveMemories, renderMemoryBlock, prepareRpg, memoryDecisions, evidenced, refreshSummaries,deviceResponseGrammar, type DeviceMemory } from './deviceCore';
+import { estimateTokens, retrieveMemories, renderMemoryBlock, prepareRpg, memoryDecisions, evidenced, summaryRefresh,deviceResponseGrammar, type DeviceMemory } from './deviceCore';
 import { receiveConversation, rebindConversation } from './appSyncData';
 import { hydrateConversation } from './appSync';
 import { compilePortable, assemblePortable } from './devicePrompt';
@@ -333,8 +333,10 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
             return {...proposal,memory_id:memoryId,source_message_ids:sourceIds};
           });
           const memory=trace?{...trace,proposals:parsed.memory_proposals,decisions,evidenced:memories.filter(m=>evidenced(m.content,parsed.reply)).map(m=>m.id)}:null;
+          const summaries=summaryRefresh(p.summaries,id);for(const message of messages)summaries.push(message);
           messages.push({id:assistantId,uuid:crypto.randomUUID(),role:'assistant',content:parsed.reply,created_at:new Date().toISOString(),model_id:model.id,
             before:{state:baseState,memories:baseMemories,settings:structuredClone(frozenSettings)},after:{state,memories:stored,settings:structuredClone(frozenSettings)}});
+          summaries.push(messages.at(-1)!);
           const done={...pending,status:'completed',assistant_id:assistantId,full:parsed.reply,reply:parsed.reply,state,telemetry:{...result.measurement,memory,
             ...(scope?{first_reply_ms:result.measurement?.firstTokenMs??null,tokens_per_second:result.measurement?.tokensPerSecond??null}:{})},
             generation_config:{...generationConfig,requested:{model_id:model.id,...generationConfig.requested},applied:{model_id:model.id,...generationConfig.applied}},validation:{ok:true,retries:0,errors:[]},
@@ -348,7 +350,7 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
             workingMemory.domain.revision=admittedMemory.revision;memoryContext.domain=workingMemory.domain;
           }
           current=await save({...current,payload:{...current.payload,messages,memories:stored,state,last_generation:done,pending_generation:null,
-            summaries:refreshSummaries(messages,p.summaries,id)}},current.revision,{['generation:'+owner+':'+generationId]:done,
+            summaries:summaries.finish()}},current.revision,{['generation:'+owner+':'+generationId]:done,
               ...(!scope&&!memoryContext&&trace?{[memoryEventsKey(owner,id)]:events}:{})});
           send('done',done);
         } catch(error) {
