@@ -1,5 +1,5 @@
-import { allEntities,entity,type AppEntity } from './appStore';
-import { readDeviceMemoryDomain,readMemorySource,memoryScopeInput } from './deviceMemoryStore';
+import type { AppEntity } from './appStore';
+import { readDeviceMemoryDomain,readMemorySource,visitMemorySources,memoryScopeInput } from './deviceMemoryStore';
 import { appendScopeEvent,bindMemoryScope,memoryBinding,memoryPolicy,migrateMemoryDomain,previewMemoryMigration,type ScopeEvent } from './deviceMemoryScopes';
 import { deviceMemoryScope,parseDeviceMemoryScope,scopedSessionMemory,scopedMigrationMemory,scopedMemoryAddress,scopedMemoryRows,saveScopedMemory,type MemoryIdentityResolver,type ScopedMemory } from './deviceScopedMemory';
 import { retrieveMemories,renderMemoryBlock,type DeviceMemory } from './deviceCore';
@@ -66,7 +66,6 @@ export async function scopedMemoryRoute(path:string,method:string,body:Record<st
   if(path==='/api/memory/scopes'){
     if(method!=='GET')throw fail('Memory scopes require GET',405);
     const domains=await Promise.all((['local','sync'] as const).map(policy=>readDeviceMemoryDomain(owner,policy)));
-    if(domains.every(d=>Object.keys(d.pools).length===0))return null;
     const scopes:{scope:string;active:number;total:number;updated_at:string|null}[]=[];
     const add=(scope:string,rows:DeviceMemory[])=>{
       if(rows.length)scopes.push({scope,active:rows.filter(m=>m.status==='active').length,total:rows.length,updated_at:rows.map(m=>m.updated_at??'').sort().at(-1)||null});
@@ -75,8 +74,10 @@ export async function scopedMemoryRoute(path:string,method:string,body:Record<st
       const context=await scopedMemoryAddress(owner,deviceMemoryScope(domain.policy,scope),resolve,true);
       add(address(context),scopedMemoryRows(context));
     }
-    for(const session of await allEntities(owner))if(session.kind==='conversation'&&!session.deleted&&!session.payload.cache_evicted
-      &&!memoryBinding(domains.find(d=>d.policy===memoryPolicy(session))!,session.id))add(session.id,session.payload.memories??[]);
+    await visitMemorySources(owner,source=>{
+      if(!source.metadata.cache_evicted&&!memoryBinding(domains.find(d=>d.policy===memoryPolicy(memoryScopeInput(source)))!,source.id))
+        add(source.id,source.metadata.memories??[]);
+    });
     return json({scopes:scopes.sort((a,b)=>String(b.updated_at).localeCompare(String(a.updated_at)))});
   }
   if(path==='/api/memory/events'){

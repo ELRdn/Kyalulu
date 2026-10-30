@@ -15,6 +15,16 @@ export function memorySourceProjection(record:AppEntity):MemorySource {
   return {id:record.id,owner:record.owner,revision:record.revision,deleted:record.deleted,metadata};
 }
 export const memoryScopeInput=(source:MemorySource):MemoryConversation=>({id:source.id,revision:source.revision,deleted:source.deleted,payload:source.metadata});
+function readMemorySourceTx(tx:IDBTransaction,header:StoredEntity,id:string,owner:string,done:(source:MemorySource)=>void) {
+  if(header.owner!==owner||header.id!==id||!text(id)||!Number.isSafeInteger(header.revision)||header.revision<0)throw Error('Invalid memory source');
+  const finish=(payload:any)=>{
+    if(!payload||typeof payload!=='object'||Array.isArray(payload)||!Array.isArray(payload.messages))throw Error('Invalid memory source');
+    const {messages:_,...metadata}=payload;
+    done({id,owner,revision:header.revision,deleted:false,bodyToken:header.payloadParts?.token??null,metadata});
+  };
+  if(header.payloadParts)readParts(tx,[owner,'entity',id],header.payloadParts,finish,new JsonStream({limit:0}));
+  else finish(header.payload);
+}
 /** Verify the entire source without retaining its message bodies; never return a partial AppEntity. */
 export async function readMemorySource(id:string,owner:string):Promise<MemorySource|undefined> {
   const value=await appTransaction<MemorySource|undefined>(['entities','parts'],'readonly',(tx,done)=>{
@@ -22,17 +32,25 @@ export async function readMemorySource(id:string,owner:string):Promise<MemorySou
     const read=tx.objectStore('entities').get([owner,id]);read.onsuccess=()=>storageStep(tx,()=>{
       const header=read.result as StoredEntity|undefined;
       if(!header||header.deleted||header.kind!=='conversation'){done(undefined);return;}
-      if(header.owner!==owner||header.id!==id||!Number.isSafeInteger(header.revision)||header.revision<0)throw Error('Invalid memory source');
-      const finish=(payload:any)=>{
-        if(!payload||typeof payload!=='object'||Array.isArray(payload)||!Array.isArray(payload.messages))throw Error('Invalid memory source');
-        const {messages:_,...metadata}=payload;
-        done({id,owner,revision:header.revision,deleted:false,bodyToken:header.payloadParts?.token??null,metadata});
-      };
-      if(header.payloadParts)readParts(tx,[owner,'entity',id],header.payloadParts,finish,new JsonStream({limit:0}));
-      else finish(header.payload);
+      readMemorySourceTx(tx,header,id,owner,done);
     });
   });
   if(owner!==deviceOwner())throw Error('Account changed');return value;
+}
+
+/** Visit synchronously in one snapshot; callers retain only their catalog fields. */
+export async function visitMemorySources(owner:string,visit:(source:MemorySource)=>void) {
+  await appTransaction<void>(['entities','parts'],'readonly',(tx,done)=>{
+    guardStorage(tx,()=>owner===deviceOwner());
+    const read=tx.objectStore('entities').openCursor(IDBKeyRange.bound([owner,''],[owner,'\uffff']));
+    read.onsuccess=()=>storageStep(tx,()=>{
+      const cursor=read.result;if(!cursor){done();return;}
+      const header=cursor.value as StoredEntity;
+      if(header.kind!=='conversation'||header.deleted){cursor.continue();return;}
+      readMemorySourceTx(tx,header,header.id,owner,source=>{visit(source);cursor.continue();});
+    });
+  });
+  if(owner!==deviceOwner())throw Error('Account changed');
 }
 
 export const readDeviceMemoryDomain=(owner:string,policy:MemoryPolicy)=>appTransaction<OwnedMemoryDomain>(['meta','parts'],'readonly',(tx,done)=>{

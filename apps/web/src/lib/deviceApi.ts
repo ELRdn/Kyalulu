@@ -624,13 +624,6 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
     }
     return json(suffix==='/data'?{ok:true,scope:session.id,affects_shared_sessions:false}:{session_id:session.id,scope:session.id,enabled:session.payload.memory_enabled});
   }
-  if(path==='/api/memory/scopes'){
-    if(method!=='GET')throw fail('Memory scopes require GET',405);
-    const scopes=(await readRecords()).filter(s=>s.kind==='conversation'&&s.payload.memories.length).map(s=>({scope:s.id,
-      active:s.payload.memories.filter((m:DeviceMemory)=>m.status==='active').length,total:s.payload.memories.length,
-      updated_at:s.payload.memories.map((m:DeviceMemory)=>m.updated_at??'').sort().at(-1)??null}));
-    return json({scopes:scopes.sort((a,b)=>String(b.updated_at).localeCompare(String(a.updated_at)))});
-  }
   if(path==='/api/memory/events'){
     if(method!=='GET')throw fail('Memory events require GET',405);
     const scope=url.searchParams.get('scope'),limit=Number(url.searchParams.get('limit')??200);

@@ -1,6 +1,6 @@
 # Bounded browser acceptance: scoped memory source projections
 
-The independent fixture exercises the current uncommitted Web implementation in
+The independent fixture exercises the Web memory projection implementation in
 real installed Chromium and IndexedDB. It imports the product modules directly;
 there is no API server, inference Worker, model download or provider request.
 Product code, Git state and other tests are outside this change.
@@ -32,7 +32,7 @@ The installed local browser-path default applies only on Windows. Ubuntu uses
 Playwright's normal browser discovery; an explicit environment setting wins on
 either platform. Ubuntu execution is left to the parent's CI run.
 
-The recorded run passes **13/13 scenarios**, using installed Chromium
+The initial run passed 13 scenarios; the final catalog follow-up passes **14/14 scenarios**, using installed Chromium
 **151.0.7922.34**. Each large peer has **80 messages, 2,305,905 UTF-8 JSON bytes
 (about 2.20 MiB), and 3 physical parts**. Histories include nonsequential IDs,
 UUIDs, Unicode, escaped strings, before/after snapshots and extension fields.
@@ -55,7 +55,7 @@ page and verifies complete entity, domain, receipt and fixed-outbox hashes from
 fresh module state. The quota case instead closes Chromium and reopens the same
 disposable profile before verifying those hashes. Browser contexts are closed,
 their browser connections are checked disconnected, and owned Vite is stopped.
-The successful run closes **14 persistent contexts**, including **one browser
+The final successful run closes **15 persistent contexts**, including **one browser
 restart**. External/API requests, WebSockets and page errors are **zero**.
 
 ## Cases
@@ -75,6 +75,7 @@ restart**. External/API requests, WebSockets and page errors are **zero**.
 | `owner-switch-read` | Switching account during a peer-part read rejects without writes; restoring the owner permits retry. |
 | `owner-switch-write` | Switching account during source verification rejects the commit without persisted changes; restoring the owner permits retry. |
 | `quota-atomic` | A real pending domain/actor/receipt is seeded. Completion updates a full actor and streamed peer projection together. Injected domain-header `QuotaExceededError` aborts all changes; retry completes and survives an actual Chromium close/relaunch. |
+| `catalog` | A mixed bound local / unbound legacy sync scope list streams peer and legacy histories, returns exact counts, skips a corrupt non-conversation before reading its body and changes no stored bytes. Complete actor/peer/legacy data and control records match after reload. |
 
 In the dedicated rewrite checks, the entire canonical payload except top-level
 `memories` is compared with its baseline. This includes every message, draft,
@@ -126,6 +127,11 @@ The Windows-only browser-cache fallback is conditional on `os.name == 'nt'`;
 Ubuntu uses Playwright's normal installed browser location. CI results remain a
 separate gate.
 
+The subsequent [catalog follow-up](2026-10-31-unified-memory-catalog.md) passes
+1,385 Web tests / 87 files, TypeScript and a new unified build, plus the final
+14-scenario browser run. It removes the legacy full-entity catalog fallback and
+extracts the shared source decoder without weakening source verification.
+
 ## Remaining limits
 
 This accepts the bounded storage/projection mechanism, not memory usage at
@@ -139,5 +145,5 @@ product operation for comparison.
 No new real-model or API-generation acceptance, 1 GB capacity, UI, physical-device,
 abrupt-kill recovery, sync transport, CI, deployment or production claim follows.
 `tests/e2e_device_memory_scopes.py` covers the separate generation/API workflow;
-it and the parent's unit/TypeScript checks were not rerun by this task. Source
-isolation refinements by the parent require a fresh run against the new hashes.
+the parent reran it separately as recorded above. The standalone 1 GB diagnostic
+is documented separately and is not a full-generation or current-catalog claim.
