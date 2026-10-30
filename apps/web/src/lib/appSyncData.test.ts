@@ -79,6 +79,24 @@ it('gives a branch independent numeric and memory IDs while retaining source UUI
   const rebound=rebindConversation(branch,'fork');
   expect(rebound.state.session_id).toBe('fork');expect(rebound.messages[1].after.state.session_id).toBe('fork');expect(rebound.memories[0].scope).toBe('fork');
 });
+
+it('rebinds attributable memory ownership for an independent branch/recovery and retains original provenance',()=>{
+  const payload=wire();payload.memories[0]=Object.assign(payload.memories[0],{source_session_id:'chat',source_generation_id:'original-generation'});
+  payload.messages[1].after!.memories=structuredClone(payload.memories);
+  const copy=rebindConversation(payload,'recovery');
+  for(const memory of [copy.memories[0],copy.messages[1].after.memories[0]])expect(memory).toMatchObject({source_session_id:'recovery',original_source_session_id:'chat',source_generation_id:'original-generation'});
+  expect((payload.memories[0] as any).source_session_id).toBe('chat');
+});
+
+it('keeps local retrieval diagnostics and worker leases out of the synchronized generation summary',()=>{
+  const payload:any=wire();payload.last_generation={...payload.last_generation,status:'completed',reply:'authored reply',
+    raw_prompt:'FOREIGN SECRET',compiled:{system_prompt:'FOREIGN SECRET'},attempts:['FOREIGN SECRET'],memory:{candidates:['FOREIGN SECRET']},
+    execution_lock:'owner lock',validation:{ok:true,retries:1,errors:['FOREIGN SECRET']},telemetry:{elapsed_ms:10,memory:{candidates:['FOREIGN SECRET']}}};
+  const outgoing=withLibrarySnapshots(payload,[]);
+  expect(JSON.stringify(outgoing)).not.toContain('FOREIGN SECRET');expect(outgoing.last_generation).toEqual({user_id:1,assistant_id:2,status:'completed',reply:'authored reply',validation:{ok:true,retries:1,errors:[]},telemetry:{elapsed_ms:10}});
+  let id=100;expect(JSON.stringify(receiveConversation(payload,undefined,()=>++id))).not.toContain('FOREIGN SECRET');
+  expect(payload.last_generation.raw_prompt).toBe('FOREIGN SECRET');
+});
 it('remaps memory objects shared by current and historical snapshots only once',()=>{
   const payload=wire();payload.messages[1].after!.memories=payload.memories;
   let n=40;const received=receiveConversation(payload,undefined,()=>++n);

@@ -1,0 +1,136 @@
+{
+  "cases": [
+    {
+      "name": "builtin-defaults",
+      "settings": {
+        "session_id": "scope-builtin",
+        "character_id": "mocha_sfw",
+        "world_id": "beast_world"
+      },
+      "identity": {
+        "character_id": "mocha_sfw",
+        "persona_id": null,
+        "world_id": "beast_world",
+        "library_binding": {"character": null, "profile": null, "lorebooks": []},
+        "versions": {"character_id": "0.2.0", "persona_id": null, "world_id": "0.1.0"}
+      },
+      "world_scope": "work:af56617f4db58a2f2913ab3f27f2b845d2e20e8594e6e409fec953373931af5e",
+      "shared_scope": "char:mocha_sfw|persona:default"
+    },
+    {
+      "name": "builtin-expression-only",
+      "settings": {
+        "session_id": "scope-expression",
+        "world_id": "beast_world",
+        "persona_id": null,
+        "character_id": "mocha_sfw",
+        "library_binding": {
+          "expression_asset_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "identity": {
+        "character_id": "mocha_sfw",
+        "persona_id": null,
+        "world_id": "beast_world",
+        "library_binding": {"character": null, "profile": null, "lorebooks": []},
+        "versions": {"character_id": "0.2.0", "persona_id": null, "world_id": "0.1.0"}
+      },
+      "world_scope": "work:af56617f4db58a2f2913ab3f27f2b845d2e20e8594e6e409fec953373931af5e",
+      "shared_scope": "char:mocha_sfw|persona:default"
+    },
+    {
+      "name": "builtin-persona-without-world",
+      "settings": {
+        "session_id": "scope-persona",
+        "character_id": "mocha_sfw",
+        "persona_id": "default_male",
+        "world_id": null,
+        "library_binding": {}
+      },
+      "identity": {
+        "character_id": "mocha_sfw",
+        "persona_id": "default_male",
+        "world_id": null,
+        "library_binding": {"character": null, "profile": null, "lorebooks": []},
+        "versions": {"character_id": "0.2.0", "persona_id": "0.1.0", "world_id": null}
+      },
+      "world_scope": "work:12f9051db2d99f02a5b1a9370020d52baf397ac501baea62910c33cd59a31b22",
+      "shared_scope": "char:mocha_sfw|persona:default_male"
+    },
+    {
+      "name": "literal-persona-none",
+      "settings": {
+        "session_id": "scope-none",
+        "character_id": "mocha_sfw",
+        "persona_id": "none",
+        "world_id": "beast_world",
+        "library_binding": null
+      },
+      "identity": {
+        "character_id": "mocha_sfw",
+        "persona_id": "none",
+        "world_id": "beast_world",
+        "library_binding": {"character": null, "profile": null, "lorebooks": []},
+        "versions": {"character_id": "0.2.0", "persona_id": null, "world_id": "0.1.0"}
+      },
+      "world_scope": "work:097d12aa6283e3f595bde3284349c18a53fe3261d94290ccedf7f6f611d6c0c5",
+      "shared_scope": "char:mocha_sfw|persona:none"
+    },
+    {
+      "name": "unicode-library-revision-7",
+      "settings": {
+        "session_id": "scope-unicode-7",
+        "character_id": "lib_モカ🐈",
+        "persona_id": null,
+        "world_id": "beast_world",
+        "library_binding": {
+          "lorebooks": [{"revision": 3, "id": "lib_世界📖"}, {"id": "lib_記憶", "revision": 2}],
+          "profile": {"revision": 4, "id": "lib_設定"},
+          "character": {"revision": 7, "id": "lib_モカ🐈"},
+          "expression_asset_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      },
+      "identity": {
+        "character_id": "lib_モカ🐈",
+        "persona_id": null,
+        "world_id": "beast_world",
+        "library_binding": {
+          "character": {"id": "lib_モカ🐈", "revision": 7},
+          "profile": {"id": "lib_設定", "revision": 4},
+          "lorebooks": [{"id": "lib_世界📖", "revision": 3}, {"id": "lib_記憶", "revision": 2}]
+        },
+        "versions": {"character_id": "1.0.7", "persona_id": null, "world_id": "0.1.0"}
+      },
+      "world_scope": "work:eca3fb1ecffd1dfd761f484b3e59e2d5bd7300d94bfb886b0b379a57908b7eaf",
+      "shared_scope": "char:lib_モカ🐈|persona:default"
+    },
+    {
+      "name": "unicode-library-revision-8",
+      "settings": {
+        "session_id": "scope-unicode-8",
+        "character_id": "lib_モカ🐈",
+        "persona_id": null,
+        "world_id": "beast_world",
+        "library_binding": {
+          "lorebooks": [{"revision": 3, "id": "lib_世界📖"}, {"id": "lib_記憶", "revision": 2}],
+          "profile": {"revision": 4, "id": "lib_設定"},
+          "character": {"revision": 8, "id": "lib_モカ🐈"},
+          "expression_asset_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      },
+      "identity": {
+        "character_id": "lib_モカ🐈",
+        "persona_id": null,
+        "world_id": "beast_world",
+        "library_binding": {
+          "character": {"id": "lib_モカ🐈", "revision": 8},
+          "profile": {"id": "lib_設定", "revision": 4},
+          "lorebooks": [{"id": "lib_世界📖", "revision": 3}, {"id": "lib_記憶", "revision": 2}]
+        },
+        "versions": {"character_id": "1.0.8", "persona_id": null, "world_id": "0.1.0"}
+      },
+      "world_scope": "work:377f206054bb888f91dc6b4174b56de2bbe156bcef64f25f1b9ebb49dd82dbc1",
+      "shared_scope": "char:lib_モカ🐈|persona:default"
+    }
+  ]
+}

@@ -63,7 +63,7 @@ function outgoingServer(sent:any[],reject=false){
 beforeEach(()=>{
   fixture.entities=new Map();fixture.parts.clear();fixture.meta=new Map([['sync:owner-a:consent',true]]);fixture.owner='owner-a';fixture.busy=false;fixture.failAt=0;fixture.reads=[];fixture.readHook=undefined;
   vi.stubGlobal('IDBKeyRange',{bound:(lower:any,upper:any)=>({lower,upper}),only:(value:any)=>({lower:value,upper:value})});
-  vi.stubGlobal('navigator',{locks:{request:async(_name:string,action:()=>any)=>action()}});
+  vi.stubGlobal('navigator',{locks:{request:async(_name:string,optionsOrAction:any,action?:any)=>(typeof optionsOrAction==='function'?optionsOrAction:action)({name:_name})}});
 });
 
 it('sends only the first 50 dirty sync records in key order and counts device-only dirty records',async()=>{

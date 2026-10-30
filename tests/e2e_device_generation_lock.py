@@ -42,7 +42,7 @@ async def main():
               const {deviceExecutionLockName}=await import('/src/lib/deviceResearch.ts');
               await store.saveEntity(store.newEntity('conversation',sid,{storage_policy:'local',settings:{session_id:sid},
                 messages:[{id:1,uuid:'fictional-user',role:'user',content:'Preserve pending input'}],
-                memories:[],summaries:[],draft:'Preserve draft',pending_generation:gid},owner),0,
+                memories:[],summaries:[],state:{session_id:sid,turn:0},draft:'Preserve draft',pending_generation:gid},owner),0,
                 {[key]:{generation_id:gid,session_id:sid,status:'pending',assistant_id:null,user_id:1,execution_lock:deviceExecutionLockName(owner)}});
               window.__held=navigator.locks.request(deviceExecutionLockName(owner),async()=>{
                 window.__locked=true;await new Promise(resolve=>{window.__release=resolve;});
@@ -66,11 +66,19 @@ async def main():
             blocked_send = await api('/api/chat/stream', 'POST', {'session_id': SESSION, 'generation_id': 'must-not-run',
                 'model_id': 'mock-echo', 'messages': [{'role': 'user', 'content': 'Must not replace pending input'}]})
             assert blocked_send['status'] == 409, blocked_send
+            assert (await api(f'/api/chat/sessions/{SESSION}/data', 'DELETE'))['status'] == 409
+            assert (await api('/api/%6demory', 'POST', {'scope': SESSION, 'type': 'semantic', 'content': 'Must wait'}))['status'] == 409
+            deferred = await second.evaluate('''async ([owner,sid])=>{
+              const sync=await import('/src/lib/appSync.ts');
+              try{await sync.receiveSyncPage(owner,[{id:sid,kind:'conversation',revision:1,deleted:true,payload:{}}],1);return '';}
+              catch(error){return String(error);}
+            }''', [OWNER, SESSION])
+            assert 'Stop generation and confirm its saved result' in deferred, deferred
             assert await saved() == before
-            # Closing a document releases its real platform lock without a timer/heartbeat guess.
+            # Await a real acquisition so the asynchronous broker release is authoritative.
             await first.close()
-            await second.wait_for_function('(name)=>navigator.locks.query().then(state=>!state.held.some(lock=>lock.name===name))',
-                                           arg=before['status']['execution_lock'])
+            await asyncio.wait_for(second.evaluate('(name)=>navigator.locks.request(name,()=>{})',
+                                                  before['status']['execution_lock']), 30)
             rejected = await second.evaluate('''async ([path,key])=>{
               const put=IDBObjectStore.prototype.put;
               IDBObjectStore.prototype.put=function(value,k){
@@ -93,6 +101,19 @@ async def main():
             await second.reload()
             await second.wait_for_function('window.__MEMORY_LANGUAGE__ !== undefined')
             assert await saved() == after
+            deletion = await second.evaluate('''async ([owner,sid])=>{
+              const store=await import('/src/lib/appStore.ts'),sync=await import('/src/lib/appSync.ts');
+              const source=await store.entity(sid);
+              await store.saveEntity({...source,payload:{...source.payload,storage_policy:'sync'}},source.revision);
+              await sync.setSyncConsent(owner,true);
+              await sync.receiveSyncPage(owner,[{id:sid,kind:'conversation',revision:1,deleted:true,payload:{}}],1);
+              const recovery=(await store.allEntities(owner)).find(e=>e.payload.recovery_from===sid);
+              return {source:await store.entity(sid),recovery};
+            }''', [OWNER, SESSION])
+            assert deletion['source']['deleted']
+            assert deletion['recovery']['payload']['storage_policy'] == 'local' and not deletion['recovery']['dirty']
+            assert deletion['recovery']['payload']['draft'] == 'Preserve draft'
+            assert deletion['recovery']['payload']['messages'][0]['content'] == 'Preserve pending input'
             for language in ('ja', 'en'):
                 sid, gid = f'legacy-session-{language}', f'legacy-generation-{language}'
                 key = f'generation:{OWNER}:{gid}'
@@ -148,6 +169,7 @@ async def main():
         'other_document_send_and_cancel_rejected': True, 'document_close_releases_lock': True,
         'metadata_failure_rolls_back_session_and_status': True, 'orphan_recovery_is_durable_and_idempotent': True,
         'legacy_ja_en_confirmation_cancel_conflict_and_draft_recovery': True,
+        'live_lock_defers_local_erasure_and_remote_tombstones': True, 'idle_tombstone_retains_unsent_local_recovery': True,
         'blocked_external_or_api_network_requests': blocked, 'page_errors': errors, 'vite_stopped': True,
         'production_used': False, 'real_inference_attempts': 0,
         'limits': ['Synthetic live lock and metadata quota injection; no real model or physical device']}

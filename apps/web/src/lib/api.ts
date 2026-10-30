@@ -150,9 +150,9 @@ export async function listMemories(scope: string): Promise<MemoryItem[]> {
   return j.memories;
 }
 
-export async function createMemory(scope: string, type: MemoryType, content: string): Promise<MemoryItem> {
+export async function createMemory(scope: string, type: MemoryType, content: string, sourceSessionId?:string): Promise<MemoryItem> {
   return memoryJson(await fetch("/api/memory", {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scope, type, content })
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scope, type, content,source_session_id:sourceSessionId })
   }));
 }
 
@@ -339,7 +339,7 @@ export async function compilePrompt(p: { character_id?: string | null; persona_i
   return j;
 }
 
-export async function fetchChatDebug(sessionId: string): Promise<{ session_id: string; settings: SessionSettings; compiled: CompiledPrompt; history_count: number; approx_turn: number; relationship: string; state: Record<string, unknown>; generation: GenerationResult | null; memory: MemoryTrace | null; memory_session: { enabled: boolean; scope: string } }> {
+export async function fetchChatDebug(sessionId: string): Promise<{ session_id: string; settings: SessionSettings; compiled: CompiledPrompt; prompt_source?:'saved_generation'|'current_settings'|'unavailable'; history_count: number; approx_turn: number; relationship: string; state: Record<string, unknown>; generation: GenerationResult | null; memory: MemoryTrace | null; memory_session: { enabled: boolean; scope: string } }> {
   const identity = cloudEpoch();
   const r = await fetch(`/api/chat/debug?session_id=${encodeURIComponent(sessionId)}`, { cache: "no-store" });
   const j = await checkedJson(r);

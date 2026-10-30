@@ -372,15 +372,15 @@ async def migrate_scope(settings, expected_revision, share=False):
             raise Conflict("stop generation before migrating memory")
         target = chat_scope(settings.get("character_id"), settings.get("persona_id"), sid) if share else preview["target_scope"]
         if target != preview["scope"]:
-            existing = {(m["content"], m["type"], m["source_kind"], m["source_generation_id"]) for m in await _list_memories(db, target)}
+            existing = {(m["content"], m["type"], m["source_kind"], m["source_generation_id"], m["source_session_id"]) for m in await _list_memories(db, target)}
             copied = 0
             for memory in current:
-                key = (memory["content"], memory["type"], memory["source_kind"], memory["source_generation_id"])
-                if key in existing:
-                    continue
                 source_session_id = memory["source_session_id"]
                 if source_session_id is None and preview["scope"] == f"session:{sid}":
                     source_session_id = sid
+                key = (memory["content"], memory["type"], memory["source_kind"], memory["source_generation_id"], source_session_id)
+                if key in existing:
+                    continue
                 await _create(db, target, memory["type"], memory["content"], memory["origin"], memory["supported"],
                               source_session_id, memory["source_turn"], memory["source_generation_id"],
                               source_kind=memory["source_kind"], source_quote=memory["source_quote"],

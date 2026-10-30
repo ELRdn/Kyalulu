@@ -15,6 +15,7 @@ import { commitDeviceImport, deviceSourceMatches } from './deviceImport';
 import { parseDeviceImport } from './deviceParseImport';
 import { acceptDeviceMedia, readDeviceAsset, saveDeviceAsset, validateDeviceDocumentAssets } from './deviceAssets';
 import { deviceResearchRoute, deviceResearchBusy, deviceExecutionLockName, type ResearchTurn } from './deviceResearch';
+import { recoverDeviceMemoryGeneration } from './deviceMemoryStore';
 
 let runtime:MobileRuntime|undefined, loaded='';
 let running:string|null=null;
@@ -234,7 +235,16 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
 
 export async function deviceFetch(input:string,init:RequestInit={}) :Promise<Response> {
   const owner=deviceOwner();
-  try {const response=await route(input,init,owner);if(owner!==deviceOwner())throw fail('Account changed',409);return response;}
+  try {
+    const pathname=decodeURIComponent(new URL(input,'https://device.invalid').pathname),method=(init.method??'GET').toUpperCase();
+    const mutate=!['GET','HEAD'].includes(method)&&(/^\/api\/memory(?:\/|$)/.test(pathname)&&pathname!=='/api/memory/search'
+      ||/^\/api\/chat\/sessions\/[^/]+\/(branch|data)$/.test(pathname));
+    const response=mutate&&typeof navigator!=='undefined'&&navigator.locks
+      ?await navigator.locks.request(deviceExecutionLockName(owner),{ifAvailable:true},async lock=>{
+        if(!lock)throw fail('Stop generation before editing',409);if(owner!==deviceOwner())throw fail('Account changed',409);return route(input,init,owner);
+      }):await route(input,init,owner);
+    if(owner!==deviceOwner())throw fail('Account changed',409);return response;
+  }
   catch(error){return json({error:error instanceof Error?error.message:String(error)},(error as any)?.status??400);}
 }
 async function route(input:string,init:RequestInit,owner:string) :Promise<Response> {
@@ -350,6 +360,8 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
         const latest=await getMeta<any>(key);
         status=latest;
         if(latest?.status!=='pending')return;
+        const recoveredDomain=await recoverDeviceMemoryGeneration(owner,generation[1],latest.session_id);
+        if(recoveredDomain){status=recoveredDomain;return;}
         const session=await entity(status.session_id,owner);
         if(!session||session.deleted||session.payload.pending_generation!==generation[1])throw fail('Pending generation changed; reload before recovery',409);
         if(latest.execution_lock!==deviceExecutionLockName(owner)){
@@ -366,6 +378,7 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
   }
   const branch=path.match(/^\/api\/chat\/sessions\/([^/]+)\/(branch|data)$/);
   if(branch) {
+    if(branch[2]==='data'?method!=='DELETE':method!=='POST')throw fail('Invalid conversation operation',405);
     if(running)throw fail('Stop generation before editing',409);
     const source=await conversation(branch[1],owner);
     if(branch[2]==='data'){
@@ -420,6 +433,7 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
   if(path==='/api/chat/debug') {
     const session=await conversation(url.searchParams.get('session_id')??'default',owner),p=session.payload;
     return json({session_id:session.id,settings:p.settings,compiled:p.last_generation?.compiled??await compiled(p.settings,[],owner),history_count:p.messages.length,approx_turn:p.state.turn,
+      prompt_source:p.last_generation?(p.last_generation.compiled||p.last_generation.raw_prompt?'saved_generation':'unavailable'):'current_settings',
       relationship:p.state.relationship_state.stage,state:p.state,generation:p.last_generation??null,memory:p.last_generation?.memory??p.last_generation?.telemetry?.memory??null,
       memory_session:{enabled:p.memory_enabled===true,scope:session.id}});
   }
@@ -475,6 +489,12 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
       :{scope:session.id,memories:session.payload.memories.filter((m:DeviceMemory)=>url.searchParams.get('include_deleted')==='true'||m.status==='active')});
     if(running)throw fail('Stop generation before editing',409);
     if(previous&&previous.status!=='active')throw fail('Memory not found',404);
+    if(!previous&&body.source_session_id!=null){
+      if(typeof body.source_session_id!=='string'||!body.source_session_id||Array.from(body.source_session_id).length>300)throw fail('Invalid memory source');
+      if(body.source_session_id!==session.id)throw fail('Memory source does not match this conversation',409);
+      const source=await entity(session.id,owner);if(!source||source.deleted||source.kind!=='conversation')throw fail('Memory source session not found',404);
+      if(session.payload.pending_generation)throw fail('Stop generation before editing',409);
+    }
     const content=body.content==null?previous?.content:typeof body.content==='string'?body.content.trim().replace(/\s+/gu,' '):undefined;
     const type=body.type??previous?.type;
     if(method!=='DELETE'&&(!content||Array.from(content).length>200))throw fail('Memory must have 1-200 characters');
@@ -486,7 +506,7 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
     const now=new Date().toISOString();
     const memory=previous?(method==='DELETE'?{...previous,scope:session.id,status:'deleted',updated_at:now}:{...previous,scope:session.id,content,type,version:previous.version+1,
       origin:previous.origin==='model'?'model_edited':previous.origin,supported:null,source_kind:'user_correction',source_quote:content,source_revision:'manual:'+(previous.version+1),confirmation:'user_confirmed',updated_at:now})
-      :{id:crypto.randomUUID(),scope:session.id,type,content,version:1,status:'active',origin:'user',supported:null,source_session_id:null,source_turn:null,source_generation_id:null,
+      :{id:crypto.randomUUID(),scope:session.id,type,content,version:1,status:'active',origin:'user',supported:null,source_session_id:body.source_session_id??null,source_turn:null,source_generation_id:null,
         source_kind:body.source_kind??'user_statement',source_quote:body.source_quote||content,source_revision:body.source_revision||'manual:1',source_message_ids:[],confirmation:'user_confirmed',
         created_at:now,updated_at:now,access_count:0,last_accessed:null};
     const events=await memoryEvents(owner,session.id);

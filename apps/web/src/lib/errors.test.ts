@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { friendlyError, friendlyMessage, localTransferMessage } from "./errors";
 
+it.each(['Memory source does not match this conversation','source session memory scope does not match request scope',
+  'Memory source session not found','source session not found','source session was deleted','stop generation before creating memories'])('localizes manual-source rejections: %s',text=>{
+  expect(friendlyMessage(text,'ja')).toMatch(/[\u3040-\u9fff]/u);expect(friendlyMessage(text,'en')).toBe(text);
+});
+
 it.each(['Web Locks are required for on-device generation','A generation is already running in another tab',
   'Generation is running in another tab; stop it there','Reconcile the pending generation before sending again',
   'Pending generation changed; reload before recovery',

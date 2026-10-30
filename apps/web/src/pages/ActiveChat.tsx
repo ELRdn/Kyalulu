@@ -91,6 +91,7 @@ type DebugData = {
   session_id: string;
   settings: SessionSettings;
   compiled: CompiledPrompt;
+  prompt_source?:'saved_generation'|'current_settings'|'unavailable';
   history_count: number;
   approx_turn: number;
   relationship: string;
@@ -707,7 +708,7 @@ function ActiveChatSession() {
   const permanentlyDelete = async () => {
     if (mutationBlocked() || !capabilities?.features.permanent_delete) return;
     if (!(await confirm({ title: en ? 'Permanently erase conversation data?' : '会話データを完全消去しますか？',
-      description: en ? 'Conversation text, generation results and related memories will be permanently erased. For conversations you allowed to sync, synced copies with the same conversation ID are included. Conflicting updates require another review; unsent changes on other devices remain device only. Cost ledgers are retained. Backup retention follows the connected service’s policy.' : '会話本文・生成結果・関連記憶を完全消去します。同期を許可した会話は、同じ会話IDの同期コピーも対象です。更新の競合は再確認し、他の端末の未送信変更は端末限定で保持します。費用台帳は残り、バックアップの保持期間は接続先の方針に従います。',
+      description: en ? 'Conversation text, generation results and memories linked to this conversation will be permanently erased. Shared memories without an originating conversation are excluded. For conversations you allowed to sync, synced copies with the same conversation ID are included. Conflicting updates require another review; unsent changes on other devices remain device only. Cost ledgers are retained. Backup retention follows the connected service’s policy.' : '会話本文・生成結果・この会話にひも付く記憶を完全消去します。出典がない共有記憶は対象外です。同期を許可した会話は、同じ会話IDの同期コピーも対象です。更新の競合は再確認し、他の端末の未送信変更は端末限定で保持します。費用台帳は残り、バックアップの保持期間は接続先の方針に従います。',
       confirmLabel: en ? 'Erase permanently' : '完全消去する', cancelLabel: en ? 'Cancel' : 'キャンセル', danger: true })) || mutationBlocked()) return;
     const scope = connectionScope(); sessionActionRef.current = true; setSessionAction(true);
     try {
@@ -1414,9 +1415,9 @@ function ActiveChatSession() {
           {debugError && <div style={{ fontSize: 12, color: "var(--error-text)" }}>{en ? 'Could not load debug information.' : debugError}</div>}
           {debugData && (
             <>
-              <DebugSection title={en ? '📝 Raw prompt' : '📝 生プロンプト (raw prompt)'}>
+              <DebugSection title={debugData.prompt_source==='current_settings'?(en?'📝 Current settings preview':'📝 現在の設定のプレビュー'):(en ? '📝 Raw prompt' : '📝 生プロンプト (raw prompt)')}>
                 <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 10, lineHeight: 1.6, background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 8, padding: 10, maxHeight: 220, overflowY: "auto", color: "var(--text-primary)", margin: 0 }}>
-                  {debugData.generation?.raw_prompt || debugData.compiled?.system_prompt || (en ? '(none)' : '(なし)')}
+                  {debugData.prompt_source==='unavailable'?(en?'The original generation prompt is not saved on this device.':'元の生成プロンプトは、この端末には保存されていません。'):(debugData.generation?.raw_prompt || debugData.compiled?.system_prompt || (en ? '(none)' : '(なし)'))}
                 </pre>
               </DebugSection>
               <DebugSection title={en ? 'Compatibility settings / Lore selection' : '互換設定・Loreの採用結果'}>

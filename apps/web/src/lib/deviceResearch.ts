@@ -7,6 +7,8 @@ import { deviceOwner, generationBusy, setGenerationBusy } from './appContext';
 import { compilePortable } from './devicePrompt';
 import { computeDeviceMetrics, memoryMetrics, memoryProbe, metricRound } from './deviceMetrics';
 import { SSEDecoder } from './sse';
+import { deviceExecutionLockName } from './deviceExecution';
+export { deviceExecutionLockName } from './deviceExecution';
 
 type Value=Record<string,any>;
 type Prompt=ReturnType<typeof compilePortable>;
@@ -19,7 +21,6 @@ let active:{owner:string;request:string;controller:AbortController}|null=null;
 export const deviceResearchBusy=()=>active!==null;
 const prefix=(owner:string)=>'device-research:'+JSON.stringify(owner)+':';
 const key=(owner:string,kind:string,id='')=>prefix(owner)+kind+':'+id;
-export const deviceExecutionLockName=(owner:string)=>key(owner,'lock');
 const fail=(message:string,status=400)=>Object.assign(Error(message),{status});
 const ownerCheck=(owner:string)=>{if(owner!==deviceOwner())throw fail('Account changed',409);};
 const identifier=(id:unknown)=>{if(typeof id!=='string'||! /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id))throw fail('Invalid research ID');return id;};

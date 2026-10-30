@@ -22,7 +22,7 @@ SOURCE_FILES = ("uv.lock", "pyproject.toml", "runtime/pyproject.toml", "pnpm-loc
                 "scripts/build_local_bundle.py", "scripts/collect_release_sources.py",
                 "scripts/prepare_cloud_bundle.py", "scripts/prepare_npm_manifest.mjs", "scripts/build_app_catalog.py",
                 "scripts/mobile_models.py", "scripts/mobile_release.py", "scripts/verify_mobile.py",
-                "scripts/publish_mobile.ps1", "tests/fixtures/unified-core.json", "tests/fixtures/unified-memory-provenance.json", "tests/fixtures/portable-prompt.json",
+                "scripts/publish_mobile.ps1", "tests/fixtures/unified-core.json", "tests/fixtures/unified-memory-provenance.json", "tests/fixtures/unified-memory-scopes.json", "tests/fixtures/portable-prompt.json",
                 "tests/fixtures/unified-history.json", "tests/fixtures/device-exports.json",
                 "tests/fixtures/device-imports.json", "tests/fixtures/device-media.json",
                 "tests/fixtures/device-research.json", "tests/fixtures/device-lore-values.json",

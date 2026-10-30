@@ -10,6 +10,7 @@ vi.mock('../mobile/runtime',()=>({MobileRuntime:class {
 }}));
 vi.mock('../mobile/models',()=>({MODELS:[{id:'fixture',runtime:'gguf',temperature:.8,topK:64,topP:.95}],readyModels:async()=>new Set(['fixture'])}));
 vi.mock('./appSync',()=>({hydrateConversation:vi.fn()}));
+vi.mock('./deviceMemoryStore',()=>({recoverDeviceMemoryGeneration:async()=>null}));
 vi.mock('./appContext',()=>({deviceOwner:()=> 'fixture-owner',setGenerationBusy:fixture.busy}));
 vi.mock('./appStore',async importOriginal=>({
   ...await importOriginal<typeof import('./appStore')>(),
@@ -37,6 +38,8 @@ it('holds the shared research/execution lock through inference and the final dur
   expect(fixture.meta.get('generation:fixture-owner:held').status).toBe('pending');
   const second=await deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify({session_id:'chat',generation_id:'second',model_id:'fixture',messages:[{role:'user',content:'must not run'}]})});
   expect(second.status).toBe(409);expect(fixture.saved.payload.messages).toHaveLength(1);
+  const manual=await deviceFetch('/api/memory',{method:'POST',body:JSON.stringify({scope:'chat',type:'semantic',content:'must wait'})});
+  expect(manual.status).toBe(409);expect(fixture.saved.payload.memories).toEqual([]);
   release();expect(await stream).toContain('event: done');
   await vi.waitFor(()=>expect(fixture.locks.size).toBe(0));
   expect(fixture.meta.get('generation:fixture-owner:held').status).toBe('completed');
@@ -132,6 +135,7 @@ it('exposes actual turn memory evidence, source speakers and audit events throug
   expect(messages[1].before.memories).toEqual(fixture.memories);expect(messages[1].after.memories).toEqual(p.memories);
   const debug=await (await deviceFetch('/api/chat/debug?session_id=chat')).json();
   expect(debug.memory).toEqual(trace);expect(debug.memory_session).toEqual({enabled:true,scope:'chat'});
+  expect(debug.prompt_source).toBe('saved_generation');
   expect(debug.generation.raw_prompt).toContain('サーモンのお寿司が好き');expect(debug.compiled).toEqual(p.last_generation.compiled);
   expect(debug.generation.raw_prompt).toContain('source: user_statement; story events are fictional, not user biography');
   expect(fixture.meta.get('memory-events:'+JSON.stringify(['fixture-owner','chat'])).map((e:any)=>e.op)).toEqual(['retrieve','inject','create','create','create']);
