@@ -17,6 +17,8 @@ export function rebindConversation(payload: AppEntity['payload'], id: string) {
 export function receiveConversation(payload: AppEntity['payload'], previous: AppEntity['payload'] | undefined,
   allocate: () => number) {
   const result = structuredClone(payload), ids = new Map<number, number>(), uuids = new Set<string>();
+  // An independent device/branch cannot resume another document's runtime worker.
+  if(result.pending_generation!=null)result.pending_generation=null;
   if (!Array.isArray(result.messages) || !Array.isArray(result.memories) || !Array.isArray(result.summaries)) throw Error('Invalid conversation');
   result.state = RuntimeStateSchema.parse(result.state);
   const oldMessages = new Map((previous?.messages ?? []).map((m: any) => [m.uuid, m.id]));

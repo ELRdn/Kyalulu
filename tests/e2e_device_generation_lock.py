@@ -69,6 +69,8 @@ async def main():
             assert await saved() == before
             # Closing a document releases its real platform lock without a timer/heartbeat guess.
             await first.close()
+            await second.wait_for_function('(name)=>navigator.locks.query().then(state=>!state.held.some(lock=>lock.name===name))',
+                                           arg=before['status']['execution_lock'])
             rejected = await second.evaluate('''async ([path,key])=>{
               const put=IDBObjectStore.prototype.put;
               IDBObjectStore.prototype.put=function(value,k){

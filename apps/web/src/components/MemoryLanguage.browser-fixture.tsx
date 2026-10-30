@@ -63,6 +63,7 @@ export async function rejectEventWrite(memoryId:string) {
 export async function remoteDeletionWithUnsentMemory() {
   const owner='memory-language-fixture',original=(await entity(sessionId,owner))!;
   await saveEntity({...original,payload:{...original.payload,storage_policy:'sync',draft:'UNSENT MEMORY DRAFT',state:RuntimeStateSchema.parse({session_id:sessionId}),
+    pending_generation:'fictional-orphaned-worker',
     messages:[{id:1,uuid:'fictional-source-message',role:'user',content:'Fictional unsent source'}]}},original.revision);
   await setSyncConsent(owner,true);
   await receiveSyncPage(owner,[{id:sessionId,kind:'conversation',revision:2,deleted:true,payload:{}}],1);

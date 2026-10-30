@@ -76,6 +76,19 @@ it('sends only the first 50 dirty sync records in key order and counts device-on
   expect(syncState()).toMatchObject({phase:'saved',pending:6});expect(get('chat-50').dirty).toBe(true);
 });
 
+it('retains a different document pending conversation until execution is durably finished',async()=>{
+  const sent:any[]=[];outgoingServer(sent);
+  const pending={...local('pending'),dirty:true,payload:{...local('pending').payload,pending_generation:'active-worker',draft:'keep unsent draft'}};
+  put(pending);put({...local('ready'),dirty:true});
+  await syncNow('owner-a');
+  expect(sent).toHaveLength(1);expect(sent[0].changes.map((e:any)=>e.id)).toEqual(['ready']);
+  expect(get('pending')).toEqual(pending);expect(syncState()).toMatchObject({phase:'saved',pending:1});
+  put({...pending,revision:2,payload:{...pending.payload,pending_generation:null}});
+  await syncNow('owner-a');
+  expect(sent).toHaveLength(2);expect(sent[1].changes.map((e:any)=>e.id)).toEqual(['pending']);
+  expect(get('pending').payload.draft).toBe('keep unsent draft');expect(get('pending').dirty).toBe(false);
+});
+
 it.each([true,false])('prioritizes the first deletion beyond the cap and preserves exact confirmation (%s)',async confirmed=>{
   const sent:any[]=[];outgoingServer(sent,true);
   for(let index=0;index<55;index++)put({...local('chat-'+index),dirty:true});

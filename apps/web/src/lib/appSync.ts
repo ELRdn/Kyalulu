@@ -287,8 +287,8 @@ function prepareSyncBatch(owner:string) {
       if(!current())return;
       const cursor=read.result;
       if(!cursor){prepare();return;}
-      const record=cursor.value as StoredEntity;
-      if(record.dirty&&entitySelection(record).storage_policy==='sync'){
+      const record=cursor.value as StoredEntity,selection=entitySelection(record);
+      if(record.dirty&&selection.storage_policy==='sync'&&!selection.pending_generation){
         // Keep scanning beyond the cap: the first deletion takes the entire batch.
         if(record.deleted){selected.length=0;selected.push(record);prepare();return;}
         if(selected.length<50)selected.push(record);
