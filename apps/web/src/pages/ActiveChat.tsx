@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   fetchHistory,
+  fetchHistoryPage,
   fetchSessions,
   clearHistory,
   streamChat,
@@ -27,6 +28,7 @@ import {
   type SlashCommand,
   type CommandResult,
   type ChatMessage,
+  type HistoryPage,
   type SessionInfo,
   type SessionSettings,
   type PromptPreset,
@@ -174,6 +176,8 @@ function ActiveChatSession() {
   const [confirmDialog, confirm] = useConfirm();
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [messages, setMessages] = useState<(ChatMessage & { id?: number })[]>([]);
+  const [historyPage,setHistoryPage]=useState<HistoryPage|null>(null),[historyLoading,setHistoryLoading]=useState(false);
+  const historyRequestRef=useRef(0),historyBusyRef=useRef(false);
   const [streaming, setStreaming] = useState(false);
   const {cloud_mode} = useRuntimeAccess();
   const [cloudRoute,setCloudRoute] = useState<CloudRouteChoice>(defaultCloudRoute);
@@ -182,6 +186,8 @@ function ActiveChatSession() {
   const online = executionTarget() === 'device' || networkOnline;
   const [error, setError] = useState<string | null>(null);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const editingRef=useRef<number|null>(null);
+  editingRef.current=editingIdx;
   const [editText, setEditText] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
   const [temperature, setTemperature] = useState(0.8);
@@ -224,7 +230,7 @@ function ActiveChatSession() {
   const mountedRef = useRef(true);
   const [settingsReady, setSettingsReady] = useState(false);
   const [historyReady, setHistoryReady] = useState(false);
-  const tutorial = useFirstChatTutorial(settingsReady && historyReady && !messages.some(message => message.role === 'user'));
+  const tutorial = useFirstChatTutorial(settingsReady && historyReady && !historyPage?.previous && !messages.some(message => message.role === 'user'));
   const tutorialRef = useRef<HTMLElement>(null);
   const tutorialButtonRef = useRef<HTMLButtonElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
@@ -264,16 +270,15 @@ function ActiveChatSession() {
     stopRef.current = null;
     sendingRef.current = false;
     setStreaming(false);
-    setMessages(history.filter(m => m.role !== "system"));
-    setBaselineModel(conversationModel(history));
-    setHistoryReady(true);
+    if(executionTarget()==='device')void loadHistory(sessionId);
+    else{setMessages(history.filter(m => m.role !== "system"));setBaselineModel(conversationModel(history));setHistoryReady(true);}
     void loadSessions();
   }, confirm);
   const input = recovery.input;
   const setInput = recovery.change;
   const mutationLocked = streaming || recovery.unresolved || sessionAction;
   useEffect(() => { setGenerationBusy(mutationLocked); return () => setGenerationBusy(false); }, [mutationLocked]);
-  const mutationBlocked = () => !mountedRef.current || sendingRef.current || sessionActionRef.current || recovery.blocked();
+  const mutationBlocked = () => !mountedRef.current || sendingRef.current || sessionActionRef.current || historyBusyRef.current || recovery.blocked();
 
 
   const activeCharacter = characters.find((c: any) => c.id === characterId) as any;
@@ -306,20 +311,27 @@ function ActiveChatSession() {
     }
   };
 
-  const loadHistory = async (sid: string) => {
+  const loadHistory = async (sid: string,cursor?:HistoryPage['previous']) => {
     const gen = sessionGenRef.current;
     const epoch = requestEpochRef.current;
+    const request=++historyRequestRef.current,scope=connectionScope();
+    historyBusyRef.current=true;setHistoryLoading(true);
     try {
-      const h = await fetchHistory(sid);
-      if (gen !== sessionGenRef.current || epoch !== requestEpochRef.current || sid !== activeSessionRef.current) return;
+      const page=executionTarget()==='device'?await fetchHistoryPage(sid,cursor):null;
+      const h = page?.history??await fetchHistory(sid);
+      if (gen !== sessionGenRef.current || epoch !== requestEpochRef.current || request!==historyRequestRef.current || scope!==connectionScope() || sid !== activeSessionRef.current) return;
+      if(editingRef.current!==null)return;
       const filtered = h.filter((x) => x.role !== "system");
       chatReopenedAnalytics(analyticsLoadedSession, sid, filtered.some(message => message.content.trim().length > 0));
       setMessages(filtered);
+      setHistoryPage(page);
       setBaselineModel(conversationModel(h));
       setHistoryReady(true);
       setError(null);
     } catch (e) {
-      if (gen === sessionGenRef.current) setError(`履歴の取得に失敗: ${String(e)}`);
+      if (gen === sessionGenRef.current&&request===historyRequestRef.current&&scope===connectionScope())setError(friendlyError(e).message);
+    } finally {
+      if(mountedRef.current&&request===historyRequestRef.current){historyBusyRef.current=false;setHistoryLoading(false);}
     }
   };
 
@@ -435,6 +447,7 @@ function ActiveChatSession() {
     if (msg.id) {
       try {
         await updateHistoryMessage(msg.id, newContent);
+        editingRef.current=null;setEditingIdx(null);setEditText("");
         await loadHistory(sessionId);
         await loadSessions();
       } catch (e) {
@@ -585,6 +598,10 @@ function ActiveChatSession() {
     requestEpochRef.current += 1;
     sendingRef.current = false;
     setMessages([]);
+    setHistoryPage(null);
+    editingRef.current=null;
+    setEditingIdx(null);
+    setEditText("");
     setDebugData(null);
     setSuggestions(null);
     if (stopRef.current) {
@@ -599,7 +616,7 @@ function ActiveChatSession() {
 
   // 自動保存：設定変更から800ms後にDBへ永続化（セッション世代で古い保存を無効化）
   useEffect(() => {
-    if (!settingsLoadedRef.current || mutationLocked) return;
+    if (!settingsLoadedRef.current || mutationLocked || historyLoading) return;
     if (autoSaveTimer.current) window.clearTimeout(autoSaveTimer.current);
     const settings: SessionSettings = { session_id: sessionId, system_prompt: systemPrompt, temperature, character_id: characterId, persona_id: personaId, world_id: worldId, intro, library_binding: libraryBinding };
     const snapshot = settingsSnapshot(settings);
@@ -623,7 +640,7 @@ function ActiveChatSession() {
         autoSaveTimer.current = null;
       }
     };
-  }, [systemPrompt, temperature, characterId, personaId, worldId, intro, sessionId, libraryBinding, mutationLocked]);
+  }, [systemPrompt, temperature, characterId, personaId, worldId, intro, sessionId, libraryBinding, mutationLocked, historyLoading]);
 
   // Ctrl+Shift+D: Researcherのみデバッグドロワーを開閉（設定Sheetはギアボタンで開く）
   useEffect(() => {
@@ -714,7 +731,7 @@ function ActiveChatSession() {
     try {
       await deleteSessionData(sessionId);
       if (scope !== connectionScope()) return;
-      if (mountedRef.current) { setMessages([]); setDebugData(null); setVersionTick(value => value + 1); }
+      if (mountedRef.current) { setMessages([]); setHistoryPage(null);setDebugData(null); setVersionTick(value => value + 1); }
       try { recovery.erase(); eraseReplyVersions(sessionId); }
       catch (error) { if (mountedRef.current) setError(`サーバーの会話データは消去しましたが、この端末の下書き・返信履歴の消去を確認できません。${String(error)}`); return; }
       if (mountedRef.current) navigate('/chats');
@@ -766,6 +783,7 @@ function ActiveChatSession() {
   };
 
   const send = async (regenerateId?: number, request?: string) => {
+    if(historyPage?.next)return;
     if (mutationBlocked() || commandRunning || !online) return;
     const submittedDraft = input;
     const text = submittedDraft.trim();
@@ -863,9 +881,9 @@ function ActiveChatSession() {
 
   const lastMsg = messages.at(-1);
   const replyVersions = useMemo(
-    () => (lastMsg?.role === "assistant" && lastMsg.id ? getReplyVersions(sessionId, lastMsg.id) : null),
+    () => (!historyPage?.next&&lastMsg?.role === "assistant" && lastMsg.id ? getReplyVersions(sessionId, lastMsg.id) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sessionId, lastMsg?.id, versionTick],
+    [sessionId, lastMsg?.id, versionTick,historyPage?.next],
   );
   const showVersion = async (index: number) => {
     if (mutationBlocked()) return;
@@ -915,7 +933,7 @@ function ActiveChatSession() {
   const railPinned = railSessions.filter((s) => pinned.includes(s.session_id));
   const railRecent = railSessions.filter((s) => !pinned.includes(s.session_id));
   const worldNameOf = (id?: string | null) => worlds.find((w) => w.id === id)?.display_name;
-  const canRegenerate = !!capabilities?.features.regenerate && !mutationLocked && messages.at(-1)?.role === "assistant" && !!messages.at(-1)?.id && messages.at(-2)?.role === "user";
+  const canRegenerate = !!capabilities?.features.regenerate && !mutationLocked && !historyLoading && !historyPage?.next && messages.at(-1)?.role === "assistant" && !!messages.at(-1)?.id && messages.at(-2)?.role === "user";
   const chatStatus = !online ? (en ? 'Waiting for connection' : '接続待ち') : quote ? (en ? 'Waiting for storage and training consent' : '保存・学習利用への同意待ち') : streaming ? (en ? 'Waiting for a reply…' : REPLY_WAIT_LABEL) : recovery.unresolved ? (en ? 'Checking the send result…' : '送信結果を確認中…')
     : settingsReady && historyReady && modelAvailable ? (en ? 'Ready to chat' : '会話の準備完了') : (en ? 'Preparing conversation…' : '会話を準備中…');
   const starters = hasCharacter
@@ -944,8 +962,8 @@ function ActiveChatSession() {
       memoryRef={memoryRef}
       settings={{ personaId, personas, worldId, worlds, systemPrompt, setPersonaId, setWorldId, setSystemPrompt, settingsReady, streaming: mutationLocked }}
       extras={<>
-        {capabilities?.features.summaries && <ConversationContext sessionId={sessionId} refreshKey={messages.length + (streaming ? 1 : 0)} disabled={mutationLocked} />}
-        {capabilities?.features.story_rules && <StoryRuntime sessionId={sessionId} refreshKey={messages.length + (streaming ? 1 : 0)} />}
+        {capabilities?.features.summaries && <ConversationContext key={sessionId} sessionId={sessionId} refreshKey={messages.length + (streaming ? 1 : 0)} disabled={mutationLocked} visible={panelDocked||ctxPanel.open} />}
+        {capabilities?.features.story_rules && <StoryRuntime key={sessionId} sessionId={sessionId} refreshKey={messages.length + (streaming ? 1 : 0)} visible={panelDocked||ctxPanel.open} />}
         {portableCharacter && capabilities?.features.media_playback && <PortableMedia assets={portableCharacter.document.assets} />}
         <div className="k-context-section"><Button size="sm" variant="danger" disabled={mutationLocked || !capabilities?.features.permanent_delete} onClick={() => void permanentlyDelete()}>{en ? 'Erase conversation data' : '会話データを完全消去'}</Button>
           <p className="k-context-note">{capabilities?.features.permanent_delete ? (en ? 'Erases text, generation results and related memories. This is separate from clearing only the displayed history.' : '本文・生成結果・関連記憶を消去します。履歴のみの削除とは別の操作です。') : (en ? 'Permanent erasure is unavailable on this connection.' : 'この接続先では完全消去に対応していません。')}</p></div>
@@ -1053,7 +1071,15 @@ function ActiveChatSession() {
           </div>
         </div>
 
-        <div ref={listRef} className="k-chat-messages">
+        <div ref={listRef} className="k-chat-messages" aria-busy={historyLoading}>
+          {historyPage&&!streaming&&!recovery.unresolved&&<nav aria-label={en?'Conversation history':'会話の履歴'} aria-busy={historyLoading} className="k-chat-history-nav">
+            <span>{historyPage.total?`${historyPage.start+1}–${historyPage.end} / ${historyPage.total}`:(en?'No saved messages':'保存済みの発言なし')}</span>
+            <Button size="sm" variant="ghost" disabled={historyLoading||mutationLocked||editingIdx!==null||!historyPage.previous} onClick={()=>void loadHistory(sessionId,historyPage.previous)}>{en?'Earlier':'前へ'}</Button>
+            <Button size="sm" variant="ghost" disabled={historyLoading||mutationLocked||editingIdx!==null||!historyPage.next} onClick={()=>void loadHistory(sessionId,historyPage.next)}>{en?'Later':'次へ'}</Button>
+            <Button size="sm" variant="ghost" disabled={historyLoading||mutationLocked||editingIdx!==null} onClick={()=>void loadHistory(sessionId)}>{en?'Latest':'最新'}</Button>
+            {historyPage.next&&<span role="status">{en?'Return to latest before sending. Your draft is kept.':'送信するには「最新」へ戻ってね。下書きは保持されます。'}</span>}
+          </nav>}
+          {historyLoading&&<p role="status" className="k-context-note">{en?'Loading saved history…':'保存済みの履歴を読み込んでいます…'}</p>}
           {tutorial.open && <FirstChatTutorial step={tutorial.step} cloud={!!cloud_mode} device={executionTarget() === 'device'} language={language} inspectorAvailable={administrative}
             storageFailed={tutorial.storageFailed} panelRef={tutorialRef} onNext={tutorial.next} onBack={tutorial.back}
             onSkip={() => dismissTutorial('skipped')} onComplete={() => dismissTutorial('completed')}
@@ -1063,7 +1089,7 @@ function ActiveChatSession() {
             onOpenInspector={() => { if (administrative) { setResearcher(true); setDebugOpen(true); } }} />}
           {visualNovel && <VisualNovelScene name={headerName} messages={messages} streaming={streaming} cloud={cloud_mode} assets={capabilities?.features.media_playback ? portableCharacter?.document.assets ?? [] : []} />}
           <div className="k-chat-messages__inner" hidden={visualNovel}>
-            {messages.length === 0 && settingsReady && (
+            {messages.length === 0 && settingsReady && historyReady && !historyLoading && (
               <div className="k-chat-welcome">
                 <div className="k-chat-welcome__art">
                   <Avatar name={headerName} seed={characterId ?? sessionId} size="xl" src={portrait} mascot={!hasCharacter} />
@@ -1253,7 +1279,7 @@ function ActiveChatSession() {
             onSend={() => void send()}
             onStop={handleStop}
             streaming={streaming}
-            sendBlocked={!capabilities || sessionAction || recovery.unresolved || commandRunning || !online || (!modelAvailable && !input.trim().startsWith("/"))}
+            sendBlocked={!capabilities || sessionAction || recovery.unresolved || historyLoading || !!historyPage?.next || commandRunning || !online || (!modelAvailable && !input.trim().startsWith("/"))}
             disabled={!settingsReady || !historyReady}
             disabledText={!modelId ? (modelsFailed ? (en ? 'Cannot connect to the server. Check that the app is running.' : 'サーバーに接続できません。アプリの起動状態を確認してね') : (en ? 'Preparing the conversation model…' : '会話エンジンを準備中…')) : (en ? 'Preparing conversation…' : '会話を準備中…')}
             placeholder={hasCharacter ? (en ? `Write a message to ${headerName}…` : `${headerName}への言葉を入力してね…`) : (en ? 'Write your message…' : 'きみの言葉を入力してね…')}
@@ -1503,6 +1529,7 @@ function ChatContextPanel({
 }) {
   const { personaId, personas, worldId, worlds, systemPrompt, setPersonaId, setWorldId, setSystemPrompt, settingsReady, streaming } = settings;
   const en = useLanguage() === 'en';
+  const [memoryOpen,setMemoryOpen]=useState(false),[memorySeen,setMemorySeen]=useState(false);
   return (
     <div className="k-context-panel">
       <div className="k-context-hero">
@@ -1549,11 +1576,13 @@ function ChatContextPanel({
         </div>
       </details>
       <StoryControls key={sessionId} value={systemPrompt} onChange={setSystemPrompt} disabled={!settingsReady || streaming} />
-      <div ref={memoryRef} tabIndex={-1} aria-label={en ? 'Memories' : '覚えていること'}>
+      <div ref={memoryRef} tabIndex={-1} aria-label={en ? 'Memories' : '覚えていること'} onFocus={event=>{if(event.target===event.currentTarget){setMemoryOpen(true);setMemorySeen(true);}}}>
+      <details className="k-context-section" open={memoryOpen} onToggle={event=>{if(event.target===event.currentTarget){setMemoryOpen(event.currentTarget.open);if(event.currentTarget.open)setMemorySeen(true);}}}>
+      <summary className="k-context-section__title">{en?'Memories':'覚えていること'}</summary>
       <fieldset className="k-chat-mutation-group" disabled={streaming}>
-      <MemoryPanel key={`${sessionId}:${characterId}:${personaId}`} sessionId={sessionId} refreshKey={memoryRefresh}
-      />
+      {memorySeen&&<MemoryPanel key={`${sessionId}:${characterId}:${personaId}`} sessionId={sessionId} refreshKey={memoryRefresh} visible={memoryOpen&&(docked||ctxPanel.open)} />}
       </fieldset>
+      </details>
       </div>
       {extras}
 

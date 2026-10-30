@@ -35,7 +35,7 @@ export const MEMORY_TYPE_LABEL: Record<'ja' | 'en', Record<MemoryType, string>> 
 const TYPES = Object.keys(MEMORY_TYPE_LABEL.ja) as MemoryType[];
 
 /** 会話パネルの「覚えていること」: 記憶の ON/OFF と、記憶の確認・訂正・削除・追加。 */
-export default function MemoryPanel({ sessionId, refreshKey, scopeOverride }: { sessionId: string; refreshKey: number; scopeOverride?: string }) {
+export default function MemoryPanel({ sessionId, refreshKey, scopeOverride,visible=true }: { sessionId: string; refreshKey: number; scopeOverride?: string;visible?:boolean }) {
   const language = useLanguage(), en = language === 'en', typeLabels = MEMORY_TYPE_LABEL[language];
   const { capabilities } = useCapabilities();
   const [confirmDialog, confirm] = useConfirm();
@@ -77,9 +77,10 @@ export default function MemoryPanel({ sessionId, refreshKey, scopeOverride }: { 
   }, [sessionId, scopeOverride]);
 
   useEffect(() => {
+    if(!visible)return;
     void load();
     return () => { sequence.current++; };
-  }, [load, refreshKey]);
+  }, [load, refreshKey,visible]);
 
   const run = async (fn: () => Promise<unknown>) => {
     if (busy || !active()) return;

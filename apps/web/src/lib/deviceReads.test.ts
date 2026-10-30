@@ -7,10 +7,24 @@ vi.mock('./appSync',()=>({hydrateConversation:vi.fn()}));
 vi.mock('../mobile/runtime',()=>({MobileRuntime:class{}}));
 vi.mock('../mobile/models',()=>({MODELS:[{id:'fixture',name:'Fixture',runtime:'gguf'}],readyModels:async()=>new Set(['fixture'])}));
 vi.mock('./appStore',async original=>{
+  const real=await original<typeof import('./appStore')>();
   const read=async(id:string,owner=fixture.owner)=>decoded(fixture.records.get(owner+':'+id),fixture.parts);
-  return {...await original<typeof import('./appStore')>(),
+  return {...real,
     allEntities:vi.fn(async(owner:string,kinds?:readonly string[])=>[...fixture.records.values()].filter(e=>e.owner===owner&&(!kinds||kinds.includes(e.kind))).map(value=>decoded(value,fixture.parts))),
     entity:vi.fn(read),openEntity:vi.fn(read),trimOfflineCache:vi.fn(async()=>{}),
+    conversationInfo:vi.fn(async(id:string,owner=fixture.owner)=>{
+      const value=fixture.records.get(owner+':'+id);return value&&{id,owner,revision:value.revision,pinned:value.pinned,opened:value.opened,deleted:value.deleted,selection:real.entitySelection(value)};
+    }),
+    conversationPage:vi.fn(async(id:string,owner=fixture.owner,limit=50,cursor?:any)=>{
+      const value=await read(id,owner);if(!value)return;
+      const {messages,...metadata}=value.payload,total=messages.length,end=cursor?.end??total,start=cursor?.start??Math.max(0,end-limit),bodyToken=fixture.records.get(owner+':'+id)?.payloadParts?.token??null;
+      const position=(start:number,end:number)=>({owner,id,revision:value.revision,bodyToken,start,end});
+      return {owner,id,revision:value.revision,bodyToken,metadata,messages:messages.slice(start,end),total,start,end,
+        ...(start?{previous:position(Math.max(0,start-limit),start)}:{}),...(end<total?{next:position(end,Math.min(total,end+limit))}:{})};
+    }),
+    readConversationSummary:vi.fn(async(id:string,owner=fixture.owner)=>{
+      const value=await read(id,owner);return value&&!value.deleted?real.conversationSummary(value.payload):undefined;
+    }),
     getMeta:vi.fn(async(key:string)=>structuredClone(fixture.meta.get(key))),
     setMeta:vi.fn(async(key:string,value:unknown)=>{fixture.meta.set(key,structuredClone(value));}),
     saveEntity:vi.fn(async(value:any,_revision:number,metadata:Record<string,unknown>={})=>{
@@ -25,7 +39,7 @@ vi.mock('./appStore',async original=>{
 });
 
 import { PortableDocumentSchema, RuntimeStateSchema } from '../../../../packages/schemas/src';
-import { allEntities, appTransaction, entity, getMeta, newEntity, openEntity, saveEntity, setMeta } from './appStore';
+import { allEntities, appTransaction, entity, getMeta, newEntity, openEntity, conversationInfo, conversationPage, readConversationSummary, writeEntity, trimOfflineCache, saveEntity, setMeta } from './appStore';
 import { deviceFetch } from './deviceApi';
 import { hydrateConversation } from './appSync';
 
@@ -35,6 +49,7 @@ const request=async(path:string,body?:unknown,method=body?'POST':'GET')=>{
 };
 const put=(value:ReturnType<typeof newEntity>)=>fixture.records.set(value.owner+':'+value.id,value);
 const saved=()=>decoded(fixture.records.get('owner-a:requested'),fixture.parts);
+const segment=(value:ReturnType<typeof newEntity>)=>appTransaction<void>(['entities'],'readwrite',(tx,done)=>writeEntity(tx,value,'put',done));
 const remote={source:'github',source_id:'fixture/card.json',sha256:'a'.repeat(64),document_index:0,content_rating:'sfw'};
 const document=PortableDocumentSchema.parse({name:'Saved character',source:{remote},data:{description:'Known character'}});
 const creatorId='created_'+'a'.repeat(32);
@@ -87,13 +102,116 @@ it.each([
   const before=structuredClone(fixture.records),response=await request(path);
   expect(response.status).toBe(200);expect(response.body).toMatchObject(expected);
   expect(allEntities).not.toHaveBeenCalled();expect(entity).not.toHaveBeenCalled();
-  expect(openEntity).toHaveBeenCalledExactlyOnceWith('requested','owner-a');expect(fixture.records).toEqual(before);
+  if(path.startsWith('/api/chat/settings')){
+    expect(openEntity).not.toHaveBeenCalled();expect(conversationInfo).toHaveBeenCalledExactlyOnceWith('requested','owner-a');expect(conversationPage).toHaveBeenCalledExactlyOnceWith('requested','owner-a',50,undefined);
+    for(const [key,value] of before){const {opened,...expected}=value;const {opened:actual,...record}=fixture.records.get(key);expect(record).toEqual(expected);if(key!=='owner-a:requested')expect(actual).toBe(opened);}
+  }else{expect(openEntity).toHaveBeenCalledExactlyOnceWith('requested','owner-a');expect(fixture.records).toEqual(before);}
 });
 
 it('refuses a migration preview while the source generation is pending',async()=>{
   const before=structuredClone(fixture.records);
   expect((await request('/api/memory/session/requested/scope-preview')).status).toBe(409);
   expect(fixture.records).toEqual(before);
+});
+
+it('routes history pages separately from full history and preserves cursor fields',async()=>{
+  const value=saved();value.payload.messages=Array.from({length:5},(_,i)=>({id:71-i,role:i%2?'assistant':'user',content:'Saved '+i,extension:{keep:i}}));put(value);
+  const before=structuredClone(fixture.records),latest=await request('/api/chat/history/page?session_id=requested&limit=2');
+  expect(latest).toEqual({status:200,body:{session_id:'requested',history:value.payload.messages.slice(3),total:5,start:3,end:5,revision:3,body_token:null,
+    previous:{owner:'owner-a',id:'requested',revision:3,bodyToken:null,start:1,end:3}}});
+  const cursor=latest.body.previous,older=await request('/api/chat/history/page?session_id=requested&limit=2&cursor='+encodeURIComponent(JSON.stringify(cursor)));
+  expect(older.status).toBe(200);expect(older.body).toMatchObject({history:value.payload.messages.slice(1,3),total:5,start:1,end:3,
+    previous:{...cursor,start:0,end:1},next:{...cursor,start:3,end:5}});
+  expect(conversationPage).toHaveBeenNthCalledWith(1,'requested','owner-a',2,undefined);
+  expect(conversationPage).toHaveBeenNthCalledWith(2,'requested','owner-a',2,cursor);
+  for(const operation of [allEntities,entity,openEntity,saveEntity,hydrateConversation])expect(operation).not.toHaveBeenCalled();
+  for(const [key,row] of before){const actual=fixture.records.get(key);expect(actual).toEqual(key==='owner-a:requested'?{...row,opened:expect.any(Number)}:row);}
+});
+
+it.each(['POST','PUT','DELETE'])('rejects %s history pages before reading or mutating storage',async method=>{
+  const before=structuredClone(fixture.records);
+  expect((await request('/api/chat/history/page?session_id=requested',undefined,method)).status).toBe(405);
+  expect(fixture.records).toEqual(before);
+  for(const operation of [conversationInfo,conversationPage,allEntities,openEntity,appTransaction])expect(operation).not.toHaveBeenCalled();
+});
+
+it('returns an empty missing page without creating or opening a conversation',async()=>{
+  const before=structuredClone(fixture.records);
+  expect(await request('/api/chat/history/page?session_id=missing')).toEqual({status:200,body:{session_id:'missing',history:[],total:0,start:0,end:0,revision:0,body_token:null}});
+  expect(fixture.records).toEqual(before);expect(appTransaction).not.toHaveBeenCalled();expect(saveEntity).not.toHaveBeenCalled();expect(openEntity).not.toHaveBeenCalled();
+});
+
+it('shares an in-flight default page between settings, history page and an uncached sessions summary',async()=>{
+  const value=saved();value.payload.messages=Array.from({length:63},(_,i)=>({id:i+1,role:'user',content:'Saved '+i,created_at:'2026-10-30T00:00:00Z'}));
+  await segment(value);delete fixture.records.get('owner-a:requested').selection.summary;vi.clearAllMocks();
+  const read=vi.mocked(conversationPage).getMockImplementation()!;let release!:()=>void;
+  const gate=new Promise<void>(resolve=>{release=resolve;});
+  vi.mocked(conversationPage).mockImplementationOnce(async(...args)=>{await gate;return read(...args);});
+  const settings=request('/api/chat/settings?session_id=requested'),page=request('/api/chat/history/page?session_id=requested');
+  await vi.waitFor(()=>expect(conversationPage).toHaveBeenCalledTimes(1));
+  const sessions=request('/api/chat/sessions');await vi.waitFor(()=>expect(appTransaction).toHaveBeenCalledWith(['entities'],'readonly',expect.any(Function)));
+  release();const [s,p,list]=await Promise.all([settings,page,sessions]);
+  expect(s).toEqual({status:200,body:value.payload.settings});
+  expect(p.status).toBe(200);expect(p.body).toMatchObject({history:value.payload.messages.slice(13),total:63,start:13,end:63});
+  expect(list.status).toBe(200);expect(list.body.sessions).toContainEqual(expect.objectContaining({session_id:'requested',count:63,last_preview:'Saved 62'}));
+  expect(conversationInfo).toHaveBeenCalledExactlyOnceWith('requested','owner-a');expect(conversationPage).toHaveBeenCalledExactlyOnceWith('requested','owner-a',50,undefined);
+  expect(readConversationSummary).not.toHaveBeenCalled();expect(openEntity).not.toHaveBeenCalled();
+  await request('/api/chat/history/page?session_id=requested');expect(conversationPage).toHaveBeenCalledTimes(2);
+});
+
+it('clears a failed in-flight page so settings and history can retry',async()=>{
+  vi.mocked(conversationPage).mockRejectedValueOnce(Error('Fictional corrupt body'));
+  const responses=await Promise.all([request('/api/chat/settings?session_id=requested'),request('/api/chat/history/page?session_id=requested')]);
+  for(const response of responses)expect(response).toEqual({status:400,body:{error:'Fictional corrupt body'}});
+  expect(conversationPage).toHaveBeenCalledTimes(1);
+  expect((await request('/api/chat/settings?session_id=requested')).status).toBe(200);expect(conversationPage).toHaveBeenCalledTimes(2);
+});
+
+it('does not share the old owner page or update opened after an account switch',async()=>{
+  const before=structuredClone(fixture.records),read=vi.mocked(conversationPage).getMockImplementation()!;let release!:()=>void;
+  const gate=new Promise<void>(resolve=>{release=resolve;});
+  vi.mocked(conversationPage).mockImplementationOnce(async(...args)=>{await gate;return read(...args);});
+  const pending=request('/api/chat/history/page?session_id=requested');await vi.waitFor(()=>expect(conversationPage).toHaveBeenCalledTimes(1));
+  fixture.owner='owner-b';const foreign=await request('/api/chat/history/page?session_id=requested');release();const stale=await pending;
+  expect(foreign.status).toBe(200);expect(foreign.body.history).toEqual([expect.objectContaining({content:'Foreign history'})]);
+  expect(stale.status).toBeGreaterThanOrEqual(400);expect(JSON.stringify(stale.body)).not.toMatch(/Requested history|Foreign history/);
+  expect(conversationPage).toHaveBeenNthCalledWith(2,'requested','owner-b',50,undefined);
+  expect(fixture.records.get('owner-a:requested')).toEqual(before.get('owner-a:requested'));
+  expect(fixture.records.get('owner-b:requested')).toEqual({...before.get('owner-b:requested'),opened:expect.any(Number)});
+});
+
+it('serves token-matched sessions summaries without reading missing conversation parts',async()=>{
+  const value=saved();Object.assign(value.payload,{title:'Recovered chat',recovery_from:'source'});
+  Object.assign(value.payload.settings,{character_id:'saved',world_id:'world@2'});value.payload.messages[0].content='茶🙂'.repeat(100);
+  await segment(value);fixture.parts.clear();vi.clearAllMocks();const before=structuredClone(fixture.records);
+  const response=await request('/api/chat/sessions');expect(response.status).toBe(200);
+  expect(response.body.sessions).toContainEqual(expect.objectContaining({session_id:'requested',count:1,last_preview:value.payload.messages[0].content.slice(0,160),
+    character_id:'saved',character_name:'Saved character',world_id:'world@2',sync_recovery:true,offline_available:true}));
+  expect(allEntities).toHaveBeenCalledExactlyOnceWith('owner-a',['character']);
+  for(const operation of [readConversationSummary,conversationInfo,conversationPage,openEntity,hydrateConversation])expect(operation).not.toHaveBeenCalled();
+  expect(fixture.records).toEqual(before);expect(fixture.parts.size).toBe(0);
+});
+
+it.each(['token','missing','count','preview'])('falls back to a bounded sessions summary for an invalid cached %s',async field=>{
+  const value=saved();await segment(value);const row=fixture.records.get('owner-a:requested');
+  if(field==='token')row.selection.summary.token='stale-token';
+  if(field==='missing')delete row.selection.summary;
+  if(field==='count')row.selection.summary.count=-1;
+  if(field==='preview')row.selection.summary.last_preview='x'.repeat(161);
+  vi.clearAllMocks();const before=structuredClone(fixture.records),response=await request('/api/chat/sessions');
+  expect(response.status).toBe(200);expect(response.body.sessions).toContainEqual(expect.objectContaining({session_id:'requested',count:1,last_preview:'Requested history'}));
+  expect(readConversationSummary).toHaveBeenCalledExactlyOnceWith('requested','owner-a');expect(fixture.records).toEqual(before);
+  for(const operation of [conversationPage,openEntity,hydrateConversation,saveEntity])expect(operation).not.toHaveBeenCalled();
+});
+
+it.each(['inline','segmented'])('lists an old %s evicted stub without hydration or changing opened',async storage=>{
+  const value=saved();Object.assign(value.payload,{messages:[],cache_evicted:true,cache_preview:{count:103,last_at:'2026-10-31T00:00:00Z',last_preview:'Remote preview'},title:'Old stub'});
+  if(storage==='segmented'){await segment(value);delete fixture.records.get('owner-a:requested').selection.summary;}else put(value);
+  vi.clearAllMocks();const before=structuredClone(fixture.records),parts=structuredClone(fixture.parts),response=await request('/api/chat/sessions');
+  expect(response.status).toBe(200);expect(response.body.sessions[0]).toMatchObject({session_id:'requested',count:103,last_at:'2026-10-31T00:00:00Z',last_preview:'Remote preview',character_name:'Old stub',offline_available:false});
+  expect(fixture.records).toEqual(before);expect(fixture.parts).toEqual(parts);
+  for(const operation of [conversationInfo,conversationPage,openEntity,hydrateConversation,trimOfflineCache,saveEntity])expect(operation).not.toHaveBeenCalled();
+  expect(vi.mocked(readConversationSummary).mock.calls).toEqual(storage==='segmented'?[['requested','owner-a']]:[]);
 });
 
 it('preserves immutable bindings, pending generation and unsent input when saving settings',async()=>{
@@ -181,7 +299,7 @@ it.each([
 });
 
 it.each([
-  ['/api/chat/sessions','sessions',{session_id:'requested',count:1,last_preview:'Requested history'},undefined],
+  ['/api/chat/sessions','sessions',{session_id:'requested',count:1,last_preview:'Requested history'},['character']],
   ['/api/library','items',{id:'saved',document:expect.objectContaining({name:'Saved character'})},['character','preset']],
   ['/api/characters','characters',{id:'saved',display_name:'Saved character'},['character']],
   ['/api/worlds','worlds',{asset_id:creatorId,display_name:'Saved world'},['world']],

@@ -2,9 +2,10 @@
 <p>Fictional accounts, fresh contexts and loopback modules only. Bounded fixtures; no capacity claim.</p>
 <script type="module">
 import history from './unified-history.json';
-import {appTransaction,entity,allEntities,newEntity,saveEntity,openEntity,conversationPage,writeEntity,writeOutbox,restoreOutbox,getMeta,setMeta} from '/src/lib/appStore.ts';
+import {appTransaction,entity,allEntities,newEntity,saveEntity,openEntity,conversationInfo,conversationSummary,readConversationSummary,conversationPage,writeEntity,writeOutbox,restoreOutbox,getMeta,setMeta} from '/src/lib/appStore.ts';
 import {rememberOwner,setGenerationBusy} from '/src/lib/appContext.ts';
 import {Sha256} from '/src/mobile/sha256.ts';
+import {JsonStream} from '/src/lib/jsonStream.ts';
 import {receiveSyncPage,syncNow,syncState,setSyncConsent,reconfirmDeletion} from '/src/lib/appSync.ts';
 import {canonical} from '/src/lib/appSyncData.ts';
 import {fixedOutbox} from './storage-fixture.ts';
@@ -26,6 +27,75 @@ const physical=()=>appTransaction(['entities','meta','parts'],'readonly',(tx,don
 const header=()=>appTransaction(['entities'],'readonly',(tx,done)=>{const read=tx.objectStore('entities').get([owner,'history']);read.onsuccess=()=>done(read.result);});
 async function rejected(action,message){let failed=false;try{await action();}catch{failed=true;}check(failed,message);}
 async function run(){
+  if(scenario.startsWith('summary-')){
+    const value=seed();value.payload={messages:Array.from({length:63},(_,i)=>({id:i+1,role:'user',content:'茶🙂'.repeat(100)+i,created_at:'2026-10-30T00:00:00Z'})),
+      settings:{session_id:value.id,system_prompt:'KEEP',character_id:'missing-character',world_id:'world@2'},title:'Summary fixture',storage_policy:'local',recovery_from:'source'};
+    await save(value);const raw=await physical(),stored=await header(),expected=conversationSummary(value.payload);
+    same(stored.selection.summary,{...expected,token:stored.payloadParts.token},'Saved summary does not match body token');
+    if(scenario==='summary-read'){
+      const get=IDBObjectStore.prototype.get,reads=[];
+      IDBObjectStore.prototype.get=function(key){if(this.name==='parts')reads.push(key);return get.call(this,key);};
+      try{
+        same(await conversationInfo(value.id,owner),{id:value.id,owner,revision:7,pinned:false,opened:1,deleted:false,selection:stored.selection},'Info changed header fields');
+        check(reads.length===0,'Conversation info read body parts');
+        const finish=JsonStream.prototype.finish,windows=[];
+        JsonStream.prototype.finish=function(){const result=finish.call(this);windows.push(result.messages.length);return result;};
+        try{same(await readConversationSummary(value.id,owner),expected,'Summary lost total count or final preview');}
+        finally{JsonStream.prototype.finish=finish;}
+        same(windows,[1],'Summary retained more than the final message');check(reads.length===stored.payloadParts.chunks,'Summary did not validate every part');
+        const {deviceFetch}=await import('/src/lib/deviceApi.ts');reads.length=0;
+        const cached=await deviceFetch('/api/chat/sessions'),cachedBody=await cached.json();check(cached.ok,'Cached sessions request failed');
+        same(cachedBody.sessions,[{session_id:value.id,count:63,last_at:expected.last_at,last_preview:expected.last_preview,character_id:'missing-character',
+          character_name:value.payload.title,world_id:'world@2',nsfw:false,sync_recovery:true,offline_available:true}],'Cached sessions fields changed');
+        check(reads.length===0,'Token-matched sessions read a body');
+        await appTransaction(['entities'],'readwrite',(tx,done)=>{tx.objectStore('entities').put({...stored,selection:{...stored.selection,summary:{...stored.selection.summary,token:'stale',count:999,last_preview:'STALE'}}});done();});
+        const before=await physical();reads.length=0;
+        const fallback=await deviceFetch('/api/chat/sessions');check(fallback.ok,'Stale summary fallback failed');same(await fallback.json(),cachedBody,'Stale summary was trusted');
+        check(reads.length===stored.payloadParts.chunks,'Stale summary did not read verified body');same(await physical(),before,'Summary fallback changed storage');
+        const stub={...value,id:'legacy-stub',opened:2,payload:{messages:[],settings:{session_id:'legacy-stub'},title:'Old stub',cache_evicted:true,
+          cache_preview:{count:103,last_at:'2026-10-31T00:00:00Z',last_preview:'Remote preview'}}};
+        await appTransaction(['entities'],'readwrite',(tx,done)=>{tx.objectStore('entities').put(stub);done();});
+        await save({...stub,id:'segmented-stub'});
+        await appTransaction(['entities'],'readwrite',(tx,done)=>{const read=tx.objectStore('entities').get([owner,'segmented-stub']);read.onsuccess=()=>{const row=read.result;delete row.selection.summary;tx.objectStore('entities').put(row);done();};});
+        const stubsBefore=await physical(),stubs=await deviceFetch('/api/chat/sessions');check(stubs.ok,'Old evicted stubs failed to list');
+        const sessions=(await stubs.json()).sessions;
+        for(const id of ['legacy-stub','segmented-stub'])same(sessions.find(s=>s.session_id===id),{session_id:id,count:103,last_at:stub.payload.cache_preview.last_at,
+          last_preview:'Remote preview',character_id:null,character_name:'Old stub',world_id:null,nsfw:false,sync_recovery:false,offline_available:false},'Evicted preview changed');
+        same(await readConversationSummary('legacy-stub',owner),conversationSummary(stub.payload),'Inline evicted count lost');
+        same(await readConversationSummary('segmented-stub',owner),conversationSummary(stub.payload),'Segmented evicted count lost');
+        same(await physical(),stubsBefore,'Listing hydrated an evicted stub or changed opened');
+      }finally{IDBObjectStore.prototype.get=get;}
+      probes.push('header-only-info','token-matched-summary','stale-summary-fallback','bounded-last-message','inline-and-segmented-evicted-readonly');return;
+    }
+    if(scenario==='summary-corrupt'){
+      await appTransaction(['parts'],'readwrite',(tx,done)=>{tx.objectStore('parts').delete([owner,'entity',value.id,stored.payloadParts.token,0]);done();});
+      const before=await physical();check((await conversationInfo(value.id,owner)).revision===7,'Header info required body');
+      await rejected(()=>readConversationSummary(value.id,owner),'Summary accepted missing body');
+      const {deviceFetch}=await import('/src/lib/deviceApi.ts');check((await deviceFetch('/api/chat/sessions')).ok,'Valid cached summary required body');
+      await appTransaction(['entities'],'readwrite',(tx,done)=>{tx.objectStore('entities').put({...stored,selection:{...stored.selection,summary:{...stored.selection.summary,token:'stale'}}});done();});
+      const stale=await physical(),response=await deviceFetch('/api/chat/sessions');check(!response.ok,'Stale cached summary concealed missing body');
+      same(await physical(),stale,'Corrupt summary read rewrote data');
+      await appTransaction(['entities'],'readwrite',(tx,done)=>{tx.objectStore('entities').put(stored);done();});same(await physical(),before,'Header restore changed body');
+      await appTransaction(['entities'],'readwrite',(tx,done)=>{tx.objectStore('entities').put({...value,id:'invalid-inline',payload:{messages:{invalid:true}}});done();});
+      const invalid=await physical();check(!(await deviceFetch('/api/chat/sessions')).ok,'Invalid inline summary did not reject');
+      same(await physical(),invalid,'Invalid inline summary rewrote data');
+      probes.push('info-independent-of-body','summary-integrity','stale-cache-fails-closed');return;
+    }
+    if(scenario==='summary-owner'){
+      for(const operation of [conversationInfo,readConversationSummary]){
+        await rejected(()=>operation(value.id,foreign),'Foreign owner accepted');
+        const get=IDBObjectStore.prototype.get;let changed=false;
+        IDBObjectStore.prototype.get=function(key){const request=get.call(this,key);if(this.name===(operation===conversationInfo?'entities':'parts')&&!changed)request.addEventListener('success',()=>{changed=true;rememberOwner(foreign);},{once:true});return request;};
+        try{await rejected(()=>operation(value.id,owner),'Owner change during read accepted');}finally{IDBObjectStore.prototype.get=get;rememberOwner(owner);}
+        check(changed,'Owner fault did not reach read');
+        const transaction=IDBDatabase.prototype.transaction;
+        IDBDatabase.prototype.transaction=function(...args){const tx=transaction.apply(this,args);tx.addEventListener('complete',()=>rememberOwner(foreign),{once:true});return tx;};
+        try{await rejected(()=>operation(value.id,owner),'Owner change at completion accepted');}finally{IDBDatabase.prototype.transaction=transaction;rememberOwner(owner);}
+      }
+      same(await physical(),raw,'Owner guard changed storage');probes.push('info-and-summary-owner-fences','read-and-completion-fences');return;
+    }
+    throw Error('Unknown summary scenario');
+  }
   if(scenario.startsWith('page-')){
     const value=seed(),messages=Array.from({length:25},(_,i)=>({id:100-i*3,uuid:'page-'+i,role:i%2?'assistant':'user',content:'茶🙂'.repeat(20000)+i,unknown:{keep:i}}));
     value.payload={messages,title:'Page fixture',storage_policy:'local',unknown:JSON.parse('{"__proto__":{"keep":true}}')};await save(value);

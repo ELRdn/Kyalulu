@@ -1,5 +1,7 @@
 import { apiFetch as fetch } from './transport';
 import type { Language } from './appContext';
+import { executionTarget, deviceOwner } from './appContext';
+import type { ConversationPageCursor } from './appStore';
 import { SSEDecoder } from "./sse";
 import { cloudJson, isCloud } from './cloud';
 import type { GenerationRecord } from "../../../../packages/schemas/src";
@@ -225,6 +227,28 @@ export async function fetchHistory(sessionId?: string, signal?: AbortSignal): Pr
   const r = await fetch(url, { signal, cache: "no-store", headers: { "Cache-Control": "no-cache" } });
   const j = await checkedJson(r);
   return j.history ?? [];
+}
+export type HistoryPage={session_id:string;history:(ChatMessage&{id?:number;created_at?:string;session_id?:string})[];
+  revision:number;body_token:string|null;total:number;start:number;end:number;previous?:ConversationPageCursor;next?:ConversationPageCursor};
+export async function fetchHistoryPage(sessionId:string,cursor?:ConversationPageCursor,signal?:AbortSignal):Promise<HistoryPage> {
+  const owner=deviceOwner();
+  if(executionTarget()!=='device')throw Error('History pages require on-device execution');
+  const integer=(value:unknown)=>Number.isSafeInteger(value)&&Number(value)>=0;
+  if(cursor!==undefined&&(!cursor||cursor.owner!==owner||cursor.id!==sessionId||!integer(cursor.revision)||!integer(cursor.start)||!integer(cursor.end)
+    ||cursor.start>cursor.end||cursor.end-cursor.start>50||cursor.bodyToken!==null&&typeof cursor.bodyToken!=='string'))throw Error('Invalid history cursor');
+  const requested=cursor&&{...cursor};
+  const query=new URLSearchParams({session_id:sessionId,limit:'50'});if(requested)query.set('cursor',JSON.stringify(requested));
+  const j=await checkedJson(await fetch('/api/chat/history/page?'+query,{signal,cache:'no-store'}));
+  signal?.throwIfAborted();
+  if(executionTarget()!=='device'||deviceOwner()!==owner)throw Error('Connection changed');
+  if(!j||j.session_id!==sessionId||!integer(j.revision)||!integer(j.total)||!integer(j.start)||!integer(j.end)||j.start>j.end||j.end>j.total
+    ||j.body_token!==null&&typeof j.body_token!=='string'||!Array.isArray(j.history)||j.history.length!==j.end-j.start||j.history.length>50
+    ||j.history.some((m:any)=>!m||!['system','user','assistant'].includes(m.role)||typeof m.content!=='string'||m.id!==undefined&&(!integer(m.id)||m.id===0)))throw Error('Invalid history page');
+  if(requested?(j.start!==requested.start||j.end!==requested.end||j.revision!==requested.revision||j.body_token!==requested.bodyToken):j.end!==j.total||j.start!==Math.max(0,j.total-50))throw Error('History page changed');
+  const position=(p:any,start:number,end:number)=>p&&p.owner===owner&&p.id===sessionId&&p.revision===j.revision&&p.bodyToken===j.body_token&&p.start===start&&p.end===end;
+  if(j.start>0?!position(j.previous,Math.max(0,j.start-50),j.start):j.previous!==undefined)throw Error('Invalid previous history page');
+  if(j.end<j.total?!position(j.next,j.end,Math.min(j.total,j.end+50)):j.next!==undefined)throw Error('Invalid next history page');
+  return j;
 }
 
 export async function updateHistoryMessage(id: number, content: string): Promise<void> {

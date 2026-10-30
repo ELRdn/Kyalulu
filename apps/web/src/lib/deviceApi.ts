@@ -2,7 +2,7 @@ import { PortableDocumentSchema, DeviceGenerationOutputSchema, RuntimeStateSchem
 import catalog from '../mobile/app-catalog.generated.json';
 import { MobileRuntime } from '../mobile/runtime';
 import { MODELS, readyModels } from '../mobile/models';
-import { allEntities, entity, openEntity, saveEntity, newEntity, getMeta, setMeta, appTransaction, writeEntity, scrubGenerationRecords, memoryEventsKey, trimOfflineCache, type AppEntity, type EntityKind } from './appStore';
+import { allEntities, entity, openEntity, conversationInfo, conversationPage, conversationSummary, readConversationSummary, saveEntity, newEntity, getMeta, setMeta, appTransaction, writeEntity, scrubGenerationRecords, memoryEventsKey, trimOfflineCache, type AppEntity, type EntityKind, type ConversationPage, type ConversationPageCursor, type ConversationSummary } from './appStore';
 import { deviceOwner, setGenerationBusy } from './appContext';
 import { estimateTokens, retrieveMemories, renderMemoryBlock, prepareRpg, memoryDecisions, evidenced, refreshSummaries,deviceResponseGrammar, type DeviceMemory } from './deviceCore';
 import { receiveConversation, rebindConversation } from './appSyncData';
@@ -19,6 +19,7 @@ import { recoverDeviceMemoryGeneration,readDeviceMemoryDomain } from './deviceMe
 import { scopedSessionMemory,scopedMemoryRows,saveScopedMemory,deviceMemoryScope,type ScopedMemory } from './deviceScopedMemory';
 import { memoryIdentity,memoryBinding,memoryPolicy,ownScopeMemories,appendScopeEvent } from './deviceMemoryScopes';
 import { scopedMemoryRoute } from './deviceScopedMemoryApi';
+import { storageStep } from './segmentedStorage';
 
 let runtime:MobileRuntime|undefined, loaded='';
 let running:string|null=null;
@@ -49,6 +50,36 @@ async function conversation(id:string,owner=deviceOwner()) {
   if(owner!==deviceOwner())throw fail('Account changed / アカウントが切り替わりました',409);
   if(record?.deleted)throw fail('Conversation deleted / 会話は削除されています',404);
   return record??blank(id);
+}
+async function openPage(id:string,owner:string,limit=50,cursor?:ConversationPageCursor) {
+  const info=await conversationInfo(id,owner);
+  if(info?.deleted)throw fail('Conversation deleted',404);
+  if(info?.selection.cache_evicted){
+    try{await hydrateConversation(id,owner);await trimOfflineCache(owner);}
+    catch(error){throw fail(String(error),503);}
+  }
+  const page=await conversationPage(id,owner,limit,cursor);
+  if(page)await appTransaction<void>(['entities'],'readwrite',(tx,done)=>{
+    const store=tx.objectStore('entities'),read=store.get([owner,id]);read.onsuccess=()=>storageStep(tx,()=>{
+      const header=read.result;
+      if(owner!==deviceOwner()||!header||header.deleted||header.revision!==page.revision||(header.payloadParts?.token??null)!==page.bodyToken){tx.abort();return;}
+      store.put({...header,opened:Date.now()});done();
+    });
+  });
+  if(owner!==deviceOwner())throw fail('Account changed',409);return page;
+}
+type ConversationView={id:string;owner:string;revision:number;metadata:Record<string,any>;total:number;page:ConversationPage|undefined};
+const openingViews=new Map<string,Promise<ConversationView>>();
+function conversationView(id:string,owner:string) {
+  const key=JSON.stringify([owner,id]);let pending=openingViews.get(key);
+  if(!pending){
+    pending=(async()=>{
+      const page=await openPage(id,owner);
+      return {id,owner,revision:page?.revision??0,metadata:page?.metadata??blank(id).payload,total:page?.total??0,page};
+    })().finally(()=>openingViews.delete(key));
+    openingViews.set(key,pending);
+  }
+  return pending;
 }
 async function nextId(owner=deviceOwner()) {
   const key='message-sequence:'+owner;
@@ -393,17 +424,39 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
   }
   if(path==='/api/chat/stream')return generate(body,init.signal??undefined);
   if(path==='/api/chat/sessions'){
-    const records=await readRecords(),sessions=records.filter(e=>e.kind==='conversation');
-    return json({sessions:sessions.map(e=>{
-    const p=e.payload,c=builtin.find(c=>c.id===p.settings.character_id),last=p.messages.at(-1);
-    const preview=p.cache_evicted?p.cache_preview:{count:p.messages.length,last_at:last?.created_at??null,last_preview:last?.content??''};
-    return {session_id:e.id,...preview,character_id:p.settings.character_id,character_name:c?.display_name??records.find(r=>r.id===p.settings.character_id)?.payload.document?.name??p.title??null,
-      world_id:p.settings.world_id,nsfw:false,sync_recovery:!!p.recovery_from,offline_available:!p.cache_evicted};
-    }).sort((a,b)=>String(b.last_at).localeCompare(String(a.last_at)))});
+    const records=await readRecords(['character']);
+    const headers=await appTransaction<{id:string;summary?:ConversationSummary}[]>(['entities'],'readonly',(tx,done)=>{
+      const result:{id:string;summary?:ConversationSummary}[]=[],read=tx.objectStore('entities').openCursor(IDBKeyRange.bound([owner,''],[owner,'\uffff']));
+      read.onsuccess=()=>storageStep(tx,()=>{
+        if(owner!==deviceOwner()){tx.abort();return;}
+        const cursor=read.result;if(!cursor){done(result);return;}const row=cursor.value;
+        if(row.kind==='conversation'&&!row.deleted){
+          const summary=row.selection?.summary;
+          result.push({id:row.id,summary:!row.payloadParts?conversationSummary(row.payload):summary?.token===row.payloadParts.token
+            &&Number.isSafeInteger(summary.count)&&summary.count>=0&&typeof summary.last_preview==='string'&&summary.last_preview.length<=160?summary:undefined});
+        }
+        cursor.continue();
+      });
+    });
+    const sessions=[];
+    for(const header of headers){
+      let s=header.summary;
+      if(!s){
+        const pending=openingViews.get(JSON.stringify([owner,header.id]));
+        if(pending){const view=await pending;s={...conversationSummary({...view.metadata,messages:view.page?.messages??[]}),count:view.total};}
+        else s=await readConversationSummary(header.id,owner);
+      }
+      if(!s)continue;
+      const c=builtin.find(c=>c.id===s.character_id);
+      sessions.push({session_id:header.id,count:s.count,last_at:s.last_at,last_preview:s.last_preview,character_id:s.character_id,
+        character_name:c?.display_name??records.find(r=>r.id===s.character_id)?.payload.document?.name??s.title,world_id:s.world_id,nsfw:false,sync_recovery:s.sync_recovery,offline_available:s.offline_available});
+    }
+    return json({sessions:sessions.sort((a,b)=>String(b.last_at).localeCompare(String(a.last_at)))});
   }
   if(path==='/api/chat/settings') {
-    const session=await conversation(body.session_id??url.searchParams.get('session_id')??'default',owner);
-    if(method==='GET')return json(session.payload.settings);
+    const id=body.session_id??url.searchParams.get('session_id')??'default';
+    if(method==='GET')return json((await conversationView(id,owner)).metadata.settings);
+    const session=await conversation(id,owner);
     if(running)throw fail('Stop generation before editing',409);
     if(typeof body.system_prompt!=='string'||body.system_prompt.length>128000)throw fail('Invalid system prompt');
     if(typeof body.temperature!=='number'||!Number.isFinite(body.temperature)||body.temperature<0||body.temperature>2)throw fail('Invalid temperature');
@@ -411,6 +464,14 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
     if(!binding.character&&body.character_id){const saved=await entity(body.character_id,owner);if(saved?.payload.document?.kind==='character')binding.character={id:saved.id,revision:saved.payload.current_revision??saved.revision};}
     const settings=ConversationSettingsSchema.parse({...body,library_binding:binding});await compiled(settings,[],owner);
     await saveEntity({...session,payload:{...session.payload,settings}},session.revision);return json({ok:true});
+  }
+  if(path==='/api/chat/history/page'){
+    if(method!=='GET')throw fail('History pages require GET',405);
+    const id=url.searchParams.get('session_id')??'default',limit=Number(url.searchParams.get('limit')??50),raw=url.searchParams.get('cursor');
+    const cursor=raw===null?undefined:JSON.parse(raw);
+    const page=cursor===undefined&&limit===50?(await conversationView(id,owner)).page:await openPage(id,owner,limit,cursor);
+    return json({session_id:id,history:page?.messages??[],total:page?.total??0,start:page?.start??0,end:page?.end??0,
+      revision:page?.revision??0,body_token:page?.bodyToken??null,previous:page?.previous,next:page?.next});
   }
   if(path==='/api/chat/history') {
     if(!['GET','DELETE'].includes(method))throw fail('Invalid history operation',405);
