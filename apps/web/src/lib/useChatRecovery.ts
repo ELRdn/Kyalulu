@@ -1,6 +1,6 @@
 import { connectionScope } from './remoteStore';
 import { useEffect, useRef, useState } from "react";
-import { cancelGeneration, fetchGeneration, fetchHistory, type ChatMessage } from "./api";
+import { cancelGeneration, fetchGeneration, fetchRecoveryHistory, type ChatMessage } from "./api";
 import { ChatRecovery, RecoveryCheck, reconcileGeneration, generationOutcome, type ChatDraft } from "./chatRecovery";
 import { useLanguage } from './appContext';
 import { friendlyMessage } from './errors';
@@ -70,7 +70,7 @@ export function useChatRecovery(sessionId: string, onHistory: (messages: (ChatMe
     setChecking(true);
     try {
       const resolved = await reconcileGeneration(store, fetchGeneration,
-        sid => fetchHistory(sid, AbortSignal.timeout(15000)), () => alive.current, persistDirtyDraft);
+        (sid,status) => fetchRecoveryHistory(sid,status,AbortSignal.timeout(15000)), () => alive.current&&identity===connectionScope(), persistDirtyDraft);
       if (!resolved) return;
       const { outcome, history, value: next } = resolved;
       if (outcome === "pending") {

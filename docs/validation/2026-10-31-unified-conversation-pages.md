@@ -2,8 +2,9 @@
 
 This adds a store-level reader for conversation windows and connects the Device
 chat screen to pages of at most 50 saved messages. Cloud and PC history contracts
-are unchanged. Generation, mutations, sync, recovery verification and export still
-use their existing complete data.
+are unchanged. Generation, mutations, sync and export still use their existing
+complete data. Terminal recovery now uses a separate selected-message proof; see
+[Generation recovery](2026-10-31-unified-generation-proof.md).
 
 `conversationPage` returns a separate type with messages, metadata, total count and
 positional ranges. It cannot be passed as an `AppEntity` to the typed save API. Its
@@ -63,7 +64,7 @@ tail candidate remain whole. Legacy inline records are already cloned in full by
 IndexedDB before slicing. Message count alone is not a universal memory bound.
 
 The Device history/settings/session summaries/policy now use compatible projections.
-Recovery verification, generation, mutation, shared-memory validation, fixed sync
+Pending/orphan recovery writes, generation, mutation, shared-memory validation, fixed sync
 snapshots, receive/ACK and exports retain full reads. The previous 1 GB full-tree
 restoration failure stays unaccepted; a successful page sample must not replace it.
 

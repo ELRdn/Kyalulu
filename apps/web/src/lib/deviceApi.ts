@@ -2,7 +2,7 @@ import { PortableDocumentSchema, DeviceGenerationOutputSchema, RuntimeStateSchem
 import catalog from '../mobile/app-catalog.generated.json';
 import { MobileRuntime } from '../mobile/runtime';
 import { MODELS, readyModels } from '../mobile/models';
-import { allEntities, entity, openEntity, conversationInfo, conversationPage, conversationSummary, readConversationSummary, saveEntity, newEntity, getMeta, setMeta, appTransaction, writeEntity, scrubGenerationRecords, memoryEventsKey, trimOfflineCache, type AppEntity, type EntityKind, type ConversationPage, type ConversationPageCursor, type ConversationSummary } from './appStore';
+import { allEntities, entity, openEntity, conversationInfo, conversationPage, conversationSummary, readConversationSummary, generationHistory, saveEntity, newEntity, getMeta, setMeta, appTransaction, writeEntity, scrubGenerationRecords, memoryEventsKey, trimOfflineCache, type AppEntity, type EntityKind, type ConversationPage, type ConversationPageCursor, type ConversationSummary } from './appStore';
 import { deviceOwner, setGenerationBusy } from './appContext';
 import { estimateTokens, retrieveMemories, renderMemoryBlock, prepareRpg, memoryDecisions, evidenced, refreshSummaries,deviceResponseGrammar, type DeviceMemory } from './deviceCore';
 import { receiveConversation, rebindConversation } from './appSyncData';
@@ -225,7 +225,7 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
     const workingMemory=memoryContext?{...memoryContext,domain:structuredClone(memoryContext.domain)}:undefined;
     if(body.regenerate_message_id){
       const previous=messages.at(-1);
-      if(previous?.id!==body.regenerate_message_id||previous.role!=='assistant'||messages.at(-2)?.content!==last.content)throw fail('Only the latest reply may be regenerated',409);
+      if(previous?.id!==body.regenerate_message_id||previous.role!=='assistant'||messages.at(-2)?.role!=='user'||messages.at(-2)?.content!==last.content)throw fail('Only the latest reply may be regenerated',409);
       if(!previous.before)throw fail('Historical state is unavailable for regeneration',409);
       baseState=previous.before.state;baseMemories=previous.before.memories;messages=messages.slice(0,-1);
       if(workingMemory){
@@ -282,7 +282,7 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
       renderMemoryBlock(memories,true)+
       '\nJSON only; continue current state: '+JSON.stringify({reply:'in-character reply',state_update:storyState,memory_proposals:[]})+
       '. Memories: <=3 {type:semantic|episodic|relationship,content,source_kind:user_statement|user_correction|work_setting|story_event}. Never invent user facts.';
-    const pending={generation_id:generationId,session_id:id,status:'pending',assistant_id:null,user_id:body.regenerate_message_id?null:userId,
+    const pending={generation_id:generationId,session_id:id,status:'pending',assistant_id:null,user_id:userId,user_content_sha256:contentHash(encoder.encode(last.content)),
       execution_lock:deviceExecutionLockName(owner)};
     let current=await save({...session,payload:{...p,messages:body.regenerate_message_id?p.messages:messages,pending_generation:generationId,...(scope?{message_sequence:assistantId}:{})}},session.revision,{['generation:'+owner+':'+generationId]:pending});
     const admittedMemory=memoryContext?structuredClone(memoryContext.domain):undefined;
@@ -464,6 +464,10 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
     if(!binding.character&&body.character_id){const saved=await entity(body.character_id,owner);if(saved?.payload.document?.kind==='character')binding.character={id:saved.id,revision:saved.payload.current_revision??saved.revision};}
     const settings=ConversationSettingsSchema.parse({...body,library_binding:binding});await compiled(settings,[],owner);
     await saveEntity({...session,payload:{...session.payload,settings}},session.revision);return json({ok:true});
+  }
+  if(path==='/api/chat/history/proof'){
+    if(method!=='GET')throw fail('History verification requires GET',405);
+    return json(await generationHistory(url.searchParams.get('session_id')??'',url.searchParams.get('generation_id')??'',owner));
   }
   if(path==='/api/chat/history/page'){
     if(method!=='GET')throw fail('History pages require GET',405);

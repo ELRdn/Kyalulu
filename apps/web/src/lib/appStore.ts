@@ -5,6 +5,7 @@ import { readMemoryDomainTx,writeMemoryDomainTx } from './deviceMemoryDomainIO';
 import { canonical } from './appSyncData';
 import { Sha256 } from '../mobile/sha256';
 import { JsonStream } from './jsonStream';
+import type { GenerationStatus } from './chatRecovery';
 
 export type EntityKind = 'conversation' | 'character' | 'persona' | 'world' | 'preset' | 'profile';
 export type AppEntity = { id: string; owner: string; kind: EntityKind; revision: number; serverRevision: number;
@@ -190,6 +191,46 @@ export async function readConversationSummary(id:string,owner=deviceOwner()):Pro
   if(owner!==deviceOwner())throw Error('Account changed');return value;
 }
 export type ConversationPageCursor={owner:string;id:string;revision:number;bodyToken:string|null;start:number;end:number};
+export type GenerationHistoryProof={status:GenerationStatus;revision:number;body_token:string|null;
+  history:{id:number;role:'user'|'assistant';content:string}[]};
+/** Read the receipt and its saved messages in one snapshot; never return a partial AppEntity. */
+export async function generationHistory(id:string,generationId:string,owner=deviceOwner()):Promise<GenerationHistoryProof> {
+  if(!id||!generationId||owner!==deviceOwner())throw Error('Invalid generation history');
+  const result=await appTransaction<GenerationHistoryProof>(['entities','meta'],'readonly',(tx,done)=>{
+    const receipt=tx.objectStore('meta').get('generation:'+owner+':'+generationId);
+    receipt.onsuccess=()=>storageStep(tx,()=>{
+      const status=receipt.result;
+      const positive=(n:unknown)=>Number.isSafeInteger(n)&&Number(n)>0;
+      if(!status||status.generation_id!==generationId||status.session_id!==id||!['completed','invalid','failed','cancelled'].includes(status.status)
+        ||status.assistant_id!==null&&!positive(status.assistant_id)||status.user_id!==null&&!positive(status.user_id)
+        ||status.status==='completed'&&status.assistant_id===null)throw Error('Generation result is not confirmed');
+      const ids=[status.user_id,status.assistant_id].filter((n):n is number=>n!==null);
+      if(new Set(ids).size!==ids.length)throw Error('Invalid generation message IDs');
+      const parser=new JsonStream(ids.length?{ids}:{limit:0});
+      const read=tx.objectStore('entities').get([owner,id]);read.onsuccess=()=>storageStep(tx,()=>{
+        const header=read.result as StoredEntity|undefined;
+        if(!header||header.owner!==owner||header.id!==id||header.kind!=='conversation'||header.deleted||!Number.isSafeInteger(header.revision)||header.revision<0)throw Error('Saved conversation unavailable');
+        const finish=(p:any,total:number|undefined)=>{
+          if(!p||!Array.isArray(p.messages)||total===undefined||p.cache_evicted)throw Error('Saved conversation unavailable');
+          const messages=p.messages.filter((m:any)=>ids.includes(m?.id));
+          if(new Set(messages.map((m:any)=>m.id)).size!==messages.length)throw Error('Duplicate generation message IDs');
+          if(status.assistant_id!==null){
+            const assistant=messages.find((m:any)=>m.id===status.assistant_id),user=messages.find((m:any)=>m.id===status.user_id);
+            if(assistant?.role!=='assistant'||typeof assistant.content!=='string'||typeof status.reply==='string'&&assistant.content!==status.reply
+              ||status.user_id!==null&&(user?.role!=='user'||typeof user.content!=='string')
+              ||typeof status.user_content_sha256==='string'&&new Sha256().update(new TextEncoder().encode(user?.content??'')).digest()!==status.user_content_sha256)throw Error('Saved generation messages changed');
+          }
+          done({status:{generation_id:status.generation_id,session_id:status.session_id,status:status.status,assistant_id:status.assistant_id,user_id:status.user_id},
+            revision:header.revision,body_token:header.payloadParts?.token??null,
+            history:messages.filter((m:any)=>['user','assistant'].includes(m.role)&&typeof m.content==='string').map(({id,role,content}:any)=>({id,role,content}))});
+        };
+        if(header.payloadParts)readParts(tx,[owner,'entity',id],header.payloadParts,p=>finish(p,parser.totalMessages),parser);
+        else finish(header.payload,header.payload?.messages?.length);
+      });
+    });
+  });
+  if(owner!==deviceOwner())throw Error('Account changed');return result;
+}
 export type ConversationPage={owner:string;id:string;revision:number;bodyToken:string|null;metadata:Record<string,unknown>;
   messages:unknown[];total:number;start:number;end:number;previous?:ConversationPageCursor;next?:ConversationPageCursor};
 export async function conversationPage(id:string,owner=deviceOwner(),limit=50,cursor?:ConversationPageCursor):Promise<ConversationPage|undefined> {

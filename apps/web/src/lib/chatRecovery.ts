@@ -73,7 +73,7 @@ export class RecoveryCheck {
 export async function reconcileGeneration<T extends { id?: number }>(
   store: ChatRecovery,
   loadStatus: (id: string, session: string) => Promise<GenerationStatus>,
-  loadHistory: (session: string) => Promise<T[]>,
+  loadHistory: (session: string, status:GenerationStatus) => Promise<T[]>,
   active: () => boolean,
   beforeSettle: () => void = () => {},
 ) {
@@ -83,7 +83,7 @@ export async function reconcileGeneration<T extends { id?: number }>(
   if (!active()) return null;
   const outcome = generationOutcome(result, pending, store.sessionId);
   if (outcome === "pending") return { outcome, history: null, value: store.read(), status: result };
-  const history = await loadHistory(store.sessionId);
+  const history = await loadHistory(store.sessionId,result);
   if (!active()) return null;
   if (!Array.isArray(history) || (outcome === "committed" && !history.some(m => m.id === result.assistant_id))) {
     throw new Error("保存された返信を履歴で確認できません。");

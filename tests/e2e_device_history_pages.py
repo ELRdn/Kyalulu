@@ -105,10 +105,19 @@ async def main():
                     await expect(editor).to_have_count(0)
                     await expect(page.locator('.k-msg').last).to_contain_text('Edited saved reply')
                     await expect(composer).to_have_value(DRAFT)
+                    # Resume a committed receipt whose reply is far outside the latest 50 messages.
+                    await page.evaluate('''async id=>{
+                        const s=await import('/src/lib/appStore.ts'),{ChatRecovery}=await import('/src/lib/chatRecovery.ts'),
+                            {connectionScope}=await import('/src/lib/remoteStore.ts');
+                        await s.setMeta('generation:device-research-fixture:old-page-generation',{
+                            generation_id:'old-page-generation',session_id:id,status:'completed',user_id:7,assistant_id:8,reply:'Saved message 8'});
+                        new ChatRecovery(localStorage,connectionScope(),id).begin('old-page-generation',false,'Saved message 7');
+                    }''', SESSION)
                     await page.reload()
                     await mount()
                     await expect(composer).to_have_value(DRAFT)
                     await expect(nav).to_contain_text('101–150 / 150')
+                    await expect(send).to_be_enabled()
                     # Actual send + recovery uses persisted history; the 100 off-screen messages survive.
                     await send.click()
                     await expect(nav).to_contain_text('103–152 / 152')
@@ -152,6 +161,7 @@ async def main():
                                     'page_dom_limit': 50, 'cursor_revision_rejected': True, 'draft_and_reload': True,
                                     'edit_and_generation_preserve_hidden_history': True, 'owner_isolation': True,
                                     'lazy_tools_and_memory_draft': True,
+                                    'recovery_reply_outside_visible_page': True,
                                     'synthetic_inference_calls': 2, 'real_model_inference': False})
                 finally:
                     await context.close()
