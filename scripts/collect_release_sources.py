@@ -41,6 +41,7 @@ FILES = (
     "apps/web/migration/index.html",
     "apps/web/package.json",
     "apps/web/vite.config.ts",
+    "apps/web/vite.config.test.ts",
     "apps/web/tsconfig.json",
     "scripts/build_local_bundle.py",
     "scripts/collect_release_sources.py",
@@ -205,7 +206,7 @@ def collect(destination):
     (destination / "BUILD.md").write_text(
         "# Corresponding source\n\nNode 22+, pnpm 10.30.1, uv 0.8.22.\n"
         "`pnpm install --frozen-lockfile` then `pnpm --filter web build`.\n"
-        "For the unified app, regenerate the catalog with `python scripts/build_app_catalog.py`, build pinned WASM using `scripts/mobile_wasm/bootstrap.py`, `prepare.py` and `build.sh`, then run `pnpm --filter web build:app`. See `docs/MOBILE.md` and `docs/UNIFIED_APP.md`.\n"
+        "For the unified app, regenerate the catalog with `python scripts/build_app_catalog.py`, build pinned WASM using `scripts/mobile_wasm/bootstrap.py`, `prepare.py` and `build.sh`, set `VITE_RELAY_ORIGIN` to the exact managed HTTPS Relay origin, then run `pnpm --filter web build:app`. See `docs/MOBILE.md` and `docs/UNIFIED_APP.md`.\n"
         "For the legacy Mobile app, use the same catalog/WASM preparation and `pnpm --filter web build:mobile`.\n"
         "`uv sync --frozen --all-packages --all-extras --no-install-workspace` for Python.\n"
         "On the native target: `uv run --no-sync python scripts/build_local_bundle.py --output .artifacts/npm-beta --target win32-x64` (or darwin-arm64).\n"

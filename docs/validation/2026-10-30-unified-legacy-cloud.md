@@ -69,3 +69,36 @@ iPhone, full old-browser data and production cutover remain unverified. The acce
 897737f image predates this template and the later admin fixes. Do not reuse its
 image acceptance as evidence for a newly packaged candidate. The independent
 backup operator package remains unchanged; it does not deliver this site config.
+
+
+## Follow-up: managed Relay must survive packaging
+
+A fresh clean 5ace6a7 Cloud build used the explicit existing managed Relay origin.
+It produced 66,044,982 bytes, SHA-256
+`67803314f9f1a1c72dbe8910e699424ab548dd51f0982c5666ec8cb737003389`.
+All **224** manifest files, **61** precache hashes and **580** raw-equal committed
+source files were checked; its source archive has **805** files. Runtime Python
+bytes match 897737f, but Web bytes do not. This is an intermediate local candidate,
+not an accepted Linux image or a production selection.
+
+Inspection of the older 897737f JavaScript found no compiled managed Relay URL;
+the freshly configured build contains it. Since production `relayOrigin()` rejects
+unconfigured Remote registration and `RemoteSetup` hides its managed entry, the
+older artifact must not be selected as a complete three-target delivery. Its prior
+image/hash checks did not prove this feature. No production change was made.
+
+Unified production builds now reject an absent or non-exact HTTPS Relay origin.
+Legacy/Mobile builds and development remain available. The error does not print
+the configured value. **11** config tests cover absent/malformed/path/query/
+credential/HTTP/WebSocket values, the valid origin and unaffected modes. Typecheck
+and all **866 Web tests / 67 files** passed. An actual Vite invocation with no
+Relay setting exited 1 before changing an existing fictional output index.
+Corresponding source includes the
+new config tests and explicit build-environment instructions.
+
+The clean configured 5ace6a7 Web build passed the expanded HTTPS check with **17**
+boolean assertions, including the actual unregistered-PC heading and destinations
+region. Zero external requests were made; no real PC pairing is claimed.
+Evidence is under `.artifacts/unified-cloud-migration-managed-relay-20261030/`.
+The build guard is a later source change; the intermediate 5ace6a7 archive does
+not contain it. Regenerate/fix the final candidate before image selection.

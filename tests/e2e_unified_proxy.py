@@ -242,6 +242,11 @@ async def check(args):
                     assert 'FICTIONAL-OLD-COOKIE' not in await legacy.evaluate('document.cookie')
                     assert not any(c['name']=='legacy-private' for c in await context.cookies(origin)), 'Legacy cookie crossed hostnames'
                     await legacy.close()
+                    await page.goto(origin)
+                    await page.evaluate("localStorage.setItem('kyalulu-execution-target','pc')")
+                    await page.reload()
+                    await page.get_by_role('heading',name='Connect to your PC.',exact=True).wait_for()
+                    await page.get_by_role('region',name='Remote destinations',exact=True).wait_for()
                     assert not errors and not violations and not external, (errors, violations, external)
                 finally:
                     await context.close()
@@ -261,6 +266,7 @@ async def check(args):
                 'legacy_cloud_explicit_one_tab_worker_retirement': True,
                 'legacy_cloud_cache_outbox_opfs_and_draft_preserved': True,
                 'legacy_cloud_relogin_link_without_code_or_cookie_transfer': True,
+                'managed_relay_pc_registration_entry_present': True,
                 'page_errors': len(errors), 'csp_violations': len(violations),
                 'external_requests': len(external), 'caddy_version': version,
                 'caddy_sha256': hashlib.sha256(args.caddy.read_bytes()).hexdigest()}
