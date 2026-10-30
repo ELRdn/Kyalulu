@@ -1,0 +1,331 @@
+<!doctype html><meta charset="utf-8"><title>Bounded memory source projection acceptance</title>
+<p>Synthetic histories, disposable IndexedDB, loopback modules only; no inference or capacity claim.</p>
+<script type="module">
+import {appTransaction,entity,newEntity,saveEntity,writeOutbox,getMeta} from '/src/lib/appStore.ts';
+import {rememberOwner} from '/src/lib/appContext.ts';
+import {readMemorySource,readDeviceMemoryDomain,commitDeviceMemoryDomain} from '/src/lib/deviceMemoryStore.ts';
+import {scopedSessionMemory,scopedMemoryAddress,scopedMemoryRows,saveScopedMemory,deviceMemoryScope} from '/src/lib/deviceScopedMemory.ts';
+import {bindMemoryScope,memoryBinding,memoryIdentity,memorySignature,ownScopeMemories,memoryDomainKey} from '/src/lib/deviceMemoryScopes.ts';
+import {deviceExecutionLockName} from '/src/lib/deviceExecution.ts';
+import {canonical} from '/src/lib/appSyncData.ts';
+import {JsonStream} from '/src/lib/jsonStream.ts';
+import {Sha256} from '/src/mobile/sha256.ts';
+import {physicalSnapshot,fixedOutbox} from './storage-fixture.ts';
+
+const owner='projection-fiction-a',foreign='projection-fiction-b',actorId='actor',peerId='peer',generationId='projection-generation';
+const count=80,encoder=new TextEncoder(),settings={character_id:'fiction-character',world_id:'fiction-world',persona_id:null};
+const identity=memoryIdentity(settings,{character_id:'1.0.0',world_id:'1.0.0',persona_id:null});
+const resolve=async()=>identity;
+const check=(value,message)=>{if(!value)throw Error(message);};
+const same=(a,b,message)=>check(canonical(a)===canonical(b),message);
+const hash=value=>new Sha256().update(encoder.encode(canonical(value))).digest();
+const header=(id,account=owner)=>appTransaction(['entities'],'readonly',(tx,done)=>{
+  const read=tx.objectStore('entities').get([account,id]);read.onsuccess=()=>done(read.result);
+});
+const putHeader=value=>appTransaction(['entities'],'readwrite',(tx,done)=>{tx.objectStore('entities').put(value);done();});
+const partKey=(h,index)=>[h.owner,'entity',h.id,h.payloadParts.token,index];
+const getPart=(h,index)=>appTransaction(['parts'],'readonly',(tx,done)=>{
+  const read=tx.objectStore('parts').get(partKey(h,index));read.onsuccess=()=>done(read.result);
+});
+const putPart=(h,index,value)=>appTransaction(['parts'],'readwrite',(tx,done)=>{tx.objectStore('parts').put(value,partKey(h,index));done();});
+// Compare every persisted byte by SHA-256 rather than formatting megabytes of arrays in assertion errors.
+async function physical(){
+  const snapshot=await physicalSnapshot();
+  snapshot.parts=snapshot.parts.map(([key,bytes])=>[key,bytes.length,new Sha256().update(Uint8Array.from(bytes)).digest()]);
+  return snapshot;
+}
+async function rejected(task,message){
+  try{await task();}catch(error){return String(error);}
+  throw Error(message);
+}
+function memory(sid,id){return {id:'memory-'+sid,uuid:'memory-uuid-'+sid,scope:sid,type:'semantic',content:'Fictional fact '+sid,
+  origin:'user',supported:null,status:'active',source_session_id:sid,source_message_ids:[id],source_kind:'user_statement',version:1};}
+function source(sid,policy,account=owner,large=false){
+  const first=large?1000:1,row=memory(sid,first);
+  const messages=Array.from({length:large?count:2},(_,i)=>({id:large?1000-i*3:1+i*3,uuid:'message-'+sid+'-'+i,
+    role:i%2?'assistant':'user',content:(large?'架空🙂'.repeat(2800):'Fictional input ')+i,
+    created_at:'2026-10-31T00:00:00Z',before:{state:{turn:i},memories:i?[row]:[],unknown:{keep:'before'}},
+    after:{state:{turn:i+1},memories:[row],unknown:{keep:'after'}},unknown:{index:i,escaped:'茶🙂é\\"\n'}}));
+  return {...newEntity('conversation',sid,{storage_policy:policy,memory_scope_mode:'world',settings:{...settings,session_id:sid},
+    messages,memories:[row],summaries:[{id:'summary-'+sid,text:'Keep summary 茶🙂',unknown:[null,true,3]}],draft:'Keep draft '+sid,
+    unknown:JSON.parse('{"__proto__":{"keep":true},"extension":[null,true,0,{"keep":"茶🙂"}]}')},account),
+    pinned:true,serverRevision:9,unknown_header:{keep:'header extension'}};
+}
+async function seed(policy='local',account=owner,large=true){
+  rememberOwner(account);
+  let domain=await readDeviceMemoryDomain(account,policy),actor=source(actorId,policy,account),peer=source(peerId,policy,account,large);
+  bindMemoryScope(domain,actor,identity);bindMemoryScope(domain,peer,identity);
+  check(memoryBinding(domain,actorId).scope===memoryBinding(domain,peerId).scope,'Seed did not create shared world pool');
+  for(const record of [actor,peer]){
+    const binding=memoryBinding(domain,record.id);record.payload.memories=ownScopeMemories(domain.pools[binding.scope],record.id);
+    binding.signature=memorySignature(record.payload.memories);
+  }
+  const result=await commitDeviceMemoryDomain(account,policy,domain,[{id:actorId,revision:0},{id:peerId,revision:0}],[actor,peer]);
+  [actor,peer]=result.sessions;domain=result.domain;
+  const outbox={request_id:'fixed-'+account+'-'+policy,changes:[{id:peerId,kind:'conversation',base_revision:9,deleted:false,
+    payload:{draft:'Independent unsent snapshot',unknown:{keep:true},messages:[{id:7001,content:'Keep fixed outbox'}]}}]};
+  await appTransaction(['meta','parts'],'readwrite',(tx,done)=>writeOutbox(tx,account,outbox,done));
+  same(await fixedOutbox(account),outbox,'Fixed outbox seed');
+  return {actor,peer,domain,outbox};
+}
+const assertSource=value=>{
+  check(value&&!Object.hasOwn(value,'payload')&&!Object.hasOwn(value,'messages')&&!Object.hasOwn(value.metadata,'messages'),
+    'MemorySource retained a full payload/history');
+  check(Object.keys(value).every(key=>['id','owner','revision','deleted','bodyToken','metadata'].includes(key)),
+    'MemorySource contains unexpected retained fields');
+};
+async function observe(task){
+  const feed=JsonStream.prototype.feed,finish=JsonStream.prototype.finish;
+  const stats={feeds:0,finishes:[],callbacks:0,max_callback_messages:0,max_retained_root_messages:0};let activeCallbacks=0;
+  window.__PROJECTION_PROGRESS__.observation=stats;
+  JsonStream.prototype.feed=function(bytes){
+    if(this.onMessage&&!this.__projectionObserved){
+      const callback=this.onMessage;this.__projectionObserved=true;
+      this.onMessage=(message,index)=>{
+        stats.callbacks++;stats.max_callback_messages=Math.max(stats.max_callback_messages,++activeCallbacks);
+        try{return callback(message,index);}finally{activeCallbacks--;}
+      };
+    }
+    const result=feed.call(this,bytes);
+    if(Array.isArray(this.root?.messages)){
+      stats.feeds++;stats.max_retained_root_messages=Math.max(stats.max_retained_root_messages,this.root.messages.length);
+      check(this.root.messages.length===0,'Parser retained message bodies during feed');
+    }
+    return result;
+  };
+  JsonStream.prototype.finish=function(){
+    const root=finish.call(this);
+    if(Array.isArray(root?.messages)){
+      stats.finishes.push({total:this.totalMessages,retained:root.messages.length,callback:!!this.onMessage});
+      check(root.messages.length===0,'Parser retained message bodies at finish');
+    }
+    return root;
+  };
+  try{const value=await task();check(stats.feeds>0&&stats.finishes.length>0,'No real source decoder observed');return {value,stats};}
+  finally{JsonStream.prototype.feed=feed;JsonStream.prototype.finish=finish;}
+}
+async function context(actor){
+  const result=await scopedSessionMemory(actor,resolve);
+  check(result.records.size===2,'Shared context did not load actor and peer');
+  for(const value of result.records.values())assertSource(value);
+  check(scopedMemoryRows(result).length===2,'Shared retrieval missing own/peer rows');
+  return result;
+}
+function editPeer(ctx){
+  const row=ctx.domain.pools[ctx.scope].memories.find(row=>row.source_session_id===peerId);
+  row.content='Updated fictional peer fact';row.version++;
+}
+async function verifyRewrite(before,policy,outbox){
+  const after=await entity(peerId,owner),oldHeader=before.header,nextHeader=await header(peerId);
+  const {memories:oldMemories,...oldPayload}=before.peer.payload,{memories,...newPayload}=after.payload;
+  same(newPayload,oldPayload,'Peer history, snapshots, draft, IDs or unknown payload fields changed');
+  same(memories,[{...oldMemories[0],content:'Updated fictional peer fact',version:oldMemories[0].version+1}],
+    'Peer memory identity/source IDs changed');
+  for(const key of ['owner','id','kind','serverRevision','pinned','deleted','unknown_header'])same(after[key],before.peer[key],'Header changed: '+key);
+  check(after.revision===before.peer.revision+1&&after.dirty===(policy==='sync'),'Projection revision/dirty policy');
+  check(nextHeader.payloadParts.token!==oldHeader.payloadParts.token,'Projection body token did not advance');
+  const parts=(await physical()).parts;
+  check(!parts.some(([key])=>key[1]==='entity'&&key[2]===peerId&&key[3]===oldHeader.payloadParts.token),'Obsolete peer parts leaked');
+  same(await fixedOutbox(owner),outbox,'Fixed outbox rewritten');
+  return after;
+}
+async function rememberExpected(policy){
+  const records=await Promise.all([entity(actorId,owner),entity(peerId,owner)]);
+  const expected={policy,records:records.map(record=>({id:record.id,hash:hash(record)})),
+    domain:hash(await readDeviceMemoryDomain(owner,policy)),outbox:hash(await fixedOutbox(owner)),
+    receipt:hash((await getMeta('generation:'+owner+':'+generationId))??null)};
+  localStorage.setItem('projection-expected',JSON.stringify(expected));
+}
+async function resume(){
+  rememberOwner(owner);const expected=JSON.parse(localStorage.getItem('projection-expected'));
+  for(const record of expected.records)same(hash(await entity(record.id,owner)),record.hash,'Complete source changed after restart');
+  same(hash(await readDeviceMemoryDomain(owner,expected.policy)),expected.domain,'Domain changed after restart');
+  same(hash(await fixedOutbox(owner)),expected.outbox,'Fixed outbox changed after restart');
+  same(hash((await getMeta('generation:'+owner+':'+generationId))??null),expected.receipt,'Receipt changed after restart');
+  const peer=await readMemorySource(peerId,owner);assertSource(peer);
+  return {complete_entities_domain_receipt_outbox_after_reopen:true,peer_revision:peer.revision,peer_body_token:peer.bodyToken};
+}
+async function run(scenario){
+  window.__PROJECTION_PROGRESS__={scenario,stage:'seed'};
+  const policy=scenario==='rewrite-sync'?'sync':'local',initial=await seed(policy);
+  const before={peer:initial.peer,header:await header(peerId)};
+  const outboxPhysical=snapshot=>({meta:snapshot.meta.filter(([key])=>key==='sync:'+owner+':outbox'),
+    parts:snapshot.parts.filter(([key])=>key[0]===owner&&key[1]==='outbox')});
+  const originalOutbox=outboxPhysical(await physical());
+  check(before.header.payloadParts.size>1024*1024&&before.header.payloadParts.size<3*1024*1024&&before.header.payloadParts.chunks>=2,
+    'Synthetic peer history must occupy 1–3 MiB and multiple parts');
+  const evidence={scenario,source_bytes:before.header.payloadParts.size,source_parts:before.header.payloadParts.chunks,messages:count,policy};
+  window.__PROJECTION_PROGRESS__.stage='exercise';
+  if(scenario==='read-projection'){
+    const original=await physical();
+    const {value,stats}=await observe(()=>readMemorySource(peerId,owner));assertSource(value);
+    const {messages,...metadata}=initial.peer.payload;same(value.metadata,metadata,'Source metadata differs from canonical payload');
+    check(value.bodyToken===before.header.payloadParts.token&&value.revision===initial.peer.revision,'Source identity/revision/token');
+    same(stats.finishes,[{total:count,retained:0,callback:false}],'Read must count and discard the complete history');
+    check(stats.callbacks===0&&stats.feeds===before.header.payloadParts.chunks,'Read must verify every source part without callbacks');
+    await observe(()=>context(initial.actor));
+    const address=deviceMemoryScope('local',memoryBinding(initial.domain,actorId).scope);
+    const addressed=await observe(()=>scopedMemoryAddress(owner,address,resolve));
+    for(const record of addressed.value.records.values())assertSource(record);
+    check(await readMemorySource('absent',owner)===undefined,'Missing source accepted');
+    same(await physical(),original,'Read-only projection changed stored data');
+    Object.assign(evidence,{observation:stats,scoped_records:addressed.value.records.size,physical_read_only:true});
+  }else if(scenario==='rewrite-local'||scenario==='rewrite-sync'){
+    const ctx=(await observe(()=>context(initial.actor))).value,oldActor=await header(actorId);editPeer(ctx);
+    const {value,stats}=await observe(()=>saveScopedMemory(ctx));
+    check(value.sessions.length===0&&value.sources.length===1,'Peer rewrite unexpectedly saved full actors');assertSource(value.sources[0]);
+    check(stats.finishes.filter(item=>item.total===count&&item.callback).length===2&&stats.callbacks===count*2,
+      'Expected streamed peer validation and streamed writer, each with one message callback at a time');
+    same(await header(actorId),oldActor,'Unchanged actor was rewritten');
+    const peer=await verifyRewrite(before,policy,initial.outbox);
+    same(ctx.records.get(peerId).metadata.memories,peer.payload.memories,'Context projection not refreshed');
+    check(ctx.records.get(peerId).bodyToken===(await header(peerId)).payloadParts.token,'Context token not refreshed');
+    Object.assign(evidence,{observation:stats,all_history_and_unknowns_preserved:true,peer_revision:peer.revision});
+  }else if(scenario==='isolation'){
+    const local=await physical();
+    const synced=source('sync-only','sync');await saveEntity(synced,0);
+    const syncDomain=await readDeviceMemoryDomain(owner,'sync');check(Object.keys(syncDomain.pools).length===0,'Local domain leaked into sync');
+    const other=await seed('local',foreign,false);const otherBefore=await physical();rememberOwner(owner);
+    const ctx=await context(initial.actor);editPeer(ctx);
+    const foreignSource=await rejected(()=>readMemorySource(peerId,foreign),'Cross-account source read accepted');
+    const foreignDomain=await rejected(()=>commitDeviceMemoryDomain(owner,'local',other.domain,[]),'Cross-account domain accepted');
+    const crossPolicy=await rejected(()=>commitDeviceMemoryDomain(owner,'sync',ctx.domain,[]),'Cross-policy domain accepted');
+    const forged=await header('sync-only');await putHeader({...forged,selection:{...forged.selection,storage_policy:'local'}});
+    const forgedBefore=await physical();
+    const policyBody=await rejected(()=>commitDeviceMemoryDomain(owner,'local',ctx.domain,[{id:'sync-only',revision:1}]),'Cached policy trusted over verified body');
+    same(await physical(),forgedBefore,'Rejected scope changed stored data');
+    await saveScopedMemory(ctx);const after=await physical();
+    same(after.entities.filter(record=>record[0][0]===foreign),otherBefore.entities.filter(record=>record[0][0]===foreign),'Other account entities changed');
+    same(after.meta.filter(([key])=>String(key).includes(foreign)),otherBefore.meta.filter(([key])=>String(key).includes(foreign)),'Other account metadata changed');
+    same(after.parts.filter(([key])=>key[0]===foreign),otherBefore.parts.filter(([key])=>key[0]===foreign),'Other account parts changed');
+    same((await entity('sync-only',owner)).payload,synced.payload,'Sync source changed');
+    same(await readDeviceMemoryDomain(owner,'sync'),syncDomain,'Sync domain changed');
+    check(local.entities.length===2,'Isolation baseline');
+    Object.assign(evidence,{cross_account_read_rejection:foreignSource,cross_account_commit_rejection:foreignDomain,
+      cross_policy_rejection:crossPolicy,verified_body_policy_rejection:policyBody,other_account_untouched:true});
+  }else if(scenario==='revision-conflict'||scenario==='body-token-conflict'){
+    const ctx=await context(initial.actor);editPeer(ctx);
+    if(scenario==='revision-conflict')await saveEntity({...initial.peer,payload:{...initial.peer.payload,draft:'Concurrent retained draft'}},initial.peer.revision);
+    else{
+      const old=await header(peerId),ref={...old.payloadParts,token:crypto.randomUUID()};
+      await appTransaction(['entities','parts'],'readwrite',(tx,done)=>{
+        const store=tx.objectStore('parts');let index=0;
+        const next=()=>{if(index===ref.chunks){tx.objectStore('entities').put({...old,payloadParts:ref});done();return;}
+          const i=index++,read=store.get(partKey(old,i));read.onsuccess=()=>{store.put(read.result,[owner,'entity',peerId,ref.token,i]);next();};};next();
+      });
+      check((await header(peerId)).revision===ctx.records.get(peerId).revision,'Token conflict also changed revision');
+    }
+    const snapshot=await physical();evidence.rejection=await rejected(()=>saveScopedMemory(ctx),'Stale source accepted');
+    same(await physical(),snapshot,'Conflict changed any entity/part/domain/receipt/outbox');
+    const fresh=await context(await entity(actorId,owner));editPeer(fresh);await saveScopedMemory(fresh);
+    check((await entity(peerId,owner)).payload.draft===(scenario==='revision-conflict'?'Concurrent retained draft':initial.peer.payload.draft),
+      'Retry lost concurrent draft');evidence.fresh_context_retry=true;
+  }else if(scenario==='rewrite-late-corruption'){
+    const ctx=await context(initial.actor);editPeer(ctx);
+    const h=before.header,last=h.payloadParts.chunks-1,broken=new Uint8Array(await getPart(h,last));
+    const offset=broken.lastIndexOf(120);check(offset>=0,'Expected ASCII extension key in late part');broken[offset]=121;
+    const snapshot=await physical(),get=IDBObjectStore.prototype.get,add=IDBObjectStore.prototype.add;
+    let lateReads=0,tentativeParts=0,partsBeforeFault=0,injected=false;
+    IDBObjectStore.prototype.add=function(value,key){
+      if(this.name==='parts'&&Array.isArray(key)&&key[1]==='entity'&&key[2]===peerId&&key[3]!==h.payloadParts.token)tentativeParts++;
+      return add.call(this,value,key);
+    };
+    IDBObjectStore.prototype.get=function(key){
+      if(this.name==='parts'&&Array.isArray(key)&&canonical(key)===canonical(partKey(h,last))&&++lateReads===2){
+        check(tentativeParts>0,'Fault must follow streamed tentative peer output');
+        partsBeforeFault=tentativeParts;this.put(broken,key);injected=true;
+      }
+      return get.call(this,key);
+    };
+    const actor={...initial.actor,payload:{...initial.actor.payload,draft:'Must roll back full actor'}};
+    try{const {value,stats}=await observe(()=>rejected(()=>saveScopedMemory(ctx,[actor]),'Late rewrite corruption accepted'));
+      Object.assign(evidence,{rejection:value,failed_rewrite_observation:stats});}
+    finally{IDBObjectStore.prototype.get=get;IDBObjectStore.prototype.add=add;}
+    check(injected&&lateReads===2,'Late rewrite fault not reached');
+    same(await physical(),snapshot,'Late rewrite corruption retained tentative actor/peer output or injected bad part');
+    await saveScopedMemory(ctx,[actor]);await verifyRewrite(before,policy,initial.outbox);
+    Object.assign(evidence,{tentative_peer_parts_before_fault:partsBeforeFault,validation_passed_before_fault:true,atomic_retry_succeeded:true});
+  }else if(['corrupt-late-part','missing-late-part','invalid-discarded-json'].includes(scenario)){
+    const ctx=await context(initial.actor);editPeer(ctx);
+    const h=await header(peerId),last=h.payloadParts.chunks-1,original=await getPart(h,last);let repair;
+    if(scenario==='invalid-discarded-json'){
+      const raw=encoder.encode('{"messages":[{"id":1000,"content":"'+ 'x'.repeat(1_100_000)+'\\q"}],"storage_policy":"local"}');
+      const originalParts=await Promise.all(Array.from({length:h.payloadParts.chunks},(_,i)=>getPart(h,i)));
+      const ref={token:h.payloadParts.token,size:raw.length,chunks:Math.ceil(raw.length/(1024*1024)),sha256:new Sha256().update(raw).digest()};
+      await appTransaction(['entities','parts'],'readwrite',(tx,done)=>{
+        for(let i=0;i<ref.chunks;i++)tx.objectStore('parts').put(raw.slice(i*1024*1024,(i+1)*1024*1024),[owner,'entity',peerId,ref.token,i]);
+        tx.objectStore('entities').put({...h,payloadParts:ref});done();
+      });
+      repair=()=>appTransaction(['entities','parts'],'readwrite',(tx,done)=>{
+        for(let i=0;i<originalParts.length;i++)tx.objectStore('parts').put(originalParts[i],partKey(h,i));
+        tx.objectStore('entities').put(h);done();
+      });
+      evidence.valid_manifest_hash=ref.sha256;
+    }else{
+      if(scenario==='missing-late-part')await appTransaction(['parts'],'readwrite',(tx,done)=>{tx.objectStore('parts').delete(partKey(h,last));done();});
+      else{const broken=new Uint8Array(original),offset=broken.lastIndexOf(120);
+        check(offset>=0,'Expected ASCII extension key in late part');broken[offset]=121;await putPart(h,last,broken);}
+      repair=()=>putPart(h,last,original);
+    }
+    const snapshot=await physical();
+    evidence.read_rejection=await rejected(()=>readMemorySource(peerId,owner),'Corrupt/discarded JSON read accepted');
+    evidence.write_rejection=await rejected(()=>saveScopedMemory(ctx),'Corrupt/discarded JSON committed');
+    same(await physical(),snapshot,'Corrupt source changed stored data');
+    await repair();const fresh=await context(initial.actor);editPeer(fresh);await saveScopedMemory(fresh);
+    await verifyRewrite(before,policy,initial.outbox);evidence.verified_repair_then_success=true;
+  }else if(scenario==='owner-switch-read'||scenario==='owner-switch-write'){
+    const ctx=await context(initial.actor);editPeer(ctx);const snapshot=await physical(),get=IDBObjectStore.prototype.get;let switched=false;
+    IDBObjectStore.prototype.get=function(key){
+      const request=get.call(this,key);
+      if(this.name==='parts'&&Array.isArray(key)&&key[1]==='entity'&&key[2]===peerId&&!switched)
+        request.addEventListener('success',()=>{switched=true;rememberOwner(foreign);},{once:true});
+      return request;
+    };
+    try{evidence.rejection=await rejected(()=>scenario==='owner-switch-read'?readMemorySource(peerId,owner):saveScopedMemory(ctx),'Owner switch accepted');}
+    finally{IDBObjectStore.prototype.get=get;rememberOwner(owner);}
+    check(switched,'Owner switch injection not reached');same(await physical(),snapshot,'Owner switch committed data');
+    await saveScopedMemory(ctx);await verifyRewrite(before,policy,initial.outbox);evidence.owner_restored_retry=true;
+  }else if(scenario==='quota-atomic'){
+    let ctx=await context(initial.actor);ctx.domain.pending={session_id:actorId,generation_id:generationId};
+    let actor={...initial.actor,payload:{...initial.actor.payload,pending_generation:generationId}};
+    const pending={generation_id:generationId,session_id:actorId,status:'pending',execution_lock:deviceExecutionLockName(owner)};
+    actor=(await saveScopedMemory(ctx,[actor],{[generationId]:pending})).sessions[0];
+    ctx=await scopedSessionMemory(actor,resolve,true);ctx.domain.pending=null;editPeer(ctx);
+    const {pending_generation,...payload}=actor.payload;actor={...actor,payload:{...payload,draft:'Successful actor update'}};
+    const receipt={...pending,status:'completed',reply:'Fictional completed result'};
+    const snapshot=await physical(),put=IDBObjectStore.prototype.put,add=IDBObjectStore.prototype.add;
+    const writes={actor_headers:0,peer_headers:0,entity_parts:0,domain_parts:0,receipt_attempts:0,quota_injections:0};
+    IDBObjectStore.prototype.add=function(value,key){
+      if(this.name==='parts'&&Array.isArray(key)){if(key[1]==='entity')writes.entity_parts++;if(key[1]==='memory-domain')writes.domain_parts++;}
+      return add.call(this,value,key);
+    };
+    IDBObjectStore.prototype.put=function(value,key){
+      if(this.name==='entities'){if(value.id===actorId)writes.actor_headers++;if(value.id===peerId)writes.peer_headers++;}
+      if(this.name==='meta'&&key==='generation:'+owner+':'+generationId)writes.receipt_attempts++;
+      if(this.name==='meta'&&key===memoryDomainKey(owner,policy)){writes.quota_injections++;throw new DOMException('Injected domain-header quota','QuotaExceededError');}
+      return put.call(this,value,key);
+    };
+    try{evidence.rejection=await rejected(()=>saveScopedMemory(ctx,[actor],{[generationId]:receipt}),'Domain-header quota committed');}
+    finally{IDBObjectStore.prototype.put=put;IDBObjectStore.prototype.add=add;}
+    check(writes.quota_injections===1&&writes.actor_headers===1&&writes.peer_headers===1&&writes.entity_parts>=4&&writes.domain_parts>0,
+      'Quota did not occur after full actor, peer rewrite and domain parts');
+    same(await physical(),snapshot,'Quota failed to roll back all entity/header/parts/domain/receipt/outbox bytes');
+    same(await getMeta('generation:'+owner+':'+generationId),pending,'Pending receipt changed after failed completion');
+    const {value,stats}=await observe(()=>saveScopedMemory(ctx,[actor],{[generationId]:receipt}));
+    check(value.sessions.length===1&&value.sources.length===1&&value.domain.pending===null,'Atomic retry did not complete actor and peer');
+    const peer=await verifyRewrite(before,policy,initial.outbox);
+    same(await entity(actorId,owner),value.sessions[0],'Full actor update not persisted');
+    same(value.sessions[0].payload,actor.payload,'Full actor history/snapshots/unknown fields lost');
+    same(value.sessions[0].unknown_header,initial.actor.unknown_header,'Full actor unknown header lost');
+    check(value.sessions[0].revision===actor.revision+1,'Full actor revision did not advance');
+    same(await getMeta('generation:'+owner+':'+generationId),receipt,'Completed receipt not persisted');
+    check(memoryBinding(value.domain,actorId).entity_revision===value.sessions[0].revision
+      &&memoryBinding(value.domain,peerId).entity_revision===peer.revision,'Domain revisions differ from canonical sources');
+    Object.assign(evidence,{writes_before_abort:writes,all_store_bytes_rolled_back:true,retry_observation:stats,atomic_retry_succeeded:true});
+  }else throw Error('Unknown projection scenario: '+scenario);
+  same(outboxPhysical(await physical()),originalOutbox,'Fixed outbox header/token/part bytes changed');
+  evidence.fixed_outbox_physically_unchanged=true;
+  await rememberExpected(policy);window.__PROJECTION_PROGRESS__.stage='passed';return {...evidence,ok:true};
+}
+window.__MEMORY_SOURCE_PROJECTION__={run,resume};
+</script>

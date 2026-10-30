@@ -126,6 +126,25 @@ export function writeConversationMetadata(tx:IDBTransaction,header:StoredEntity,
     });
   });
 }
+/** Only the memory-domain commit calls this after source/receipt verification in this transaction. */
+export function writeConversationMemories(tx:IDBTransaction,header:StoredEntity,memories:unknown[],done:(bodyToken:string)=>void) {
+  storageWrite(tx,next=>{
+    if(header.owner!==deviceOwner()||header.kind!=='conversation'||header.deleted||!Number.isSafeInteger(header.revision+1))throw Error('Invalid memory projection');
+    const complete=(token:string)=>{done(token);next();};
+    const check=(p:Record<string,any>)=>{if(p.cache_evicted)throw Error('Conversation unavailable');};
+    if(header.payloadParts){
+      rewriteConversationParts(tx,[header.owner,'entity',header.id],header.payloadParts,{memories},(ref,metadata,scan)=>{
+        check(metadata);adoptConversationRewrite(tx,{...header,dirty:metadata.storage_policy==='sync',opened:Date.now()},ref,
+          {...metadata,memories,messages:[]},scan,()=>complete(ref.token));
+      });
+    }else{
+      const p=header.payload;if(!p||!Array.isArray(p.messages))throw Error('Missing conversation body');check(p);
+      persistEntity(tx,{...header,revision:header.revision+1,dirty:p.storage_policy==='sync',opened:Date.now(),payload:{...p,memories}} as AppEntity,'put',()=>{
+        const read=tx.objectStore('entities').get([header.owner,header.id]);read.onsuccess=()=>storageStep(tx,()=>complete(read.result.payloadParts.token));
+      });
+    }
+  });
+}
 /** Caller holds the owner execution lease; domain recovery also commits its pending domain here. */
 export function recoverPendingConversation(tx:IDBTransaction,header:StoredEntity,generationId:string,done:()=>void,domainRecovery=false) {
   storageWrite(tx,next=>{
