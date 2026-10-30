@@ -309,3 +309,8 @@ Device生成前の履歴選択では、既定の保守的カウンターだけ�
 新しい原資が誤って期限切れになる問題を修正した。既存行の残額・期限は書き換えない。
 [Monthly funding](validation/2026-10-31-unified-monthly-funding.md) にCI失敗、修正前再現と
 月末・うるう年・年越し・元原資のみへの返却・再返却防止の検証範囲を記録する。
+
+会話の選択範囲または最新windowを読む保存層APIを追加。旧完全読取とは別の返却型にし、
+全断片・範囲外構文・owner・revision/tokenを検証する。[Conversation pages](validation/2026-10-31-unified-conversation-pages.md)
+に実IDB29ケースと全Web1,263件、画面未接続・毎回全走査・inline/巨大scalarの限界を記録する。
+この追加だけで、会話全体の1GB復元・生成/同期/UIの大容量対応を完了とはしない。

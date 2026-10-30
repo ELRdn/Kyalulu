@@ -21,10 +21,10 @@ export function storageStep(tx:IDBTransaction,action:()=>void) {
     action();
   }catch{tx.abort();}
 }
-export function readParts(tx:IDBTransaction,location:Location,ref:Parts,done:(value:any)=>void,decode=true) {
+export function readParts(tx:IDBTransaction,location:Location,ref:Parts,done:(value:any)=>void,decode:boolean|JsonStream=true) {
   storageStep(tx,()=>{
     if(!valid(ref))throw Error('Invalid storage manifest');
-    const parser=decode?new JsonStream():undefined,digest=new Sha256();let index=0,size=0;
+    const parser=decode===true?new JsonStream():decode||undefined,digest=new Sha256();let index=0,size=0;
     const next=()=>{
       const read=tx.objectStore('parts').get(partKey(location,ref,index));
       read.onsuccess=()=>storageStep(tx,()=>{
