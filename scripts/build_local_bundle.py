@@ -149,6 +149,8 @@ def build(output, release, target, web_dist=None):
                         raise ValueError("Model registry contains credentials")
                 shutil.copy2(source, target_dir / source.name)
         copy_source(web_dist, stage / "web")
+        from collect_release_sources import copy_runtime_licenses
+        copy_runtime_licenses(ROOT, stage / "web")
         # Complete corresponding application source for AGPL delivery, including
         # renderer and schema sources used to generate the supplied Web bundle.
         for file in (

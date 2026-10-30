@@ -9,7 +9,7 @@ import subprocess
 import tarfile
 import tempfile
 
-from collect_release_sources import ROOT, archive, collect
+from collect_release_sources import ROOT, archive, collect, copy_runtime_licenses
 
 
 def prepare(output, *, unified=False):
@@ -29,6 +29,8 @@ def prepare(output, *, unified=False):
         for directory in ("runtime/python", "characters", "personas", "worlds", "prompts", "scenarios"):
             shutil.copytree(corresponding / directory, stage / directory)
         shutil.copytree(web_dist, stage / "web")
+        if unified:
+            copy_runtime_licenses(ROOT, stage / "web")
         for name in ("LICENSE", "scripts/cloud_admin.py", "deploy/cloud/compose.yml",
                      "deploy/cloud/compose.vps.yml", "deploy/cloud/Caddyfile.example",
                      *(("deploy/cloud/Caddyfile.unified.example",

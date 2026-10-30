@@ -9,6 +9,37 @@ import tarfile
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+RUNTIME_LICENSES = {
+    "wllama-MIT.txt": ".artifacts/mobile-wasm/wllama/LICENCE",
+    "llama-MIT.txt": ".artifacts/mobile-wasm/wllama/llama.cpp/LICENSE",
+    "transformers-Apache-2.0.txt": "apps/web/node_modules/@huggingface/transformers/LICENSE",
+    "onnxruntime-MIT.txt": "docs/licenses/onnxruntime-MIT.txt",
+    "Dawn-WebGPU.txt": ".artifacts/mobile-wasm/emdawn/emdawnwebgpu_pkg/webgpu/src/LICENSE",
+    "Dawn-WebGPU-cpp.txt": ".artifacts/mobile-wasm/emdawn/emdawnwebgpu_pkg/webgpu_cpp/LICENSE",
+    "jsonhpp-MIT.txt": ".artifacts/mobile-wasm/wllama/llama.cpp/licenses/LICENSE-jsonhpp",
+    "AGPL-3.0.txt": "LICENSE",
+}
+
+
+def copy_runtime_licenses(root, destination):
+    target = destination / "licenses"
+    if target.is_symlink():
+        raise ValueError("Runtime license destination is a symlink")
+    texts = {}
+    for name, relative in RUNTIME_LICENSES.items():
+        origin = root / relative
+        if origin.is_symlink() or not origin.resolve().is_relative_to(root.resolve()):
+            raise ValueError("Runtime license escaped workspace or is a symlink")
+        if (target / name).is_symlink():
+            raise ValueError("Runtime license destination is a symlink")
+        texts[name] = origin.read_bytes()
+        if not texts[name].strip():
+            raise ValueError("Runtime license text is empty")
+    target.mkdir(parents=True, exist_ok=True)
+    for name, data in texts.items():
+        (target / name).write_bytes(data)
+
+
 DIRECTORIES = (
     "runtime/python",
     "apps/web/src",
