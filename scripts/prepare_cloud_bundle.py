@@ -31,7 +31,8 @@ def prepare(output, *, unified=False):
         shutil.copytree(web_dist, stage / "web")
         for name in ("LICENSE", "scripts/cloud_admin.py", "deploy/cloud/compose.yml",
                      "deploy/cloud/compose.vps.yml", "deploy/cloud/Caddyfile.example",
-                     *(("deploy/cloud/Caddyfile.unified.example",) if unified else ())):
+                     *(("deploy/cloud/Caddyfile.unified.example",
+                        "deploy/cloud/Caddyfile.cloud-migration.example") if unified else ())):
             target = stage / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ROOT / name, target)

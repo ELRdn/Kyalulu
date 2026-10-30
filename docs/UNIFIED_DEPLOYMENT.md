@@ -23,6 +23,17 @@ launch, provider contracts, regional policies or real-device behavior.
   `APP_DOMAIN` is the canonical hostname; `RELAY_DOMAIN` is the existing Relay
   hostname. `CLOUD_UPSTREAM` defaults to `kyalulu-cloud-runtime:8000` on the existing
   external Docker network. Do not point container Caddy at host loopback.
+- The unified bundle also includes `deploy/cloud/Caddyfile.cloud-migration.example`.
+  At the coordinated cutover, replace the old Cloud site block with this example;
+  do not append a duplicate host or proxy it into a Runtime with a different origin.
+  It serves a bilingual re-login link and returns 410 for old APIs/callbacks, without
+  redirects, code/cookie/body forwarding, Clear-Site-Data or data deletion. Keep
+  `APP_DOMAIN` identical to the canonical site. Old OAuth flows must restart there.
+  Its `/sw.js` waits for the existing explicit `APPLY_UPDATE` protocol and rejects
+  another open tab. Activation switches shell requests to the old host's network
+  migration responses while retaining caches, IndexedDB, OPFS and drafts. Users
+  who have not applied the update can still see a cached old shell; its API access
+  is closed by the server. Confirm this with the actual old UI before selection.
 - `KYALULU_CLOUD_ORIGIN` and the Supabase Site URL/callback allowlist must match the
   exact canonical HTTPS origin. Do not rewrite Host or Origin at the proxy to
   bypass Runtime validation. The callback is `/auth/callback`.
