@@ -30,3 +30,35 @@ Container execution was not performed. Running this probe in a container require
 Detailed fictional evidence is kept outside Git at `.artifacts/unified-disaster-recovery-20261030/`, with the final result under `durable-roots-final/evidence.json`; earlier `evidence.json`, `summary.json` and `README.md` describe the preceding slice. Only coverage and results are published here. A separate local staging prototype passed **24 checks** using copies and a minimal cipher/config adapter instead of constructing CloudStore on originals. It remains a prototype: container/read-only mount behavior, legacy schema, WAL staging and production-secret use were not established by those 24 checks. Its directory/code hashes and result are retained privately.
 
 An actual encrypted production backup, offsite ciphertext copy, source-preserving staging and isolated restore require their own reviewed operation; the scoped volume-metadata authorization does not authorize them.
+
+
+## Subsequent stopped-snapshot and operator preparation
+
+The private staging selfcheck was expanded from the historical 24 checks to **50/50**.
+Five fictional DBs contain commits that exist only in WAL. Complete logical data and
+schema survive Community/transfer/tenant restoration even when WAL replay changes
+physical DB bytes. Python-side guards reject write, SQLite-open and CloudStore
+construction attempts on originals. This is still not an OS read-only mount test.
+
+A composed offline worker initially failed encryption after exiting/re-entering its
+import guard. Rolling back all of `sys.modules` invalidated cached native crypto type
+identities; restoring only the replaced config stub fixes that fixture defect without
+changing encryption. Its archive input now uses a separate `input/` directory so the
+new-root overlap guard remains effective. **13/13** fictional worker checks pass,
+including separate CLI processes with a fake secret supplied only through stdin.
+DB signatures cover every schema object, typed BLOB values and implicit rowids.
+An unarchived retained-root file causes refusal before archive success.
+
+The accompanying controller passed **26/26** mocked checks: exact RO mount fences,
+zero-pending/hold admission, copy failure and stop-completed failure recovery, handle
+persistence failure cleanup, dedicated-label cleanup and no secret in argv/env/output.
+It waits for actual graceful exit; it never reports a still-stopping writer as resumed.
+Signal handlers, flock, actual Docker/systemd behavior, read-only mounts, production
+schema compatibility and production/offsite recovery remain untested.
+
+The code-only operator package is fixed at **20,218 bytes**, SHA-256
+`cafba66b016f2e76c5875469e757c72fc0815bcdec6d8ee0d7f796ad921324ba`.
+All members and per-file manifest hashes were checked locally; no metadata, DB,
+work tree or key is included. The separately prepared expected metadata is private.
+The [scoped production operation](../UNIFIED_PRODUCTION_BACKUP_REVIEW.md) has not
+been authorized or executed. Original services have not been stopped by this work.
