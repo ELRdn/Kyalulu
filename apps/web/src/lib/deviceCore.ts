@@ -71,7 +71,7 @@ export function prepareRpg(raw:unknown, state:Record<string,any>, input:string, 
 type Proposal={type:DeviceMemory['type'];content:string;source_kind:string};
 export function validateProposals(proposals:Proposal[],existing:DeviceMemory[],evidenceText:string) {
   const overlap=(a:Set<string>,b:Set<string>)=>b.size?[...b].filter(g=>a.has(g)).length/b.size:0;
-  const seen=existing.filter(m=>m.supported!==false||m.confirmation==='user_confirmed').map(m=>({grams:memoryBigrams(m.content),kind:m.source_kind??'user_statement'}));
+  const seen=existing.filter(m=>m.status!=='deleted'&&(m.supported!==false||m.confirmation==='user_confirmed')).map(m=>({grams:memoryBigrams(m.content),kind:m.source_kind??'user_statement'}));
   const evidence=memoryBigrams(evidenceText);
   return proposals.slice(0,3).map(p=>{
     const content=p.content.trim().replace(/\s+/gu,' '),grams=memoryBigrams(content),item={...p,content};

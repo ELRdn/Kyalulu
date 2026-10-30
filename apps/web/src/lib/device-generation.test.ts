@@ -151,3 +151,14 @@ it('reports memory off without reading, recalling or storing memory evidence',as
   expect(fixture.saved.payload.last_generation.raw_prompt).not.toContain('Never recall when off');
   expect(fixture.meta.has('memory-events:'+JSON.stringify(['fixture-owner','chat']))).toBe(false);
 });
+
+it('keeps a later manual memory when regenerating a legacy conversation',async()=>{
+  fixture.fail=false;fixture.memory=true;vi.stubGlobal('location',{href:'https://device.test/device/'});
+  const body={session_id:'chat',generation_id:'legacy-original',model_id:'fixture',messages:[{role:'user',content:'Hello'}]};
+  expect(await (await deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify(body)})).text()).toContain('event: done');
+  const assistant=fixture.saved.payload.messages.at(-1);
+  fixture.saved.payload.memories.push({id:'later-manual',type:'semantic',content:'Later manual fact',status:'active',origin:'user',supported:null,
+    version:1,source_session_id:'chat',source_generation_id:null,source_message_ids:[]});fixture.saved.revision++;
+  expect(await (await deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify({...body,generation_id:'legacy-replacement',regenerate_message_id:assistant.id})})).text()).toContain('event: done');
+  expect(fixture.saved.payload.memories.map((memory:any)=>memory.id)).toContain('later-manual');
+});

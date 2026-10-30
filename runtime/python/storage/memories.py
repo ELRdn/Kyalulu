@@ -307,7 +307,11 @@ async def commit(scope: str, result: dict, *, session_id: str | None, turn: int 
     decisions = []
     if result.get("status") == "completed" and trace.get("proposals"):
         proposals = [logic.MemoryProposal.model_validate(p) for p in trace["proposals"]]
-        decisions = logic.validate_proposals(proposals, await _list_memories(db, scope), evidence_text)
+        # Shared recall must not suppress another conversation's independent source.
+        existing = [m for m in await _list_memories(db, scope)
+                    if m["source_session_id"] == session_id or
+                    (m["source_session_id"] is None and session_id is not None and scope == f"session:{session_id}")]
+        decisions = logic.validate_proposals(proposals, existing, evidence_text)
         for d in decisions:
             if d["action"] == "store":
                 kind = d.get("source_kind", "user_statement")

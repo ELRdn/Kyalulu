@@ -25,6 +25,11 @@ export async function api(path:string,body?:unknown){
 export async function mount(node:HTMLElement,lang:'ja'|'en',theme:'light'|'dark') {
   localStorage.setItem('kyalulu-execution-target','device');localStorage.setItem('my-zeta-theme',theme);
   rememberOwner('device-research-fixture');language(lang);
+  await prepareRuntime();
+  const root=createRoot(node);root.render(<ThemeProvider><HashRouter><RuntimeGate><App /></RuntimeGate></HashRouter></ThemeProvider>);
+  return ()=>root.unmount();
+}
+export async function prepareRuntime() {
   const model=MODELS.find(m=>m.id==='kyalulu-iq3m')!;
   const directory={getDirectoryHandle:async()=>directory,getFileHandle:async(name:string)=>({getFile:async()=>{
     const file=model.files.find(f=>f.sha256===name);if(!file)throw Error('Unknown fictional file');return {size:file.bytes};
@@ -49,6 +54,4 @@ export async function mount(node:HTMLElement,lang:'ja'|'en',theme:'light'|'dark'
     }
     terminate(){terminations++;loading=false;this.pending=null;}
   }});
-  const root=createRoot(node);root.render(<ThemeProvider><HashRouter><RuntimeGate><App /></RuntimeGate></HashRouter></ThemeProvider>);
-  return ()=>root.unmount();
 }

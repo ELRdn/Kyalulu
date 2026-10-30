@@ -1,10 +1,17 @@
 import fixtures from '../../../../tests/fixtures/unified-memory-scopes.json';
+import { RuntimeStateSchema } from '../../../../packages/schemas/src';
 import { rememberOwner } from './appContext';
 import { appTransaction,entity,getMeta,newEntity,saveEntity,setMeta,writeEntity,scrubGenerationRecords } from './appStore';
 import { readDeviceMemoryDomain,commitDeviceMemoryDomain } from './deviceMemoryStore';
 import { canonical } from './appSyncData';
 import { deviceFetch } from './deviceApi';
 import { deviceExecutionLockName } from './deviceExecution';
+import { createElement } from 'react';
+import { createRoot,type Root } from 'react-dom/client';
+import MemoryPanel from '../components/MemoryPanel';
+import { preferences,savePreferences } from './appContext';
+import { prepareRuntime } from '../pages/DeviceResearch.browser-fixture';
+import '../index.css';
 import { bindMemoryScope,memoryBinding,memoryIdentity,worldMemoryScope,sharedMemoryScope,ownScopeMemories,
   previewMemoryMigration,migrateMemoryDomain,memoryDomainKey,memorySignature,appendScopeEvent,reconcileScopeMemories } from './deviceMemoryScopes';
 
@@ -118,4 +125,70 @@ export async function resume(){
   check(domain.erased_sessions.includes(bId)&&b?.deleted&&!a?.deleted,'Durable owner/source state after reload');
   check(domain.pools[memoryBinding(domain,aId).scope].events.at(-1)?.detail.fixture_payload.length===1_100_000,'Large pool after reload');
   return {ok:true,reload_preserves_pool_and_erasure:true};
+}
+
+const adapterOwner='scope-adapter-fixture';
+let adapterRoot:Root|undefined;
+export async function adapterApi(path:string,method='GET',body?:unknown){
+  const response=await deviceFetch(path,{method,...(body===undefined?{}:{body:JSON.stringify(body)})});
+  return {status:response.status,data:await response.json()};
+}
+export async function setupAdapter(language:'ja'|'en'){
+  localStorage.setItem('kyalulu-execution-target','device');rememberOwner(adapterOwner);savePreferences({...preferences(),language});
+  document.documentElement.dataset.theme=language==='ja'?'light':'dark';
+  await prepareRuntime();
+  for(const sid of ['adapter-a','adapter-b']){
+    check((await adapterApi('/api/chat/settings','PUT',{session_id:sid,character_id:'mocha_sfw',world_id:'beast_world',system_prompt:'',temperature:.8})).status===200,'Adapter settings');
+    check((await adapterApi('/api/memory/session/'+sid,'PUT',{enabled:true})).status===200,'Adapter memory enable');
+  }
+  const scope=(await adapterApi('/api/memory/session/adapter-a')).data.scope;
+  const made=await adapterApi('/api/memory','POST',{scope,type:'semantic',content:'鮭のお寿司が好き',source_session_id:'adapter-a'});
+  check(made.status===200,'Attributed shared manual memory');
+  await saveEntity(newEntity('conversation','adapter-legacy',{storage_policy:'local',settings:{session_id:'adapter-legacy',character_id:'mocha_sfw',world_id:'beast_world',system_prompt:'',temperature:.8},
+    messages:[],memories:[],summaries:[],state:RuntimeStateSchema.parse({session_id:'adapter-legacy'}),memory_enabled:true},adapterOwner),0);
+  check((await adapterApi('/api/memory','POST',{scope:'adapter-legacy',type:'semantic',content:'猫を三匹飼っている'})).status===200,'Legacy manual memory');
+  mountAdapter('adapter-legacy');return {scope,source_memory:made.data.id};
+}
+export function mountAdapter(sid:string){
+  adapterRoot?.unmount();let node=document.getElementById('adapter-root');if(!node){node=document.createElement('div');node.id='adapter-root';document.body.append(node);}
+  adapterRoot=createRoot(node);adapterRoot.render(createElement(MemoryPanel,{sessionId:sid,refreshKey:0}));
+}
+export async function runAdapter(){
+  const legacy=(await entity('adapter-legacy',adapterOwner))!,a=(await entity('adapter-a',adapterOwner))!;
+  check(legacy.payload.memory_scope_mode==='world'&&legacy.payload.memories[0].source_session_id==='adapter-legacy','UI migration committed own projection');
+  const model='kyalulu-iq3m',response=await deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify({session_id:'adapter-b',generation_id:'adapter-generation',model_id:model,messages:[{role:'user',content:'鮭のお寿司が好き'}]})});
+  check(response.ok&&(await response.text()).includes('event: done'),'Normal Device generation with scoped retrieval');
+  const b=(await entity('adapter-b',adapterOwner))!,trace=b.payload.last_generation.memory;
+  check(trace.injected.includes(a.payload.memories[0].id),'Real generator recalled peer fact');
+  check(b.payload.memories.length===1&&b.payload.memories.every((row:any)=>row.source_session_id==='adapter-b')
+    &&b.payload.messages.every((message:any)=>[message.before,message.after].every(snapshot=>!snapshot||snapshot.memories.every((row:any)=>row.source_session_id==='adapter-b'))),
+    'Independent own fact retained without foreign canonical or snapshot rows');
+  check(b.payload.last_generation.raw_prompt.includes('鮭のお寿司が好き'),'Actual frozen prompt includes selected shared evidence');
+  const beforeReply=b.payload.messages.at(-1).content;
+  check((await adapterApi('/api/chat/sessions/adapter-a/data','DELETE')).status===200,'Attributed source erasure');
+  const after=(await entity('adapter-b',adapterOwner))!;
+  check(after.payload.memories.length===1&&after.payload.memories[0].source_session_id==='adapter-b','Equal independent fact survives source A erasure');
+  check(after.payload.messages.at(-1).content===beforeReply&&after.payload.last_generation.raw_prompt===undefined
+    &&after.payload.last_generation.compiled===undefined&&!after.payload.last_generation.memory.candidates.some((row:any)=>row.source_session_id==='adapter-a'),
+    'Foreign debug evidence scrubbed while authored input/reply retained');
+  const userId=after.payload.messages.find((message:any)=>message.role==='user').id;
+  check((await adapterApi('/api/chat/history/'+userId,'DELETE')).status===200,'Delete a memory source message');
+  const next=await deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify({session_id:'adapter-b',generation_id:'adapter-after-delete',model_id:model,
+    messages:[{role:'user',content:'新しい架空の入力'}]})});
+  check(next.ok&&(await next.text()).includes('event: done'),'Normal generation remains usable after source-message deletion');
+  const preview=await adapterApi('/api/memory/session/adapter-legacy/scope-preview');
+  const shared=await adapterApi('/api/memory/session/adapter-legacy/scope-migrate','POST',{expected_revision:preview.data.preview_revision,share:true});
+  check(shared.status===200&&shared.data.scope.startsWith('char:'),'Explicit cross-world sharing');
+  const debug=await adapterApi('/api/chat/debug?session_id=adapter-legacy');
+  check(debug.data.memory_session.scope===shared.data.scope,'Common debug scope address');
+  mountAdapter('adapter-legacy');
+  return {ok:true,normal_generation_shared_recall:true,own_snapshots_only:true,ui_legacy_migration:true,explicit_shared_migration:true,
+    independent_duplicate_source_retained:true,source_erasure_scrubs_foreign_debug:true,history_deletion_allows_next_generation:true,
+    saved_reply_retained:true,model_backend:'synthetic',production_used:false};
+}
+export async function resumeAdapter(){
+  rememberOwner(adapterOwner);const legacy=(await entity('adapter-legacy',adapterOwner))!;
+  const state=await adapterApi('/api/memory/session/adapter-legacy');
+  check(state.data.scope.startsWith('char:')&&legacy.payload.memories[0].content==='猫を三匹飼っている','Shared binding/source survives reload');
+  check((await entity('adapter-a',adapterOwner))?.deleted,'Source erasure survives reload');return {adapter_reload:true};
 }
