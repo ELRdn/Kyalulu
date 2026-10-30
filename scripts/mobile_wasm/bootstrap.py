@@ -49,6 +49,8 @@ def main():
                 else:
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_bytes(archive.read(item))
+                    if (item.external_attr >> 16) & 0o111:
+                        target.chmod(0o755)
         lock[url] = digest
         lock_path.write_text(json.dumps(lock, indent=2)+'\n')
         print('Prepared', name, digest, flush=True)

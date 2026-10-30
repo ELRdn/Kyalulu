@@ -220,3 +220,10 @@ Selectorへ変更し、保存PIDが実終了するまで所有情報を保持す
 async subprocess非対応の制約があり、現Runtimeには該当するsubprocess呼出しはない。
 同梱Pythonの切断例外注入で修正前の待機と修正後の正常終了を比較し、関連23件が成功。
 新しい梱包/CLI/ブラウザの同一版検証は別途必要。旧失敗試験の強制片付けは正常終了の証拠に含めない。
+
+固定87f560dを同梱Python3.13.7で再生成し、Windows tar `885c8314…906fad` と
+packed CLI `3fa9cd62…5b48b4` を検証。実CLI復元/rollback、Mockブラウザ送信と再起動・
+実終了、8,734 member・218製品ファイル・587 Git exportの照合が成功し、残留PIDは0。
+既定Python3.14で生成した先行候補はcasefold差分で監査不合格とし、配布対象外にした。
+手動成果物CIの初回40993302006はemsdk ZIP実行権限の欠落で失敗。bootstrapを修正し、
+関連9件とLinux権限fixtureを確認。Windows/macOS runnerでの梱包受入れは再実行の別gate。
