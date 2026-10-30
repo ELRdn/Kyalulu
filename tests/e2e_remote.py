@@ -46,6 +46,19 @@ async def language_in_place(page, language):
     }''', language)
 
 
+async def runtime_ready(page, ready):
+    from playwright.async_api import expect
+
+    reconnect = page.get_by_role('button', name='もう一度接続する', exact=True)
+    # Settle the 15s channel handshake / 10s access check before inspecting the route.
+    await expect(ready.or_(reconnect)).to_be_enabled(timeout=30000)
+    retried = await reconnect.is_visible()
+    if retried:
+        await reconnect.click()  # One explicit access GET; never retry a generation or cancel POST.
+    await expect(ready).to_be_visible(timeout=30000)
+    return int(retried)
+
+
 async def run():
     output = ROOT / ".artifacts" / "remote-v1" / ("e2e-" + uuid.uuid4().hex[:8])
     output.mkdir(parents=True)
@@ -68,6 +81,20 @@ async def run():
         f"http://127.0.0.1:{web_port}",
     )
     relay = create_app(str(output / "relay.sqlite3"), [web_origin])
+    relay_trace = []
+    original_attach = relay.state.hub.attach
+
+    def observe_attach(peer):
+        entry = {'role': peer.device['role'], 'existing_peer': peer.device['id'] in relay.state.hub.peers}
+        relay_trace.append(entry)
+        try:
+            original_attach(peer)
+        except Exception as error:
+            entry['exception_type'] = type(error).__name__
+            entry['status'] = getattr(error, 'status_code', None)
+            raise
+
+    relay.state.hub.attach = observe_attach
     store = relay.state.store
     issued = store.redeem_invite(store.invite(), "Acceptance PC")
     private, public = generate_keypair()
@@ -110,6 +137,7 @@ async def run():
     log = None
     report = {
         "checks": [],
+        "runtime_recoveries": [],
         "limits": ["Mock model", "emulated Android", "loopback development origins"],
     }
 
@@ -377,10 +405,40 @@ async def run():
                     entered, checking_saved, release_saved = asyncio.Event(), asyncio.Event(), asyncio.Event()
                     from python.storage import generations
                     original_status = generations.status
+                    original_invoke = host.bridge.adapter.invoke
+                    fail_access_read = False
+                    recovery_trace = []
+                    recovery_phase = 'generation'
+                    recovery_started = asyncio.get_running_loop().time()
+                    held_reads = 0
+
+                    async def observe_recovery(scope, body, send):
+                        access_read = scope['method'] == 'GET' and scope['path'] == '/api/mobile/status'
+                        entry = {'phase': recovery_phase, 'elapsed_ms': round((asyncio.get_running_loop().time() - recovery_started) * 1000),
+                                 'method': scope['method'], 'route': 'access' if access_read else 'other'}
+                        recovery_trace.append(entry)
+                        if access_read and fail_access_read:
+                            entry['injected_failure'] = True
+                            raise ConnectionError('controlled metadata read failure')
+
+                        async def observed_send(message):
+                            if message['type'] == 'http.response.start':
+                                entry['status'] = message['status']
+                            await send(message)
+
+                        try:
+                            await original_invoke(scope, body, observed_send)
+                        except Exception as error:
+                            entry['exception_type'] = type(error).__name__
+                            raise
+
+                    host.bridge.adapter.invoke = observe_recovery
 
                     async def held_status(generation_id, session_id):
+                        nonlocal held_reads
                         result = await original_status(generation_id, session_id)
                         if session_id == cancel_sid and result['status'] == 'cancelled':
+                            held_reads += 1
                             checking_saved.set()
                             await release_saved.wait()
                         return result
@@ -425,14 +483,43 @@ async def run():
                             try{switchTarget('device');return false;}
                             catch(error){return String(error).includes('Stop generation and confirm its saved result');}
                         }''')
-                        await page.evaluate('location.hash="/profile"')
-                        await expect(composer).to_have_count(0)
-                        await expect(picker).to_be_disabled()
-                        await page.reload()
-                        await page.get_by_role('region', name='Remoteの接続先', exact=True).wait_for()
-                        await expect(picker).to_be_disabled()
-                        await page.get_by_role('link', name='送信結果を確認', exact=True).click()
-                        await expect(composer).to_be_visible()
+                        for controlled_failure in (False, True):
+                            await page.evaluate('location.hash="/profile"')
+                            await expect(composer).to_have_count(0)
+                            await expect(picker).to_be_disabled()
+                            recovery_phase = 'controlled_reload' if controlled_failure else 'normal_reload'
+                            # Bootstrap can issue overlapping checks; hold the fault until the explicit retry.
+                            fail_access_read = controlled_failure
+                            start = len(recovery_trace)
+                            await page.reload()
+                            profile = page.get_by_role('textbox', name='表示名', exact=True)
+                            reconnect = page.get_by_role('button', name='もう一度接続する', exact=True)
+                            # RuntimeGate also renders RemoteConnections; only an authenticated Profile proves readiness.
+                            await expect(profile.or_(reconnect)).to_be_enabled(timeout=30000)
+                            await expect(picker).to_be_disabled()
+                            assert not release_saved.is_set()
+                            if controlled_failure:
+                                await expect(reconnect).to_be_visible()
+                                await expect(page.get_by_role('region', name='Remoteの接続先', exact=True)).to_be_visible()
+                                await expect(page.get_by_role('link', name='送信結果を確認', exact=True)).to_be_visible()
+                                await expect(composer).to_have_count(0)
+                                assert any(e.get('injected_failure') for e in recovery_trace[start:])
+                            fail_access_read = False
+                            retries = await runtime_ready(page, profile)
+                            report['runtime_recoveries'].append({'phase': recovery_phase, 'ui_retries': retries})
+                            if controlled_failure:
+                                assert retries == 1
+                            assert all(e['method'] == 'GET' for e in recovery_trace[start:]), recovery_trace[start:]
+                            assert any(e['route'] == 'access' and e.get('status') == 200 for e in recovery_trace[start:])
+                            await expect(page.locator('.k-remote-banner')).to_contain_text('暗号化接続中')
+                            await expect(picker).to_be_disabled()
+                            before_reads = held_reads
+                            await page.get_by_role('link', name='送信結果を確認', exact=True).click()
+                            await expect(composer).to_be_visible()
+                            await wait_until(lambda: held_reads > before_reads)
+                            await expect(picker).to_be_disabled()
+                            assert not release_saved.is_set()
+                        recovery_phase = 'saved_result_release'
                         release_saved.set()
                         await expect(picker).to_be_enabled(timeout=30000)
                         await expect(composer).to_have_value('REMOTE_STOP_keep_input')
@@ -442,9 +529,15 @@ async def run():
                         assert terminal == {'generation_id': generation_id, 'session_id': cancel_sid, 'status': 'cancelled', 'user_id': None, 'assistant_id': None}
                     finally:
                         release_saved.set()
+                        host.bridge.adapter.invoke = original_invoke
                         generations.status = original_status
                         MockProvider.stream_events = original_stream
+                        (output / 'recovery-metadata.json').write_text(json.dumps(recovery_trace, indent=2), encoding='utf-8')
+                        if sys.exc_info()[0] is not None:
+                            print(json.dumps({'remote_recovery_metadata': recovery_trace, 'host_connected': host.connected,
+                                              'host_connections': len(host.connections), 'held_reads': held_reads}), flush=True)
                     report['checks'].append('pending generation and delayed saved-result check reject target switching; verified cancellation restores input before unlocking')
+                    report['checks'].append('normal and failed access-read reloads reach authenticated Profile; one GET-only reconnect preserves held saved-result barrier')
 
                     # Canceling the destination review cannot mutate the current route or draft.
                     await composer.fill('REMOTE_UNSENT_after_stop')
@@ -465,6 +558,8 @@ async def run():
                     await page.get_by_role('dialog').get_by_role('button', name='次へ', exact=True).click()
                     await page.wait_for_url(web_origin + '/#/')
                     await page.goto(web_origin + '/#/chats/' + cancel_sid)
+                    retries = await runtime_ready(page, page.locator('.k-composer__input'))
+                    report['runtime_recoveries'].append({'phase': 'pc_device_pc_reload', 'ui_retries': retries})
                     await expect(page.locator('.k-composer__input')).to_have_value('REMOTE_UNSENT_after_stop', timeout=30000)
                     assert json.loads((await api('/api/chat/history?session_id=' + cancel_sid))['body'])['history'] == stopped_history
                     report['checks'].append('review cancellation and PC/Device roundtrip preserve scoped draft, keys and authoritative history without copying or resending')
@@ -567,6 +662,8 @@ async def run():
                     assert not errors, errors
                     await context.close()
                 except Exception:
+                    print(json.dumps({'remote_relay_metadata': relay_trace, 'host_connected': host.connected,
+                                      'host_connections': len(host.connections)}), flush=True)
                     if "page" in locals():
                         await page.screenshot(
                             path=str(output / "failure.png"), full_page=True
@@ -606,6 +703,7 @@ async def run():
                 finally:
                     if log:
                         log.close()
+    report['relay_bootstrap'] = relay_trace
     (output / "acceptance.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
     )
