@@ -113,6 +113,7 @@ export function previewMemoryMigration(domain:MemoryDomain,session:AppEntity,ide
 export function migrateMemoryDomain(domain:MemoryDomain,session:AppEntity,identity:MemoryIdentity,expectedRevision:string,share=false,
   makeId:()=>string=()=>crypto.randomUUID(),now=new Date().toISOString()) {
   if(domain.pending||session.payload.pending_generation)throw fail('Stop generation before migrating memory');
+  if(session.payload.branch_of||session.payload.recovery_from)throw fail('Branch and recovery memories must remain independent');
   const preview=previewMemoryMigration(domain,session,identity);
   if(preview.preview_revision!==expectedRevision)throw fail('Memory changed; preview migration again');
   const binding=memoryBinding(domain,session.id)??bindMemoryScope(domain,session,identity);

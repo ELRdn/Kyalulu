@@ -39,6 +39,45 @@ async def test_proposals_are_deduplicated_and_flagged_when_unsupported():
     assert not logic.evidenced("寿司が好き。特にサーモン", "今日は雨だね")
 
 
+@pytest.mark.parametrize("first_source,second_source", [("source-a", "source-b"), ("source-a", None), (None, "source-b")])
+async def test_commit_deduplicates_only_same_source_and_preserves_shared_retrieval(isolated, first_source, second_source):
+    from python.storage import conversation, memories
+
+    scope = "char:mocha_sfw|persona:default"
+    statement = "サーモンのお寿司が好き"
+
+    async def commit(source, generation):
+        prepared = await memories.prepare(scope, statement)
+        result = {"status": "completed", "generation_id": generation, "reply": statement,
+                  "memory": {**prepared["trace"], "proposals": [
+                      {"type": "semantic", "content": statement, "source_kind": "user_statement"}]}}
+        await memories.commit(scope, result, session_id=source, turn=1, evidence_text=statement)
+        return result["memory"]
+
+    assert (await commit(first_source, "first"))["decisions"][0]["action"] == "store"
+    first = (await memories.list_memories(scope))[0]
+    trace = await commit(second_source, "second")
+    assert trace["decisions"][0]["action"] == "store"
+    assert first["id"] in trace["injected"] and first["id"] in trace["evidenced"]
+    events = await memories.events(scope=scope)
+    retrieval = next(e for e in events if e["op"] == "retrieve" and e["generation_id"] == "second")
+    assert first["id"] in [c["id"] for c in retrieval["detail"]["candidates"]]
+    shared = await memories.list_memories(scope)
+    assert [m["source_session_id"] for m in shared] == [first_source, second_source]
+    assert all(m["supported"] and m["source_quote"] == statement for m in shared)
+    for source in (first_source, second_source):
+        decision = (await commit(source, f"repeat-{source}"))["decisions"][0]
+        assert decision["action"] == "skip" and decision["reason"] == "duplicate"
+    assert len(await memories.list_memories(scope)) == 2
+
+    if first_source is not None:
+        await conversation.purge(first_source)
+        remaining = await memories.list_memories(scope)
+        assert [m["id"] for m in remaining] == [shared[1]["id"]]
+        assert remaining[0]["source_session_id"] == second_source
+        assert (await memories.prepare(scope, statement))["trace"]["injected"] == [shared[1]["id"]]
+
+
 async def test_unverified_memories_are_inspectable_but_not_injected():
     item = {**mem("x", "semantic", "好きな花はデルフィニウム"), "supported": False, "origin": "model"}
     trace = logic.retrieve([item], "好きな花はデルフィニウム")

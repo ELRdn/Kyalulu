@@ -1,9 +1,9 @@
 # Device memory scope contract and atomic storage
 
-2026-10-30. **Foundation and erasure integration, not chat-adapter acceptance.**
-The Browser `/scope-migrate` endpoint still returns 409. This batch does not
-replace it with a successful isolated copy or claim that normal Device chat
-already searches the new shared pools.
+2026-10-30. **Foundation and erasure integration at `2b1c423`.**
+That commit retained the Browser `/scope-migrate` 409 and did not claim chat-adapter
+acceptance. Subsequent route/generator integration and its separate evidence are
+recorded in [Device scoped memory](2026-10-30-unified-device-scoped-memory.md).
 
 ## Data and ownership
 

@@ -264,9 +264,18 @@ lock解放の順序差は、試験が実lock状態を待ってから検証する
 手入力の会話来歴も日常UIとPython/Browser APIへ接続。実IDBでコピー/重複排除、原本保護、
 pending fence、消去rollback、>1MiBの分割/破損検出/再読込を確認。Web1187件・型と
 Python関連128件が成功。[Scope contract](validation/2026-10-30-unified-memory-scope-contract.md)
-に記録。通常Device生成/移行APIへの共有プール接続はまだ未完了で、移行409を維持する。
+に記録。この基盤コミット時点では通常Device生成/移行APIへの接続が未完了で、移行409を維持した。
 0deaa87のWindows CIは成功、Ubuntuの新試験はlock解放待ちの判定で失敗したため、
 試験を実queued lock取得のawaitへ訂正した。新CI/配布物の合格ではない。
 監査行に出典を保持し、記憶行の除去後も本文を完全消去できるようにした。同文の手動記憶は
 Python/Browserとも出典別に重複判定する。共有pendingの孤立復旧は共通生成APIへ接続し、
 新しい下書き/記憶/返信の保持、source削除時の非復活、部分保存失敗rollbackを確認した。
+
+続いて通常Device生成と記憶APIへ共有ドメインを接続した。新規世界範囲・旧会話の明示移行、
+local/sync分離、他会話の数値IDを含めない保存投影、再生成失敗時の旧返信保持と手動記憶保持を
+実装。共通記憶パネルの移行から通常生成・source消去・共有移行・再読込まで日英の実Chromium
+で確認し、旧移行409のstubを除去した。[Device scoped memory](validation/2026-10-30-unified-device-scoped-memory.md)
+に実装・架空推論・実機/容量/本番の未検証境界を記録する。
+レビューで見つかった履歴削除後の参照切れと、他会話との同文提案で出典を失う問題も修正。
+Web1244件、Python関連153件、型・製品buildと日英の実IDB/UI/架空Worker試験が成功した。
+新しい配布物・実モデル・実機・本番の合格を意味しない。

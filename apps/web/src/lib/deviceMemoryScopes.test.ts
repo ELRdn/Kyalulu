@@ -140,3 +140,9 @@ it('retains equal facts from independent sources when either source is erased af
   eraseMemoryDomain(state,'a');
   expect(ownScopeMemories(state.pools[shared],'b')).toMatchObject([{content:'same fact',source_session_id:'b'}]);
 });
+
+it.each(['branch_of','recovery_from'])('does not merge an independent %s back into a shared pool',key=>{
+  const state=emptyMemoryDomain(),record=session('independent');record.payload[key]='origin';
+  bindMemoryScope(state,record,identity());const preview=previewMemoryMigration(state,record,identity()),before=structuredClone(state);
+  expect(()=>migrateMemoryDomain(state,record,identity(),preview.preview_revision,true)).toThrow('must remain independent');expect(state).toEqual(before);
+});

@@ -78,15 +78,22 @@ it.each([
   ['/api/chat/settings?session_id=requested',{session_id:'requested',system_prompt:'KEEP'}],
   ['/api/memory?scope=requested',{memories:[{content:'Requested history'}]}],
   ['/api/memory/session/requested',{scope:'requested',enabled:true}],
-  ['/api/memory/session/requested/scope-preview',{scope:'requested',preview_revision:'3',memories:[{content:'Requested history'}]}],
+  ['/api/memory/session/requested/scope-preview',{scope:'session:requested|device:local',preview_revision:expect.stringMatching(/^[a-f0-9]{64}$/),memories:[{content:'Requested history'}]}],
   ['/api/chat/context/requested',{history_revision:'3',summaries:[{text:'Requested history'}]}],
   ['/api/chat/debug?session_id=requested',{session_id:'requested',history_count:1,settings:{system_prompt:'KEEP'}}],
   ['/api/chat/intro/inject?session_id=requested',{injected:false}],
 ])('reads only the requested owner and conversation for %s',async(path,expected)=>{
+  if(path.endsWith('/scope-preview')){const record=saved();record.payload.pending_generation=null;put(record);}
   const before=structuredClone(fixture.records),response=await request(path);
   expect(response.status).toBe(200);expect(response.body).toMatchObject(expected);
   expect(allEntities).not.toHaveBeenCalled();expect(entity).not.toHaveBeenCalled();
   expect(openEntity).toHaveBeenCalledExactlyOnceWith('requested','owner-a');expect(fixture.records).toEqual(before);
+});
+
+it('refuses a migration preview while the source generation is pending',async()=>{
+  const before=structuredClone(fixture.records);
+  expect((await request('/api/memory/session/requested/scope-preview')).status).toBe(409);
+  expect(fixture.records).toEqual(before);
 });
 
 it('preserves immutable bindings, pending generation and unsent input when saving settings',async()=>{
@@ -176,10 +183,24 @@ it.each([
   ['/api/chat/history/900',{content:'Edited message'},'PUT','messages'],
   ['/api/memory/memory-unrelated',{content:'Edited memory'},'PUT','memories'],
 ])('retains owner-wide ID lookup for %s',async(path,body,method,key)=>{
+  if(path.startsWith('/api/chat/history/')){const record=decoded(fixture.records.get('owner-a:unrelated'),fixture.parts);record.payload.pending_generation=null;put(record);}
   const response=await request(path,body,method);expect(response.status).toBe(200);
   expect(decoded(fixture.records.get('owner-a:unrelated'),fixture.parts).payload[key][0].content).toBe(body.content);
   expect(saved().payload.messages[0].content).toBe('Requested history');
   expect(allEntities).toHaveBeenCalledExactlyOnceWith('owner-a');expect(openEntity).toHaveBeenCalledExactlyOnceWith('unrelated','owner-a');
+});
+
+it('keeps history and memory references while a legacy pending result needs recovery',async()=>{
+  const before=structuredClone(fixture.records);
+  expect((await request('/api/chat/history/900',{content:'Must wait'},'PUT')).status).toBe(409);
+  expect((await request('/api/chat/history?session_id=requested',undefined,'DELETE')).status).toBe(409);
+  expect(fixture.records).toEqual(before);
+});
+
+it.each(['GET','POST'])('rejects %s as an individual history mutation before loading private records',async method=>{
+  const before=structuredClone(fixture.records);
+  expect((await request('/api/chat/history/900',{content:'Must not edit'},method)).status).toBe(405);
+  expect(fixture.records).toEqual(before);expect(allEntities).not.toHaveBeenCalled();
 });
 
 it('retains duplicate detection and owner-wide message IDs when importing histories',async()=>{
