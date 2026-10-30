@@ -2,7 +2,7 @@ import { PortableDocumentSchema, DeviceGenerationOutputSchema, RuntimeStateSchem
 import catalog from '../mobile/app-catalog.generated.json';
 import { MobileRuntime } from '../mobile/runtime';
 import { MODELS, readyModels } from '../mobile/models';
-import { allEntities, entity, openEntity, conversationInfo, conversationPage, conversationSummary, readConversationSummary, generationHistory, recoverConversationGeneration, saveEntity, newEntity, getMeta, setMeta, appTransaction, writeEntity, scrubGenerationRecords, memoryEventsKey, trimOfflineCache, type AppEntity, type EntityKind, type ConversationPage, type ConversationPageCursor, type ConversationSummary } from './appStore';
+import { allEntities, entity, openEntity, conversationInfo, conversationPage, conversationSummary, readConversationSummary, generationHistory, recoverConversationGeneration, saveEntity, newEntity, getMeta, setMeta, appTransaction, writeEntity, writeConversationMetadata, scrubGenerationRecords, memoryEventsKey, trimOfflineCache, type AppEntity, type EntityKind, type ConversationPage, type ConversationPageCursor, type ConversationSummary } from './appStore';
 import { deviceOwner, setGenerationBusy } from './appContext';
 import { estimateTokens, retrieveMemories, renderMemoryBlock, prepareRpg, memoryDecisions, evidenced, refreshSummaries,deviceResponseGrammar, type DeviceMemory } from './deviceCore';
 import { receiveConversation, rebindConversation } from './appSyncData';
@@ -53,6 +53,7 @@ async function conversation(id:string,owner=deviceOwner()) {
 }
 async function openPage(id:string,owner:string,limit=50,cursor?:ConversationPageCursor) {
   const info=await conversationInfo(id,owner);
+  if(owner!==deviceOwner())throw fail('Account changed',409);
   if(info?.deleted)throw fail('Conversation deleted',404);
   if(info?.selection.cache_evicted){
     try{await hydrateConversation(id,owner);await trimOfflineCache(owner);}
@@ -80,6 +81,17 @@ function conversationView(id:string,owner:string) {
     openingViews.set(key,pending);
   }
   return pending;
+}
+async function saveConversationMetadata(view:ConversationView,patch:Record<string,unknown>) {
+  if(!view.page){const value=blank(view.id);await saveEntity({...value,owner:view.owner,payload:{...value.payload,...patch}},0);return;}
+  await appTransaction<void>(['entities','meta'],'readwrite',(tx,done)=>{
+    const read=tx.objectStore('entities').get([view.owner,view.id]);read.onsuccess=()=>storageStep(tx,()=>{
+      const header=read.result;
+      if(view.owner!==deviceOwner()||!header||header.owner!==view.owner||header.id!==view.id||header.revision!==view.revision
+        ||(header.payloadParts?.token??null)!==view.page!.bodyToken)throw Error('Conversation changed');
+      writeConversationMetadata(tx,{...header,opened:Date.now()},patch,()=>done());
+    });
+  });
 }
 async function nextId(owner=deviceOwner()) {
   const key='message-sequence:'+owner;
@@ -456,14 +468,14 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
   if(path==='/api/chat/settings') {
     const id=body.session_id??url.searchParams.get('session_id')??'default';
     if(method==='GET')return json((await conversationView(id,owner)).metadata.settings);
-    const session=await conversation(id,owner);
+    const view=await conversationView(id,owner);
     if(running)throw fail('Stop generation before editing',409);
     if(typeof body.system_prompt!=='string'||body.system_prompt.length>128000)throw fail('Invalid system prompt');
     if(typeof body.temperature!=='number'||!Number.isFinite(body.temperature)||body.temperature<0||body.temperature>2)throw fail('Invalid temperature');
     const binding=LibraryBindingSchema.parse(body.library_binding??{});
     if(!binding.character&&body.character_id){const saved=await entity(body.character_id,owner);if(saved?.payload.document?.kind==='character')binding.character={id:saved.id,revision:saved.payload.current_revision??saved.revision};}
     const settings=ConversationSettingsSchema.parse({...body,library_binding:binding});await compiled(settings,[],owner);
-    await saveEntity({...session,payload:{...session.payload,settings}},session.revision);return json({ok:true});
+    await saveConversationMetadata(view,{settings});return json({ok:true});
   }
   if(path==='/api/chat/history/proof'){
     if(method!=='GET')throw fail('History verification requires GET',405);
@@ -576,14 +588,15 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
   }
   const context=path.match(/^\/api\/chat\/context\/([^/]+)(?:\/summaries\/([^/]+))?$/);
   if(context) {
-    const session=await conversation(context[1],owner);
-    if(method==='GET')return json({history_revision:String(session.revision),summaries:session.payload.summaries,scope:session.id});
+    const view=await conversationView(context[1],owner),summaries=view.metadata.summaries as any[];
+    if(method==='GET')return json({history_revision:String(view.revision),summaries,scope:view.id});
     if(running)throw fail('Stop generation before editing',409);
-    const summary=session.payload.summaries.find((s:any)=>s.id===context[2]);
+    const summary=summaries.find((s:any)=>s.id===context[2]);
     if(!summary)throw fail('Summary not found',404);
     if(String(summary.revision)!==String(body.expected_revision))throw fail('Summary changed',409);
     if(typeof body.text!=='string'||!body.text.trim()||body.text.length>128000)throw fail('Invalid summary');
-    summary.text=body.text;summary.revision+=1;summary.method='manual';await saveEntity(session,session.revision);return json(summary);
+    const updated={...summary,text:body.text,revision:summary.revision+1,method:'manual'};
+    await saveConversationMetadata(view,{summaries:summaries.map(s=>s===summary?updated:s)});return json(updated);
   }
   if(path==='/api/chat/debug') {
     const session=await conversation(url.searchParams.get('session_id')??'default',owner),p=session.payload;

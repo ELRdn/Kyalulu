@@ -13,6 +13,12 @@ vi.mock('./appStore',async original=>({
   allEntities:async(owner:string)=>[...fixture.records.values()].filter(e=>e.owner===owner).map(value=>decoded(value,fixture.parts)),
   entity:async(id:string,owner=fixture.owner)=>decoded(fixture.records.get(owner+':'+id),fixture.parts),
   openEntity:async(id:string,owner=fixture.owner)=>decoded(fixture.records.get(owner+':'+id),fixture.parts),
+  conversationInfo:async(id:string,owner=fixture.owner)=>{const value=fixture.records.get(owner+':'+id);return value&&{...value,selection:{cache_evicted:!!value.payload?.cache_evicted}};},
+  conversationPage:async(id:string,owner=fixture.owner,limit=50)=>{
+    const value=decoded(fixture.records.get(owner+':'+id),fixture.parts);if(!value)return;
+    const {messages,...metadata}=value.payload,total=messages.length;
+    return {owner,id,revision:value.revision,bodyToken:fixture.records.get(owner+':'+id)?.payloadParts?.token??null,metadata,messages:messages.slice(-limit),total,start:Math.max(0,total-limit),end:total};
+  },
   getMeta:async(key:string)=>structuredClone(fixture.meta.get(key)),
   setMeta:async(key:string,value:unknown)=>{fixture.meta.set(key,structuredClone(value));},
   appTransaction:(_stores:string[],mode:string,action:any)=>harness(fixture.records,fixture.meta,fixture.parts,key=>key.join(':'),mode,action,{

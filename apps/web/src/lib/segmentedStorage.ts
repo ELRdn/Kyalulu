@@ -4,6 +4,7 @@ import { JsonStream } from './jsonStream';
 import { Sha256 } from '../mobile/sha256';
 
 export type Parts = { token:string; size:number; chunks:number; sha256:string };
+export type ConversationScan={count:number;maximumMessageId:number;messageIdsValid:boolean;last_preview:string;last_at:any};
 const LIMIT=1024*1024;
 type Location=readonly [string,string,string];
 const partKey=(location:Location,ref:Parts,index:number)=>[...location,ref.token,index];
@@ -63,7 +64,7 @@ export function writeParts(tx:IDBTransaction,location:Location,value:unknown,don
 }
 /** Tentative output stays in this transaction until the entire original body verifies. */
 export function rewriteConversationParts(tx:IDBTransaction,location:Location,previous:Parts,patch:Record<string,unknown>,
-  done:(ref:Parts,metadata:Record<string,any>,scan:{count:number;maximumMessageId:number;messageIdsValid:boolean;last_preview:string;last_at:any})=>void) {
+  done:(ref:Parts,metadata:Record<string,any>,scan:ConversationScan)=>void) {
   storageStep(tx,()=>{
     if(Object.hasOwn(patch,'messages'))throw Error('History cannot be replaced by a metadata patch');
     const digest=new Sha256(),ref:Parts={token:crypto.randomUUID(),size:0,chunks:0,sha256:''},encoder=new TextEncoder();

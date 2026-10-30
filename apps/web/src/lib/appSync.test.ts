@@ -14,6 +14,12 @@ vi.mock('./appStore',async importOriginal=>({
   setMeta:async(key:string,value:any)=>{fixture.meta.set(key,structuredClone(value));},
   entity:async(id:string,owner:string)=>decoded(fixture.entities.get(JSON.stringify([owner,id])),fixture.parts),
   openEntity:async(id:string,owner:string)=>decoded(fixture.entities.get(JSON.stringify([owner,id])),fixture.parts),
+  conversationInfo:async(id:string,owner:string)=>{const value=fixture.entities.get(JSON.stringify([owner,id]));return value&&{...value,selection:{cache_evicted:!!value.payload?.cache_evicted}};},
+  conversationPage:async(id:string,owner:string,limit=50)=>{
+    const key=JSON.stringify([owner,id]),value=decoded(fixture.entities.get(key),fixture.parts);if(!value)return;
+    const {messages,...metadata}=value.payload,total=messages.length;
+    return {owner,id,revision:value.revision,bodyToken:fixture.entities.get(key)?.payloadParts?.token??null,metadata,messages:messages.slice(-limit),total,start:Math.max(0,total-limit),end:total};
+  },
   saveEntity:async(value:AppEntity,expected?:number)=>{
     const key=JSON.stringify([value.owner,value.id]),previous=fixture.entities.get(key);
     if(value.owner!==fixture.owner||expected!==undefined&&expected!==(previous?.revision??0))throw Error('Transaction aborted');

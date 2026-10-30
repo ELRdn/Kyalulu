@@ -321,3 +321,8 @@ Device生成前の履歴選択では、既定の保守的カウンターだけ�
 未送信変更/固定outboxの保持、容量不足・破損・owner/旧版revision競合時のrollbackを記録する。
 毎回全走査・書換え中の追加容量・metadata/記憶domain・inline/巨大scalar等の限界は残る。
 この追加だけで、会話全体の1GB復元・生成/同期/UIの大容量対応を完了とはしない。
+
+端末内の設定保存・手動要約編集も、最大50件のページ確認と履歴1件ずつの書換えへ移行した。
+context取得も完全復元を避け、保存tx内でowner・revision・本文tokenを再照合する。
+[Metadata rewrite](validation/2026-10-31-unified-metadata-rewrite.md) に実IDB48ケース、
+本文/状態/未知フィールド/未送信分の保持、競合・破損・容量不足・記憶生成ガードの検証と限界を記録する。
