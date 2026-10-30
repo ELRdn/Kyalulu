@@ -19,18 +19,18 @@ ROOT = Path(__file__).resolve().parents[1]
 async def check(args):
     acceptance = args.acceptance.resolve()
     assert acceptance.is_relative_to(ROOT / '.artifacts')
-    verified = json.loads(acceptance.read_text())
+    verified = json.loads(acceptance.read_text(encoding='utf-8'))
     seed = Path(verified['home']).resolve()
     assert seed == acceptance.parent and verified['packaged_cli'] and verified['node_only_path']
     cli = seed / 'npm/package/bin/kyalulu.mjs'
-    release = json.loads((seed / 'npm/package/package.json').read_text())['version']
+    release = json.loads((seed / 'npm/package/package.json').read_text(encoding='utf-8'))['version']
     program = seed / 'releases' / release
-    assert (program / '.artifact-sha256').read_text() == verified['sha256']
-    assert '<meta name="kyalulu-ui" content="native">' in (program / 'web/index.html').read_text()
+    assert (program / '.artifact-sha256').read_text(encoding='utf-8') == verified['sha256']
+    assert '<meta name="kyalulu-ui" content="native">' in (program / 'web/index.html').read_text(encoding='utf-8')
     args.output.mkdir(parents=True, exist_ok=False)
     home = args.output / 'home'
     home.mkdir()
-    (home / 'current.json').write_text(json.dumps({'release': release, 'directory': str(program)}))
+    (home / 'current.json').write_text(json.dumps({'release': release, 'directory': str(program)}), encoding='utf-8')
     with socket.socket() as listener:
         listener.bind(('127.0.0.1', 0))
         port = listener.getsockname()[1]
@@ -46,7 +46,7 @@ async def check(args):
     def command(*arguments):
         stopped = None
         if arguments[0] == 'stop' and (home / 'process.json').exists():
-            stopped = psutil.Process(json.loads((home / 'process.json').read_text())['pid'])
+            stopped = psutil.Process(json.loads((home / 'process.json').read_text(encoding='utf-8'))['pid'])
         subprocess.run([node, str(cli), *arguments], env=env, check=True, capture_output=True, timeout=60)
         if stopped is not None:
             stopped.wait(timeout=10)
@@ -57,7 +57,7 @@ async def check(args):
     try:
         command('start', '--no-open')
         started = True
-        origin = json.loads((home / 'process.json').read_text())['url']
+        origin = json.loads((home / 'process.json').read_text(encoding='utf-8'))['url']
         assert urlsplit(origin).hostname == '127.0.0.1' and urlsplit(origin).scheme == 'http'
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(headless=True)
@@ -127,7 +127,7 @@ async def check(args):
                 await page.get_by_role('button', name='Show chat history', exact=True).click()
                 await page.goto(origin + '/#/profile')
                 await page.get_by_role('heading', name='Take your conversations with you from this PC', exact=True).wait_for()
-                await page.get_by_role('combobox', name='Display language', exact=True).select_option('ja')
+                await page.get_by_role('combobox', name='Language', exact=True).select_option('ja')
                 await page.get_by_role('heading', name='このPCから、会話を持ち歩く', exact=True).wait_for()
                 await page.goto(origin + '/#/status')
                 await page.get_by_text('接続診断', exact=True).wait_for()
@@ -182,7 +182,7 @@ async def check(args):
             command('stop')
         assert not (home / 'process.json').exists() and not (home / 'launcher.lock').exists()
     report['runtime_processes_exited'] = True
-    (args.output / 'result.json').write_text(json.dumps(report, indent=2))
+    (args.output / 'result.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
     print(json.dumps(report))
 
 
