@@ -1,4 +1,5 @@
-import { appTransaction,readEntity,writeEntity,guardStorage,scrubGenerationRecords,type AppEntity } from './appStore';
+import { appTransaction,readEntity,writeEntity,recoverPendingConversation,guardStorage,scrubGenerationRecords,type AppEntity,type StoredEntity } from './appStore';
+import { storageStep } from './segmentedStorage';
 import { deviceOwner } from './appContext';
 import { readMemoryDomainTx as readDomain,writeMemoryDomainTx,validateMemoryDomain,type OwnedMemoryDomain } from './deviceMemoryDomainIO';
 import { memoryPolicy,memoryBinding,memorySignature,ownScopeMemories,memoryDomainKey,type MemoryPolicy } from './deviceMemoryScopes';
@@ -24,9 +25,10 @@ export const recoverDeviceMemoryGeneration=(owner:string,generationId:string,ses
         const previous=receipt.result;
         if(previous?.status!=='pending'||previous.session_id!==sessionId||previous.generation_id!==generationId
           ||previous.execution_lock!==deviceExecutionLockName(owner)){tx.abort();return;}
-        readDomain(tx,owner,matching[0].policy,domain=>readEntity(tx,owner,sessionId,session=>{
-          if(session&&(session.kind!=='conversation'||!session.deleted&&session.payload.pending_generation!=null
-            &&session.payload.pending_generation!==generationId)){tx.abort();return;}
+        readDomain(tx,owner,matching[0].policy,domain=>{
+          const read=tx.objectStore('entities').get([owner,sessionId]);read.onsuccess=()=>storageStep(tx,()=>{
+          const session=read.result as StoredEntity|undefined;
+          if(session&&(session.owner!==owner||session.id!==sessionId||session.kind!=='conversation')){tx.abort();return;}
           domain.pending=null;
           const removed=!session||session.deleted,recovered=removed?{generation_id:generationId,session_id:sessionId,status:'deleted'}:{...previous,status:'failed'};
           const persist=()=>writeMemoryDomainTx(tx,domain,()=>{
@@ -34,11 +36,9 @@ export const recoverDeviceMemoryGeneration=(owner:string,generationId:string,ses
             if(removed)scrubGenerationRecords(tx,owner,sessionId);
             done(recovered);
           });
-          if(session&&!session.deleted&&session.payload.pending_generation===generationId){
-            writeEntity(tx,{...session,revision:session.revision+1,dirty:session.dirty||memoryPolicy(session)==='sync',
-              payload:{...session.payload,pending_generation:null}},'put',persist,true);
-          }else persist();
-        }));
+          if(session&&!session.deleted)recoverPendingConversation(tx,session,generationId,persist,true);else persist();
+          });
+        });
       };
     };
   });

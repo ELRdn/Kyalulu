@@ -316,5 +316,8 @@ Device生成前の履歴選択では、既定の保守的カウンターだけ�
 端末内の終端生成復旧は、同じreadonly snapshotの受領記録と対象発言だけで確認する。
 [Generation proof](validation/2026-10-31-unified-generation-proof.md) に実IDB35ケース・
 全Web1,314件、最新ページ外の復帰、変更・重複・破損・owner切替時の拒否を記録する。
-孤立pendingの復旧書込・毎回全走査・inline/巨大scalar等の限界は残る。
+孤立pendingの復旧書込は履歴を1件ずつ再保存し、全断片の検証後にheader・受領・domainを同じtxで確定する。
+[Streamed recovery](validation/2026-10-31-unified-stream-recovery.md) に全Web1,321件・実IDB41ケース、
+未送信変更/固定outboxの保持、容量不足・破損・owner/旧版revision競合時のrollbackを記録する。
+毎回全走査・書換え中の追加容量・metadata/記憶domain・inline/巨大scalar等の限界は残る。
 この追加だけで、会話全体の1GB復元・生成/同期/UIの大容量対応を完了とはしない。

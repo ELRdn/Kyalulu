@@ -1,10 +1,105 @@
-import { expect, it } from 'vitest';
+import { expect, expectTypeOf, it } from 'vitest';
 import { JsonStream } from './jsonStream';
 import type { MessageWindow } from './jsonStream';
 import cases from '../../../../tests/fixtures/json-stream.json';
 
 function parse(raw:Uint8Array,width:number){const parser=new JsonStream();for(let index=0;index<raw.length;index+=width)parser.feed(raw.subarray(index,index+width));return parser.finish();}
 function windowed(text:string,window:MessageWindow|{ids:readonly number[]},width:number){const parser=new JsonStream(window),raw=new TextEncoder().encode(text);for(let i=0;i<raw.length;i+=width)parser.feed(raw.subarray(i,i+width));return {value:parser.finish(),total:parser.totalMessages};}
+
+it('snapshots a typed synchronous callback and preserves every JSON message value',()=>{
+  for(const onMessage of [undefined,null,false,true,0,'callback',[],{}])expect(()=>new JsonStream({onMessage:onMessage as any})).toThrow('Invalid message callback');
+  const text='{"before":1,"messages":[null,true,false,-0,1.25e-2,1e400,"茶🙂",[],{},[{"messages":[2]}],{"id":1,"id":9,"__proto__":{"keep":true},"messages":[0],"messages":[1]}],"nested":{"messages":[9]},"after":true}',expected=JSON.parse(text);
+  for(const width of [1,2,7,1024]){
+    const seen:[unknown,number][]=[],options={onMessage:(value:unknown,index:number)=>{seen.push([value,index]);}};
+    const parser=new JsonStream(options),raw=new TextEncoder().encode(text);options.onMessage=()=>{throw Error('Changed callback');};
+    for(let i=0;i<raw.length;i+=width)parser.feed(raw.subarray(i,i+width));
+    expect(seen).toEqual(expected.messages.map((value:unknown,index:number)=>[value,index]));
+    expect(parser.finish()).toEqual({...expected,messages:[]});expect(parser.totalMessages).toBe(expected.messages.length);
+    const last=seen.at(-1)![0] as object;expect(Object.getPrototypeOf(last)).toBe(Object.prototype);expect(Object.hasOwn(last,'__proto__')).toBe(true);
+    expect(()=>parser.feed(new Uint8Array())).toThrow();expect(()=>parser.finish()).toThrow();
+  }
+});
+
+it('emits each direct message once on completion, never on keys or nested array closes',()=>{
+  const seen:[unknown,number][]=[],parser=new JsonStream({onMessage:(value,index)=>{expectTypeOf(value).toEqualTypeOf<unknown>();expectTypeOf(index).toEqualTypeOf<number>();seen.push([value,index]);}});
+  const feed=(text:string)=>parser.feed(new TextEncoder().encode(text));
+  feed('{"messages":[{"messages":[1],"key":"va');expect(seen).toEqual([]);
+  feed('lue","duplicate":0,"duplicate":1');expect(seen).toEqual([]);
+  feed('},[');expect(seen).toEqual([[{messages:[1],key:'value',duplicate:1},0]]);
+  feed('{"nested":{"messages":[2]}}');expect(seen).toHaveLength(1);
+  feed('],"');expect(seen).toHaveLength(2);expect(seen[1]).toEqual([[{nested:{messages:[2]}}],1]);
+  feed('last"');expect(seen[2]).toEqual(['last',2]);
+  feed(',true');expect(seen).toHaveLength(3);
+  feed(']');expect(seen[3]).toEqual([true,3]);expect(parser.totalMessages).toBe(4);
+  feed(',"key":"metadata","nested":{"messages":[5]}}');expect(seen).toHaveLength(4);
+  expect(parser.finish()).toEqual({messages:[],key:'metadata',nested:{messages:[5]}});
+});
+
+it('leaves totalMessages undefined for missing or non-array root messages',()=>{
+  for(const text of ['null','[]','[{"messages":[1]}]','{"nested":{"messages":[1]}}','{"messages":null}','{"messages":true}','{"messages":1}','{"messages":"text"}','{"messages":{"messages":[1]}}','{"__proto__":{"messages":[1]}}','{"messages":[]}']){
+    const seen:unknown[]=[],parser=new JsonStream({onMessage:value=>seen.push(value)});
+    parser.feed(new TextEncoder().encode(text));expect(parser.finish()).toEqual(JSON.parse(text));expect(seen).toEqual([]);
+    expect(parser.totalMessages).toBe(text==='{"messages":[]}'?0:undefined);
+  }
+});
+
+it('retains only metadata and one candidate while keeping root.messages empty across a long stream',()=>{
+  const messages=Array.from({length:400},(_,id)=>({id,content:'茶🙂'.repeat(128),nested:{messages:[id]}}));let count=0;
+  const parser=new JsonStream({onMessage:(value,index)=>{expect(index).toBe(count++);expect(value).toEqual(messages[index]);expect((parser as any).root.messages).toEqual([]);}});
+  const raw=new TextEncoder().encode(JSON.stringify({metadata:{keep:true},messages,after:'done'}));
+  for(let i=0;i<raw.length;i+=257){
+    parser.feed(raw.subarray(i,i+257));const {root,stack}=parser as any;
+    expect(root.messages).toEqual([]);expect(root.metadata).toEqual({keep:true});
+    expect(stack.filter((_:any,index:number)=>index>0&&stack[index-1].messages).length).toBeLessThanOrEqual(1);
+  }
+  expect(parser.finish()).toEqual({metadata:{keep:true},messages:[],after:'done'});expect(parser.totalMessages).toBe(400);expect(count).toBe(400);
+});
+
+it('validates the full callback stream as JSON and UTF-8 at byte boundaries and preserves depth limits',()=>{
+  for(const text of [...cases.valid,...cases.invalid])for(const width of [1,2,7,64]){
+    const wrapped='{"messages":[null,'+text.replace(/^\uFEFF/,'')+'],"keep":"ok"}',seen:[unknown,number][]=[],parser=new JsonStream({onMessage:(value,index)=>seen.push([value,index])}),raw=new TextEncoder().encode(wrapped);
+    const finish=()=>{for(let i=0;i<raw.length;i+=width)parser.feed(raw.subarray(i,i+width));return parser.finish();};let expected;
+    try{expected=JSON.parse(wrapped);}catch{
+      expect(finish).toThrow();expect(()=>parser.feed(new Uint8Array())).toThrow();expect(()=>parser.finish()).toThrow();continue;
+    }
+    expect(finish()).toEqual({...expected,messages:[]});expect(seen).toEqual(expected.messages.map((value:unknown,index:number)=>[value,index]));expect(parser.totalMessages).toBe(expected.messages.length);
+  }
+  for(const hex of cases.invalid_utf8_hex)for(const width of [1,2,7]){
+    const seen:unknown[]=[],parser=new JsonStream({onMessage:value=>seen.push(value)}),bytes=Uint8Array.from(hex.match(/../g)!,v=>parseInt(v,16));
+    parser.feed(new TextEncoder().encode('{"messages":[null,'));expect(seen).toEqual([null]);
+    expect(()=>{for(let i=0;i<bytes.length;i+=width)parser.feed(bytes.subarray(i,i+width));parser.feed(new TextEncoder().encode('],"keep":true}'));parser.finish();}).toThrow();
+    expect(()=>parser.feed(new Uint8Array())).toThrow();expect(()=>parser.finish()).toThrow();
+  }
+  for(const depth of [62,63]){
+    const parser=new JsonStream({onMessage:()=>{}}),raw=new TextEncoder().encode('{"messages":['+'['.repeat(depth)+']'.repeat(depth)+']}');
+    if(depth===62){parser.feed(raw);expect(parser.finish()).toEqual({messages:[]});expect(parser.totalMessages).toBe(1);}
+    else expect(()=>parser.feed(raw)).toThrow();
+  }
+});
+
+it('closes on callback exceptions from scalars or containers, including finish flushing a scalar',()=>{
+  for(const value of ['null','true','1','"text"','[]','{}']){
+    let count=0;const failure=Error('Callback failed'),parser=new JsonStream({onMessage:()=>{count++;throw failure;}});
+    expect(()=>parser.feed(new TextEncoder().encode('{"messages":['+value+',2]}'))).toThrow(failure);expect(count).toBe(1);
+    expect(()=>parser.feed(new TextEncoder().encode('{}'))).toThrow();expect(()=>parser.finish()).toThrow();expect(count).toBe(1);
+  }
+  const failure=Error('Finish callback failed'),parser=new JsonStream({onMessage:()=>{throw failure;}});
+  parser.feed(new TextEncoder().encode('{"messages":[1'));expect(()=>parser.finish()).toThrow(failure);
+  expect(()=>parser.feed(new Uint8Array())).toThrow();expect(()=>parser.finish()).toThrow();
+});
+
+it('rejects repeated root messages keys only in callback mode, including escaped and non-array keys',()=>{
+  for(const text of ['{"messages":[1],"messages":[2]}','{"mess\\u0061ges":[],"messages":null}','{"messages":null,"messages":[]}','{"messages":[],"mess\\u0061ges":[]}'])for(const width of [1,2,7,1024]){
+    const seen:unknown[]=[],parser=new JsonStream({onMessage:value=>seen.push(value)}),raw=new TextEncoder().encode(text);
+    expect(()=>{for(let i=0;i<raw.length;i+=width)parser.feed(raw.subarray(i,i+width));parser.finish();}).toThrow('Duplicate root messages key');
+    expect(seen).toEqual(text.startsWith('{"messages":[1]')?[1]:[]);
+    expect(()=>parser.feed(new Uint8Array())).toThrow();expect(()=>parser.finish()).toThrow();
+    expect(parse(raw,width)).toEqual(JSON.parse(text));
+    const expected=JSON.parse(text),total=Array.isArray(expected.messages)?expected.messages.length:undefined;
+    expect(windowed(text,{limit:1},width)).toEqual({value:expected,total});
+    expect(windowed(text,{ids:[1]},width)).toEqual({value:{messages:total===undefined?expected.messages:[]},total});
+  }
+});
 
 it('selects only root message objects by their final IDs with platform duplicate-key and prototype semantics',()=>{
   const text='{"messages":[{"id":1,"content":"overwritten"}],"nested":{"messages":[{"id":8}]},"__proto__":{"messages":[{"id":1}]},"messages":[{"id":90},{"content":"茶🙂","__proto__":{"keep":true},"id":9},null,true,1,"scalar",[{"id":1}],{"id":1,"id":8},{"id":"1"},{"id":null},{"id":0},{"id":-1},{"id":9007199254740992},{"__proto__":{"id":1}},{"nested":{"id":1}},{"id":{"id":1}},{"id":8,"nested":{"messages":[{"id":9}]},"id":1}]}';

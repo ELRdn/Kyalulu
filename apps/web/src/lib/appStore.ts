@@ -1,11 +1,12 @@
 import { deviceOwner } from './appContext';
-import { readParts, writeParts, removeParts, storageStep, storageWrite, type Parts } from './segmentedStorage';
+import { readParts, writeParts, rewriteConversationParts, removeParts, storageStep, storageWrite, type Parts } from './segmentedStorage';
 import { memoryDomainKey,eraseMemoryDomain,eraseDeviceMemoryReferences,type MemoryPolicy } from './deviceMemoryScopes';
 import { readMemoryDomainTx,writeMemoryDomainTx } from './deviceMemoryDomainIO';
 import { canonical } from './appSyncData';
 import { Sha256 } from '../mobile/sha256';
 import { JsonStream } from './jsonStream';
 import type { GenerationStatus } from './chatRecovery';
+import { deviceExecutionLockName } from './deviceExecution';
 
 export type EntityKind = 'conversation' | 'character' | 'persona' | 'world' | 'preset' | 'profile';
 export type AppEntity = { id: string; owner: string; kind: EntityKind; revision: number; serverRevision: number;
@@ -96,6 +97,55 @@ export function writeEntity(tx:IDBTransaction,value:AppEntity,mode:'put'|'add'='
       if(local.result?.pending||sync.result?.pending)throw Error('Stop generation before editing');write();
     });
   });
+}
+/** Caller holds the owner execution lease; domain recovery also commits its pending domain here. */
+export function recoverPendingConversation(tx:IDBTransaction,header:StoredEntity,generationId:string,done:()=>void,domainRecovery=false) {
+  storageWrite(tx,next=>{
+    const complete=()=>{done();next();};
+    const rewrite=()=>storageStep(tx,()=>{
+      if(header.owner!==deviceOwner()||header.kind!=='conversation'||header.deleted||!Number.isSafeInteger(header.revision+1))throw Error('Pending conversation changed');
+      const check=(p:Record<string,any>)=>{
+        if(p.pending_generation!==generationId&&!(domainRecovery&&p.pending_generation==null))throw Error('Pending generation changed');
+      };
+      if(!header.payloadParts){
+        const p=header.payload;if(!p)throw Error('Missing conversation body');check(p);
+        if(p.pending_generation==null){complete();return;}
+        persistEntity(tx,{...header,revision:header.revision+1,dirty:header.dirty||p.storage_policy==='sync',payload:{...p,pending_generation:null}} as AppEntity,'put',complete);return;
+      }
+      const previous=header.payloadParts,location=[header.owner,'entity',header.id] as const;
+      rewriteConversationParts(tx,location,previous,{pending_generation:null},(ref,metadata,scan)=>{
+        check(metadata);
+        if(metadata.pending_generation==null){removeParts(tx,location,ref,complete);return;}
+        const payload={...metadata,pending_generation:null,messages:[]},refs=memoryReferences(payload),{payload:_,...raw}=header;
+        const selection={...header.selection,...entitySelection({...header,payloadParts:undefined,payload}),maximumMessageId:scan.maximumMessageId,messageIdsValid:scan.messageIdsValid,
+          summary:{...conversationSummary(payload),...(!metadata.cache_evicted?{count:scan.count,last_preview:scan.last_preview,last_at:scan.last_at}:{}),token:ref.token}};
+        const write=tx.objectStore('entities').put({...raw,revision:header.revision+1,dirty:header.dirty||metadata.storage_policy==='sync',selection,payloadParts:ref,
+          memoryReferences:refs?{...refs,hash:referenceHash(ref.token,refs)}:null});
+        write.onsuccess=()=>removeParts(tx,location,previous,complete);
+      });
+    });
+    if(domainRecovery){rewrite();return;}
+    const meta=tx.objectStore('meta'),local=meta.get(memoryDomainKey(header.owner,'local')),sync=meta.get(memoryDomainKey(header.owner,'sync'));
+    sync.onsuccess=()=>storageStep(tx,()=>{if(local.result?.pending||sync.result?.pending)throw Error('Stop generation before editing');rewrite();});
+  });
+}
+export async function recoverConversationGeneration(owner:string,generationId:string,sessionId:string,expectedRevision?:number) {
+  if(owner!==deviceOwner())throw Error('Account changed');
+  const result=await appTransaction<Record<string,any>>(['entities','meta'],'readwrite',(tx,done)=>{
+    const meta=tx.objectStore('meta'),key='generation:'+owner+':'+generationId,receipt=meta.get(key);
+    receipt.onsuccess=()=>storageStep(tx,()=>{
+      const previous=receipt.result;
+      if(previous?.status!=='pending'||previous.session_id!==sessionId||previous.generation_id!==generationId
+        ||previous.execution_lock!==deviceExecutionLockName(owner)&&!Number.isSafeInteger(expectedRevision))throw Error('Pending generation changed');
+      const read=tx.objectStore('entities').get([owner,sessionId]);read.onsuccess=()=>storageStep(tx,()=>{
+        const header=read.result as StoredEntity|undefined;
+        if(!header||header.owner!==owner||header.id!==sessionId||expectedRevision!==undefined&&header.revision!==expectedRevision)throw Error('Pending conversation changed');
+        const recovered={...previous,status:'failed'};
+        recoverPendingConversation(tx,{...header,opened:Date.now()},generationId,()=>{meta.put(recovered,key);done(recovered);});
+      });
+    });
+  });
+  if(owner!==deviceOwner())throw Error('Account changed');return result;
 }
 export function restoreOutbox<T extends StoredOutbox>(tx:IDBTransaction,owner:string,value:T|undefined,done:(value:T|undefined)=>void) {
   if(!value?.changesParts){done(value);return;}

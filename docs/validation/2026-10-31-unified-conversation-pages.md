@@ -64,9 +64,11 @@ tail candidate remain whole. Legacy inline records are already cloned in full by
 IndexedDB before slicing. Message count alone is not a universal memory bound.
 
 The Device history/settings/session summaries/policy now use compatible projections.
-Pending/orphan recovery writes, generation, mutation, shared-memory validation, fixed sync
+Generation, mutation, shared-memory validation, fixed sync
 snapshots, receive/ACK and exports retain full reads. The previous 1 GB full-tree
 restoration failure stays unaccepted; a successful page sample must not replace it.
+Orphan recovery streams its history rewrite; see
+[Streamed recovery](2026-10-31-unified-stream-recovery.md).
 
 ## Device screen integration
 

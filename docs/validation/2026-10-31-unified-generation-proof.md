@@ -49,7 +49,8 @@ Local validation passes:
   are zero. These are not real inference or physical-device results.
 
 Metadata, one candidate message and selected scalar values remain whole. Legacy
-inline rows are cloned by IndexedDB before filtering. Pending/orphan recovery
-writes, generation, mutation, memory projection, hydration, sync and export retain
-full-read paths. The original 1 GB full-tree failure and the separate earlier page
+inline rows are cloned by IndexedDB before filtering. Orphan recovery now streams
+its history rewrite; see [Streamed recovery](2026-10-31-unified-stream-recovery.md).
+Memory domains, generation, mutation, memory projection, hydration, sync and export
+retain full-read paths. The original 1 GB full-tree failure and the separate earlier page
 sample are unchanged; no 1 GB proof/UI/generation acceptance is claimed here.
