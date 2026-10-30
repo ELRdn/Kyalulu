@@ -14,6 +14,8 @@ RUNTIME_LICENSES = {
     "llama-MIT.txt": ".artifacts/mobile-wasm/wllama/llama.cpp/LICENSE",
     "transformers-Apache-2.0.txt": "apps/web/node_modules/@huggingface/transformers/LICENSE",
     "onnxruntime-MIT.txt": "docs/licenses/onnxruntime-MIT.txt",
+    "onnxruntime-ThirdPartyNotices.txt": "docs/licenses/onnxruntime-ThirdPartyNotices.txt",
+    "noise-c-MIT.txt": "docs/licenses/noise-c-MIT.txt",
     "Dawn-WebGPU.txt": ".artifacts/mobile-wasm/emdawn/emdawnwebgpu_pkg/webgpu/src/LICENSE",
     "Dawn-WebGPU-cpp.txt": ".artifacts/mobile-wasm/emdawn/emdawnwebgpu_pkg/webgpu_cpp/LICENSE",
     "jsonhpp-MIT.txt": ".artifacts/mobile-wasm/wllama/llama.cpp/licenses/LICENSE-jsonhpp",
@@ -109,6 +111,9 @@ FILES = (
     "tests/e2e_unified_entry.py",
     "tests/e2e_native_entry.py",
     "tests/test_native_onboarding.py",
+    "tests/test_renderer_licenses.py",
+    "tests/e2e_runtime_sync_language.py",
+    "tests/fixtures/runtime-sync-language.html",
     "tests/e2e_cloud_login.py",
     "tests/e2e_commercial_ui.py",
     "tests/e2e_outbox_guard.py",
@@ -166,6 +171,8 @@ FILES = (
     "docs/validation/2026-10-30-unified-disaster-recovery.md",
     "docs/validation/2026-10-30-unified-segmented-storage.md",
     "docs/validation/2026-10-30-unified-legacy-cloud.md",
+    "docs/validation/2026-10-31-unified-renderer-licenses.md",
+    "docs/validation/2026-10-31-unified-runtime-sync-language.md",
     "deploy/cloud/Dockerfile",
     "deploy/cloud/Dockerfile.prebuilt",
     "deploy/cloud/compose.yml",
@@ -216,6 +223,32 @@ def collect(destination):
         target = destination / name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / name, target)
+    collect_renderer_licenses(destination)
+    (destination / "BUILD.md").write_text(
+        "# Corresponding source\n\nNode 22+, pnpm 10.30.1, uv 0.8.22.\n"
+        "`pnpm install --frozen-lockfile` then `pnpm --filter web build`.\n"
+        "For the unified app, regenerate the catalog with `python scripts/build_app_catalog.py`, build pinned WASM using `scripts/mobile_wasm/bootstrap.py`, `prepare.py` and `build.sh`, set `VITE_RELAY_ORIGIN` to the exact managed HTTPS Relay origin, then run `pnpm --filter web build:app`. See `docs/MOBILE.md` and `docs/UNIFIED_APP.md`.\n"
+        "For the legacy Mobile app, use the same catalog/WASM preparation and `pnpm --filter web build:mobile`.\n"
+        "`uv sync --frozen --all-packages --all-extras --no-install-workspace` for Python.\n"
+        "For Native, keep the pinned WASM and Relay origin, run `pnpm --filter web build:native`, then on the native target `uv run --no-sync python scripts/build_local_bundle.py --output .artifacts/npm-beta --target win32-x64` (or darwin-arm64). The builder requires the Native UI marker and refuses a hosted-only UI.\n"
+        "Operator keys/data/model weights are excluded. Artifacts are not published by these steps.\n",
+        encoding="utf-8",
+    )
+
+
+def collect_renderer_licenses(destination):
+    if destination.is_symlink():
+        raise ValueError("Renderer license destination is a symlink")
+    destination.mkdir(parents=True, exist_ok=True)
+    manifest = ROOT / "docs/licenses/renderer-license-sources.json"
+    overrides = {}
+    check_source(manifest)
+    if manifest.exists():
+        for entry in json.loads(manifest.read_text(encoding="utf-8")):
+            for identity in entry["packages"]:
+                if identity in overrides:
+                    raise ValueError("Duplicate renderer license identity")
+                overrides[identity] = entry
     notices, seen = [], set()
     tree = ROOT / "node_modules/.pnpm"
     for metadata in sorted(tree.glob("*/node_modules/*/package.json")) + sorted(
@@ -230,31 +263,51 @@ def collect(destination):
             continue
         seen.add(identity)
         folder = hashlib.sha256(identity.encode()).hexdigest()[:16]
-        texts = []
+        texts, origins = [], []
+        def copy_text(name, data):
+            if not data.strip():
+                raise ValueError("Renderer license text is empty")
+            target = destination / "licenses/renderer" / folder / name
+            if any(path.is_symlink() for path in (target, *target.parents) if path.is_relative_to(destination)) or not target.resolve().is_relative_to(destination.resolve()):
+                raise ValueError("Renderer license destination escaped or is a symlink")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+            texts.append(target.relative_to(destination).as_posix())
         for text in sorted(metadata.parent.iterdir()):
             if text.is_file() and text.name.lower().startswith(
                 ("license", "licence", "copying", "notice")
             ):
                 check_source(text)
-                target = destination / "licenses/renderer" / folder / text.name[:80]
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(text, target)
-                texts.append(target.relative_to(destination).as_posix())
+                copy_text(text.name[:80], text.read_bytes())
+        if not texts and identity in overrides:
+            entry = overrides[identity]
+            if package.get("license") != entry["license"]:
+                raise ValueError("Renderer license declaration changed")
+            pending = []
+            for origin in entry["texts"]:
+                relative = Path(origin["path"])
+                if relative.is_absolute() or relative.parts[:2] != ("docs", "licenses") or ".." in relative.parts:
+                    raise ValueError("Renderer license source escaped license directory")
+                source = ROOT / relative
+                check_source(source)
+                data = source.read_bytes()
+                if not data.strip() or hashlib.sha256(data).hexdigest() != origin["sha256"]:
+                    raise ValueError("Renderer license text checksum mismatch")
+                pending.append((source.name, data))
+            if not pending:
+                raise ValueError("Renderer license source is empty")
+            for name, data in pending:
+                copy_text(name, data)
+            origins = entry["texts"]
         notices.append(
-            {"package": identity, "license": package.get("license"), "texts": texts}
+            {"package": identity, "license": package.get("license"), "texts": texts,
+             **({"sources": origins} if origins else {})}
         )
-    (destination / "renderer-licenses.json").write_text(
+    inventory = destination / "renderer-licenses.json"
+    if inventory.is_symlink():
+        raise ValueError("Renderer inventory destination is a symlink")
+    inventory.write_text(
         json.dumps(notices, indent=2), encoding="utf-8"
-    )
-    (destination / "BUILD.md").write_text(
-        "# Corresponding source\n\nNode 22+, pnpm 10.30.1, uv 0.8.22.\n"
-        "`pnpm install --frozen-lockfile` then `pnpm --filter web build`.\n"
-        "For the unified app, regenerate the catalog with `python scripts/build_app_catalog.py`, build pinned WASM using `scripts/mobile_wasm/bootstrap.py`, `prepare.py` and `build.sh`, set `VITE_RELAY_ORIGIN` to the exact managed HTTPS Relay origin, then run `pnpm --filter web build:app`. See `docs/MOBILE.md` and `docs/UNIFIED_APP.md`.\n"
-        "For the legacy Mobile app, use the same catalog/WASM preparation and `pnpm --filter web build:mobile`.\n"
-        "`uv sync --frozen --all-packages --all-extras --no-install-workspace` for Python.\n"
-        "For Native, keep the pinned WASM and Relay origin, run `pnpm --filter web build:native`, then on the native target `uv run --no-sync python scripts/build_local_bundle.py --output .artifacts/npm-beta --target win32-x64` (or darwin-arm64). The builder requires the Native UI marker and refuses a hosted-only UI.\n"
-        "Operator keys/data/model weights are excluded. Artifacts are not published by these steps.\n",
-        encoding="utf-8",
     )
 
 
