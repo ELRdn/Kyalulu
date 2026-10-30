@@ -302,10 +302,19 @@ async def test_encrypted_cloud_core_restore_requires_review_and_keeps_control_da
     with closing(sqlite3.connect(path)) as db, db:
         db.execute("INSERT INTO session_settings(session_id) VALUES('selected')")
         db.execute("INSERT INTO chat_history(session_id,role,content) VALUES('selected','user','CLOUD-BEFORE-BACKUP')")
+        db.execute("INSERT INTO session_settings(session_id) VALUES('erased-source')")
+        result = {'reply': 'retained cloud reply',
+                  'memory': {'candidates': [{'id': 'gone', 'source_session_id': 'erased-source', 'content': 'fixture cloud secret'}]},
+                  'validation': {'ok': False, 'retries': 1, 'errors': ['schema error: fixture cloud secret']}}
+        db.execute("INSERT INTO generations(generation_id,session_id,fingerprint,status,result_json) "
+                   "VALUES('retained','selected','','completed',?)", (json.dumps(result),))
     unified.configure_runtime(owner, 0, ['selected'], True, runtime_path=path)
     original = unified.pull(owner, runtime_path=path)['changes'][0]
     backups = Backups(store)
     archive = backups.create(owner, path, force=True)
+    async with client(cloud) as browser:
+        response = await browser.delete('/api/chat/sessions/erased-source/data')
+        assert response.status_code == 200, response.text
     with closing(sqlite3.connect(path)) as db, db:
         db.execute("UPDATE chat_history SET content='CLOUD-CURRENT' WHERE session_id='selected'")
     unified.pull(owner, runtime_path=path)
@@ -324,6 +333,11 @@ async def test_encrypted_cloud_core_restore_requires_review_and_keeps_control_da
         encoded = db.execute("SELECT mapping FROM unified_runtime_links WHERE session_id='selected'").fetchone()[0]
         assert json.loads(encoded)['restored_from_snapshot'] is True
         assert db.execute("SELECT content FROM chat_history WHERE session_id='selected'").fetchone()[0] == 'CLOUD-BEFORE-BACKUP'
+        redacted = json.loads(db.execute("SELECT result_json FROM generations WHERE generation_id='retained'").fetchone()[0])
+        assert redacted['reply'] == 'retained cloud reply'
+        assert redacted['validation'] == {'ok': False, 'retries': 1, 'errors': []}
+        assert 'fixture cloud secret' not in json.dumps(redacted)
+        assert not db.execute("SELECT 1 FROM session_settings WHERE session_id='erased-source'").fetchone()
         assert not db.execute('SELECT * FROM unified_local_links').fetchall()
     with pytest.raises(CloudError, match='sync_restored_session_confirmation_required'):
         unified.pull(owner, runtime_path=path)
@@ -333,6 +347,9 @@ async def test_encrypted_cloud_core_restore_requires_review_and_keeps_control_da
     result = unified.pull(owner, runtime_path=path)
     assert len(result['changes']) == 2 and len({c['id'] for c in result['changes']}) == 2
     assert next(c for c in result['changes'] if c['id'] == original['id'])['payload']['messages'][0]['content'] == 'CLOUD-CURRENT'
+    assert 'fixture cloud secret' not in json.dumps(result)
+    with closing(sqlite3.connect(path)) as db:
+        assert json.loads(db.execute("SELECT result_json FROM generations WHERE generation_id='retained'").fetchone()[0]) == redacted
     assert len(backups.list(owner)) == 2
 
 

@@ -12,7 +12,8 @@ from python.storage import db as storage, conversation
 async def test_restore_scrubs_source_snapshot_even_when_memory_rows_were_cleared(isolated):
     await storage.init_db()
     result = {'reply':'keep reply','memory':{'candidates':[{'id':'gone','source_session_id':'source','content':'private quote'}],
-        'injected':['gone'],'evidenced':['gone'],'decisions':[{'memory_id':'gone'}]}, 'raw_prompt':'private quote'}
+        'injected':['gone'],'evidenced':['gone'],'decisions':[{'memory_id':'gone'}]}, 'raw_prompt':'private quote',
+        'validation':{'ok':False,'retries':1,'errors':['schema error: private quote']}}
     with sqlite3.connect(storage.DB_PATH) as db:
         db.execute("INSERT INTO generations(generation_id,session_id,fingerprint,status,result_json) VALUES('retained','other','','completed',?)",
                    (json.dumps(result),))
@@ -23,6 +24,7 @@ async def test_restore_scrubs_source_snapshot_even_when_memory_rows_were_cleared
     with sqlite3.connect(storage.DB_PATH) as db:
         redacted = json.loads(db.execute("SELECT result_json FROM generations WHERE generation_id='retained'").fetchone()[0])
     assert redacted['reply'] == 'keep reply'
+    assert redacted['validation'] == {'ok':False,'retries':1,'errors':[]}
     assert 'private quote' not in json.dumps(redacted) and 'gone' not in json.dumps(redacted)
 
 
