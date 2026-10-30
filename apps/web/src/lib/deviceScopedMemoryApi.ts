@@ -1,5 +1,5 @@
 import { allEntities,entity,type AppEntity } from './appStore';
-import { readDeviceMemoryDomain } from './deviceMemoryStore';
+import { readDeviceMemoryDomain,readMemorySource,memoryScopeInput } from './deviceMemoryStore';
 import { appendScopeEvent,bindMemoryScope,memoryBinding,memoryPolicy,migrateMemoryDomain,previewMemoryMigration,type ScopeEvent } from './deviceMemoryScopes';
 import { deviceMemoryScope,parseDeviceMemoryScope,scopedSessionMemory,scopedMigrationMemory,scopedMemoryAddress,scopedMemoryRows,saveScopedMemory,type MemoryIdentityResolver,type ScopedMemory } from './deviceScopedMemory';
 import { retrieveMemories,renderMemoryBlock,type DeviceMemory } from './deviceCore';
@@ -11,7 +11,7 @@ const rowView=(context:ScopedMemory,memory:DeviceMemory)=>({...memory,scope:addr
 const eventView=(context:ScopedMemory,event:ScopeEvent)=>({...event,scope:address(context)});
 const marked=(session:AppEntity)=>['world','shared'].includes(session.payload.memory_scope_mode);
 function editable(context:ScopedMemory){
-  if(context.domain.pending||[...context.records.values()].some(s=>s.payload.pending_generation))throw fail('Stop generation before editing',409);
+  if(context.domain.pending||[...context.records.values()].some(s=>s.metadata.pending_generation))throw fail('Stop generation before editing',409);
 }
 function visibleEvents(context:ScopedMemory){
   const ids=new Set(scopedMemoryRows(context).map(m=>m.id));
@@ -125,11 +125,11 @@ export async function scopedMemoryRoute(path:string,method:string,body:Record<st
   if(!previous&&body.source_session_id!=null){
     const sid=body.source_session_id;
     if(typeof sid!=='string'||!sid||Array.from(sid).length>300)throw fail('Invalid memory source');
-    const source=await entity(sid,owner);
-    if(!source||source.owner!==owner||source.deleted||source.kind!=='conversation')throw fail('Memory source session not found',404);
-    if(memoryPolicy(source)!==context.policy||source.payload.cache_evicted)throw fail('Memory source is unavailable in this storage policy',409);
-    if(source.payload.pending_generation)throw fail('Stop generation before editing',409);
-    const binding=bindMemoryScope(context.domain,source,await resolve(source.payload.settings));
+    const source=await readMemorySource(sid,owner);
+    if(!source||source.owner!==owner)throw fail('Memory source session not found',404);
+    if(memoryPolicy(memoryScopeInput(source))!==context.policy||source.metadata.cache_evicted)throw fail('Memory source is unavailable in this storage policy',409);
+    if(source.metadata.pending_generation)throw fail('Stop generation before editing',409);
+    const binding=bindMemoryScope(context.domain,memoryScopeInput(source),await resolve(source.metadata.settings));
     if(binding.scope!==context.scope)throw fail('Memory source does not match this scope',409);
     context.records.set(sid,source);
   }

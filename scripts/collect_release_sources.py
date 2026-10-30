@@ -96,6 +96,8 @@ FILES = (
     "tests/test_device_memory_scopes.py",
     "tests/fixtures/device-memory-scopes.html",
     "tests/e2e_device_memory_scopes.py",
+    "tests/e2e_memory_source_projection.py",
+    "tests/fixtures/memory-source-projection.html",
     "tests/e2e_device_memory.py",
     "tests/e2e_device_generation_lock.py",
     "tests/e2e_device_target_switch.py",

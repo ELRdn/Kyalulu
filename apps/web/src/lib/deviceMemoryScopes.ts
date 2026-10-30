@@ -5,6 +5,7 @@ import type { AppEntity } from './appStore';
 import type { DeviceMemory } from './deviceCore';
 
 export type MemoryPolicy='local'|'sync';
+export type MemoryConversation=Pick<AppEntity,'id'|'revision'|'deleted'|'payload'>;
 export type MemoryIdentity={character_id:string|null;persona_id:string|null;world_id:string|null;
   library_binding:Omit<ReturnType<typeof LibraryBindingSchema.parse>,'expression_asset_id'>;
   versions:{character_id:string|null;persona_id:string|null;world_id:string|null}};
@@ -16,7 +17,7 @@ export type MemoryDomain={schema_version:1;revision:number;bindings:Record<strin
 const fail=(message:string)=>Object.assign(Error(message),{status:409});
 const digest=(value:string)=>new Sha256().update(new TextEncoder().encode(value)).digest();
 export const memoryDomainKey=(owner:string,policy:MemoryPolicy)=>'device-memory-domain:'+JSON.stringify([owner,policy]);
-export const memoryPolicy=(session:AppEntity):MemoryPolicy=>session.payload.storage_policy==='sync'?'sync':'local';
+export const memoryPolicy=(session:Pick<AppEntity,'payload'>):MemoryPolicy=>session.payload.storage_policy==='sync'?'sync':'local';
 export const emptyMemoryDomain=():MemoryDomain=>({schema_version:1,revision:0,bindings:{},pools:{},erased_sessions:[],pending:null});
 const emptyPool=():MemoryPool=>({memories:[],holders:{},events:[]});
 const ownKey=(memory:DeviceMemory)=>memory.uuid??memory.id;
@@ -55,7 +56,7 @@ export function appendScopeEvent(pool:MemoryPool,scope:string,op:string,memoryId
 }
 
 /** Reconcile only this conversation's projection; foreign source IDs never enter its wire body. */
-export function reconcileScopeMemories(domain:MemoryDomain,session:AppEntity) {
+export function reconcileScopeMemories(domain:MemoryDomain,session:MemoryConversation) {
   const binding=memoryBinding(domain,session.id);if(!binding)return false;
   const signature=memorySignature(session.payload.memories??[]);if(binding.signature===signature){binding.entity_revision=session.revision;return false;}
   const pool=domain.pools[binding.scope];if(!pool)throw fail('Saved memory scope is missing');
@@ -76,7 +77,7 @@ export function reconcileScopeMemories(domain:MemoryDomain,session:AppEntity) {
   binding.signature=signature;binding.entity_revision=session.revision;return true;
 }
 
-export function bindMemoryScope(domain:MemoryDomain,session:AppEntity,identity:MemoryIdentity) {
+export function bindMemoryScope(domain:MemoryDomain,session:MemoryConversation,identity:MemoryIdentity) {
   if(domain.erased_sessions.includes(session.id)||session.deleted)throw fail('Conversation deleted');
   let binding=memoryBinding(domain,session.id);
   if(binding){
