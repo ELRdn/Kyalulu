@@ -345,3 +345,7 @@ context取得も完全復元を避け、保存tx内でowner・revision・本文t
 Cloud/端末同期の成功・停止・確認失敗通知は、表示後の言語変更にも追従する。
 [Runtime sync language](validation/2026-10-31-unified-runtime-sync-language.md) にWeb1,359件・最終対象13件、
 実React/IndexedDB/確認ダイアログでの通知4種・再送なし・同意撤回・固定outbox/原文保持・owner遮断を記録する。
+
+Windowsの1b3e5b6 CIはWeb単体/Python試験を通過後、実IDBの60秒待機で失敗した。
+[CI storage diagnostics](validation/2026-10-31-unified-ci-storage-diagnostics.md) にケース/ページ例外/consoleの
+診断追加とローカル53ケース・診断2件の確認を記録する。期限・データ・assertは変更せず、CI原因は未確定。
