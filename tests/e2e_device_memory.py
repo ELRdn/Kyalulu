@@ -85,6 +85,7 @@ async def main():
                     assert recovered['source']['deleted'] and not recovered.get('source_events')
                     assert recovered['recovery']['payload']['storage_policy']=='local' and not recovered['recovery']['dirty']
                     assert recovered['recovery']['payload']['draft']=='UNSENT MEMORY DRAFT'
+                    assert recovered['recovery']['payload']['pending_generation'] is None
                     assert recovered['events'][0]['detail']['content']=='Fictional unsent memory'
                     assert recovered['events'][0]['source_scope']==SESSION
                     assert recovered['events'][0]['source_memory_id']==unsent['data']['id']

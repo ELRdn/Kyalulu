@@ -51,3 +51,20 @@ the new lock protocol; their actual termination remains the user's confirmation.
 Browser world/shared memory pools and their lifecycle are still unimplemented.
 This establishes an execution fence prerequisite; it does not claim memory-scope
 parity, fixed-source artifact acceptance or production readiness.
+
+## Follow-up sync boundary
+
+Outgoing selection also consults the durable entity pending flag, so a different
+document cannot send an intermediate conversation just because its own busy
+counter is zero. Finished conversations become eligible again. Independent
+received/branched/recovery copies clear the foreign worker flag while retaining
+their messages and draft; another device cannot resume that local worker.
+Unit selection/receive cases and the real-IDB dirty-recovery case cover this.
+The follow-up full Web run passed 1,120 tests/76 files and typecheck; Chromium
+selective-sync passed ten cases and memory API/recovery passed JA/EN two cases.
+
+Ubuntu CI on `ed8e3c7` exposed an E2E ordering assumption: document close returned
+before the lock broker reported release, so the API safely retained pending.
+The test now waits for the real `navigator.locks.query()` state before injecting
+the recovery write failure. No delay/timeout is used as proof of a stopped worker.
+Fresh cross-platform CI for this correction is still required.

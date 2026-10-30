@@ -9,6 +9,14 @@ const wire = () => ({storage_policy:'sync',rating:'general',settings:{session_id
   memories:[{id:'memory',scope:'chat',type:'semantic',content:'tea',source_message_ids:[1]}],
   summaries:[{id:'summary',method:'extractive',text:'[1:user] tea [2:assistant] yes',source_message_ids:[1,2]}],last_generation:{user_id:1,assistant_id:2}});
 
+it('does not carry a foreign worker pending flag into an independent sync/branch copy',()=>{
+  const payload={...wire(),pending_generation:'other-document-worker',draft:'retain independent draft'};
+  let number=100;const received=receiveConversation(payload,undefined,()=>++number);
+  expect(received.pending_generation).toBeNull();expect(received.draft).toBe(payload.draft);
+  expect(received.messages.map((m:any)=>m.content)).toEqual(payload.messages.map(m=>m.content));
+  expect(payload.pending_generation).toBe('other-document-worker');
+});
+
 it('imports the same historical fixture as Python without mixing memory revisions',()=>{
   let number=500;const value=receiveConversation(sharedHistory.payload,undefined,()=>++number);
   expect(value.messages[1].after.memories[0]).toMatchObject({uuid:'stable-memory',content:'tea',version:3,source_message_ids:[501]});
