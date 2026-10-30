@@ -4,13 +4,14 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import sqlite3
 import struct
 import sys
 import tarfile
 import tempfile
 from contextlib import closing
+from itertools import chain
 from decimal import Decimal, ROUND_CEILING
 import re
 import time
@@ -185,26 +186,20 @@ def disaster_backup(store, destination):
                             arcname=name + "/" + directory.name,
                             filter=lambda i: None if i.issym() or i.islnk() else i,
                         )
-            # Retained user restore points must survive a Runtime disaster too.
-            if store.config.backup_root and store.config.backup_root.exists():
-                import re
-
-                for directory in store.config.backup_root.iterdir():
-                    # The current backup's own staging directory lives here when
-                    # the destination is inside the configured backup root.
-                    if directory == tmp:
+            # Historical disaster archives and audit files are durable too.
+            backup_root = store.config.backup_root
+            if backup_root and (backup_root.exists() or backup_root.is_symlink()):
+                if backup_root.is_symlink() or not backup_root.is_dir():
+                    raise ValueError("Invalid disaster backup directory")
+                for path in chain((backup_root,), backup_root.rglob("*")):
+                    if path == tmp or tmp in path.parents or path == destination:
                         continue
-                    if not directory.is_dir() or directory.is_symlink():
-                        continue
-                    UUID(directory.name)
-                    for file in directory.glob("*.kybackup"):
-                        if not file.is_symlink() and re.fullmatch(
-                            r"[0-9a-f]{32}\.kybackup", file.name
-                        ):
-                            archive.add(
-                                file,
-                                arcname="backups/" + directory.name + "/" + file.name,
-                            )
+                    relative = path.relative_to(backup_root).as_posix()
+                    if (path.is_symlink() or not (path.is_file() or path.is_dir())
+                            or "\\" in relative or ":" in relative):
+                        raise ValueError("Invalid retained backup path")
+                    archive.add(path, arcname="backups" + ("/" + relative if relative != "." else ""),
+                                recursive=False)
         with (
             (tmp / "snapshot.tar").open("rb") as source,
             destination.open("xb") as output,
@@ -269,19 +264,24 @@ def disaster_restore(store, source):
                 output.write(raw[8:])
                 index += 1
         with tarfile.open(tmp / "snapshot.tar") as archive:
+            seen = set()
             for member in archive:
-                parts = Path(member.name).parts
-                if member.name not in {"control.db", "community.db"}:
-                    if len(parts) < 2 or parts[0] not in {"tenants", "backups", "transfers", "entity-transfers"}:
-                        raise ValueError("Invalid backup member")
-                    UUID(parts[1])
-                if (
-                    member.issym()
-                    or member.islnk()
-                    or member.name.startswith("/")
-                    or ".." in parts
-                ):
+                path = PurePosixPath(member.name)
+                parts = path.parts
+                if (not parts or path.is_absolute() or ".." in parts
+                        or "\\" in member.name or ":" in member.name
+                        or path.as_posix() != member.name or member.name in seen
+                        or not (member.isfile() or member.isdir())):
                     raise ValueError("Unsafe backup member")
+                seen.add(member.name)
+                if member.name not in {"control.db", "community.db"}:
+                    if parts[0] == "backups":
+                        if len(parts) == 1 and not member.isdir():
+                            raise ValueError("Invalid backup member")
+                    elif len(parts) < 2 or parts[0] not in {"tenants", "transfers", "entity-transfers"}:
+                        raise ValueError("Invalid backup member")
+                    else:
+                        UUID(parts[1])
             archive.extractall(tmp / "restored", filter="data")
         for database in (tmp / "restored").rglob("*.db"):
             with closing(sqlite3.connect(database)) as con:
