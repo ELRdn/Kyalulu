@@ -212,3 +212,11 @@ Native専用build/marker・Local初期値・ローカル地域確認・明示Clo
 [Native entry](validation/2026-10-30-unified-native-entry.md) の梱包後ブラウザ試験は別の必須gate。
 対応ソース581件はGit export一致であり、raw blobは31件一致・550件は改行だけの差と訂正。
 ローカルDockerはInference socket起動エラーで新Linux imageを検証できていない。
+
+ac2ffc2の梱包後NativeブラウザはLocal初回確認・Mockの実送信・4行の履歴/下書き再起動・
+Cloudの別画面引渡しが成功。一方、先行する失敗試験の残留Pythonから、Windows Proactorの
+切断例外とHTTP終了だけで成功にするlauncherの欠陥を発見した。NativeのWindows loopを
+Selectorへ変更し、保存PIDが実終了するまで所有情報を保持する。Windowsでは512 socket・
+async subprocess非対応の制約があり、現Runtimeには該当するsubprocess呼出しはない。
+同梱Pythonの切断例外注入で修正前の待機と修正後の正常終了を比較し、関連23件が成功。
+新しい梱包/CLI/ブラウザの同一版検証は別途必要。旧失敗試験の強制片付けは正常終了の証拠に含めない。

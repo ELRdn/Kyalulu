@@ -78,24 +78,49 @@ async function execute(current, root, args, {detached=false,env={}}={}) {
   await ready;
   return child;
 }
-async function owned(root) {
+async function savedState(root) {
   let state;
-  try {state=await json(path.join(root,'process.json'));} catch {return null;}
+  try {state=await json(path.join(root,'process.json'));} catch(error) {if(error.code==='ENOENT') return null;throw error;}
+  if(!state || !Number.isSafeInteger(state.pid) || state.pid<=0 || state.pid>0x7fffffff ||
+     typeof state.token!=='string' || !state.token || typeof state.url!=='string') throw Error('Invalid saved runtime state; process.json preserved');
   const url=new URL(state.url);
-  if(url.hostname!=='127.0.0.1' || url.protocol!=='http:') throw Error('Invalid saved local address');
+  if(url.hostname!=='127.0.0.1' || url.protocol!=='http:' || state.url!==url.origin) throw Error('Invalid saved local address');
+  return state;
+}
+function processExists(pid) {
+  try {process.kill(pid,0);return true;}
+  catch(error) {
+    if(error.code==='ESRCH') return false;
+    if(error.code==='EPERM') return true;
+    throw error;
+  }
+}
+async function owned(root) {
+  const state=await savedState(root);
+  if(!state) return null;
   try {
-    const response=await fetch(state.url+'/api/local/owner',{headers:{'x-kyalulu-owner':state.token},signal:AbortSignal.timeout(2000)});
+    const response=await fetch(state.url+'/api/local/owner',{headers:{'x-kyalulu-owner':state.token},redirect:'error',signal:AbortSignal.timeout(2000)});
     const owner=await response.json();
-    if(response.ok && owner.owned && owner.pid===state.pid) return state;
+    if(response.ok && owner.owned===true && owner.pid===state.pid) return state;
   } catch {}
   return null;
 }
 async function stop(root) {
-  const state=await owned(root);
+  const state=await savedState(root);
   if(!state) return false;
-  await fetch(state.url+'/api/local/shutdown',{method:'POST',headers:{'x-kyalulu-owner':state.token,origin:state.url},signal:AbortSignal.timeout(5000)});
-  for(let i=0;i<100;i++){if(!await owned(root)){await rm(path.join(root,'process.json'),{force:true}); return true;}await delay(100);}
-  throw Error('Owned runtime did not stop; no external process was killed');
+  const wasRunning=processExists(state.pid);
+  if(wasRunning) {
+    if(!await owned(root)) throw Error('Saved runtime still exists but ownership cannot be verified; process.json preserved');
+    const response=await fetch(state.url+'/api/local/shutdown',{method:'POST',headers:{'x-kyalulu-owner':state.token,origin:state.url},redirect:'error',signal:AbortSignal.timeout(5000)});
+    if(!response.ok) throw Error(`Owned shutdown rejected (${response.status}); process.json preserved`);
+  }
+  const deadline=Date.now()+10000;
+  while(processExists(state.pid)) {
+    if(Date.now()>=deadline) throw Error('Owned runtime process has not exited; process.json preserved; no external process was killed');
+    await delay(100);
+  }
+  await rm(path.join(root,'process.json'),{force:true});
+  return wasRunning;
 }
 async function runCommand(child) {
   return new Promise((resolve,reject)=>{child.once('error',reject);child.once('exit',code=>code===0?resolve():reject(Error(`Runtime command failed (${code})`)));});
@@ -150,6 +175,12 @@ export async function main(args=process.argv.slice(2)) {
   return lock(root,async()=>{
     if(command==='stop') {console.log(await stop(root)?'Owned Kyalulu runtime stopped.':'No owned runtime is running.');return;}
     let current=await json(path.join(root,'current.json')).catch(error=>{if(error.code==='ENOENT') return null;throw error;});
+    if(command==='start') {
+      const existing=await owned(root);
+      if(existing){console.log(existing.url);return;}
+      const saved=await savedState(root);
+      if(saved && processExists(saved.pid)) throw Error('Saved runtime still exists but ownership cannot be verified; process.json preserved');
+    }
     if(command==='rollback') {
       const previous=await json(path.join(root,'previous.json'));
       await runCommand(await execute(previous,root,['-c','import python.api.main, fastapi, uvicorn, aiosqlite, PIL']));
@@ -174,8 +205,6 @@ export async function main(args=process.argv.slice(2)) {
       if(command==='restore') await stop(root);
       await runCommand(await execute(current,root,['-m','python.local_backup',command,path.join(root,'data'),path.resolve(args[1])]));return;
     }
-    const existing=await owned(root);
-    if(existing){console.log(existing.url);return;}
     const port=Number(process.env.KYALULU_PORT || 8000);
     if(!Number.isInteger(port) || port<1024 || port>65535) throw Error('Invalid local port');
     const url=`http://127.0.0.1:${port}`, token=randomBytes(32).toString('hex');

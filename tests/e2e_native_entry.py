@@ -10,6 +10,7 @@ import subprocess
 from urllib.parse import urlsplit
 
 import httpx
+import psutil
 from playwright.async_api import async_playwright, expect
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,7 +44,13 @@ async def check(args):
     assert node and cli.is_file()
 
     def command(*arguments):
+        stopped = None
+        if arguments[0] == 'stop' and (home / 'process.json').exists():
+            stopped = psutil.Process(json.loads((home / 'process.json').read_text())['pid'])
         subprocess.run([node, str(cli), *arguments], env=env, check=True, capture_output=True, timeout=60)
+        if stopped is not None:
+            stopped.wait(timeout=10)
+            assert not stopped.is_running(), 'Native stop returned before the process exited'
 
     started = False
     external, calls, errors = [], [], []
@@ -64,6 +71,8 @@ async def check(args):
                         handoffs.append(await request.all_headers())
                         await route.fulfill(status=200, content_type='text/html', body='<title>Fictional Cloud destination</title>')
                     elif request.url.startswith(origin + '/'):
+                        if request.method == 'POST' and urlsplit(request.url).path == '/api/chat':
+                            assert json.loads(request.post_data)['model_id'] == 'mock-echo', 'Only the fictional Mock model may run'
                         calls.append({'method': request.method, 'path': urlsplit(request.url).path})
                         await route.continue_()
                     else:
@@ -103,6 +112,10 @@ async def check(args):
                         'generation_id': 'native-ui-mock', 'messages': [{'role': 'user', 'content': 'FICTIONAL-NATIVE-MESSAGE'}]})
                     assert generated.status_code == 200 and generated.json()['status'] == 'completed'
                 await page.goto(origin + '/#/chats/native-ui-fixture')
+                await page.get_by_role('textbox').last.fill('FICTIONAL-BROWSER-SEND')
+                await expect(page.get_by_role('button', name='Send', exact=True)).to_be_enabled(timeout=10000)
+                await page.get_by_role('button', name='Send', exact=True).click()
+                await page.get_by_role('paragraph').filter(has_text='Mock: FICTIONAL-BROWSER-SEND').wait_for(timeout=10000)
                 await page.get_by_role('textbox').last.fill('FICTIONAL-UNSENT-DRAFT')
                 await page.wait_for_timeout(150)
                 snapshot = await page.evaluate("JSON.stringify({target:localStorage.getItem('kyalulu-execution-target'),prefs:localStorage.getItem('kyalulu-app-preferences-v1'),receipt:localStorage.getItem('kyalulu-eligibility-ticket')})")
@@ -127,7 +140,7 @@ async def check(args):
                 await expect(page.get_by_role('textbox').last).to_have_value('FICTIONAL-UNSENT-DRAFT')
                 async with httpx.AsyncClient(base_url=origin, trust_env=False) as client:
                     history = await client.get('/api/chat/history?session_id=native-ui-fixture')
-                    assert history.status_code == 200 and len(history.json()['history']) == 2
+                    assert history.status_code == 200 and len(history.json()['history']) == 4
                 assert not external and not errors, (external, errors)
                 await context.close()
             finally:
@@ -136,14 +149,15 @@ async def check(args):
                   'local_general_policy_and_guardian_checks': True, 'local_eligibility_not_cloud': True,
                   'canonical_cloud_handoff_no_credentials_or_referrer': True, 'draft_target_and_receipt_preserved': True,
                   'restart_preserves_local_history_and_draft': True, 'external_requests': len(external),
-                  'page_errors': len(errors), 'mock_generations': 1, 'real_inference_attempts': 0,
+                  'page_errors': len(errors), 'mock_generations': 2, 'browser_mock_send': True, 'real_inference_attempts': 0,
                   'physical_device': False, 'regional_policy_approved': False, 'production_used': False}
-        (args.output / 'result.json').write_text(json.dumps(report, indent=2))
-        print(json.dumps(report))
     finally:
         if started:
             command('stop')
         assert not (home / 'process.json').exists() and not (home / 'launcher.lock').exists()
+    report['runtime_processes_exited'] = True
+    (args.output / 'result.json').write_text(json.dumps(report, indent=2))
+    print(json.dumps(report))
 
 
 if __name__ == '__main__':
