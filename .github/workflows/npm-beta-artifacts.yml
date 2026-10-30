@@ -50,6 +50,7 @@ jobs:
   bundle:
     needs: wasm
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-2025
@@ -263,5 +264,6 @@ jobs:
           name: cloud-image-checks
           path: |
             .artifacts/cloud-vps/image-id.txt
+            .artifacts/cloud-vps/kyalulu-cloud.tar.gz
             .artifacts/cloud-vps/kyalulu-cloud.tar.gz.sha256
             .artifacts/cloud-vps/check-report.json

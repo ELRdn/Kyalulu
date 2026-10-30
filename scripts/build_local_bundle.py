@@ -75,7 +75,7 @@ def build(output, release, target, web_dist=None):
             env=env,
         )
         found = run(
-            ["uv", "python", "find", "--managed-python", PYTHON_VERSION],
+            ["uv", "python", "find", "--managed-python", "--system", "--no-project", PYTHON_VERSION],
             env=env,
             capture_output=True,
         )
