@@ -1,4 +1,4 @@
-# Cloud target-switch CI reply locator — 2026-10-31
+# Cloud target-switch CI synchronization — 2026-10-31
 
 ## Scope and diagnosis
 
@@ -87,7 +87,39 @@ SHA-256 evidence identifiers:
 - Supplied CI log: `f48793e5e55662a75abc33d3b70173decb4f2fe4591434c9fae1eba3e47c2642`
 - Fresh `results.json`: `84e7c59bce187707d23e9bfac1db5d49e7900409bfcce0d7c65496e23be033ba`
 
-## Not verified
+## Windows route-callback completion follow-up
+
+The old `1de2cac` Windows push job `124305572672` in run `41126288934`
+also failed this driver, after the explicitly resumed EN reply, at the final
+`assert not active_routes`. This is a separate failure from the Ubuntu duplicate
+locator. The job log is `.artifacts/ci-1de2cac-windows-push.log`. Its mutable
+dictionary assertion later printed `{}` after the callback finally removed
+itself; the browser's `networkidle` event is not a route-coroutine drain barrier.
+
+The guard now clears a dedicated idle event when entering a callback and sets
+it only when the final callback exits. Both existing network-idle checks also
+await that event within 15 seconds, preserving the overall 180-second deadline.
+Assertion diagnostics snapshot the dictionary instead of retaining its mutable
+reference. No generation or cancel mutation is retried.
+
+For deterministic acceptance, only the successful deliberately resumed stream's
+callback is held **after** its response has been fulfilled. The actual reply,
+cleared composer, enabled destination and 0/1 ledger are verified while this
+callback is still active. Browser network idle must not imply route idle. The
+test then releases the callback and requires the explicit idle event plus an
+empty active-route map. Cleanup releases this independent barrier before
+waiting for route completion; the original cancelled-status barrier is unchanged.
+
+After correcting an initial fixture-only wait placed before the deliberate
+resumed send, the final driver passes **JA393light and EN1280dark, 2/2, exit 0**.
+Both report `post_fulfill_route_drain: true` and the duplicate-text acceptance,
+unchanged balances after stop, deliberate resumed charge 1, no automatic resend,
+no blocked/page errors and no cancelled callbacks. Final log:
+`.artifacts/cloud-post-fulfill-route-drain-final.log`. Final `results.json` SHA-256:
+`c078520d4fca32b474f92ec631c22878697f9668d51538485b56685f77612b86`.
+The earlier result SHA above identifies the initial locator-only run.
+
+## Remaining limits
 
 Ubuntu CI after this edit was not rerun or cancelled. This Windows fixture
 result does not establish full CI success, real provider/OAuth/billing,

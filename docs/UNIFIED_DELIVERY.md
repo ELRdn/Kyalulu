@@ -375,3 +375,8 @@ Windowsの1b3e5b6 CIはWeb単体/Python試験を通過後、実IDBの60秒待機
 [Remote reload diagnostics](validation/2026-10-31-remote-ci-recovery.md)に認証済みProfileとGET-only再接続の
 境界を記録する。通常reload・制御したaccess失敗・PC/Device/PC復帰を含む15チェック成功。
 保存結果の保留・元のcomposer assertionは維持し、既存UI再接続は各境界1回まで。元の接続切断原因は未確定。
+
+Cloud切替試験のUbuntuでは返信とsidebarの同文言によるlocator重複、旧Windowsではnetwork idle後も残る
+route callbackの終了確認で失敗した。[Cloud CI synchronization](validation/2026-10-31-unified-cloud-ci-locator.md)に
+本文限定locatorと明示的なcallback drainを記録する。最終返信配信後のcallbackだけを意図的に保留し、
+描画/台帳の成功とcallback未完了の同時成立を確認後に解放。日英2ケース成功、再送・課金条件・全体期限は維持。
