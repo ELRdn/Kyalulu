@@ -233,3 +233,11 @@ packed CLI `3fa9cd62…5b48b4` を検証。実CLI復元/rollback、Mockブラウ
 Web全986件/75ファイルと、共有エラー修正後91件・型検査が成功。
 [Auxiliary language](validation/2026-10-30-unified-auxiliary-language.md) に記録する。
 梱包後Nativeの新しい日英/物語表示試験は、同一版の再梱包後に別途実行する。
+
+
+端末記憶の出典・手動訂正・共通APIとInspectorの欠落を修正し、Pythonの実commitと
+共通fixtureで照合。実IDBの本文/履歴同時rollback、再読込、owner分離、対象scopeの記憶・履歴消去と
+未送信記憶/出典を残す端末限定復旧を確認した。
+[Device memory](validation/2026-10-30-unified-device-memory.md) に記録。
+全Web1107件/76ファイルと型検査が成功。世界/共有scopeの明示移行はまだ409を返すため、
+Memoryの全機能パリティとは扱わない。この後続修正は固定4bca277の配布物には含まれない。

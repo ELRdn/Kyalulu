@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import fixture from '../../../../tests/fixtures/unified-core.json';
-import { retrieveMemories, prepareRpg, validateProposals, extractSummary, refreshSummaries, type DeviceMemory } from './deviceCore';
+import provenance from '../../../../tests/fixtures/unified-memory-provenance.json';
+import { retrieveMemories, renderMemoryBlock, prepareRpg, validateProposals, memoryDecisions, evidenced, extractSummary, refreshSummaries, type DeviceMemory } from './deviceCore';
 import { recommend } from './recommendations';
 import { executionTarget, preferences, generationBusy, setGenerationBusy, switchTarget } from './appContext';
 import { initialData, newConversation } from '../mobile/store';
@@ -19,6 +20,23 @@ it('matches shared Python memory and story fixtures',()=>{
 it('does not promote invented memories or duplicate proposals',()=>{
   const out=validateProposals([{type:'semantic',content:'cats are nice',source_kind:'user_statement'},{type:'semantic',content:'cats are nice',source_kind:'user_statement'}],[],'I like tea');
   expect(out[0]).toMatchObject({supported:false,action:'store'});expect(out[1]).toMatchObject({reason:'duplicate'});
+});
+it.each(provenance.cases)('matches Python memory commit provenance: $name',test=>{
+  const proposals=test.proposals as Parameters<typeof memoryDecisions>[0],existing=test.existing as DeviceMemory[];
+  const before=structuredClone({proposals,existing});
+  const decisions=memoryDecisions(proposals,existing,test.user_text,test.reply,test.source_revision);
+  expect(decisions).toEqual(test.expected);
+  expect({proposals,existing}).toEqual(before);
+  const original=validateProposals(proposals,existing,test.user_text);
+  expect(decisions.map(({type,content,source_kind,action})=>({type,content,source_kind,action})))
+    .toEqual(original.map(({type,content,source_kind,action})=>({type,content,source_kind,action})));
+  decisions.forEach((decision,index)=>{if(decision.action==='skip')expect(decision).toEqual(original[index]);});
+});
+it.each(provenance.evidence)('matches Python reply evidence: $name',test=>{
+  expect(evidenced(test.content,test.reply)).toBe(test.expected);
+});
+it.each(provenance.render)('matches Python prompt memory source labels: $name',test=>{
+  expect(renderMemoryBlock(test.memories as DeviceMemory[])).toBe(test.expected);
 });
 it('preserves edited summaries until source IDs change and links every source',()=>{
   const messages=Array.from({length:200},(_,i)=>({id:i+1,role:i%2?'assistant':'user',content:`turn ${i}`}));

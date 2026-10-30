@@ -2,9 +2,9 @@ import { PortableDocumentSchema, DeviceGenerationOutputSchema, RuntimeStateSchem
 import catalog from '../mobile/app-catalog.generated.json';
 import { MobileRuntime } from '../mobile/runtime';
 import { MODELS, readyModels } from '../mobile/models';
-import { allEntities, entity, openEntity, saveEntity, newEntity, getMeta, setMeta, appTransaction, writeEntity, scrubGenerationRecords, trimOfflineCache, type AppEntity } from './appStore';
+import { allEntities, entity, openEntity, saveEntity, newEntity, getMeta, setMeta, appTransaction, writeEntity, scrubGenerationRecords, memoryEventsKey, trimOfflineCache, type AppEntity } from './appStore';
 import { deviceOwner, setGenerationBusy } from './appContext';
-import { estimateTokens, retrieveMemories, prepareRpg, validateProposals, refreshSummaries, type DeviceMemory } from './deviceCore';
+import { estimateTokens, retrieveMemories, renderMemoryBlock, prepareRpg, memoryDecisions, evidenced, refreshSummaries, type DeviceMemory } from './deviceCore';
 import { receiveConversation, rebindConversation } from './appSyncData';
 import { hydrateConversation } from './appSync';
 import { compilePortable, assemblePortable } from './devicePrompt';
@@ -23,6 +23,15 @@ const contentHash=(raw:Uint8Array)=>new Sha256().update(raw).digest();
 const outputSchema=DeviceGenerationOutputSchema;
 const json=(value:unknown,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
 const fail=(message:string,status=400)=>Object.assign(Error(message),{status});
+type MemoryEvent={id:number;scope:string;op:string;memory_id:string|null;generation_id:string|null;detail:unknown;created_at:string};
+async function memoryEvents(owner:string,sessionId:string) {
+  const events=await getMeta<MemoryEvent[]>(memoryEventsKey(owner,sessionId));
+  if(events!==undefined&&(!Array.isArray(events)||events.some((e,i)=>!e||e.id!==i+1||e.scope!==sessionId)))throw fail('Saved memory history is invalid',409);
+  return events??[];
+}
+function addMemoryEvent(events:MemoryEvent[],scope:string,op:string,memoryId:string|null,generationId:string|null,detail:unknown=null) {
+  events.push({id:events.length+1,scope,op,memory_id:memoryId,generation_id:generationId,detail,created_at:new Date().toISOString()});
+}
 const builtin=catalog.characters as Record<string,any>[];
 const docFor=(c:Record<string,any>)=>PortableDocumentSchema.parse({name:c.display_name??c.name,data:{description:c.description??'',personality:c.personality??'',first_mes:c.intro??''},speaking_style:c.speaking_style??'',nsfw:!!c.nsfw});
 const blank=(id:string)=>newEntity('conversation',id,{storage_policy:'local',rating:'general',settings:{session_id:id,system_prompt:'',temperature:.8},
@@ -130,8 +139,12 @@ async function generate(body:Record<string,any>,signal?:AbortSignal,scope?:Resea
     if(scope?.requested)Object.assign(requested,scope.requested);
     const generationConfig=sampling(model,requested);
     const frozenSettings=ConversationSettingsSchema.parse({...p.settings,session_id:id,system_prompt:body.system_prompt??p.settings.system_prompt??'',temperature:requested.temperature});
-    const trace=retrieveMemories(p.memory_enabled?baseMemories:[],last.content,scope?.memoryOptions);
-    const memories=trace.candidates.filter(m=>trace.injected.includes(m.id));
+    const retrievalStart=performance.now();
+    const retrieved=retrieveMemories(p.memory_enabled?baseMemories:[],last.content,scope?.memoryOptions);
+    const trace=p.memory_enabled?{...retrieved,enabled:true,scope:id,stored_count:baseMemories.filter((m:DeviceMemory)=>m.status==='active').length,
+      retrieval_ms:Math.round((performance.now()-retrievalStart)*100)/100}:null;
+    const memories=trace?.injected.map(id=>trace.candidates.find(m=>m.id===id)!)??[];
+    const events=scope||!trace?[]:await memoryEvents(owner,id);currentOwner();
     const world=prompt.sections.portable_snapshot.world;
     const cast=(world?.cast??[]).map((member:unknown)=>CastMemberSchema.parse(member));
     if(cast.length>12||new Set(cast.map((member:any)=>member.id)).size!==cast.length)throw fail('Invalid cast configuration');
@@ -139,7 +152,7 @@ async function generate(body:Record<string,any>,signal?:AbortSignal,scope?:Resea
     const system='Never choose the user\'s thoughts, actions or speech.\nState: '+JSON.stringify({...baseState,rpg})+
       (cast.length?'\nCast: label each speaker by name; keep their knowledge and relationships separate. Never choose the user\'s thoughts or actions.\n'+JSON.stringify(cast):'')+
       (world?.rpg?'\nServer-owned RPG outcome: narrate these results; never invent rolls or change HP, skills or inventory. Reject actions forbidden by the world rules.\n'+JSON.stringify(rpg):'')+
-      '\nRemember only these recorded memories: '+JSON.stringify(memories.map(m=>({type:m.type,content:m.content})))+
+      renderMemoryBlock(memories)+
       '\nReturn JSON only: {"reply":"your in-character reply","state_update":{"location":"","time":"","mood":"","active_scene":"","relationship_state":{"stage":"stranger","tone":"neutral","unresolved_conflict":false}},"memory_proposals":[]}. Memory proposals: at most 3, each {type:semantic|episodic|relationship,content,source_kind:user_statement|user_correction|work_setting|story_event}. Never invent user facts.';
     const pending={generation_id:generationId,session_id:id,status:'pending',assistant_id:null,user_id:body.regenerate_message_id?null:userId};
     let current=await save({...session,payload:{...p,messages,pending_generation:generationId,...(scope?{message_sequence:assistantId}:{})}},session.revision,{['generation:'+owner+':'+generationId]:pending});
@@ -161,24 +174,33 @@ async function generate(body:Record<string,any>,signal?:AbortSignal,scope?:Resea
           try { parsed=outputSchema.parse(JSON.parse(raw.trim().replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,''))); }
           catch {throw fail('The model returned an invalid structured response. No memory or story state was applied. / モデルの応答形式が不正です。記憶・状態は変更していません。');}
           const state={...baseState,...parsed.state_update,rpg,turn:(baseState.turn??0)+1};
-          const stored:DeviceMemory[]=[...baseMemories];
-          const decisions=p.memory_enabled?validateProposals(parsed.memory_proposals,baseMemories,last.content):[];
-          for(const proposal of decisions) {
-            if(proposal.action!=='store')continue;
-            const supported='supported' in proposal&&proposal.supported===true;
-            stored.push({...proposal,id:crypto.randomUUID(),scope:id,origin:'model',supported,status:'active',version:1,
-              source_session_id:scope?baseState.session_id:id,source_turn:state.turn,source_message_ids:[userId],source_quote:last.content,confirmation:supported?'evidenced':'unverified',
-              created_at:new Date().toISOString(),updated_at:new Date().toISOString(),access_count:0,last_accessed:null});
+          const now=new Date().toISOString();
+          const stored:DeviceMemory[]=baseMemories.map((memory:DeviceMemory)=>trace?.injected.includes(memory.id)
+            ?{...memory,access_count:(memory.access_count??0)+1,last_accessed:now}:memory);
+          if(trace){
+            addMemoryEvent(events,id,'retrieve',null,generationId,{candidates:trace.candidates.map(({id,score,decision})=>({id,score,decision})),injected_tokens:trace.injected_tokens,retrieval_ms:trace.retrieval_ms});
+            for(const memoryId of trace.injected)addMemoryEvent(events,id,'inject',memoryId,generationId);
           }
+          const decisions=(p.memory_enabled?memoryDecisions(parsed.memory_proposals,baseMemories,last.content,parsed.reply,String(current.revision)):[]).map(proposal=>{
+            if(proposal.action!=='store')return proposal;
+            const memoryId=crypto.randomUUID(),sourceIds=proposal.source_kind==='story_event'?[assistantId]:[userId];
+            stored.push({...proposal,id:memoryId,scope:id,origin:'model',status:'active',version:1,
+              source_session_id:scope?baseState.session_id:id,source_turn:state.turn,source_generation_id:generationId,source_message_ids:sourceIds,
+              created_at:now,updated_at:now,access_count:0,last_accessed:null});
+            addMemoryEvent(events,id,'create',memoryId,generationId,{type:proposal.type,content:proposal.content,origin:'model'});
+            return {...proposal,memory_id:memoryId,source_message_ids:sourceIds};
+          });
+          const memory=trace?{...trace,proposals:parsed.memory_proposals,decisions,evidenced:memories.filter(m=>evidenced(m.content,parsed.reply)).map(m=>m.id)}:null;
           messages.push({id:assistantId,uuid:crypto.randomUUID(),role:'assistant',content:parsed.reply,created_at:new Date().toISOString(),model_id:model.id,
             before:{state:baseState,memories:baseMemories,settings:structuredClone(frozenSettings)},after:{state,memories:stored,settings:structuredClone(frozenSettings)}});
-          const done={...pending,status:'completed',assistant_id:assistantId,full:parsed.reply,reply:parsed.reply,state,telemetry:{memory:trace,...result.measurement,
+          const done={...pending,status:'completed',assistant_id:assistantId,full:parsed.reply,reply:parsed.reply,state,telemetry:{...result.measurement,memory,
             ...(scope?{first_reply_ms:result.measurement?.firstTokenMs??null,tokens_per_second:result.measurement?.tokensPerSecond??null}:{})},
             generation_config:{...generationConfig,requested:{model_id:model.id,...generationConfig.requested},applied:{model_id:model.id,...generationConfig.applied}},validation:{ok:true,retries:0,errors:[]},
-            ...(scope?{compiled:prompt,raw_prompt:JSON.stringify(input),state_before:baseState,memory:p.memory_enabled?{...trace,decisions}:null,
-              token_budget:{total_prompt_tokens:input.reduce((sum,m)=>sum+estimateTokens(m.content),0),estimated:true}}:{})};
+            compiled:prompt,raw_prompt:JSON.stringify(input),state_before:baseState,memory,
+            token_budget:{total_prompt_tokens:input.reduce((sum,m)=>sum+estimateTokens(m.content),0),estimated:true}};
           current=await save({...current,payload:{...current.payload,messages,memories:stored,state,last_generation:done,pending_generation:null,
-            summaries:refreshSummaries(messages,p.summaries,id)}},current.revision,{['generation:'+owner+':'+generationId]:done});
+            summaries:refreshSummaries(messages,p.summaries,id)}},current.revision,{['generation:'+owner+':'+generationId]:done,
+              ...(!scope&&trace?{[memoryEventsKey(owner,id)]:events}:{})});
           send('done',done);
         } catch(error) {
           let saveError='';
@@ -310,7 +332,7 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
     if(running)throw fail('Stop generation before editing',409);
     const source=await conversation(branch[1],owner);
     if(branch[2]==='data'){
-      if(source.payload.storage_policy==='sync')await saveEntity({...source,deleted:true,payload:{...source.payload,delete_confirmation_revision:source.revision+1}},source.revision);
+      if(source.payload.storage_policy==='sync')await saveEntity({...source,deleted:true,payload:{...source.payload,delete_confirmation_revision:source.revision+1}},source.revision,{[memoryEventsKey(owner,source.id)]:[]});
       else await appTransaction<void>(['entities','meta'],'readwrite',(tx,done)=>{
         const store=tx.objectStore('entities'),read=store.get([source.owner,source.id]);
         read.onsuccess=()=>{
@@ -350,7 +372,7 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
   const context=path.match(/^\/api\/chat\/context\/([^/]+)(?:\/summaries\/([^/]+))?$/);
   if(context) {
     const session=await conversation(context[1],owner);
-    if(method==='GET')return json({history_revision:String(session.revision),summaries:session.payload.summaries});
+    if(method==='GET')return json({history_revision:String(session.revision),summaries:session.payload.summaries,scope:session.id});
     if(running)throw fail('Stop generation before editing',409);
     const summary=session.payload.summaries.find((s:any)=>s.id===context[2]);
     if(!summary)throw fail('Summary not found',404);
@@ -360,36 +382,81 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
   }
   if(path==='/api/chat/debug') {
     const session=await conversation(url.searchParams.get('session_id')??'default',owner),p=session.payload;
-    return json({session_id:session.id,settings:p.settings,compiled:await compiled(p.settings,[],owner),history_count:p.messages.length,approx_turn:p.state.turn,
-      relationship:p.state.relationship_state.stage,state:p.state,generation:p.last_generation??null});
+    return json({session_id:session.id,settings:p.settings,compiled:p.last_generation?.compiled??await compiled(p.settings,[],owner),history_count:p.messages.length,approx_turn:p.state.turn,
+      relationship:p.state.relationship_state.stage,state:p.state,generation:p.last_generation??null,memory:p.last_generation?.memory??p.last_generation?.telemetry?.memory??null,
+      memory_session:{enabled:p.memory_enabled===true,scope:session.id}});
   }
   const memorySession=path.match(/^\/api\/memory\/session\/([^/]+)(\/data|\/scope-preview|\/scope-migrate)?$/);
   if(memorySession) {
+    const suffix=memorySession[2];
+    if(!(suffix==='/data'?method==='DELETE':suffix==='/scope-preview'?method==='GET':suffix==='/scope-migrate'?method==='POST':['GET','PUT'].includes(method)))throw fail('Invalid memory operation',405);
     const session=await conversation(memorySession[1],owner);
     if(memorySession[2]==='/scope-preview')return json({scope:session.id,target_scope:session.id,preview_revision:String(session.revision),memories:session.payload.memories,identity:{session_id:session.id}});
     if(memorySession[2]==='/scope-migrate')throw fail('On-device memories remain isolated to their conversation',409);
     if(method!=='GET') {
       if(running)throw fail('Stop generation before editing',409);
-      if(memorySession[2]==='/data')session.payload.memories=[];
-      else session.payload.memory_enabled=body.enabled===true;
-      await saveEntity(session,session.revision);
+      if(suffix==='/data')session.payload.memories=[];
+      else {if(typeof body.enabled!=='boolean')throw fail('Choose whether memory is enabled');session.payload.memory_enabled=body.enabled;}
+      await saveEntity(session,session.revision,suffix==='/data'?{[memoryEventsKey(owner,session.id)]:[]}:{});
     }
-    return json({scope:session.id,enabled:session.payload.memory_enabled});
+    return json(suffix==='/data'?{ok:true,scope:session.id,affects_shared_sessions:false}:{session_id:session.id,scope:session.id,enabled:session.payload.memory_enabled});
   }
-  if(path==='/api/memory'||path.startsWith('/api/memory/')) {
-    const memoryId=path.split('/')[3];
-    const found=memoryId?(await readRecords()).find(s=>s.kind==='conversation'&&s.payload.memories.some((m:any)=>m.id===memoryId)):null;
-    if(memoryId&&!found)throw fail('Memory not found',404);
+  if(path==='/api/memory/scopes'){
+    if(method!=='GET')throw fail('Memory scopes require GET',405);
+    const scopes=(await readRecords()).filter(s=>s.kind==='conversation'&&s.payload.memories.length).map(s=>({scope:s.id,
+      active:s.payload.memories.filter((m:DeviceMemory)=>m.status==='active').length,total:s.payload.memories.length,
+      updated_at:s.payload.memories.map((m:DeviceMemory)=>m.updated_at??'').sort().at(-1)??null}));
+    return json({scopes:scopes.sort((a,b)=>String(b.updated_at).localeCompare(String(a.updated_at)))});
+  }
+  if(path==='/api/memory/events'){
+    if(method!=='GET')throw fail('Memory events require GET',405);
+    const scope=url.searchParams.get('scope'),limit=Number(url.searchParams.get('limit')??200);
+    if(!scope||!Number.isInteger(limit))throw fail('Choose a memory scope and integer limit');
+    return json({events:(await memoryEvents(owner,scope)).slice().reverse().slice(0,Math.min(Math.max(limit,1),1000))});
+  }
+  if(path==='/api/memory/search'){
+    if(method!=='POST')throw fail('Memory search requires POST',405);
+    if(typeof body.scope!=='string'||!body.scope||typeof body.query!=='string'||Array.from(body.query).length>4000
+      ||body.top_k!==undefined&&(!Number.isInteger(body.top_k)||body.top_k<1||body.top_k>20)
+      ||body.budget_tokens!==undefined&&(!Number.isInteger(body.budget_tokens)||body.budget_tokens<20||body.budget_tokens>4000))throw fail('Invalid memory search');
+    const session=await conversation(body.scope,owner),started=performance.now();
+    const trace=retrieveMemories(session.payload.memories,body.query,{top_k:body.top_k??5,budget_tokens:body.budget_tokens??300});
+    const block=renderMemoryBlock(trace.injected.map(id=>trace.candidates.find(m=>m.id===id)!));
+    return json({...trace,scope:session.id,stored_count:session.payload.memories.filter((m:DeviceMemory)=>m.status==='active').length,retrieval_ms:Math.round((performance.now()-started)*100)/100,block});
+  }
+  const memoryPath=path.match(/^\/api\/memory(?:\/([^/]+))?$/);
+  if(memoryPath) {
+    const memoryId=memoryPath[1];
+    if(!(memoryId?['GET','PATCH','PUT','DELETE'].includes(method):['GET','POST'].includes(method)))throw fail('Invalid memory operation',405);
+    if(!memoryId&&method==='POST'&&(typeof body.scope!=='string'||!body.scope.trim()||Array.from(body.scope).length>300))throw fail('Choose a memory scope');
+    const matches=memoryId?(await readRecords()).filter(s=>s.kind==='conversation'&&s.payload.memories.some((m:DeviceMemory)=>m.id===memoryId)):[];
+    if(matches.length>1)throw fail('Memory identity is ambiguous; use a separate conversation copy',409);
+    const found=matches[0];if(memoryId&&!found)throw fail('Memory not found',404);
     const session=await conversation(found?.id??body.scope??url.searchParams.get('scope')??'default',owner);
-    if(method==='GET')return json({memories:session.payload.memories.filter((m:any)=>m.status==='active')});
+    const previous=session.payload.memories.find((m:DeviceMemory)=>m.id===memoryId) as DeviceMemory|undefined;
+    if(method==='GET')return json(previous?{...previous,events:(await memoryEvents(owner,session.id)).filter(e=>e.memory_id===memoryId).reverse().slice(0,200)}
+      :{scope:session.id,memories:session.payload.memories.filter((m:DeviceMemory)=>url.searchParams.get('include_deleted')==='true'||m.status==='active')});
     if(running)throw fail('Stop generation before editing',409);
-    if(method!=='DELETE'&&(typeof body.content!=='string'||!body.content.trim()||Array.from(body.content).length>200))throw fail('Memory must have 1-200 characters');
-    if(body.type&&!['semantic','episodic','relationship'].includes(body.type))throw fail('Invalid memory type');
+    if(previous&&previous.status!=='active')throw fail('Memory not found',404);
+    const content=body.content==null?previous?.content:typeof body.content==='string'?body.content.trim().replace(/\s+/gu,' '):undefined;
+    const type=body.type??previous?.type;
+    if(method!=='DELETE'&&(!content||Array.from(content).length>200))throw fail('Memory must have 1-200 characters');
+    if(method!=='DELETE'&&!['semantic','episodic','relationship'].includes(type))throw fail('Invalid memory type');
+    if(!previous&&(body.source_kind!==undefined&&!['user_statement','user_correction','work_setting','story_event'].includes(body.source_kind)
+      ||body.source_quote!==undefined&&(typeof body.source_quote!=='string'||Array.from(body.source_quote).length>2000)
+      ||body.source_revision!=null&&(typeof body.source_revision!=='string'||Array.from(body.source_revision).length>128)))throw fail('Invalid memory source');
+    if(previous&&method!=='DELETE'&&previous.content===content&&previous.type===type)return json(previous);
     const now=new Date().toISOString();
-    let memory=session.payload.memories.find((m:any)=>m.id===memoryId);
-    if(memory){memory={...memory,...body,scope:session.id,id:memoryId,version:memory.version+1,status:method==='DELETE'?'deleted':'active',origin:'manual',supported:true,updated_at:now};session.payload.memories=session.payload.memories.map((m:any)=>m.id===memoryId?memory:m);}
-    else {memory={id:crypto.randomUUID(),scope:session.id,type:body.type,content:body.content,version:1,status:'active',origin:'manual',supported:true,source_session_id:null,source_turn:null,created_at:now,updated_at:now,access_count:0,last_accessed:null};session.payload.memories.push(memory);}
-    await saveEntity(session,session.revision);return json(memory);
+    const memory=previous?(method==='DELETE'?{...previous,scope:session.id,status:'deleted',updated_at:now}:{...previous,scope:session.id,content,type,version:previous.version+1,
+      origin:previous.origin==='model'?'model_edited':previous.origin,supported:null,source_kind:'user_correction',source_quote:content,source_revision:'manual:'+(previous.version+1),confirmation:'user_confirmed',updated_at:now})
+      :{id:crypto.randomUUID(),scope:session.id,type,content,version:1,status:'active',origin:'user',supported:null,source_session_id:null,source_turn:null,source_generation_id:null,
+        source_kind:body.source_kind??'user_statement',source_quote:body.source_quote||content,source_revision:body.source_revision||'manual:1',source_message_ids:[],confirmation:'user_confirmed',
+        created_at:now,updated_at:now,access_count:0,last_accessed:null};
+    const events=await memoryEvents(owner,session.id);
+    addMemoryEvent(events,session.id,previous?(method==='DELETE'?'delete':'update'):'create',memory.id,null,previous?(method==='DELETE'?{content:previous.content}
+      :{before:{content:previous.content,type:previous.type,version:previous.version},after:{content,type}}):{type,content,origin:'user'});
+    session.payload.memories=previous?session.payload.memories.map((m:DeviceMemory)=>m.id===memoryId?memory:m):[...session.payload.memories,memory];
+    await saveEntity(session,session.revision,{[memoryEventsKey(owner,session.id)]:events});return json(memory);
   }
   if(path==='/api/library') {
     if(method==='GET')return json({items:(await readRecords()).filter(e=>['character','preset'].includes(e.kind)&&e.payload.document).map(e=>libraryView(e))});
