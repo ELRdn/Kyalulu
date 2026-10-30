@@ -2,14 +2,61 @@
 
 import importlib.util
 import io
+import os
 from pathlib import Path
 import json
 import re
+import stat
 import subprocess
 import tarfile
 import zipfile
 
 import pytest
+
+
+def test_wasm_bootstrap_preserves_zip_executables(tmp_path, monkeypatch):
+    path = Path(__file__).resolve().parents[1] / 'scripts/mobile_wasm/bootstrap.py'
+    spec = importlib.util.spec_from_file_location('wasm_bootstrap', path)
+    bootstrap = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bootstrap)
+    data = io.BytesIO()
+    with zipfile.ZipFile(data, 'w') as archive:
+        for name, mode, content in [('emsdk', 0o6755, b'#!/bin/sh\necho fixture\n'),
+                                    ('README', 0o644, b'offline fixture\n')]:
+            item = zipfile.ZipInfo('sdk-root/' + name)
+            item.create_system = 3
+            item.external_attr = (stat.S_IFREG | mode) << 16
+            archive.writestr(item, content)
+    work = tmp_path / 'wasm'
+    cmake = work / 'cmake-3.31.6-linux-x86_64/bin/cmake'
+    cmake.parent.mkdir(parents=True)
+    cmake.write_bytes(b'offline cmake marker')
+    url = 'https://example.invalid/emsdk.zip'
+    monkeypatch.setattr(bootstrap, 'WORK', work)
+    monkeypatch.setattr(bootstrap, 'SOURCES', [(url, 'emsdk', True)])
+
+    def urlopen(requested_url, timeout):
+        assert requested_url == url and timeout == 180
+        return io.BytesIO(data.getvalue())
+
+    monkeypatch.setattr(bootstrap.urllib.request, 'urlopen', urlopen)
+    chmod_calls = []
+    original_chmod = Path.chmod
+
+    def chmod(target, mode):
+        chmod_calls.append((target, mode))
+        original_chmod(target, mode)
+
+    monkeypatch.setattr(Path, 'chmod', chmod)
+    bootstrap.main()
+    executable = work / 'emsdk/emsdk'
+    readme = work / 'emsdk/README'
+    assert executable.read_bytes() == b'#!/bin/sh\necho fixture\n'
+    assert readme.read_bytes() == b'offline fixture\n'
+    assert chmod_calls == [(executable, 0o755)]
+    if os.name == 'posix':
+        assert stat.S_IMODE(executable.stat().st_mode) == 0o755
+        assert not readme.stat().st_mode & 0o111
 
 
 def test_wasm_builder_keeps_unix_lines_in_windows_git_export(tmp_path, monkeypatch):

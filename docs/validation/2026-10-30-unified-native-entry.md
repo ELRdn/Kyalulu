@@ -46,12 +46,12 @@ It uses a new fake home, an explicitly fictional policy, blocked external traffi
 mock generation and a fulfilled fake Cloud destination. It must prove local
 first-use/guardian denials, canonical popup without credentials/referrer/opener,
 draft/target preservation and local history across restart. Do not claim that
-new browser acceptance until the fixture actually passes.
+new browser acceptance until the fixture actually passes; results are below.
 
-The manual npm artifact workflow now builds pinned WASM on Linux, hashes exact
+The manual npm artifact workflow builds pinned WASM on Linux, hashes exact
 binary/license/patch inputs, passes them to Windows/macOS jobs, verifies hashes
 and compiled patch/source agreement, builds Native UI and runs both packed-CLI
-and browser checks. This workflow change has not been executed yet. It does not
+and browser checks. Its first actual dispatch is recorded below. It does not
 publish npm/releases or satisfy signing, clean-OS, real-model or physical-device
 gates. The historical ordinary Web build was insufficient for Native packaging.
 
@@ -109,4 +109,44 @@ retain the existing pointer-commit-before-stop ordering, so a stop failure can
 leave the new selection committed while preserving the old process record.
 Packed CLI/browser acceptance now checks actual process exit and emits success
 only after final cleanup. The ac2ffc2 artifact predates these lifecycle fixes;
-the new matching artifact still needs its separate packaging/browser acceptance.
+its narrower historical browser success does not accept the lifecycle behavior.
+
+## Fixed 87f560d Native artifact
+
+The exact committed source `87f560d138f125e121b326fc3646d7ef7378b67a` was exported
+to a new private directory. Catalog generation uses the actual managed Python
+3.13.7; the workstation's default Python 3.14 generated a different Unicode
+casefold map and that first artifact failed the source audit. It is excluded.
+The corrected candidate passed its entire source/export/lock/license/WASM audit.
+
+| Candidate | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Windows Native tar | 140,340,692 | `885c8314869db97bc7df6c33da860e36a267f9c1864fdfb94da52c3dca906fad` |
+| Unpublished packed CLI | 18,794 | `3fa9cd62ffbec9cdfea55cfb6e82c2a1c5694cc4a0bae683b09b21981e5b48b4` |
+
+All 8,734 archive members were safe; 218 product files, 33 locked Python
+packages, 223 renderer license files and four WASM outputs were checked. The
+812-member corresponding-source offer includes 587 committed files equal to the
+Git export: 31 also match raw Git bytes, while 556 differ only by strictly checked
+UTF-8 CRLF-to-LF conversion. Raw-byte and exported-source equality remain distinct.
+
+The actual packed CLI passed empty-PATH start/restart, fictional memory/history
+backup/restore/rollback, seven pointer faults and unrelated-process protection.
+The browser passed Local entry/guardian denial, actual Mock Send, four persisted
+history rows and unsent draft after restart, canonical Cloud popup isolation,
+zero external requests and zero page errors. Both suites verify actual process
+exit and emit success only after cleanup; candidate-owned Python processes were
+independently confirmed absent, without forced cleanup of this candidate.
+Private evidence: `.artifacts/unified-native-87f560d-audit.json` and the fixed
+source's `.artifacts/native-entry-acceptance-py313/result.json`.
+
+## First manual workflow failure
+
+Run 40993302006 on 87f560d failed before compilation: bootstrap's ZIP extraction
+discarded the executable mode on `emsdk/emsdk`, so `emsdk_env.sh` reported
+permission denied and could not expose `emcmake`. No Windows/macOS bundle job
+ran. Preserve only the ZIP execute bit as mode 0755 (never special permissions),
+with an offline ZIP regression. All nine source-collection tests passed, and a
+separate Linux/WSL fixture confirmed actual POSIX mode/content. This build-helper
+correction is later than the fixed Native artifact above; it does not retroactively
+accept that failed workflow. Its fresh dispatch remains a separate gate.
