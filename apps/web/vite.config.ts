@@ -143,7 +143,15 @@ function shellPrecache(mobile = false, device = false): Plugin {
   };
 }
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ mode, command }) => {
+  if (command === 'build' && mode === 'unified') {
+    const relay = process.env.VITE_RELAY_ORIGIN ?? '';
+    const parsed = URL.canParse(relay) ? new URL(relay) : null;
+    if (!parsed || parsed.protocol !== 'https:' || parsed.origin !== relay || parsed.username || parsed.password) {
+      throw new Error('Set VITE_RELAY_ORIGIN to the exact HTTPS Relay origin before building the unified app.');
+    }
+  }
+  return {
   base: "./",
   plugins: [react(), ...(mode === 'mobile' ? [{ name: 'kyalulu-mobile-entry', transformIndexHtml: { order: 'pre' as const, handler: (html: string) => html.replace('/src/main.tsx', '/src/mobile/main.tsx').replace('<title>Kyalulu — キャラクターと物語をつむぐ場所</title>', '<title>Kyalulu Mobile — スマホで動くキャラクターAI</title>') } }] : []), shellPrecache(mode === 'mobile', mode === 'unified')],
   worker: { format: 'es' },
@@ -157,4 +165,5 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
-}));
+  };
+});

@@ -198,3 +198,9 @@ flock・systemd・実mount/信号・実schema互換の証拠とは区別する�
 旧キャッシュ画面は架空fixtureであり、実旧Cloud UIの更新操作や本番配信とは区別する。
 [Legacy Cloud](validation/2026-10-30-unified-legacy-cloud.md) に公開URLの現在の観測と
 原本保持/別タブ拒否/CSPの証拠を記録。本番バックアップの承認待ちは継続している。
+
+clean 5ace6a7候補の実梱包を照合したところ、旧897737f候補のJSには管理Relay URLが
+含まれていなかった。旧候補のimage/hash合格はRemote登録の合格を証明しないため、
+3方式の完成配布物として選択しない。新しい明示設定buildでは未登録PC画面を実表示し、
+HTTPS17項目が成功。統合本番buildにはRelay originの必須検証を追加し、11ケースと
+型検査・Web全866件/67ファイルが成功。最終配布物/imageの同一版検証は別途必要。

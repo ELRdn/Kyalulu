@@ -8,6 +8,10 @@ launch, provider contracts, regional policies or real-device behavior.
 ## Reviewed delivery path
 
 - Build the unified Web entry with the existing managed Relay origin configured.
+  Export `VITE_RELAY_ORIGIN=https://relay.kyalulu.com` into the build process
+  (`$env:VITE_RELAY_ORIGIN='https://relay.kyalulu.com'` in PowerShell).
+  Unified production builds reject a missing/non-origin value; a development or
+  legacy/Mobile build does not imply this configuration is present.
   Run `pnpm --filter web build:app`, then
   `python scripts/prepare_cloud_bundle.py --unified --output .artifacts/unified-cloud`.
   Use a clean committed source tree, the existing locked dependencies and verified
