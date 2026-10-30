@@ -108,6 +108,12 @@ export function friendlyError(raw: unknown, language: Language = typeof window =
   if (text === 'Invalid memory source') return { message: en ? text : '記憶の出典が不正です。' };
   if (text === 'Choose whether memory is enabled') return { message: en ? text : '記憶を有効にするか選んでください。' };
   if (text === 'Stop generation before editing') return { message: en ? text : '編集する前に生成を停止してください。' };
+  if (text === 'Web Locks are required for on-device generation') return { message: en ? text : '安全に端末内で生成するため、Web Locksに対応したブラウザーで開いてください。' };
+  if (text === 'A generation is already running in another tab') return { message: en ? text : '別のタブで生成中です。完了するか、そのタブで停止してから送信してください。' };
+  if (text === 'Generation is running in another tab; stop it there') return { message: en ? text : '別のタブで生成中です。そのタブで停止してください。' };
+  if (text === 'Reconcile the pending generation before sending again') return { message: en ? text : '前の送信結果を確認してから、もう一度送信してください。' };
+  if (text === 'Pending generation changed; reload before recovery') return { message: en ? text : '未完了の生成記録が変わりました。再読込して保存結果を確認してください。' };
+  if (text === 'Close the original app tabs and confirm the saved result before recovering this older generation') return { message: en ? text : '元のタブで保存結果を確認し、旧アプリのタブをすべて閉じてから復旧を確認してください。' };
   if (text === 'On-device memories remain isolated to their conversation') return { message: en ? text : '端末内の記憶は、その会話内だけで保持されます。' };
   if (text === 'Device save/read failed; original data retained / 保存・読込に失敗しました。原本は保持されています') return { message: localTransferMessage(text,language) };
   const connectionCheck = text.match(/^接続を確認して再試行してください（HTTP (\d{3})）。$/);

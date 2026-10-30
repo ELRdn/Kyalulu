@@ -503,9 +503,10 @@ export async function fetchGeneration(generationId: string, sessionId: string): 
 }
 
 /** Explicit user Stop only; never called by resume or reconnect. */
-export async function cancelGeneration(generationId: string, sessionId: string): Promise<void> {
+export async function cancelGeneration(generationId: string, sessionId: string, legacyRevision?:number): Promise<void> {
   const response = await fetch(`/api/chat/generations/${encodeURIComponent(generationId)}/cancel?session_id=${encodeURIComponent(sessionId)}`, {
     method: "POST", cache: "no-store", signal: AbortSignal.timeout(15000),
+    ...(legacyRevision===undefined?{}:{headers:{'Content-Type':'application/json'},body:JSON.stringify({legacy_recovery_confirmed:true,expected_revision:legacyRevision})}),
   });
   if (!response.ok) await checkedJson(response);
 }

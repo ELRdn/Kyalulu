@@ -91,6 +91,7 @@ FILES = (
     "tests/fixtures/unified-memory-provenance.json",
     "tests/test_device_memory_provenance.py",
     "tests/e2e_device_memory.py",
+    "tests/e2e_device_generation_lock.py",
     "tests/fixtures/memory-language.html",
     "tests/fixtures/portable-prompt.json",
     "tests/fixtures/unified-history.json",

@@ -247,3 +247,9 @@ Pythonのsession限定手動記憶を世界/共有scopeへコピーした際の�
 Web型検査が成功した。共通デバッグドロワーの日英ラベルも補完した。
 [Memory erasure](validation/2026-10-30-unified-memory-erasure.md) に範囲と限界を記録。
 93eae08のPR CIはWindows/Ubuntuとも成功したが、この後続修正のCI/配布受入れではない。
+
+端末内通常会話とResearchのowner別WebLockを共用し、応答stream返却後も推論・保存完了まで
+保持する。別タブのpendingを誤ってfailedへ変えず、旧版の未標識記録は明示確認・revision照合後
+だけ復旧する。実Chromium2文書と日英の復旧画面で、保存失敗rollback・確認取消・競合拒否・
+送信入力と新しい下書きの保持を確認。[Generation lock](validation/2026-10-30-unified-generation-lock.md)
+に記録。実推論・実機・世界/共有scopeの完成を意味しない。

@@ -1,23 +1,28 @@
 import { connectionScope } from './remoteStore';
 import { useEffect, useRef, useState } from "react";
 import { cancelGeneration, fetchGeneration, fetchHistory, type ChatMessage } from "./api";
-import { ChatRecovery, RecoveryCheck, reconcileGeneration, type ChatDraft } from "./chatRecovery";
+import { ChatRecovery, RecoveryCheck, reconcileGeneration, generationOutcome, type ChatDraft } from "./chatRecovery";
 import { useLanguage } from './appContext';
 import { friendlyMessage } from './errors';
+import type { ConfirmOptions } from '../components/ui/Dialog';
 
 const notices = {
   ja: { pending: '前の送信は処理中です。結果を確認するまで送信・会話の変更を待ってね。',
+    legacy: '旧アプリの未完了記録です。元のタブで保存結果を確認し、旧アプリのタブをすべて閉じた後、「停止して確認」から復旧できます。',
     failed: '前の生成は完了しませんでした。下書きを確認して、必要なら送信してね。',
     check: '送信結果を確認できません。自動再送はしません。', cancel: '停止を確認できません。送信結果の確認を続けます。' },
   en: { pending: 'The previous send is still processing. Wait for its result before sending again or changing the conversation.',
+    legacy: 'This pending record came from an older app. Check its saved result in the original tab, close all older app tabs, then use Stop and check to recover.',
     failed: 'The previous generation did not finish. Review the draft and send it if needed.',
     check: 'The send result could not be verified. It will not be resent automatically.',
     cancel: 'Stopping could not be verified. Send-result checks will continue.' },
 };
 type RecoveryNotice = { kind: keyof typeof notices.ja; detail?: string };
 
-export function useChatRecovery(sessionId: string, onHistory: (messages: (ChatMessage & { model_id?: string })[]) => void) {
+export function useChatRecovery(sessionId: string, onHistory: (messages: (ChatMessage & { model_id?: string })[]) => void,
+  confirm:(options:ConfirmOptions)=>Promise<boolean>) {
   const language = useLanguage();
+  const identity=useRef(connectionScope()).current;
   // Access localStorage inside guarded operations: the getter itself may throw.
   const [store] = useState(() => new ChatRecovery({
     getItem: key => window.localStorage.getItem(key),
@@ -37,6 +42,7 @@ export function useChatRecovery(sessionId: string, onHistory: (messages: (ChatMe
   historyCallback.current = onHistory;
   const inputRef = useRef(value.draft);
   const dirtyDraft = useRef(false);
+  const cancelling=useRef(false);
   const apply = (next: ChatDraft) => { inputRef.current = next.draft; setValue(next); };
 
   const change = (draft: string) => {
@@ -68,7 +74,7 @@ export function useChatRecovery(sessionId: string, onHistory: (messages: (ChatMe
       if (!resolved) return;
       const { outcome, history, value: next } = resolved;
       if (outcome === "pending") {
-        setNotice({ kind: 'pending' });
+        setNotice({ kind: resolved.status?.legacy_recovery_revision===undefined?'pending':'legacy' });
         return;
       }
       historyCallback.current(history!);
@@ -90,14 +96,28 @@ export function useChatRecovery(sessionId: string, onHistory: (messages: (ChatMe
     } catch (e) { if (alive.current) setStorageError(String(e)); }
   };
   const cancel = async () => {
+    if(cancelling.current)return;
+    cancelling.current=true;
     try {
       const pending = store.read().pending;
       if (!pending) return;
-      await cancelGeneration(pending.id, sessionId);
-      if (alive.current) await reconcile();
+      const status=await fetchGeneration(pending.id,sessionId);
+      if(!alive.current||identity!==connectionScope()||store.read().pending?.id!==pending.id)return;
+      generationOutcome(status,pending,sessionId);
+      const revision=status.legacy_recovery_revision;
+      if(revision!==undefined){
+        const en=language==='en';
+        if(!await confirm({title:en?'Recover older pending generation':'旧アプリの未完了生成を復旧',
+          description:en?'Have you checked the saved result in the original tab and closed all older app tabs? This marks only the uncommitted generation as interrupted. Input, drafts and saved replies are retained. Nothing is sent automatically.'
+            :'元のタブで保存結果を確認し、旧アプリのタブをすべて閉じましたか？ 未確定の生成だけを中断済みにします。入力・下書き・保存済み返信は保持し、自動送信はしません。',
+          confirmLabel:en?'Tabs closed; recover':'タブを閉じたので復旧',cancelLabel:en?'Cancel':'キャンセル'}))return;
+        if(!alive.current||identity!==connectionScope()||store.read().pending?.id!==pending.id)return;
+      }
+      await cancelGeneration(pending.id, sessionId,revision);
+      if (alive.current&&identity===connectionScope()) await reconcile();
     } catch (e) {
       if (alive.current) setNotice({ kind: 'cancel', detail: String(e) });
-    }
+    } finally {cancelling.current=false;}
   };
   const erase = () => {
     const next: ChatDraft = { version: 1, draft: '', pending: null };
