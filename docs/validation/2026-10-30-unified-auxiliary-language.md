@@ -1,5 +1,47 @@
 # Auxiliary UI language completion (2026-10-30)
 
+## Current fixed candidate: 4bca277
+
+Windows Native tar: 140,406,437 bytes, SHA-256
+`d3591bac81ff66d17c7fb24205cdef2b9dd4cba3d765bffd186e6bd4a7e88a61`.
+Actual packed CLI and the matching committed browser fixture passed. The browser
+covered both languages in settings/diagnostics, visual-novel previous/next,
+393px no overflow, missing-route recovery, Mock sends, four retained history rows,
+unsent draft across restart, and isolated Cloud popup handoff. Both CLI/browser
+verified actual runtime PID exit; zero candidate-owned processes remained.
+External requests/page errors were zero; no real inference or production data.
+
+Static audit passed with existing warnings: 8,748 safe members, 226 product files,
+818 offered-source members, 33 locked Python packages, all four WASM hashes and
+all eight delivered license texts. Source copies match the Git export; raw Git
+comparison separately records CRLF-only differences. The 11 renderer inventory
+entries lacking root license texts remain part of the pending license review;
+this does not claim legal clearance or signed/clean-OS distribution acceptance.
+
+Matching local Cloud tar: 66,115,362 bytes, SHA-256
+`8b0b3202d4cfb75da8dd8a1946f1864676ac17cde1fa5416460789e566419fad`.
+All 233 manifest entries and 61 precache hashes (including gzip members), four
+WASM outputs, eight license texts and all 818 source-offer members matched Native.
+Workflow 41010931510 on this same fixed revision passed all four jobs: WASM,
+Cloud image, Windows Native and macOS Native. The CI Cloud code tar is separately
+fixed at 66,163,069 bytes, SHA-256
+`b2aae859399a9ad6b5c7faf395e6a8679e5d7f312c4a93fc4ceb147b50ae1e5b`,
+image `sha256:49e18e115d04c0118c4be1f138188d61a018b757afd4643ce3b0066d2dbbc5ed`.
+219 copied-image files, twelve network-none/read-only fictional checks and the
+unmodified default Uvicorn command passed. Local audit of the retained CI tar
+checked all 233 manifest/61 precache hashes, eight license originals and 593
+committed offered files against raw Git blobs. Its source offer has 1,122 members;
+platform-specific dependency-license inventory is distinct from the local
+Windows offer's 818 members.
+
+Private evidence is under `.artifacts/unified-canonical-4bca277/` and
+`.artifacts/unified-native-4bca277-static-audit.json`; it is excluded from Git.
+The source-preserving backup/cutover operation remains awaiting its separately
+scoped authorization. Android/iPhone are deferred by the owner; provider gates
+and the Draft/no-merge instruction remain unchanged.
+
+## Scope and earlier checks
+
 Diagnostics, provider status, PC hosting settings, visual-novel navigation,
 Studio, Status, NotFound and legacy public work/author views now follow the
 selected Japanese/English display language. Authored messages, names, model IDs,
@@ -57,8 +99,8 @@ Workflow review also found that upload-artifact excludes `.artifacts` by default
 so the successful macOS run's acceptance JSON was present in logs but not retained
 as a separate artifact. Enable hidden files only for the explicit three-path
 fictional acceptance allowlist. All eleven workflow/sandbox checks passed. The
-new workflow still needs a fresh actual run before Windows CI is accepted or
-macOS's retained artifact evidence is claimed.
+new workflow needed a fresh actual run at this stage; its later terminal results
+and downloaded evidence are recorded above/below.
 
 ## Compiled-runtime license delivery
 
@@ -76,5 +118,46 @@ output in these failure cases. The Cloud manifest covers the delivered license
 bytes. This does not declare a legal/license-review gate complete.
 
 Source/bundle/readiness/workflow tests passed 35 cases. A fixed revised Native
-archive, its CLI/browser acceptance and exact text hashes remain required before
-selecting a candidate. Retain the old 376 audit as a failed candidate record.
+archive, its CLI/browser acceptance and exact text hashes were required before
+selecting a candidate; their later successful evidence is recorded above/below. Retain the old 376 audit as a failed candidate record.
+
+The fixture/tooling workflow 41010305199 (79ff007) subsequently passed all four
+jobs: WASM, Cloud, Windows Native and macOS Native. Both OS acceptance JSONs and
+screenshots were actually downloaded and checked, including identical per-OS
+CLI/browser archive hash, JA/EN/visual-novel flags, actual PID exit and zero
+external/page errors. This closes the UTF-8/selector/retained-evidence fixture
+regressions. It does not select the pre-license-fix archives as release candidates.
+The fixed license delivery remains workflow 41010931510 (4bca277).
+
+The exact new CI standard WASM changed to `37abbdc2...206dbe27`; the other three
+runtime files matched the preceding verified CI. Revalidated all ten artifact
+inputs and all five existing cached model files (3,125,578,496 bytes), then
+actually ran these CI binaries in local Chrome: standard/compat GPU offloaded
+36/36 layers and returned `こんにちは。`; requested-zero-GPU CPU returned
+`お元気ですか？`. Context 512, maximum eight tokens, seed 12345/temperature 0.
+Every path reported lazy PLE and bounded nonzero reads. External/API requests and
+page errors were zero. Verifier and owned Vite exited normally; the dedicated
+profile/model cache was preserved, no profile process remained and IPv4/IPv6 port
+5187 could be rebound. This is short functionality, not performance/quality,
+old-build bit parity, a memory ceiling or physical-phone acceptance.
+
+The same-run Windows/macOS artifact bytes were downloaded and checked against
+both the platform manifest and retained CLI/browser reports. Windows:
+119,097,294 bytes, SHA-256
+`8625b48886f1c1de192deeca0d0f2f5a034c58f7aef60b80913bf120b4cd8e06`;
+macOS arm64: 113,148,819 bytes, SHA-256
+`c72c0e4869ce054b505b8136a2c1a70facaad61f6ad2f4053be0b7546dbeabf7`.
+Both archives had safe unique regular paths, all eight notice originals and four
+same-run WASM hashes. All 61 precache hashes passed. Packaged Runtime/catalog
+files equal their offered originals. Of 593 committed offered files, Windows
+has 31 raw-byte matches and 562 CRLF-only matches; macOS has 593 raw-byte matches.
+Both actual browser reports confirm the same per-OS archive hash, JA/EN settings/
+diagnostics, visual-novel navigation, 393px width, draft/history restart, zero
+external/page errors and actual PID exit. Signing/license/device gates remain
+false. This is runner/development-host acceptance, not a clean-OS public install.
+
+Ordinary Runtime/Web push CI 41010880414 on the same 4bca277 also passed both OS:
+Web 992 tests/75 files and typecheck; Windows Python 1,244 passed plus seven
+subtests, Ubuntu 1,241 passed/three skipped plus seven subtests. The PR-context
+duplicate 41010884409 was still running at this observation; no live job was
+cancelled or restarted based on waiting time. The Draft remains unmerged.
