@@ -1,4 +1,4 @@
-import { appTransaction, entity, getMeta, entitySelection, guardStorage, restoreEntity, readEntity, writeEntity, restoreOutbox, writeOutbox, scrubGenerationRecords, trimOfflineCache, type StoredEntity, type AppEntity, type Outbox } from './appStore';
+import { appTransaction, entity, getMeta, entitySelection, guardStorage, restoreEntity, readEntity, writeEntity, restoreOutbox, writeOutbox, scrubGenerationRecords, copyMemoryEvents, trimOfflineCache, type StoredEntity, type AppEntity, type Outbox } from './appStore';
 import { cloudFetch } from './transport';
 import { deviceOwner, generationBusy } from './appContext';
 import { receiveConversation, receiveLibrarySnapshot, receiveCreatorSnapshot, rebindConversation, withLibrarySnapshots, conversationSettings } from './appSyncData';
@@ -155,6 +155,7 @@ export async function receiveSyncPage(owner:string, changes:any[], cursor:number
                   const payload=local.kind==='conversation'?rebindConversation(receiveConversation(local.payload,undefined,allocate),id):structuredClone(local.payload);
                   payload.storage_policy='local';payload.recovery_from=local.id;payload.last_generation=null;
                   const recovery={...local,id,payload,revision:1,serverRevision:0,dirty:false,deleted:false};
+                  copyMemoryEvents(tx,local,recovery);
                   records.set(id,recovery);writeEntity(tx,recovery);
                 }
                 const retired={...remote,owner,payload:{storage_policy:'sync',deleted_revision:remote.revision},
@@ -386,6 +387,7 @@ async function synchronize(owner:string) {
                     }
                     updated.payload=rebindConversation(receiveConversation(updated.payload,undefined,()=>++number),ack.id);
                     updated.payload.last_generation=null;
+                    copyMemoryEvents(tx,local,updated);
                     // Retain the source until its Cloud revision is received; the copy contains every local edit.
                     writeEntity(tx,local.deleted?local:{...local,dirty:false});
                   }

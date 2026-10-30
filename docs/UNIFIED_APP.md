@@ -299,7 +299,7 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 | Surface | Cloud/Python | Own PC/Python | Browser Device | Acceptance Gap |
 |---|---|---|---|---|
 | Character chat/settings | Existing | Existing | Adapter implemented | Real-model device 20-turn test |
-| Memory/provenance | Existing | Existing | Retrieval/proposals/manual CRUD | Full identity/shared-scope parity |
+| Memory/provenance | Existing | Existing | Retrieval/proposals/manual CRUD, source-kind/Python commit fixtures, read-only preview, detail/scopes/events, actual Inspector debug trace and atomic local audit | Explicit Browser world/shared-scope migration still returns 409; asset identity/version separation and full real-model/shared-scope parity remain |
 | Summaries | Existing | Existing | Extractive chapters/arcs/manual edits | Long-context/end-to-end fixtures |
 | World/cast/RPG | Existing + creator snapshot bridge | Existing | Creator revisions, cast contract, RPG and selected Lore | Historical snapshot interchange and physical real-model acceptance |
 | Branches | Saved state/memory/settings; recorded revision/message ancestry | Synced and pre-enrollment branch UUIDs retained; owner claims precede receipts; explicit upload selection | Saved snapshots and independent numeric IDs; user/assistant cut points | Legacy branches without saved proofs, restorable revision bodies and physical acceptance |
@@ -309,7 +309,7 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 | Sync | Selected SQLite export, separate copies, confirmed erasure | Scoped entity enrollment/outbox/cancel receipts; legacy backup retained | Outbox, withdrawal receipts, version consent, library hydration, local recoveries | Complete lineage, large conversations and production migration |
 | Offline | Network generation required | Existing standalone | Recent ten, pinned, protected edits, hydration and stub identity | Real quota exhaustion, full PWA/browser/device restart acceptance |
 | Mobile migration | Not a Cloud upload | Not applicable | Verified file fallback and selected chunked model/data transfer | Deployed-domain popup/CSP, Android/iPhone and large-model acceptance |
-| Localization | Existing screens mainly JA | Same | New controls JA/EN | Complete existing screen translation |
+| Localization | Common entry/chat/creation/research/settings and reviewed snapshots JA/EN | Same shared UI, diagnostics/PC hosting/visual-novel controls JA/EN | Migration waiting/success/errors and model progress/errors follow language; memory errors retain the original cause | Complete screen inventory including remaining debug-drawer labels; real IME/device acceptance |
 | Adult publication | Closed | Existing local controls retained | Closed | Vendor acceptance and public APIs/media gates |
 
 When unified mode is enabled, the legacy Community routes also stay closed,

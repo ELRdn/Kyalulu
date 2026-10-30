@@ -1,7 +1,7 @@
 import { harness, decoded } from './idbHarness.test-support';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
-const fixture=vi.hoisted(()=>({owner:'owner-a',records:new Map<string,any>(),parts:new Map<string,any>(),meta:new Map<string,any>()}));
+const fixture=vi.hoisted(()=>({owner:'owner-a',records:new Map<string,any>(),parts:new Map<string,any>(),meta:new Map<string,any>(),failSave:false}));
 vi.mock('./appContext',()=>({deviceOwner:()=>fixture.owner,setGenerationBusy:vi.fn()}));
 vi.mock('./appSync',()=>({hydrateConversation:vi.fn()}));
 vi.mock('../mobile/runtime',()=>({MobileRuntime:class{}}));
@@ -13,8 +13,12 @@ vi.mock('./appStore',async original=>{
     entity:vi.fn(read),openEntity:vi.fn(read),trimOfflineCache:vi.fn(async()=>{}),
     getMeta:vi.fn(async(key:string)=>structuredClone(fixture.meta.get(key))),
     setMeta:vi.fn(async(key:string,value:unknown)=>{fixture.meta.set(key,structuredClone(value));}),
-    saveEntity:vi.fn(async(value:any)=>{
-      const saved=structuredClone({...value,revision:value.revision+1});fixture.records.set(value.owner+':'+value.id,saved);return saved;
+    saveEntity:vi.fn(async(value:any,_revision:number,metadata:Record<string,unknown>={})=>{
+      if(fixture.failSave)throw Error('Fictional storage failure');
+      // Metadata is committed together with the entity by the real IndexedDB save.
+      const saved=structuredClone({...value,revision:value.revision+1});fixture.records.set(value.owner+':'+value.id,saved);
+      for(const [key,item] of Object.entries(metadata))fixture.meta.set(key,structuredClone(item));
+      return saved;
     }),
     appTransaction:vi.fn((_stores:string[],mode:string,action:any)=>harness(fixture.records,fixture.meta,fixture.parts,key=>key.join(':'),mode,action)),
   };
@@ -36,7 +40,7 @@ const document=PortableDocumentSchema.parse({name:'Saved character',source:{remo
 const creatorId='created_'+'a'.repeat(32);
 
 beforeEach(()=>{
-  vi.clearAllMocks();fixture.owner='owner-a';fixture.records.clear();fixture.parts.clear();fixture.meta.clear();
+  vi.clearAllMocks();fixture.owner='owner-a';fixture.records.clear();fixture.parts.clear();fixture.meta.clear();fixture.failSave=false;
   vi.stubGlobal('IDBKeyRange',{bound:(lower:unknown,upper:unknown)=>({lower,upper})});
   vi.stubGlobal('indexedDB',{open:vi.fn(()=>{throw Error('Storage unavailable');})});
   vi.stubGlobal('location',{href:'https://device.test/device/',origin:'https://device.test'});
@@ -100,7 +104,8 @@ it('preserves immutable bindings, pending generation and unsent input when savin
 it('uses a single conversation for manual memory writes',async()=>{
   const before=structuredClone(saved().payload);
   const response=await request('/api/memory',{scope:'requested',type:'semantic',content:'New memory'});
-  expect(response.status).toBe(200);expect(response.body).toMatchObject({scope:'requested',content:'New memory',origin:'manual',status:'active'});
+  expect(response.status).toBe(200);expect(response.body).toMatchObject({scope:'requested',content:'New memory',origin:'user',status:'active',supported:null,
+    source_kind:'user_statement',source_quote:'New memory',source_revision:'manual:1',confirmation:'user_confirmed',source_message_ids:[]});
   expect(saved().payload.memories).toEqual([...before.memories,response.body]);
   expect(saved().payload.messages).toEqual(before.messages);expect(saved().payload.draft).toBe(before.draft);
   expect(openEntity).toHaveBeenCalledExactlyOnceWith('requested','owner-a');expect(allEntities).not.toHaveBeenCalled();
@@ -185,4 +190,99 @@ it('hydrates only the requested evicted conversation',async()=>{
   const response=await request('/api/chat/history?session_id=requested');
   expect(response.status).toBe(200);expect(response.body.history[0].content).toBe('Requested history');
   expect(hydrateConversation).toHaveBeenCalledExactlyOnceWith('requested','owner-a');expect(allEntities).not.toHaveBeenCalled();
+});
+
+it('keeps correction and deletion provenance and ordered operation history without accepting forged identity',async()=>{
+  const original=saved();original.payload.memories[0]={...original.payload.memories[0],origin:'model',supported:true,source_kind:'story_event',source_quote:'Original story',
+    source_generation_id:'original-generation',source_message_ids:[71],confirmation:'unverified'};put(original);
+  const path='/api/memory/memory-requested';
+  const updated=await request(path,{content:'  Corrected\n memory ',id:'foreign',scope:'unrelated',source_kind:'work_setting',source_generation_id:'forged',version:999},'PATCH');
+  expect(updated.status).toBe(200);expect(updated.body).toMatchObject({id:'memory-requested',scope:'requested',content:'Corrected memory',version:2,origin:'model_edited',supported:null,
+    source_kind:'user_correction',source_quote:'Corrected memory',source_revision:'manual:2',confirmation:'user_confirmed',source_generation_id:'original-generation',source_message_ids:[71]});
+  const before=structuredClone(fixture.records),events=structuredClone(fixture.meta);
+  expect((await request(path,{type:'semantic'},'PATCH')).body).toEqual(updated.body);
+  expect(fixture.records).toEqual(before);expect(fixture.meta).toEqual(events);
+  const removed=await request(path,undefined,'DELETE');expect(removed.status).toBe(200);
+  expect(removed.body).toMatchObject({...updated.body,status:'deleted',version:2,updated_at:expect.any(String)});
+  expect((await request('/api/memory?scope=requested')).body.memories).toEqual([]);
+  expect((await request('/api/memory?scope=requested&include_deleted=true')).body.memories).toHaveLength(1);
+  const detail=await request(path);expect(detail.status).toBe(200);expect(detail.body.id).toBe('memory-requested');
+  expect(detail.body.events.map((e:any)=>e.op)).toEqual(['delete','update']);
+  expect(detail.body.events[1].detail).toMatchObject({before:{content:'Requested history',version:1},after:{content:'Corrected memory'}});
+  expect((await request(path,{content:'Must not resurrect'},'PATCH')).status).toBe(404);
+  expect((await request(path,undefined,'DELETE')).status).toBe(404);
+  expect((await request('/api/memory/scopes')).body.scopes).toContainEqual(expect.objectContaining({scope:'requested',active:0,total:1}));
+  expect(JSON.stringify((await request('/api/memory/scopes')).body)).not.toContain('Foreign');
+});
+
+it('previews retrieval without saving access counts or operation history',async()=>{
+  const before=structuredClone(fixture.records),meta=structuredClone(fixture.meta);
+  const search=await request('/api/memory/search',{scope:'requested',query:'Requested history',top_k:1,budget_tokens:40});
+  expect(search.status).toBe(200);expect(search.body).toMatchObject({scope:'requested',stored_count:1,injected:['memory-requested'],retrieval_ms:expect.any(Number)});
+  expect(search.body.block).toContain('- [semantic] Requested history');
+  expect(search.body.candidates[0]).toMatchObject({id:'memory-requested',decision:'injected'});
+  expect(fixture.records).toEqual(before);expect(fixture.meta).toEqual(meta);expect(allEntities).not.toHaveBeenCalled();
+});
+
+it('retains source fields on create and keeps paged event queries scoped to the active owner',async()=>{
+  const created=await request('/api/memory',{scope:'requested',type:'episodic',content:'Explicit story correction',source_kind:'story_event',source_quote:'Quoted story',source_revision:'published:3'});
+  expect(created.status).toBe(200);expect(created.body).toMatchObject({source_kind:'story_event',source_quote:'Quoted story',source_revision:'published:3',confirmation:'user_confirmed'});
+  const log=await request('/api/memory/events?scope=requested&limit=1');
+  expect(log.body.events).toHaveLength(1);expect(log.body.events[0]).toMatchObject({id:1,scope:'requested',op:'create',memory_id:created.body.id});
+  fixture.owner='owner-b';
+  expect((await request('/api/memory/events?scope=requested')).body.events).toEqual([]);
+  expect((await request('/api/memory/'+created.body.id)).status).toBe(404);
+});
+
+it('erases scope history together with the memories and preserves unrelated owner evidence',async()=>{
+  await request('/api/memory',{scope:'requested',type:'semantic',content:'Private note'});
+  fixture.meta.set('memory-events:'+JSON.stringify(['owner-b','requested']),[{id:1,scope:'requested',op:'create',detail:'Foreign private note'}]);
+  const cleared=await request('/api/memory/session/requested/data',undefined,'DELETE');
+  expect(cleared.body).toEqual({ok:true,scope:'requested',affects_shared_sessions:false});
+  expect((await request('/api/memory/events?scope=requested')).body.events).toEqual([]);
+  expect((await request('/api/memory?scope=requested&include_deleted=true')).body.memories).toEqual([]);
+  expect(saved().payload.messages[0].content).toBe('Requested history');expect(saved().payload.draft).toBe('Unsent draft');
+  expect(fixture.meta.get('memory-events:'+JSON.stringify(['owner-b','requested']))[0].detail).toBe('Foreign private note');
+});
+
+it('keeps the memory and event history when the atomic save fails',async()=>{
+  const before=structuredClone(fixture.records),meta=structuredClone(fixture.meta);fixture.failSave=true;
+  const failure=await request('/api/memory/memory-requested',{content:'Must not commit'},'PATCH');
+  expect(failure.status).toBe(400);expect(fixture.records).toEqual(before);expect(fixture.meta).toEqual(meta);
+});
+
+it.each([
+  ['/api/memory/search',{scope:'requested',query:'x',top_k:0},'POST'],
+  ['/api/memory/search',{scope:'requested',query:'x',budget_tokens:4001},'POST'],
+  ['/api/memory',{scope:'requested',content:'x',type:'invented'},'POST'],
+  ['/api/memory',{scope:'requested',content:'x',type:'semantic',source_kind:'invented'},'POST'],
+  ['/api/memory',{scope:'requested',content:'🌸'.repeat(201),type:'semantic'},'POST'],
+  ['/api/memory/session/requested',{enabled:'yes'},'PUT'],
+])('rejects invalid memory input without changes: %s',async(path,body,method)=>{
+  const before=structuredClone(fixture.records),meta=structuredClone(fixture.meta);
+  expect((await request(path,body,method)).status).toBe(400);expect(fixture.records).toEqual(before);expect(fixture.meta).toEqual(meta);
+});
+
+it('rejects ambiguous legacy memory IDs without choosing a different conversation',async()=>{
+  const other=decoded(fixture.records.get('owner-a:unrelated'),fixture.parts);other.payload.memories[0].id='memory-requested';put(other);
+  const before=structuredClone(fixture.records);
+  expect((await request('/api/memory/memory-requested',{content:'Must not edit either'},'PATCH')).status).toBe(409);
+  expect(fixture.records).toEqual(before);expect(saveEntity).not.toHaveBeenCalled();
+});
+
+it('does not confuse account and session IDs containing the metadata separator',async()=>{
+  await request('/api/memory',{scope:'child:chat',type:'semantic',content:'Owned only by the first account'});
+  expect((await request('/api/memory/events?scope=child:chat')).body.events).toHaveLength(1);
+  fixture.owner='owner-a:child';
+  expect((await request('/api/memory/events?scope=chat')).body.events).toEqual([]);
+});
+
+it.each([
+  ['/api/memory',{},'PUT'],['/api/memory/search',undefined,'GET'],
+  ['/api/memory/events',{},'POST'],['/api/memory/scopes',{},'POST'],
+  ['/api/memory/session/requested/data',{},'POST'],['/api/memory/session/requested/scope-preview',{},'POST'],
+])('rejects the wrong HTTP method before editing memory: %s',async(path,body,method)=>{
+  const before=structuredClone(fixture.records),meta=structuredClone(fixture.meta);
+  expect((await request(path,body,method)).status).toBe(405);
+  expect(fixture.records).toEqual(before);expect(fixture.meta).toEqual(meta);expect(saveEntity).not.toHaveBeenCalled();
 });

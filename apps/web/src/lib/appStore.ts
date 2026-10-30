@@ -135,8 +135,31 @@ export const getMeta=<T>(key:string)=>appTransaction<T|undefined>(['meta'],'read
 export const setMeta=(key:string,value:unknown)=>appTransaction<void>(['meta'],'readwrite',(tx,done)=>{
   tx.objectStore('meta').put(value,key);done();
 });
+export const memoryEventsKey=(owner:string,sessionId:string)=>'memory-events:'+JSON.stringify([owner,sessionId]);
+export function copyMemoryEvents(tx:IDBTransaction,source:AppEntity,target:AppEntity) {
+  const meta=tx.objectStore('meta'),read=meta.get(memoryEventsKey(source.owner,source.id));
+  read.onsuccess=()=>{
+    try{
+      if(read.result===undefined)return;
+      if(source.owner!==target.owner||source.owner!==deviceOwner()||source.id===target.id)throw Error('Invalid memory history destination');
+      if(!Array.isArray(read.result))throw Error('Invalid memory history');
+      const memories=(p:AppEntity['payload'])=>[...(p.memories??[]),...(p.messages??[]).flatMap((m:any)=>[...(m.before?.memories??[]),...(m.after?.memories??[])])];
+      const targetIds=new Map(memories(target.payload).map((m:any)=>[m.uuid??m.id,m.id]));
+      const ids=new Map(memories(source.payload).map((m:any)=>[m.id,targetIds.get(m.uuid??m.id)]));
+      const events=read.result.map((event:any,index:number)=>{
+        if(event?.id!==index+1||event.scope!==source.id)throw Error('Invalid memory history');
+        const remap=(id:string)=>ids.get(id)??null;
+        return {...event,scope:target.id,source_scope:event.source_scope??source.id,
+          memory_id:event.memory_id?remap(event.memory_id):null,source_memory_id:event.source_memory_id??event.memory_id,
+          detail:Array.isArray(event.detail?.candidates)?{...event.detail,candidates:event.detail.candidates.map((c:any)=>({...c,id:remap(c.id),source_id:c.source_id??c.id}))}:event.detail};
+      });
+      meta.add(events,memoryEventsKey(target.owner,target.id));
+    }catch{tx.abort();}
+  };
+}
 export function scrubGenerationRecords(tx:IDBTransaction,owner:string,sessionId:string) {
   const meta=tx.objectStore('meta'),keys=meta.getAllKeys();
+  meta.delete(memoryEventsKey(owner,sessionId));
   keys.onsuccess=()=>{
     for(const key of keys.result)if(typeof key==='string'&&key.startsWith('generation:'+owner+':')) {
       const read=meta.get(key);read.onsuccess=()=>{

@@ -56,10 +56,11 @@ it('executes the shared generator, isolates experiment memories, and keeps succe
   const data=await first.json();expect(data.results,JSON.stringify(records().map(r=>r.turns))).toHaveLength(2);
   expect(records()).toHaveLength(2);expect(records().map(r=>r.meta.status)).toEqual(['completed','completed']);
   expect(records()[0].session.payload.memories[0].scope).not.toBe(records()[1].session.payload.memories[0].scope);
-  expect(fixture.turns[0][0].content).toContain('Remember only these recorded memories: []');
-  expect(fixture.turns[8][0].content).toContain('Remember only these recorded memories: []');
+  expect(fixture.turns[0][0].content).not.toContain('\nRelevant memory (');
+  expect(fixture.turns[8][0].content).not.toContain('\nRelevant memory (');
   expect(fixture.turns[4].filter((m:any)=>m.role==='user')).toHaveLength(1);
-  expect(fixture.turns[4][0].content).not.toContain('Remember only these recorded memories: []');
+  expect(fixture.turns[4][0].content).toContain(records()[0].session.payload.memories[0].content);
+  expect(fixture.turns[4][0].content).toContain('source: user_statement; story events are fictional, not user biography');
   expect(records()[0].turns.map((t:any)=>t.user_id)).toEqual([1,3,5,7,9,11,13,15]);
   expect(records()[0].turns[4].state_before.session_id).not.toBe(records()[0].turns[0].state_before.session_id);
   expect(records()[0].session.payload.memories[4].source_message_ids).toEqual([9]);

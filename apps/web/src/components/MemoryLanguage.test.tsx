@@ -70,3 +70,15 @@ it.each(['ja', 'en'])('keeps summary edits tied to the displayed revision in %s'
   find(tree, node => node.type === 'form').props.onSubmit({ preventDefault() {} });
   expect(updateChatSummary).toHaveBeenCalledWith('fixture-chat', 'summary-fixture', 'Corrected', 7);
 });
+
+it('relocalizes the original memory failure without replacing the draft or issuing an action',()=>{
+  const cause=Error('Stop generation before editing');
+  fixture.states=[null,true,'fixture',[],null,'KEEP DRAFT',false,'semantic',{cause},false,false];
+  for(const language of ['ja','en','ja']){
+    fixture.language=language;fixture.next=0;
+    const html=renderToStaticMarkup(MemoryPanel({sessionId:'fixture-chat',refreshKey:0}));
+    expect(html).toContain(language==='en'?'Stop generation before editing':'編集する前に生成を停止してください。');
+    expect(fixture.states[5]).toBe('KEEP DRAFT');expect(fixture.states[8]).toEqual({cause});
+  }
+  expect(clearSessionMemories).not.toHaveBeenCalled();expect(migrateMemoryScope).not.toHaveBeenCalled();
+});

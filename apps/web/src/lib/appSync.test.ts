@@ -515,6 +515,9 @@ it('preserves unsent edits locally when a remote tombstone wins and scrubs retir
   const current=local('chat');current.dirty=true;current.payload.messages[0].content='UNSENT';put(current);
   fixture.meta.set('generation:owner-a:g',{generation_id:'g',session_id:'chat',status:'completed',reply:'PRIVATE-REPLY'});
   fixture.meta.set('generation:owner-b:g',{generation_id:'g',session_id:'chat',status:'completed',reply:'OTHER-ACCOUNT'});
+  current.payload.memories=[{id:'old-memory',uuid:'stable-memory',scope:'chat',type:'semantic',content:'UNSENT MEMORY',status:'active',source_message_ids:[1]}];put(current);
+  fixture.meta.set('memory-events:'+JSON.stringify(['owner-a','chat']),[{id:1,scope:'chat',op:'create',memory_id:'old-memory',generation_id:'g',detail:{content:'UNSENT MEMORY'}}]);
+  fixture.meta.set('memory-events:'+JSON.stringify(['owner-b','chat']),[{id:1,scope:'chat',op:'create',detail:'OTHER-ACCOUNT-MEMORY'}]);
   const tombstone={id:'chat',kind:'conversation',revision:2,deleted:true,payload:{}};
   await receiveSyncPage('owner-a',[tombstone],3);
   expect(get('chat').deleted).toBe(true);expect(JSON.stringify(get('chat').payload)).not.toContain('UNSENT');
@@ -522,6 +525,10 @@ it('preserves unsent edits locally when a remote tombstone wins and scrubs retir
   expect(recovery.payload.messages[0].content).toBe('UNSENT');expect(recovery.payload.storage_policy).toBe('local');expect(recovery.dirty).toBe(false);
   expect(fixture.meta.get('generation:owner-a:g')).toEqual({generation_id:'g',session_id:'chat',status:'deleted'});
   expect(fixture.meta.get('generation:owner-b:g').reply).toBe('OTHER-ACCOUNT');
+  expect(fixture.meta.has('memory-events:'+JSON.stringify(['owner-a','chat']))).toBe(false);
+  expect(fixture.meta.get('memory-events:'+JSON.stringify(['owner-a',recovery.id]))).toEqual([{id:1,scope:recovery.id,source_scope:'chat',op:'create',memory_id:recovery.payload.memories[0].id,
+    source_memory_id:'old-memory',generation_id:'g',detail:{content:'UNSENT MEMORY'}}]);
+  expect(fixture.meta.get('memory-events:'+JSON.stringify(['owner-b','chat']))[0].detail).toBe('OTHER-ACCOUNT-MEMORY');
   await receiveSyncPage('owner-a',[tombstone],3);expect(fixture.entities.size).toBe(2);
 });
 it('requires a fresh explicit confirmation of the exact local and downloaded Cloud revisions',async()=>{

@@ -339,7 +339,7 @@ export async function compilePrompt(p: { character_id?: string | null; persona_i
   return j;
 }
 
-export async function fetchChatDebug(sessionId: string): Promise<{ session_id: string; settings: SessionSettings; compiled: CompiledPrompt; history_count: number; approx_turn: number; relationship: string; state: Record<string, unknown>; generation: GenerationResult | null }> {
+export async function fetchChatDebug(sessionId: string): Promise<{ session_id: string; settings: SessionSettings; compiled: CompiledPrompt; history_count: number; approx_turn: number; relationship: string; state: Record<string, unknown>; generation: GenerationResult | null; memory: MemoryTrace | null; memory_session: { enabled: boolean; scope: string } }> {
   const identity = cloudEpoch();
   const r = await fetch(`/api/chat/debug?session_id=${encodeURIComponent(sessionId)}`, { cache: "no-store" });
   const j = await checkedJson(r);

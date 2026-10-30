@@ -7,12 +7,20 @@ export function memoryBigrams(text:string) {
   const chars=Array.from(normalizeMemory(text));
   return new Set(chars.length<2?chars:chars.slice(1).map((c,i)=>chars[i]+c));
 }
+export function evidenced(memoryContent:string,reply:string) {
+  const grams=memoryBigrams(memoryContent),evidence=memoryBigrams(reply);
+  return grams.size>=2&&[...grams].filter(g=>evidence.has(g)).length/grams.size>=.3;
+}
 export function estimateTokens(text:string) {
   const chars=Array.from(text),cjk=chars.filter(c=>c.codePointAt(0)!>0x2e80).length;
   return Math.max(1,Math.ceil(cjk/1.5+(chars.length-cjk)/4));
 }
 export type DeviceMemory={id:string;type:'semantic'|'episodic'|'relationship';content:string;
-  origin:string;supported:boolean|null;status:string;[key:string]:any};
+  origin:string;supported:boolean|null;status:string;source_kind?:string;[key:string]:any};
+export function renderMemoryBlock(memories:DeviceMemory[]) {
+  return memories.length?'\nRelevant memory (remembered from earlier conversation; use it naturally when it fits, do not recite it, and never invent memories that are not listed):\n'
+    +memories.map(m=>`- [${m.type}] ${m.content}`+(m.source_kind?` (source: ${m.source_kind}; story events are fictional, not user biography)`:'')).join('\n'):'';
+}
 export function retrieveMemories(memories:DeviceMemory[],query:string,options:unknown={}) {
   const {top_k,budget_tokens,min_score,fill_recent}=MemoryOptionsSchema.parse(options);
   const q=memoryBigrams(query);
@@ -67,9 +75,17 @@ export function validateProposals(proposals:Proposal[],existing:DeviceMemory[],e
   const evidence=memoryBigrams(evidenceText);
   return proposals.slice(0,3).map(p=>{
     const content=p.content.trim().replace(/\s+/gu,' '),grams=memoryBigrams(content),item={...p,content};
-    if(Array.from(normalizeMemory(content)).length<2)return {...item,action:'skip',reason:'too_short'};
-    if(seen.some(s=>s.kind===p.source_kind&&overlap(s.grams,grams)>=.8&&overlap(grams,s.grams)>=.8))return {...item,action:'skip',reason:'duplicate'};
-    seen.push({grams,kind:p.source_kind});return {...item,action:'store',supported:overlap(evidence,grams)>=.3};
+    if(Array.from(normalizeMemory(content)).length<2)return {...item,action:'skip' as const,reason:'too_short'};
+    if(seen.some(s=>s.kind===p.source_kind&&overlap(s.grams,grams)>=.8&&overlap(grams,s.grams)>=.8))return {...item,action:'skip' as const,reason:'duplicate'};
+    seen.push({grams,kind:p.source_kind});return {...item,action:'store' as const,supported:overlap(evidence,grams)>=.3};
+  });
+}
+export function memoryDecisions(proposals:Proposal[],existing:DeviceMemory[],userText:string,reply:string,sourceRevision:string|null) {
+  return validateProposals(proposals,existing,userText).map(d=>{
+    if(d.action!=='store')return d;
+    const quote=d.source_kind==='story_event'?reply:userText;
+    const supported=d.source_kind==='work_setting'?false:d.source_kind==='story_event'?evidenced(d.content,reply):d.supported;
+    return {...d,supported,confirmation:'unverified',source_quote:Array.from(quote).slice(0,2000).join(''),source_revision:sourceRevision};
   });
 }
 type Message={id:number;role:string;content:string};
