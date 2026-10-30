@@ -27,6 +27,8 @@ Validation:
   awaited in finalizers and the process exits successfully; no separate PID/port
   inventory was collected. Real Cloud, physical devices and other browsers remain
   outside this fixture.
+- The focused browser fixture is included in the Runtime and Web CI workflow;
+  current-source CI completion is a separate acceptance result.
 
 The audit also found DeviceSettings and RemoteHostSettings already use the current
 language for their static UI and known errors, with model names and unknown
