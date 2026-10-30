@@ -235,3 +235,36 @@ staged selection and escaped returned paths. Readiness/workflow suites passed 18
 tests. Disable bundle matrix fail-fast so an OS failure cannot cancel the other
 independent OS validation; Windows in this failed run was cancelled, not accepted.
 macOS and the new workflow still require their fresh actual run.
+
+## 518079b image and packed-verifier portability
+
+The ordinary PR workflow 41003550766 passed both Ubuntu and Windows. Artifact
+run 41003546129 assembled both Windows and Apple Silicon managed bundles, proving
+the staged-interpreter fix on both actual OS. It also accepted Cloud image
+`sha256:27ac6d1049630c8e22f151e85e1679501615504eabaec199ff15dc0d97bcbadd`:
+211 copied files, twelve isolated checks and the default Uvicorn command passed.
+The retained 66,118,453-byte Cloud tar has SHA-256
+`7fa8e4637c314db99271a3addab395793edd9392b16fe5f2e5e2cfa52771eb0b`.
+Independent local audit checked all 225 manifest entries, 61 precache hashes,
+four runtime files, the source-offer hash and all 587 committed offered files
+against raw Git blobs. The source offer has 1,116 members including generated
+renderer license texts; its OS/dependency license inventory need not have the
+same member count as the earlier Windows offer. No production data was used.
+
+The standard WASM changed from the previous CI output (`c31186e9...a9190`);
+the other three runtime files matched. Its exact new binaries were therefore
+retested with the same five cached model files, context 512 and eight output
+tokens. Standard/compat each offloaded 36/36 layers and generated `こんにちは。`;
+CPU also completed. All model hashes and lazy-PLE checks passed, external/API
+requests and page errors were zero, and owned Vite exited with `q` normally.
+No binary-parity, model-quality or physical-phone claim follows from this smoke.
+
+Both Native jobs then failed in verification tooling, before CLI acceptance:
+the macOS npm executable is under Node's `../lib/node_modules`, not the Windows
+`node_modules` layout; Windows appended an npm notification from stderr to the
+JSON stdout being parsed. Select the supported OS's npm path and keep streams
+separate, retaining both on failure. Wait for stdio `close` before parsing output.
+An executable probe of the actual helper verified JSON-plus-notice and failed
+stdout/stderr cases; both path layouts were checked. The revised real verifier
+also passed the known fixed Windows tar, including actual process exit. Native
+CI still needs its fresh run before either platform is accepted.
