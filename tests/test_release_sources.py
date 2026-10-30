@@ -171,6 +171,7 @@ def test_mobile_packages_shared_corresponding_source(tmp_path, monkeypatch):
     for name in (
         '.artifacts/mobile-wasm/wllama/LICENCE', '.artifacts/mobile-wasm/wllama/llama.cpp/LICENSE',
         'apps/web/node_modules/@huggingface/transformers/LICENSE', 'docs/licenses/onnxruntime-MIT.txt',
+        'docs/licenses/onnxruntime-ThirdPartyNotices.txt', 'docs/licenses/noise-c-MIT.txt',
         '.artifacts/mobile-wasm/emdawn/emdawnwebgpu_pkg/webgpu/src/LICENSE',
         '.artifacts/mobile-wasm/emdawn/emdawnwebgpu_pkg/webgpu_cpp/LICENSE',
         '.artifacts/mobile-wasm/wllama/llama.cpp/licenses/LICENSE-jsonhpp', 'LICENSE',

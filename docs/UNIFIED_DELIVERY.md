@@ -336,3 +336,12 @@ context取得も完全復元を避け、保存tx内でowner・revision・本文t
 [Incremental summaries](validation/2026-10-31-unified-incremental-summaries.md) に旧処理との比較20ケース、
 全Web1,346件、日英実UIの160発言・8章確定/再生成の出典revisionと下書き保持を記録する。
 要約・文字走査の変更であり、生成元の全履歴保持を解消したものとは扱わない。
+
+配布用license collectorは、パッケージに原文がない場合のみ固定版/宣言/license SHAを照合して上流原文を補う。
+[Renderer licenses](validation/2026-10-31-unified-renderer-licenses.md) にPython62件、固定234packageの
+原文なし11→3、開発用混在560packageの別結果、Runtime原文10件と改行/リンク/改ざん拒否の証拠を記録する。
+3件の未確認grant・追加tool依存・最終審査は残し、license_reviewedはfalseを維持する。
+
+Cloud/端末同期の成功・停止・確認失敗通知は、表示後の言語変更にも追従する。
+[Runtime sync language](validation/2026-10-31-unified-runtime-sync-language.md) にWeb1,359件・最終対象13件、
+実React/IndexedDB/確認ダイアログでの通知4種・再送なし・同意撤回・固定outbox/原文保持・owner遮断を記録する。
