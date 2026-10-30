@@ -237,7 +237,8 @@ async def run_case(browser, vite, directory, language, width, theme):
             release_provider.set()
             await composer.fill('CLOUD_EXPLICIT_resume')
             await page.get_by_role('button', name='Send' if en else '送信', exact=True).click()
-            await page.get_by_text('hello', exact=True).wait_for()
+            reply = page.locator('.k-msg--character .k-msg__stack').get_by_text('hello', exact=True)
+            await reply.wait_for()
             await expect(picker).to_be_enabled()
             assert await composer.input_value() == ''
             assert len(provider_calls) == 2
@@ -247,12 +248,16 @@ async def run_case(browser, vite, directory, language, width, theme):
                 assert [tuple(row) for row in operations] == [('failed', 0), ('completed', 1)]
             await page.wait_for_load_state('networkidle')
             assert not active_routes, active_routes
+            await expect(page.locator('.k-session-row__preview').get_by_text('hello', exact=True)).to_have_count(1)
+            await expect(page.get_by_text('hello', exact=True)).to_have_count(2)
+            await expect(reply).to_have_count(1)
             assert not blocked and not errors, {'blocked': blocked, 'errors': errors}
             print(json.dumps({'language': language, 'stage': 'complete'}), flush=True)
             return {'language': language, 'width': width, 'theme': theme, 'provider_calls': len(provider_calls),
                 'cancelled_credits': operation['charged_credits'], 'cancel_balance_unchanged': True,
                 'late_success_fenced': True, 'explicit_resume_credits': 1,
                 'profile_reload_keeps_guard': True, 'draft_retained': True, 'automatic_resend': False,
+                'reply_locator_ignores_sidebar_preview': True,
                 'blocked_requests': blocked, 'page_errors': errors, 'cancelled_route_callbacks': cancelled_routes,
                 'owned_development_websockets_closed': len(hmr_sockets)}
     except BaseException as error:
