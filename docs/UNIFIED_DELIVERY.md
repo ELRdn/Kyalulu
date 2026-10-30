@@ -294,3 +294,8 @@ backup rootのUUID範囲外にある過去アーカイブ・管理記録の未�
 全ファイルと空ディレクトリの保持、展開前の不正member拒否を修正した。
 関連22件が成功。[Retained backup files](validation/2026-10-30-unified-retained-backup-files.md)
 にコードと架空試験の範囲を記録する。運用状態と実データの証拠は非公開で管理する。
+
+Device生成前の履歴選択では、既定の保守的カウンターだけ古い本文の反復計数を除去した。
+全system・最新user以降・出力予約・省略件数を維持し、ONNX等の独自カウンターは従来経路を維持。
+[Context selection](validation/2026-10-30-unified-context-selection.md) に旧結果との比較、
+50,000件を省略する計数検証、全Web1,252件と全体化が残る境界を記録する。
