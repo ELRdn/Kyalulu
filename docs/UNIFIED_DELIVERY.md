@@ -181,6 +181,13 @@ Android/iPhone実機は本人の指定で後日とした。volume/Compose配置�
 自動承認レビューで範囲外とされ未実行。その後、本人が限定したmount4項目を許可し、指定先へ非公開保存済み。
 暗号化backupと別root復元の[架空データprobe](validation/2026-10-30-unified-disaster-recovery.md)は23項目成功。
 アカウント0件でも原資のある復元先を拒否するguardと、Community/途中転送DBの保存漏れを修正し、
-Cloud関連125試験と最終復元10ケースで確認。コピーを使うprivate staging prototypeも24項目成功。
+Cloud関連125試験と最終復元10ケースで確認。コピーを使うprivate staging prototypeは後続のcommitted-WAL試験を含め50項目成功。
 これら後続のadmin変更は固定897737f imageには含まれない。
 実データのbackup/転送/復元は未実施であり、この4項目の読取許可には含まれない。
+
+後続の操作workerは架空13項目、停止・再開controllerはDockerなしの模擬26項目が成功。
+import巻き戻しによる暗号化失敗と入力/復元先の重複を修正し、schema全体・型・rowid・
+未収録保存物の照合を補強した。コード専用packageも固定した。
+[本番backupの具体的な範囲](UNIFIED_PRODUCTION_BACKUP_REVIEW.md)を用意したが、
+本番停止・master secret利用・暗号文取得・隔離復元は未承認/未実施。
+flock・systemd・実mount/信号・実schema互換の証拠とは区別する。
