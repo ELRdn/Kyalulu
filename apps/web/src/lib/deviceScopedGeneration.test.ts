@@ -24,6 +24,8 @@ import { scopedSessionMemory,saveScopedMemory } from './deviceScopedMemory';
 import { memoryIdentity } from './deviceMemoryScopes';
 import { readDeviceMemoryDomain } from './deviceMemoryStore';
 import { receiveConversation } from './appSyncData';
+import { conservativeTokens,mergeTurns } from '../mobile/context';
+import { CONTEXT_TOKENS,OUTPUT_TOKENS } from '../mobile/types';
 import catalog from '../mobile/app-catalog.generated.json';
 
 beforeEach(()=>{
@@ -149,4 +151,22 @@ it('stores a fresh source after explicit new evidence matches a previously forgo
   const rows=(await entity('b'))!.payload.memories;
   expect(rows.find((row:any)=>row.id===added.id).status).toBe('deleted');
   expect(rows.find((row:any)=>row.source_generation_id==='new-evidence')).toMatchObject({status:'active',source_session_id:'b',source_message_ids:[101]});
+});
+
+it('fits the default character, one shared fact and JSON contract within the bounded Device context',async()=>{
+  const a=source('a',31),b=source('b',71);delete a.payload.settings.world_id;delete b.payload.settings.world_id;b.payload.memories=[];
+  await seed(a);await seed(b);fixture.meta.set('message-sequence:'+fixture.owner,100);
+  expect((await turn('b','budget')).text).toContain('event: done');
+  expect(conservativeTokens(mergeTurns(fixture.inputs[0]))).toBeLessThanOrEqual(CONTEXT_TOKENS-OUTPUT_TOKENS);
+  const system=fixture.inputs[0].filter((message:any)=>message.role==='system').map((message:any)=>message.content).join('\n');
+  expect(system).toContain('relationship_state');expect(system).toContain('Never invent user facts');expect(system).not.toContain('state_version');
+  expect(system).toContain('Story events are fiction, not user facts');expect(system).toContain('source: user_statement');
+});
+
+it('retains narrative summaries while excluding runtime bookkeeping from the response shape',async()=>{
+  const record=source('b',71);record.payload.state.last_summary='An authored chapter summary.';await seed(record);
+  fixture.meta.set('message-sequence:'+fixture.owner,100);
+  expect((await turn('b','summary')).text).toContain('event: done');
+  expect(fixture.inputs[0][0].content).toContain('Prior conversation summary: An authored chapter summary.');
+  expect((await entity('b'))!.payload.state.last_summary).toBe('An authored chapter summary.');
 });

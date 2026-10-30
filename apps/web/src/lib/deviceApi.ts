@@ -4,7 +4,7 @@ import { MobileRuntime } from '../mobile/runtime';
 import { MODELS, readyModels } from '../mobile/models';
 import { allEntities, entity, openEntity, saveEntity, newEntity, getMeta, setMeta, appTransaction, writeEntity, scrubGenerationRecords, memoryEventsKey, trimOfflineCache, type AppEntity } from './appStore';
 import { deviceOwner, setGenerationBusy } from './appContext';
-import { estimateTokens, retrieveMemories, renderMemoryBlock, prepareRpg, memoryDecisions, evidenced, refreshSummaries, type DeviceMemory } from './deviceCore';
+import { estimateTokens, retrieveMemories, renderMemoryBlock, prepareRpg, memoryDecisions, evidenced, refreshSummaries,deviceResponseGrammar, type DeviceMemory } from './deviceCore';
 import { receiveConversation, rebindConversation } from './appSyncData';
 import { hydrateConversation } from './appSync';
 import { compilePortable, assemblePortable } from './devicePrompt';
@@ -243,11 +243,14 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
     const cast=(world?.cast??[]).map((member:unknown)=>CastMemberSchema.parse(member));
     if(cast.length>12||new Set(cast.map((member:any)=>member.id)).size!==cast.length)throw fail('Invalid cast configuration');
     const rpg=world?.rpg?prepareRpg(world.rpg,baseState.rpg??{},last.content,generationId):baseState.rpg;
-    const system='Never choose the user\'s thoughts, actions or speech.\nState: '+JSON.stringify({...baseState,rpg})+
+    const storyState=Object.fromEntries(['location','time','mood','active_scene','relationship_state'].map(key=>[key,baseState[key]]));
+    const system='Never choose the user\'s thoughts, actions or speech.'+
+      (baseState.last_summary?'\nPrior conversation summary: '+baseState.last_summary:'')+
       (cast.length?'\nCast: label each speaker by name; keep their knowledge and relationships separate. Never choose the user\'s thoughts or actions.\n'+JSON.stringify(cast):'')+
       (world?.rpg?'\nServer-owned RPG outcome: narrate these results; never invent rolls or change HP, skills or inventory. Reject actions forbidden by the world rules.\n'+JSON.stringify(rpg):'')+
-      renderMemoryBlock(memories)+
-      '\nReturn JSON only: {"reply":"your in-character reply","state_update":{"location":"","time":"","mood":"","active_scene":"","relationship_state":{"stage":"stranger","tone":"neutral","unresolved_conflict":false}},"memory_proposals":[]}. Memory proposals: at most 3, each {type:semantic|episodic|relationship,content,source_kind:user_statement|user_correction|work_setting|story_event}. Never invent user facts.';
+      renderMemoryBlock(memories,true)+
+      '\nJSON only; continue current state: '+JSON.stringify({reply:'in-character reply',state_update:storyState,memory_proposals:[]})+
+      '. Memories: <=3 {type:semantic|episodic|relationship,content,source_kind:user_statement|user_correction|work_setting|story_event}. Never invent user facts.';
     const pending={generation_id:generationId,session_id:id,status:'pending',assistant_id:null,user_id:body.regenerate_message_id?null:userId,
       execution_lock:deviceExecutionLockName(owner)};
     let current=await save({...session,payload:{...p,messages:body.regenerate_message_id?p.messages:messages,pending_generation:generationId,...(scope?{message_sequence:assistantId}:{})}},session.revision,{['generation:'+owner+':'+generationId]:pending});
@@ -263,7 +266,7 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
           const input=assemblePortable(prompt,messages.filter((m:any)=>!['stopped','interrupted'].includes(m.imported_state)).map((m:any)=>({role:m.role,content:m.content})),system);
           const result=await runtime!.generate(input as import('../mobile/types').ChatTurn[],event=>{
             if(event.type==='delta'){raw+=event.text??'';send('progress',{stage:'generation',elapsed_ms:0});}
-          },requested);
+          },requested,deviceResponseGrammar);
           if(deviceOwner()!==owner)throw fail('Account changed');
           if((result as any).stopped||signal?.aborted)throw fail('Generation stopped');
           let parsed;

@@ -1,6 +1,27 @@
 import { RPGOptionsSchema, type RPGOptions } from '../../../../packages/schemas/src/story';
 import { casefold } from './devicePrompt';
-import { MemoryOptionsSchema } from '../../../../packages/schemas/src';
+import { MemoryOptionsSchema,DeviceGenerationOutputSchema,StateUpdateSchema,RelationshipStateSchema,RelationshipSchema } from '../../../../packages/schemas/src';
+
+const proposalShape=DeviceGenerationOutputSchema.shape.memory_proposals.removeDefault().element.shape;
+const grammarLiteral=(value:string)=>JSON.stringify(JSON.stringify(value));
+const grammarObject=(fields:[string,string][])=>`"{" ws ${fields.map(([key,rule])=>`${grammarLiteral(key)} ws ":" ws ${rule}`).join(' "," ws ')} "}" ws`;
+// A root grammar excludes the optional reasoning prefix admitted by native chat JSON-schema parsing.
+export const deviceResponseGrammar=[
+  'root ::= '+grammarObject([['reply','nonempty'],['state_update','state'],['memory_proposals','memories']]),
+  'state ::= '+grammarObject(Object.keys(StateUpdateSchema.shape).map(key=>[key,key==='relationship_state'?'relationship':'string'])),
+  'relationship ::= '+grammarObject(Object.keys(RelationshipStateSchema.shape).map(key=>[key,key==='stage'?'stage':key==='unresolved_conflict'?'boolean':'string'])),
+  'memory ::= '+grammarObject([['type','memorytype'],['content','content'],['source_kind','sourcekind']]),
+  'stage ::= ('+RelationshipSchema.options.map(grammarLiteral).join(' | ')+') ws',
+  'memorytype ::= ('+proposalShape.type.options.map(grammarLiteral).join(' | ')+') ws',
+  'sourcekind ::= ('+proposalShape.source_kind.removeDefault().options.map(grammarLiteral).join(' | ')+') ws',
+  String.raw`memories ::= "[" ws (memory ("," ws memory ("," ws memory)?)?)? "]" ws
+boolean ::= ("true" | "false") ws
+string ::= "\"" char* "\"" ws
+nonempty ::= "\"" char+ "\"" ws
+content ::= "\"" char{1,200} "\"" ws
+char ::= [^"\\\x00-\x1f] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4})
+ws ::= [ \t\n\r]{0,16}`
+].join('\n');
 
 export const normalizeMemory = (text:string) => text.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,'');
 export function memoryBigrams(text:string) {
@@ -17,9 +38,10 @@ export function estimateTokens(text:string) {
 }
 export type DeviceMemory={id:string;type:'semantic'|'episodic'|'relationship';content:string;
   origin:string;supported:boolean|null;status:string;source_kind?:string;[key:string]:any};
-export function renderMemoryBlock(memories:DeviceMemory[]) {
-  return memories.length?'\nRelevant memory (remembered from earlier conversation; use it naturally when it fits, do not recite it, and never invent memories that are not listed):\n'
-    +memories.map(m=>`- [${m.type}] ${m.content}`+(m.source_kind?` (source: ${m.source_kind}; story events are fictional, not user biography)`:'')).join('\n'):'';
+export function renderMemoryBlock(memories:DeviceMemory[],compact=false) {
+  return memories.length?(compact?'\nRelevant memories; do not recite or invent. Story events are fiction, not user facts:\n'
+    :'\nRelevant memory (remembered from earlier conversation; use it naturally when it fits, do not recite it, and never invent memories that are not listed):\n')
+    +memories.map(m=>`- [${m.type}] ${m.content}`+(m.source_kind?` (source: ${m.source_kind}${compact?'':'; story events are fictional, not user biography'})`:'' )).join('\n'):'';
 }
 export function retrieveMemories(memories:DeviceMemory[],query:string,options:unknown={}) {
   const {top_k,budget_tokens,min_score,fill_recent}=MemoryOptionsSchema.parse(options);

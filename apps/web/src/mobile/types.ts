@@ -11,6 +11,7 @@ export type MobileData = { version: 1; characters: Character[]; conversations: C
 export type ChatTurn = { role: 'system' | 'user' | 'assistant'; content: string };
 export type ModelStatus = { id: string; fingerprint: string; verifiedAt: string };
 export type Measurement = {
+  structuredOutput?:'grammar'|'prompt'|'text';
   modelId: string; revision: string; backend: string; runtimeVariant: string; userAgent: string; contextTokens: number;
   loadMs: number; firstTokenMs: number | null; generationMs: number; outputTokens: number | null;
   tokensPerSecond: number | null;

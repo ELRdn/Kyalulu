@@ -137,7 +137,8 @@ it('exposes actual turn memory evidence, source speakers and audit events throug
   expect(debug.memory).toEqual(trace);expect(debug.memory_session).toEqual({enabled:true,scope:'chat'});
   expect(debug.prompt_source).toBe('saved_generation');
   expect(debug.generation.raw_prompt).toContain('サーモンのお寿司が好き');expect(debug.compiled).toEqual(p.last_generation.compiled);
-  expect(debug.generation.raw_prompt).toContain('source: user_statement; story events are fictional, not user biography');
+  expect(debug.generation.raw_prompt).toContain('source: user_statement');
+  expect(debug.generation.raw_prompt).toContain('Story events are fiction, not user facts');
   expect(fixture.meta.get('memory-events:'+JSON.stringify(['fixture-owner','chat'])).map((e:any)=>e.op)).toEqual(['retrieve','inject','create','create','create']);
 });
 

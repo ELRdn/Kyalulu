@@ -25,7 +25,9 @@ export class MobileRuntime {
     return new Promise<Event>((resolve,reject)=>{this.pending.set(id,{resolve,reject,event});worker.postMessage({id,type,...data});});
   }
   load(modelId:string,cpu=false,base=new URL(import.meta.env.BASE_URL,document.baseURI).href) {return this.call('load',{modelId,cpu,base});}
-  generate(messages:ChatTurn[],event:(e:Event)=>void,settings:Record<string,unknown>={}) {return this.call('generate',{messages,settings},event);}
+  generate(messages:ChatTurn[],event:(e:Event)=>void,settings:Record<string,unknown>={},responseGrammar?:string) {
+    return this.call('generate',{messages,settings,...(responseGrammar?{responseGrammar}:{})},event);
+  }
   stop(){this.worker?.postMessage({type:'stop'});}
   async unload(){if(this.worker)await this.call('unload',{});}
   reset(reason='推論を終了しました。') {
