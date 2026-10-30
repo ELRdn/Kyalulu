@@ -17,6 +17,7 @@ CLOUD = JOBS['cloud']
 
 
 def test_same_run_wasm_checks_and_pinned_build():
+    assert JOBS['bundle']['strategy']['fail-fast'] is False
     for job, cache in (('wasm', False), ('bundle', None), ('cloud', None)):
         setup = next(step for step in JOBS[job]['steps'] if step.get('uses') == 'astral-sh/setup-uv@v6')
         assert setup['with'] == {'version': '0.8.22', 'python-version': '3.13.7',
@@ -82,7 +83,8 @@ def test_container_sandbox_and_evidence_allowlist():
     assert 'src=$PWD/tests/fixtures/unified-container.py,dst=/tmp/unified-container.py,readonly' in containers[1][containers[1].index('--mount') + 1]
     upload, = (step for step in CLOUD['steps'] if step.get('uses') == 'actions/upload-artifact@v4')
     assert upload['with']['path'].splitlines() == [
-        '.artifacts/cloud-vps/image-id.txt', '.artifacts/cloud-vps/kyalulu-cloud.tar.gz.sha256',
+        '.artifacts/cloud-vps/image-id.txt', '.artifacts/cloud-vps/kyalulu-cloud.tar.gz',
+        '.artifacts/cloud-vps/kyalulu-cloud.tar.gz.sha256',
         '.artifacts/cloud-vps/check-report.json']
 
 

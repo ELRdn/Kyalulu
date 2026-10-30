@@ -204,3 +204,34 @@ with zero remaining fixture children and no forced Job cleanup. Offline failure
 cases also rejected false success. Linux and CI acceptance of that fixture change
 remain separate. All changes here are validation infrastructure, not new product
 features or production mutations.
+
+## First successful updated Cloud image, and macOS discovery fix
+
+Run 41001764535 on 8e0aff4 completed WASM and the new Cloud job. Image
+`sha256:e487b6858f69be520668281952442ecc11df18dc5d06b1cc307d611ae7d31d60`
+matched 211 copied-file hashes, passed all twelve isolated fixture checks and
+started its unmodified default Uvicorn command under the sandbox. Its exact code
+tar SHA-256 is `50a896c0d1335d75774fbe97534825c540c7ab00cadc1af5f9d8b41db080a9e2`.
+This was a fresh GitHub runner, not the production VPS. The next workflow retains
+the code tar with its hashes/report, so the exact checked candidate can be used
+for a separately approved operation; it still does not publish a Release/image.
+
+The run's four WASM files are byte-identical to run 40994190016. Those exact
+binaries passed local Chrome standard/compat GPU and CPU generation using all
+five verified cached model files (3,125,578,496 bytes), context 512 and at most
+eight tokens. Each GPU path offloaded 36/36 layers and returned `こんにちは。`;
+CPU, explicitly requested with zero GPU layers, returned `お元気ですか？`.
+All paths reported lazy PLE and bounded nonzero reads. External/API requests and
+page errors were zero. Owned Vite exited normally with no remaining owned child
+or listener; the existing profile/model files were preserved. This is short
+functionality evidence, not CPU/GPU quality equivalence or physical-device proof.
+
+The overall workflow still failed: macOS installed staged 3.13.7 correctly, but
+`uv python find` selected its surrounding CI venv. The staging boundary guard
+correctly rejected that external interpreter. An actual offline Windows CLI probe
+reproduced the same lookup choice; `--system --no-project` selects the staged
+interpreter instead. Keep the resolved-path guard unchanged and cover both valid
+staged selection and escaped returned paths. Readiness/workflow suites passed 18
+tests. Disable bundle matrix fail-fast so an OS failure cannot cancel the other
+independent OS validation; Windows in this failed run was cancelled, not accepted.
+macOS and the new workflow still require their fresh actual run.
