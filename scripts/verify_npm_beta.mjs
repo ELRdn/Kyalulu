@@ -40,16 +40,16 @@ const env={...Object.fromEntries(Object.entries(process.env).filter(([key])=>/^(
 let cli;
 async function invoke(executable,args,options={}){
   return new Promise((resolve,reject)=>{
-    const p=spawn(executable,args,{env,windowsHide:true,...options});let out='';
+    const p=spawn(executable,args,{env,windowsHide:true,...options});let out='',err='';
     const timer=setTimeout(()=>{p.kill();reject(Error('Verification command timed out'));},60000);
-    p.stdout.on('data',v=>out+=v);p.stderr.on('data',v=>out+=v);
+    p.stdout.on('data',v=>out+=v);p.stderr.on('data',v=>err+=v);
     p.on('error',error=>{clearTimeout(timer);reject(error);});
-    p.on('exit',code=>{clearTimeout(timer);code===0?resolve(out):reject(Error(out));});
+    p.on('close',code=>{clearTimeout(timer);code===0?resolve(out):reject(Error(out+err));});
   });
 }
 let npmTarball=process.argv[4] && path.resolve(process.argv[4]);
 if(!npmTarball){
-  const npmCli=path.join(path.dirname(process.execPath),'node_modules/npm/bin/npm-cli.js');
+  const npmCli=path.join(path.dirname(process.execPath),process.platform==='win32'?'node_modules/npm/bin/npm-cli.js':'../lib/node_modules/npm/bin/npm-cli.js');
   const packed=await invoke(process.execPath,[npmCli,'pack','--ignore-scripts','--offline','--json','--cache',path.join(home,'npm-cache'),'--pack-destination',home],{cwd:path.join(root,'packages/launcher')});
   npmTarball=path.join(home,JSON.parse(packed)[0].filename);
 }
