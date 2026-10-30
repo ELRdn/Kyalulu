@@ -67,6 +67,8 @@ async def main():
                             value = request.post_data or ''
                             assert 'PRIVATE-' not in value, 'Private Library fields sent to publication API'
                             writes.append({'path': parsed.path, 'method': request.method})
+                        if request.method == 'PUT' and json.loads(request.post_data or '{}').get('decision') == 'hidden':
+                            await asyncio.sleep(.3)  # Typed confirmation text is not a committed moderation result.
                         response = await api.request(request.method, parsed.path + ('?' + parsed.query if parsed.query else ''), headers=headers, content=request.post_data_buffer)
                         await route.fulfill(status=response.status_code, headers={key: value for key, value in response.headers.items() if key.lower() in {'content-type', 'cache-control', 'x-content-type-options'}}, body=response.content)
                     await context.route('**/*', broker)
@@ -113,7 +115,7 @@ async def main():
                     await page.get_by_label('理由', exact=True).fill('Hidden for review')
                     await page.get_by_role('button', name='非表示にする', exact=True).click()
                     await page.get_by_role('dialog').get_by_role('button', name='判断を記録', exact=True).click()
-                    await page.get_by_text('Hidden for review', exact=True).wait_for()
+                    await page.get_by_text('非表示 · 一般 · 固定版', exact=False).wait_for()
                     assert not service.publications.catalog(reader)['works']
                     await identity(owner)
                     await page.get_by_label('理由', exact=True).fill('Please reconsider the fixed version')
