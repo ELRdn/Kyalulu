@@ -1401,49 +1401,49 @@ function ActiveChatSession() {
       </Sheet>
 
       {/* Debug: Researcherのみ Ctrl+Shift+D で開くデバッグドロワー */}
-      <Sheet open={researcher && debugOpen} onClose={() => setDebugOpen(false)} side="right" width="min(480px, 94vw)" topOffset={60}>
+      <Sheet open={researcher && debugOpen} onClose={() => setDebugOpen(false)} side="right" width="min(480px, 94vw)" topOffset={60} label={en ? 'Debug panel' : 'デバッグパネル'}>
         <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>🐞 デバッグ <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 400, marginLeft: 6 }}>Ctrl+Shift+D</span></div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>🐞 {en ? 'Debug' : 'デバッグ'} <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 400, marginLeft: 6 }}>Ctrl+Shift+D</span></div>
             <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{sessionId}</div>
           </div>
-          <IconButton label="閉じる" onClick={() => setDebugOpen(false)}>×</IconButton>
+          <IconButton label={en ? 'Close' : '閉じる'} onClick={() => setDebugOpen(false)}>×</IconButton>
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: 14, display: "grid", gap: 14, alignContent: "start" }}>
-          {debugLoading && <div style={{ fontSize: 12, color: "var(--text-muted)" }}>読込中…</div>}
-          {debugError && <div style={{ fontSize: 12, color: "var(--error-text)" }}>{debugError}</div>}
+          {debugLoading && <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{en ? 'Loading…' : '読込中…'}</div>}
+          {debugError && <div style={{ fontSize: 12, color: "var(--error-text)" }}>{en ? 'Could not load debug information.' : debugError}</div>}
           {debugData && (
             <>
-              <DebugSection title="📝 生プロンプト (raw prompt)">
+              <DebugSection title={en ? '📝 Raw prompt' : '📝 生プロンプト (raw prompt)'}>
                 <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 10, lineHeight: 1.6, background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 8, padding: 10, maxHeight: 220, overflowY: "auto", color: "var(--text-primary)", margin: 0 }}>
-                  {debugData.generation?.raw_prompt || debugData.compiled?.system_prompt || "(なし)"}
+                  {debugData.generation?.raw_prompt || debugData.compiled?.system_prompt || (en ? '(none)' : '(なし)')}
                 </pre>
               </DebugSection>
-              <DebugSection title="互換設定・Loreの採用結果">
+              <DebugSection title={en ? 'Compatibility settings / Lore selection' : '互換設定・Loreの採用結果'}>
                 <DebugJson value={{ messages: debugData.compiled?.ordered_messages, lore: debugData.compiled?.sections?.lore, compatibility: debugData.compiled?.sections?.compatibility, binding: debugData.settings.library_binding }} />
               </DebugSection>
-              <DebugSection title="Hubの出典・取得記録">
+              <DebugSection title={en ? 'Hub sources and retrieval history' : 'Hubの出典・取得記録'}>
                 <DebugJson value={(debugData.compiled?.sections?.portable_snapshot as { document?: { source?: { remote?: unknown } } } | undefined)?.document?.source?.remote} />
               </DebugSection>
               <DebugSection title="🧠 Memory Inspector">
                 <MemoryInspector trace={debugData.memory} />
               </DebugSection>
-              <DebugSection title="🔢 推定トークン内訳">
+              <DebugSection title={en ? '🔢 Estimated token breakdown' : '🔢 推定トークン内訳'}>
                 <DebugJson value={debugData.generation?.token_budget ?? { estimated: true, compiler_tokens: debugData.compiled?.token_estimate }} />
               </DebugSection>
-              <DebugSection title="💾 永続化された状態 (state)">
+              <DebugSection title={en ? '💾 Persisted state (state)' : '💾 永続化された状態 (state)'}>
                 <DebugJson value={debugData.state} />
               </DebugSection>
-              <DebugSection title="📡 テレメトリ">
+              <DebugSection title={en ? '📡 Telemetry' : '📡 テレメトリ'}>
                 <DebugJson value={debugData.generation?.telemetry} />
               </DebugSection>
-              <DebugSection title="⚙ 生成設定 (generation_config)">
-                  <div>requested: 要求 / applied: 適用 / unsupported: 未対応</div>
+              <DebugSection title={en ? '⚙ Generation settings (generation_config)' : '⚙ 生成設定 (generation_config)'}>
+                  <div>{en ? 'requested: requested settings / applied: applied settings / unsupported: unsupported settings' : 'requested: 要求 / applied: 適用 / unsupported: 未対応'}</div>
                 <DebugJson value={debugData.generation?.generation_config} />
               </DebugSection>
-              <DebugSection title="✅ 検証ログ (validation)">
+              <DebugSection title={en ? '✅ Validation log (validation)' : '✅ 検証ログ (validation)'}>
                 <DebugJson value={debugData.generation?.validation} />
-                <details><summary>試行ごとの出力・エラー</summary><DebugJson value={debugData.generation?.attempts} /></details>
+                <details><summary>{en ? 'Outputs and errors by attempt' : '試行ごとの出力・エラー'}</summary><DebugJson value={debugData.generation?.attempts} /></details>
               </DebugSection>
             </>
           )}

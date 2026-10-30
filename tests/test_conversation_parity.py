@@ -89,8 +89,37 @@ async def test_new_world_scopes_pinned_legacy_and_explicit_sharing(isolated):
         await memories.migrate_scope(first, "stale", share=True)
     shared = await memories.migrate_scope(first, preview["preview_revision"], share=True)
     assert shared["scope"] == "char:mocha_sfw|persona:default" and shared["copied"] == 1
+    assert (await memories.list_memories(shared["scope"]))[0]["source_session_id"] is None
     assert len(await memories.list_memories(scope)) == 1
     assert await memories.session_scope(first) == shared["scope"]
+
+
+@pytest.mark.parametrize("share", [False, True])
+async def test_migrated_session_memory_retains_erasure_ownership(isolated, share):
+    import json
+
+    settings = {"session_id": "manual-source"}
+    scope = await memories.session_scope(settings)
+    original = await memories.create(scope, "semantic", "private manual fact")
+    await memories.create(scope, "semantic", "other source fact", source_session_id="other-source")
+    settings.update(character_id="mocha_sfw", world_id="beast_world")
+    preview = await memories.scope_preview(settings)
+    migrated = await memories.migrate_scope(settings, preview["preview_revision"], share=share)
+    copied = await memories.list_memories(migrated["scope"])
+    private = next(m for m in copied if m["content"] == "private manual fact")
+    assert private["source_session_id"] == settings["session_id"]
+    assert next(m for m in copied if m["content"] == "other source fact")["source_session_id"] == "other-source"
+    assert (await memories.list_memories(scope))[0]["id"] == original["id"]
+    assert (await memories.list_memories(scope))[0]["source_session_id"] is None
+    result = {"reply": "retained reply", "memory": {"candidates": [private], "injected": [private["id"]]},
+              "raw_prompt": private["content"], "validation": {"ok": True, "retries": 1, "errors": [private["content"]]}}
+    async with generations.transaction() as con:
+        await con.execute("INSERT INTO generations(generation_id,session_id,fingerprint,status,result_json) "
+                          "VALUES('manual-recall','recall','fixture','completed',?)", (json.dumps(result),))
+    await conversation.purge(settings["session_id"])
+    remaining = await memories.list_memories(migrated["scope"])
+    assert [m["content"] for m in remaining] == ["other source fact"]
+    assert "private manual fact" not in json.dumps(await generations.latest("recall"))
 
 
 async def test_reply_cannot_support_user_biography_but_story_is_labeled(isolated):
@@ -338,7 +367,8 @@ async def test_erasure_helper_identifies_cleared_sources_and_preserves_other_dat
                     {"id": "kept", "source_session_id": "other", "content": "retained"}],
                     "decisions": [{"memory_id": "removed"}, {"memory_id": "kept"}],
                     "injected": ["removed", "kept"], "evidenced": ["removed", "kept"]},
-                "raw_prompt": "secret", "compiled": "secret", "attempts": ["secret"]}
+                "raw_prompt": "secret", "compiled": "secret", "attempts": ["secret"],
+                "validation": {"ok": False, "retries": 1, "errors": ["schema error: secret"]}}
     before = json.dumps(original, sort_keys=True)
     redacted = conversation.erase_memory_references(original, [], source_session_ids={"erased"})
     assert "secret" not in json.dumps(redacted)
@@ -346,6 +376,7 @@ async def test_erasure_helper_identifies_cleared_sources_and_preserves_other_dat
     assert redacted["memory"]["candidates"] == [original["memory"]["candidates"][1]]
     assert redacted["memory"]["decisions"] == [{"memory_id": "kept"}]
     assert redacted["memory"]["injected"] == redacted["memory"]["evidenced"] == ["kept"]
+    assert redacted["validation"] == {"ok": False, "retries": 1, "errors": []}
     assert json.dumps(original, sort_keys=True) == before
     assert conversation.erase_memory_references(original, [], source_session_ids={"unrelated"}) is original
 

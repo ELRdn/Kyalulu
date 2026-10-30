@@ -378,8 +378,11 @@ async def migrate_scope(settings, expected_revision, share=False):
                 key = (memory["content"], memory["type"], memory["source_kind"], memory["source_generation_id"])
                 if key in existing:
                     continue
+                source_session_id = memory["source_session_id"]
+                if source_session_id is None and preview["scope"] == f"session:{sid}":
+                    source_session_id = sid
                 await _create(db, target, memory["type"], memory["content"], memory["origin"], memory["supported"],
-                              memory["source_session_id"], memory["source_turn"], memory["source_generation_id"],
+                              source_session_id, memory["source_turn"], memory["source_generation_id"],
                               source_kind=memory["source_kind"], source_quote=memory["source_quote"],
                               source_revision=memory["source_revision"], source_message_ids=memory["source_message_ids"],
                               confirmation=memory["confirmation"])

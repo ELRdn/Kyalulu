@@ -241,3 +241,9 @@ Web全986件/75ファイルと、共有エラー修正後91件・型検査が成
 [Device memory](validation/2026-10-30-unified-device-memory.md) に記録。
 全Web1107件/76ファイルと型検査が成功。世界/共有scopeの明示移行はまだ409を返すため、
 Memoryの全機能パリティとは扱わない。この後続修正は固定4bca277の配布物には含まれない。
+
+Pythonのsession限定手動記憶を世界/共有scopeへコピーした際の欠落来歴と、完全消去後に
+残るvalidation.errorsを修正。修正前3ケースの失敗を再現し、会話27件・復元/同期22件と
+Web型検査が成功した。共通デバッグドロワーの日英ラベルも補完した。
+[Memory erasure](validation/2026-10-30-unified-memory-erasure.md) に範囲と限界を記録。
+93eae08のPR CIはWindows/Ubuntuとも成功したが、この後続修正のCI/配布受入れではない。
