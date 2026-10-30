@@ -2,7 +2,7 @@ type Frame={value:any;state:'keyOrEnd'|'key'|'colon'|'valueOrEnd'|'value'|'comma
 export type MessageWindow={start?:number;limit:number};
 
 /** Frame containers incrementally; validate discarded values without retaining them. */
-// shortcut: metadata and selected scalar values stay whole; stream them before arbitrary-scalar capacity acceptance.
+// shortcut: metadata and retained scalar values stay whole; stream them before arbitrary-scalar capacity acceptance.
 export class JsonStream {
   private decoder=new TextDecoder('utf-8',{fatal:true});
   private stack:Frame[]=[];
@@ -18,16 +18,26 @@ export class JsonStream {
   private literal='';
   private literalIndex=0;
   private messageCount:number|undefined;
-  constructor(private window?:MessageWindow) {
-    if(window&&(!Number.isSafeInteger(window.limit)||window.limit<0||window.start!==undefined&&(!Number.isSafeInteger(window.start)||window.start<0)))throw Error('Invalid message window');
-    this.window=window&&{...window};
+  private duplicateMessageIds=false;
+  private window?:MessageWindow;
+  private ids?:readonly number[];
+  constructor(window?:MessageWindow|{ids:readonly number[]}) {
+    if(window&&'ids' in window){
+      if(!Array.isArray(window.ids)||window.ids.length<1||window.ids.length>2)throw Error('Invalid message IDs');
+      const ids=[...window.ids];
+      if(ids.some(id=>!Number.isSafeInteger(id)||id<=0)||new Set(ids).size!==ids.length)throw Error('Invalid message IDs');
+      this.ids=ids;
+    }else{
+      if(window&&(!Number.isSafeInteger(window.limit)||window.limit<0||window.start!==undefined&&(!Number.isSafeInteger(window.start)||window.start<0)))throw Error('Invalid message window');
+      this.window=window&&{...window};
+    }
   }
   get totalMessages(){return this.messageCount;}
   private invalid():never {throw Error('Invalid streamed JSON');}
 
   private keepValue() {
     const frame=this.stack.at(-1);
-    return !frame||frame.keep&&(!frame.messages||this.window!.limit>0&&(this.window!.start===undefined
+    return !frame||frame.keep&&(!frame.messages||!!this.ids||this.window!.limit>0&&(this.window!.start===undefined
       ||frame.index>=this.window!.start&&frame.index-this.window!.start<this.window!.limit));
   }
   private piece(text:string) {
@@ -62,7 +72,7 @@ export class JsonStream {
   }
   private begin(mode:'string'|'bare',char:string) {
     const frame=this.stack.at(-1);
-    this.tokenKeep=frame&&(frame.state==='key'||frame.state==='keyOrEnd')?frame.keep:this.keepValue();
+    this.tokenKeep=frame&&(frame.state==='key'||frame.state==='keyOrEnd')?frame.keep:this.keepValue()&&!(frame?.messages&&this.ids);
     this.mode=mode;this.pieces=[];this.tokenState='start';this.unicode=0;this.literal='';this.literalIndex=0;this.piece(char);
   }
 
@@ -74,15 +84,16 @@ export class JsonStream {
     if(this.closed)this.invalid();this.closed=true;this.text(this.decoder.decode());
     if(this.mode==='bare')this.scalar();
     if(this.mode||this.stack.length||!this.hasRoot)this.invalid();
+    if(this.duplicateMessageIds)throw Error('Duplicate message ID');
     return this.root;
   }
   private value(value:any) {
     const frame=this.stack.at(-1);
     if(!frame){if(this.hasRoot)this.invalid();this.root=value;this.hasRoot=true;return;}
     if(frame.state!=='value'&&frame.state!=='valueOrEnd')this.invalid();
-    if(this.stack.length===1&&!Array.isArray(frame.value)&&frame.key==='messages')this.messageCount=undefined;
+    if(this.stack.length===1&&!Array.isArray(frame.value)&&frame.key==='messages'){this.messageCount=undefined;this.duplicateMessageIds=false;}
     if(Array.isArray(frame.value)){
-      if(this.keepValue()){
+      if(this.keepValue()&&!(frame.messages&&this.ids)){
         frame.value.push(value);
         if(frame.messages&&this.window!.start===undefined&&frame.value.length>this.window!.limit)frame.value.shift();
       }
@@ -105,14 +116,21 @@ export class JsonStream {
     const frame=this.stack.at(-1);
     if(char==='{'||char==='['){
       if(this.stack.length>=64)this.invalid();
-      const keep=this.keepValue(),messages=!!this.window&&this.stack.length===1&&!Array.isArray(frame!.value)&&frame!.key==='messages'&&char==='[';
+      const keep=this.keepValue()&&!(frame?.messages&&this.ids&&char==='['),messages=!!(this.window||this.ids)&&this.stack.length===1&&!Array.isArray(frame!.value)&&frame!.key==='messages'&&char==='[';
       const value=char==='{'?{}:[];this.value(value);
       this.stack.push({value,state:char==='{'?'keyOrEnd':'valueOrEnd',keep,index:0,messages});return;
     }
     if(char==='}'||char===']'){
       if(!frame||Array.isArray(frame.value)!==(char===']')||!['comma',char==='}'?'keyOrEnd':'valueOrEnd'].includes(frame.state))this.invalid();
       if(frame.messages)this.messageCount=frame.index;
-      this.stack.pop();return;
+      this.stack.pop();
+      const parent=this.stack.at(-1);
+      // A message's final id is only known after its object closes (duplicate keys use the last value).
+      if(this.ids&&parent?.messages&&char==='}'&&Object.hasOwn(frame.value,'id')&&this.ids.includes(frame.value.id)){
+        if(parent.value.some((message:any)=>message.id===frame.value.id))this.duplicateMessageIds=true;
+        else parent.value.push(frame.value);
+      }
+      return;
     }
     if(char===':'&&frame?.state==='colon'){frame.state='value';return;}
     if(char===','&&frame?.state==='comma'){frame.state=Array.isArray(frame.value)?'value':'key';return;}

@@ -526,6 +526,23 @@ export async function fetchGeneration(generationId: string, sessionId: string): 
   return response.json();
 }
 
+export async function fetchRecoveryHistory(sessionId:string,status:import('./chatRecovery').GenerationStatus,signal?:AbortSignal):Promise<(ChatMessage&{id?:number})[]> {
+  if(executionTarget()!=='device')return fetchHistory(sessionId,signal);
+  const owner=deviceOwner(),expected={...status};
+  if(expected.session_id!==sessionId||!expected.generation_id)throw Error('Invalid generation history request');
+  const query=new URLSearchParams({session_id:sessionId,generation_id:expected.generation_id});
+  const proof=await checkedJson(await fetch('/api/chat/history/proof?'+query,{signal,cache:'no-store'}));
+  signal?.throwIfAborted();
+  if(executionTarget()!=='device'||owner!==deviceOwner())throw Error('Connection changed');
+  if(!proof||!Number.isSafeInteger(proof.revision)||proof.revision<0||proof.body_token!==null&&typeof proof.body_token!=='string'
+    ||!proof.status||(['generation_id','session_id','status','assistant_id','user_id'] as const).some(key=>proof.status[key]!==expected[key])
+    ||!Array.isArray(proof.history)||proof.history.length>2||proof.history.some((m:any)=>!m||!Number.isSafeInteger(m.id)||m.id<=0||!['user','assistant'].includes(m.role)||typeof m.content!=='string'
+      ||m.id!==(m.role==='assistant'?expected.assistant_id:expected.user_id))
+    ||new Set(proof.history.map((m:any)=>m.id)).size!==proof.history.length
+    ||expected.assistant_id!==null&&!proof.history.some((m:any)=>m.id===expected.assistant_id&&m.role==='assistant'))throw Error('Invalid generation history proof');
+  return proof.history;
+}
+
 /** Explicit user Stop only; never called by resume or reconnect. */
 export async function cancelGeneration(generationId: string, sessionId: string, legacyRevision?:number): Promise<void> {
   const response = await fetch(`/api/chat/generations/${encodeURIComponent(generationId)}/cancel?session_id=${encodeURIComponent(sessionId)}`, {

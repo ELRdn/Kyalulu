@@ -14,15 +14,17 @@ vi.mock('./deviceMemoryStore',()=>({recoverDeviceMemoryGeneration:async()=>null}
 vi.mock('./appContext',()=>({deviceOwner:()=> 'fixture-owner',setGenerationBusy:fixture.busy}));
 vi.mock('./appStore',async importOriginal=>({
   ...await importOriginal<typeof import('./appStore')>(),
-  allEntities:async()=>[],getMeta:async(key:string)=>structuredClone(fixture.meta.get(key)),entity:async()=>structuredClone(fixture.saved),openEntity:async()=>structuredClone(fixture.saved??{id:'chat',owner:'fixture-owner',revision:0,payload:{settings:{},state:{turn:0},messages:[],memories:fixture.memories,summaries:[],memory_enabled:fixture.memory}}),
+  allEntities:vi.fn(async()=>[]),getMeta:async(key:string)=>structuredClone(fixture.meta.get(key)),entity:async()=>structuredClone(fixture.saved),openEntity:async()=>structuredClone(fixture.saved??{id:'chat',owner:'fixture-owner',revision:0,payload:{settings:{},state:{turn:0},messages:[],memories:fixture.memories,summaries:[],memory_enabled:fixture.memory}}),
   appTransaction:async(_stores:any,_mode:any,_action:any)=>++fixture.sequence,
   saveEntity:vi.fn(async(value:any,_revision:number,metadata:Record<string,unknown>={})=>{if(fixture.fail&&fixture.saved)throw Error('fixture storage failed');
     fixture.saved=structuredClone({...value,revision:value.revision+1});for(const [key,item] of Object.entries(metadata))fixture.meta.set(key,structuredClone(item));return fixture.saved;}),
 }));
 import { deviceFetch } from './deviceApi';
+import { allEntities } from './appStore';
 import { deviceExecutionLockName } from './deviceResearch';
 
 beforeEach(()=>{fixture.saved=undefined;fixture.sequence=0;fixture.fail=true;fixture.memory=false;fixture.memories=[];fixture.reply='fixture reply';fixture.proposals=[];fixture.meta.clear();fixture.busy.mockClear();fixture.locks.clear();fixture.paused=undefined;fixture.started=false;
+  vi.mocked(allEntities).mockResolvedValue([]);
   vi.stubGlobal('navigator',{locks:{request:async(name:string,_options:any,fn:any)=>{
     if(fixture.locks.has(name))return fn(null);fixture.locks.add(name);try{return await fn({name});}finally{fixture.locks.delete(name);}
   }}});
@@ -162,4 +164,10 @@ it('keeps a later manual memory when regenerating a legacy conversation',async()
     version:1,source_session_id:'chat',source_generation_id:null,source_message_ids:[]});fixture.saved.revision++;
   expect(await (await deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify({...body,generation_id:'legacy-replacement',regenerate_message_id:assistant.id})})).text()).toContain('event: done');
   expect(fixture.saved.payload.memories.map((memory:any)=>memory.id)).toContain('later-manual');
+  const user=fixture.saved.payload.messages.at(-2),generation=fixture.saved.payload.last_generation;
+  expect(generation.user_id).toBe(user.id);
+  expect(fixture.meta.get('generation:fixture-owner:legacy-replacement')).toMatchObject({user_id:user.id,user_content_sha256:expect.stringMatching(/^[a-f0-9]{64}$/)});
+  fixture.saved.kind='conversation';vi.mocked(allEntities).mockResolvedValue([fixture.saved]);
+  const edit=await deviceFetch('/api/chat/history/'+user.id,{method:'PUT',body:JSON.stringify({content:'Edited input after regeneration'})});
+  expect(edit.ok).toBe(true);expect(fixture.saved.payload.last_generation).toBeNull();
 });

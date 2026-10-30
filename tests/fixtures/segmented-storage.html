@@ -2,7 +2,7 @@
 <p>Fictional accounts, fresh contexts and loopback modules only. Bounded fixtures; no capacity claim.</p>
 <script type="module">
 import history from './unified-history.json';
-import {appTransaction,entity,allEntities,newEntity,saveEntity,openEntity,conversationInfo,conversationSummary,readConversationSummary,conversationPage,writeEntity,writeOutbox,restoreOutbox,getMeta,setMeta} from '/src/lib/appStore.ts';
+import {appTransaction,entity,allEntities,newEntity,saveEntity,openEntity,conversationInfo,conversationSummary,readConversationSummary,conversationPage,generationHistory,writeEntity,writeOutbox,restoreOutbox,getMeta,setMeta} from '/src/lib/appStore.ts';
 import {rememberOwner,setGenerationBusy} from '/src/lib/appContext.ts';
 import {Sha256} from '/src/mobile/sha256.ts';
 import {JsonStream} from '/src/lib/jsonStream.ts';
@@ -27,6 +27,60 @@ const physical=()=>appTransaction(['entities','meta','parts'],'readonly',(tx,don
 const header=()=>appTransaction(['entities'],'readonly',(tx,done)=>{const read=tx.objectStore('entities').get([owner,'history']);read.onsuccess=()=>done(read.result);});
 async function rejected(action,message){let failed=false;try{await action();}catch{failed=true;}check(failed,message);}
 async function run(){
+  if(scenario.startsWith('proof-')){
+    const value=seed(),messages=Array.from({length:120},(_,i)=>({id:1000-i*3,role:i%2?'assistant':'user',content:'茶🙂'.repeat(2000)+i}));
+    const user=messages[8],assistant=messages[9],generation='proof-generation',key='generation:'+owner+':'+generation;
+    const receipt={generation_id:generation,session_id:value.id,status:'completed',user_id:user.id,assistant_id:assistant.id,reply:assistant.content,
+      user_content_sha256:new Sha256().update(new TextEncoder().encode(user.content)).digest()};
+    value.payload={messages,settings:{session_id:value.id},storage_policy:'local',draft:'Unsent draft',last_generation:receipt};
+    await save(value);await setMeta(key,receipt);const raw=await physical(),stored=await header();
+    if(scenario==='proof-read'){
+      const finish=JsonStream.prototype.finish,retained=[];
+      JsonStream.prototype.finish=function(){const result=finish.call(this);retained.push(result.messages.length);return result;};
+      try{
+        const proof=await generationHistory(value.id,generation,owner);
+        same(proof,{status:{generation_id:generation,session_id:value.id,status:'completed',user_id:user.id,assistant_id:assistant.id},revision:7,
+          body_token:stored.payloadParts.token,history:[user,assistant]},'Old nonmonotonic IDs outside latest page not proven');
+        const {deviceFetch}=await import('/src/lib/deviceApi.ts');
+        const response=await deviceFetch('/api/chat/history/proof?session_id='+value.id+'&generation_id='+generation);
+        check(response.ok,'Device proof route failed');same(await response.json(),proof,'Proof route changed selected values');
+        check((await deviceFetch('/api/chat/history/proof?session_id='+value.id+'&generation_id='+generation,{method:'POST'})).status===405,'Proof route accepted mutation');
+      }finally{JsonStream.prototype.finish=finish;}
+      same(retained,[2,2],'Proof decoded complete history');same(await physical(),raw,'Proof read changed data');
+      const legacy={...receipt,user_id:null};delete legacy.user_content_sha256;await setMeta(key,legacy);
+      same((await generationHistory(value.id,generation,owner)).history,[assistant],'Legacy regeneration receipt no longer supported');
+      await setMeta(key,{...receipt,status:'failed',assistant_id:null});
+      same((await generationHistory(value.id,generation,owner)).history,[user],'Failed generation did not verify saved conversation');
+      probes.push('same-snapshot-receipt','old-unsorted-message-ids','bounded-proof-route','readonly-proof','legacy-and-failed');return;
+    }
+    if(scenario==='proof-invalid'){
+      for(const mutate of [p=>{p.messages[9].content='Edited reply';},p=>{p.messages[8].content='Edited input';},
+        p=>{p.messages.splice(9,1);},p=>{p.messages.push({...assistant});},p=>{p.messages[9].role='user';},p=>{p.cache_evicted=true;}]){
+        const changed=structuredClone(value);mutate(changed.payload);await save(changed);const before=await physical();
+        await rejected(()=>generationHistory(value.id,generation,owner),'Changed saved proof accepted');same(await physical(),before,'Rejected proof rewrote data');
+      }
+      await save(value);
+      for(const change of [{status:'pending'},{session_id:'other'},{assistant_id:user.id},{assistant_id:null},{user_id:-1}]){
+        await setMeta(key,{...receipt,...change});await rejected(()=>generationHistory(value.id,generation,owner),'Invalid receipt accepted');
+      }
+      await setMeta(key,receipt);const current=await header();
+      await appTransaction(['parts'],'readwrite',(tx,done)=>{tx.objectStore('parts').delete([owner,'entity',value.id,current.payloadParts.token,current.payloadParts.chunks-1]);done();});
+      const damaged=await physical();await rejected(()=>generationHistory(value.id,generation,owner),'Discarded missing part accepted');same(await physical(),damaged,'Corrupt proof modified original');
+      probes.push('edited-input-and-reply','deleted-and-duplicate-assistant','role-and-evicted','invalid-receipt','full-part-integrity');return;
+    }
+    if(scenario==='proof-owner'){
+      await rejected(()=>generationHistory(value.id,generation,foreign),'Foreign owner proof accepted');
+      const get=IDBObjectStore.prototype.get;let changed=false;
+      IDBObjectStore.prototype.get=function(key){const request=get.call(this,key);if(this.name==='parts'&&!changed)request.addEventListener('success',()=>{changed=true;rememberOwner(foreign);},{once:true});return request;};
+      try{await rejected(()=>generationHistory(value.id,generation,owner),'Owner switch during proof accepted');}finally{IDBObjectStore.prototype.get=get;rememberOwner(owner);}
+      check(changed,'Owner-switch proof fault not reached');
+      const transaction=IDBDatabase.prototype.transaction;
+      IDBDatabase.prototype.transaction=function(...args){const tx=transaction.apply(this,args);tx.addEventListener('complete',()=>rememberOwner(foreign),{once:true});return tx;};
+      try{await rejected(()=>generationHistory(value.id,generation,owner),'Owner switch on proof completion accepted');}finally{IDBDatabase.prototype.transaction=transaction;rememberOwner(owner);}
+      same(await physical(),raw,'Owner proof changed original');probes.push('proof-owner-and-completion-fences');return;
+    }
+    throw Error('Unknown proof scenario');
+  }
   if(scenario.startsWith('summary-')){
     const value=seed();value.payload={messages:Array.from({length:63},(_,i)=>({id:i+1,role:'user',content:'茶🙂'.repeat(100)+i,created_at:'2026-10-30T00:00:00Z'})),
       settings:{session_id:value.id,system_prompt:'KEEP',character_id:'missing-character',world_id:'world@2'},title:'Summary fixture',storage_policy:'local',recovery_from:'source'};

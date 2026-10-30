@@ -312,5 +312,9 @@ Device生成前の履歴選択では、既定の保守的カウンターだけ�
 
 会話の選択範囲または最新windowを読む保存層APIを追加。旧完全読取とは別の返却型にし、
 全断片・範囲外構文・owner・revision/tokenを検証する。[Conversation pages](validation/2026-10-31-unified-conversation-pages.md)
-に実IDB29ケースと全Web1,263件、画面未接続・毎回全走査・inline/巨大scalarの限界を記録する。
+に保存層の初期検証とDevice画面の最大50件表示・下書き保持・遅延パネルを記録する。
+端末内の終端生成復旧は、同じreadonly snapshotの受領記録と対象発言だけで確認する。
+[Generation proof](validation/2026-10-31-unified-generation-proof.md) に実IDB35ケース・
+全Web1,314件、最新ページ外の復帰、変更・重複・破損・owner切替時の拒否を記録する。
+孤立pendingの復旧書込・毎回全走査・inline/巨大scalar等の限界は残る。
 この追加だけで、会話全体の1GB復元・生成/同期/UIの大容量対応を完了とはしない。
