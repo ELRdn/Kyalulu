@@ -14,7 +14,7 @@ import { Sha256 } from '../mobile/sha256';
 import { commitDeviceImport, deviceSourceMatches } from './deviceImport';
 import { parseDeviceImport } from './deviceParseImport';
 import { acceptDeviceMedia, readDeviceAsset, saveDeviceAsset, validateDeviceDocumentAssets } from './deviceAssets';
-import { deviceResearchRoute, deviceResearchBusy, type ResearchTurn } from './deviceResearch';
+import { deviceResearchRoute, deviceResearchBusy, deviceExecutionLockName, type ResearchTurn } from './deviceResearch';
 
 let runtime:MobileRuntime|undefined, loaded='';
 let running:string|null=null;
@@ -95,6 +95,22 @@ async function compiled(settings:Record<string,any>,history:{role:string;content
     library_binding:binding,lorebooks,persona,world,extra_system_prompt:settings.system_prompt??settings.extra_system_prompt??''},history);
 }
 async function generate(body:Record<string,any>,signal?:AbortSignal,scope?:ResearchTurn) {
+  // Research already holds this lock until all its turns and durable writes finish.
+  if(scope)return generateTurn(body,signal,scope);
+  const owner=deviceOwner();
+  if(!navigator.locks)throw fail('Web Locks are required for on-device generation',503);
+  return new Promise<Response>((resolve,reject)=>{
+    void navigator.locks.request(deviceExecutionLockName(owner),{ifAvailable:true},async lock=>{
+      if(!lock)throw fail('A generation is already running in another tab',409);
+      if(owner!==deviceOwner())throw fail('Account changed',409);
+      let release!:()=>void;
+      const finished=new Promise<void>(done=>{release=done;});
+      resolve(await generateTurn(body,signal,undefined,release));
+      await finished;
+    }).catch(reject);
+  });
+}
+async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:ResearchTurn,release=()=>{}) {
   const owner=deviceOwner(),currentOwner=()=>{if(owner!==deviceOwner())throw fail('Account changed',409);};
   if(running||deviceResearchBusy()&&!scope)throw fail('A generation is already running',409);
   const id=String(body.session_id??'default'),generationId=body.generation_id;
@@ -120,6 +136,7 @@ async function generate(body:Record<string,any>,signal?:AbortSignal,scope?:Resea
     currentOwner();
     const session=scope?.session??await conversation(id,owner),p=session.payload;
     if(session.owner!==owner||session.id!==id)throw fail('Invalid generation scope',409);
+    if(p.pending_generation)throw fail('Reconcile the pending generation before sending again',409);
     const save=scope?async(value:AppEntity,_revision:number,_metadata:Record<string,unknown>)=>scope.save(value):saveEntity;
     const last=body.messages.at(-1);
     if(last.role!=='user')throw fail('A user message is required');
@@ -154,7 +171,8 @@ async function generate(body:Record<string,any>,signal?:AbortSignal,scope?:Resea
       (world?.rpg?'\nServer-owned RPG outcome: narrate these results; never invent rolls or change HP, skills or inventory. Reject actions forbidden by the world rules.\n'+JSON.stringify(rpg):'')+
       renderMemoryBlock(memories)+
       '\nReturn JSON only: {"reply":"your in-character reply","state_update":{"location":"","time":"","mood":"","active_scene":"","relationship_state":{"stage":"stranger","tone":"neutral","unresolved_conflict":false}},"memory_proposals":[]}. Memory proposals: at most 3, each {type:semantic|episodic|relationship,content,source_kind:user_statement|user_correction|work_setting|story_event}. Never invent user facts.';
-    const pending={generation_id:generationId,session_id:id,status:'pending',assistant_id:null,user_id:body.regenerate_message_id?null:userId};
+    const pending={generation_id:generationId,session_id:id,status:'pending',assistant_id:null,user_id:body.regenerate_message_id?null:userId,
+      execution_lock:deviceExecutionLockName(owner)};
     let current=await save({...session,payload:{...p,messages,pending_generation:generationId,...(scope?{message_sequence:assistantId}:{})}},session.revision,{['generation:'+owner+':'+generationId]:pending});
     let closed=false;
     const stream=new ReadableStream<Uint8Array>({start(controller) {
@@ -207,7 +225,7 @@ async function generate(body:Record<string,any>,signal?:AbortSignal,scope?:Resea
           try{current=await save({...current,payload:{...current.payload,pending_generation:null}},current.revision,{['generation:'+owner+':'+generationId]:{...pending,status:'failed'}});}
           catch{saveError=' Device save failed; the pending record is retained / 保存できないため未完了の記録を保持しています。';}
           send('error',{error:(error instanceof Error?error.message:String(error))+saveError});
-        } finally {signal?.removeEventListener('abort',abort);running=null;setGenerationBusy(false);if(!ended&&!closed){ended=true;controller.close();}}
+        } finally {signal?.removeEventListener('abort',abort);running=null;setGenerationBusy(false);release();if(!ended&&!closed){ended=true;controller.close();}}
       })();
     },cancel(){closed=true;runtime?.stop();}});
     return new Response(stream,{headers:{'Content-Type':'text/event-stream','Cache-Control':'no-store'}});
@@ -321,10 +339,29 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
   }
   const generation=path.match(/^\/api\/chat\/generations\/([^/]+)(\/cancel)?$/);
   if(generation) {
-    const key='generation:'+owner+':'+generation[1],status=await getMeta<any>(key);
+    if(generation[2]?method!=='POST':method!=='GET')throw fail('Invalid generation status operation',405);
+    const key='generation:'+owner+':'+generation[1];let status=await getMeta<any>(key);
     if(!status||status.session_id!==url.searchParams.get('session_id'))throw fail('Generation not found',404);
     if(generation[2]&&running===generation[1])runtime?.stop();
-    if(status.status==='pending'&&running!==generation[1]){status.status='failed';await setMeta(key,status);}
+    if(status.status==='pending'&&running!==generation[1]&&generation[2]&&!navigator.locks)throw fail('Web Locks are required for on-device generation',503);
+    if(status.status==='pending'&&running!==generation[1]&&navigator.locks){
+      await navigator.locks.request(deviceExecutionLockName(owner),{ifAvailable:true},async lock=>{
+        if(!lock){if(generation[2])throw fail('Generation is running in another tab; stop it there',409);return;}
+        const latest=await getMeta<any>(key);
+        status=latest;
+        if(latest?.status!=='pending')return;
+        const session=await entity(status.session_id,owner);
+        if(!session||session.deleted||session.payload.pending_generation!==generation[1])throw fail('Pending generation changed; reload before recovery',409);
+        if(latest.execution_lock!==deviceExecutionLockName(owner)){
+          if(!generation[2]){status={...latest,legacy_recovery_revision:session.revision};return;}
+          if(body.legacy_recovery_confirmed!==true||!Number.isSafeInteger(body.expected_revision)||body.expected_revision!==session.revision)
+            throw fail('Close the original app tabs and confirm the saved result before recovering this older generation',409);
+        }
+        const recovered={...latest,status:'failed'};
+        await saveEntity({...session,payload:{...session.payload,pending_generation:null}},session.revision,{[key]:recovered});
+        status=recovered;
+      });
+    }
     return json(status);
   }
   const branch=path.match(/^\/api\/chat\/sessions\/([^/]+)\/(branch|data)$/);

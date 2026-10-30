@@ -14,6 +14,10 @@ import ModelSelector from './ModelSelector';
 import CloudQuoteConfirmation, { useQuoteConfirmation } from './CloudQuoteConfirmation';
 import { useLanguage } from '../lib/appContext';
 import Button from './ui/Button';
+import { useConfirm } from './ui/Dialog';
+import { ChatRecovery } from '../lib/chatRecovery';
+import { useChatRecovery } from '../lib/useChatRecovery';
+import { connectionScope } from '../lib/remoteStore';
 import '../index.css';
 import '../pages/activeChat.css';
 
@@ -64,4 +68,18 @@ export async function remoteDeletionWithUnsentMemory() {
   await receiveSyncPage(owner,[{id:sessionId,kind:'conversation',revision:2,deleted:true,payload:{}}],1);
   const recovery=(await allEntities(owner)).find(e=>e.payload.recovery_from===sessionId)!;
   return {source:await entity(sessionId,owner),recovery,events:await getMeta(memoryEventsKey(owner,recovery.id)),source_events:await events()};
+}
+
+function LegacyRecovery({sid}:{sid:string}) {
+  const [dialog,confirm]=useConfirm(),recovery=useChatRecovery(sid,()=>{},confirm),en=useLanguage()==='en';
+  return <main>{dialog}<p role="status">{recovery.notice}</p><textarea aria-label={en?'Draft':'下書き'} value={recovery.input} onChange={e=>recovery.change(e.target.value)} />
+    <Button onClick={()=>void recovery.reconcile()}>{en?'Check result':'結果を確認'}</Button>
+    <Button onClick={()=>void recovery.cancel()}>{en?'Stop and check':'停止して確認'}</Button></main>;
+}
+export function mountLegacyRecovery(node:HTMLElement,sid:string,gid:string,language:'ja'|'en') {
+  localStorage.setItem('kyalulu-execution-target','device');
+  savePreferences({...preferences(),language});
+  const draft=new ChatRecovery(localStorage,connectionScope(),sid);draft.draft('Legacy sent input');draft.begin(gid,false,'Legacy sent input');draft.draft('Unsent newer draft');
+  const root=createRoot(node);root.render(<LegacyRecovery sid={sid} />);
+  return ()=>root.unmount();
 }

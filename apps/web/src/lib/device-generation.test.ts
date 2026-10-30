@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-const fixture=vi.hoisted(()=>({saved:undefined as any,sequence:0,busy:vi.fn(),fail:true,memory:false,memories:[] as any[],reply:'fixture reply',proposals:[] as any[],meta:new Map<string,any>()}));
+const fixture=vi.hoisted(()=>({saved:undefined as any,sequence:0,busy:vi.fn(),fail:true,memory:false,memories:[] as any[],reply:'fixture reply',proposals:[] as any[],meta:new Map<string,any>(),locks:new Set<string>(),paused:undefined as Promise<void>|undefined,started:false}));
 vi.mock('../mobile/runtime',()=>({MobileRuntime:class {
   async load(){} async generate(_messages:any,event:any){
+    fixture.started=true;await fixture.paused;
     if(fixture.fail)throw Error('fixture inference failed');
     event({type:'delta',text:JSON.stringify({reply:fixture.reply,state_update:{location:'library',time:'now',mood:'calm',active_scene:'tea',relationship_state:{stage:'stranger',tone:'neutral',unresolved_conflict:false}},memory_proposals:fixture.proposals})});
     return {measurement:{memory:'must not override the actual memory trace'},stopped:false};
@@ -12,15 +13,85 @@ vi.mock('./appSync',()=>({hydrateConversation:vi.fn()}));
 vi.mock('./appContext',()=>({deviceOwner:()=> 'fixture-owner',setGenerationBusy:fixture.busy}));
 vi.mock('./appStore',async importOriginal=>({
   ...await importOriginal<typeof import('./appStore')>(),
-  allEntities:async()=>[],getMeta:async(key:string)=>structuredClone(fixture.meta.get(key)),openEntity:async()=>structuredClone(fixture.saved??{id:'chat',owner:'fixture-owner',revision:0,payload:{settings:{},state:{turn:0},messages:[],memories:fixture.memories,summaries:[],memory_enabled:fixture.memory}}),
+  allEntities:async()=>[],getMeta:async(key:string)=>structuredClone(fixture.meta.get(key)),entity:async()=>structuredClone(fixture.saved),openEntity:async()=>structuredClone(fixture.saved??{id:'chat',owner:'fixture-owner',revision:0,payload:{settings:{},state:{turn:0},messages:[],memories:fixture.memories,summaries:[],memory_enabled:fixture.memory}}),
   appTransaction:async(_stores:any,_mode:any,_action:any)=>++fixture.sequence,
   saveEntity:vi.fn(async(value:any,_revision:number,metadata:Record<string,unknown>={})=>{if(fixture.fail&&fixture.saved)throw Error('fixture storage failed');
     fixture.saved=structuredClone({...value,revision:value.revision+1});for(const [key,item] of Object.entries(metadata))fixture.meta.set(key,structuredClone(item));return fixture.saved;}),
 }));
 import { deviceFetch } from './deviceApi';
+import { deviceExecutionLockName } from './deviceResearch';
 
-beforeEach(()=>{fixture.saved=undefined;fixture.sequence=0;fixture.fail=true;fixture.memory=false;fixture.memories=[];fixture.reply='fixture reply';fixture.proposals=[];fixture.meta.clear();fixture.busy.mockClear();});
+beforeEach(()=>{fixture.saved=undefined;fixture.sequence=0;fixture.fail=true;fixture.memory=false;fixture.memories=[];fixture.reply='fixture reply';fixture.proposals=[];fixture.meta.clear();fixture.busy.mockClear();fixture.locks.clear();fixture.paused=undefined;fixture.started=false;
+  vi.stubGlobal('navigator',{locks:{request:async(name:string,_options:any,fn:any)=>{
+    if(fixture.locks.has(name))return fn(null);fixture.locks.add(name);try{return await fn({name});}finally{fixture.locks.delete(name);}
+  }}});
+});
 afterEach(()=>{vi.unstubAllGlobals();});
+
+it('holds the shared research/execution lock through inference and the final durable write',async()=>{
+  fixture.fail=false;vi.stubGlobal('location',{href:'https://device.test/device/'});
+  let release!:()=>void;fixture.paused=new Promise<void>(done=>{release=done;});
+  const response=await deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify({session_id:'chat',generation_id:'held',model_id:'fixture',messages:[{role:'user',content:'retain input'}]})});
+  const stream=response.text();await vi.waitFor(()=>expect(fixture.started).toBe(true));
+  expect(fixture.locks.has(deviceExecutionLockName('fixture-owner'))).toBe(true);
+  expect(fixture.meta.get('generation:fixture-owner:held').status).toBe('pending');
+  const second=await deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify({session_id:'chat',generation_id:'second',model_id:'fixture',messages:[{role:'user',content:'must not run'}]})});
+  expect(second.status).toBe(409);expect(fixture.saved.payload.messages).toHaveLength(1);
+  release();expect(await stream).toContain('event: done');
+  await vi.waitFor(()=>expect(fixture.locks.size).toBe(0));
+  expect(fixture.meta.get('generation:fixture-owner:held').status).toBe('completed');
+  expect(fixture.saved.payload.pending_generation).toBeNull();
+});
+
+it('keeps another document pending and recovers only after its execution lock is gone',async()=>{
+  fixture.fail=false;
+  const lock=deviceExecutionLockName('fixture-owner'),key='generation:fixture-owner:remote';
+  fixture.saved={id:'chat',owner:'fixture-owner',revision:2,payload:{pending_generation:'remote',messages:[{content:'pending input'}],draft:'keep draft',memories:[]}};
+  fixture.meta.set(key,{generation_id:'remote',session_id:'chat',status:'pending',execution_lock:lock});fixture.locks.add(lock);
+  const before=structuredClone(fixture.saved);
+  expect((await (await deviceFetch('/api/chat/generations/remote?session_id=chat')).json()).status).toBe('pending');
+  expect((await deviceFetch('/api/chat/generations/remote/cancel?session_id=chat',{method:'POST'})).status).toBe(409);
+  expect(fixture.saved).toEqual(before);expect(fixture.meta.get(key).status).toBe('pending');
+  fixture.locks.delete(lock);
+  const recovered=await (await deviceFetch('/api/chat/generations/remote?session_id=chat')).json();
+  expect(recovered.status).toBe('failed');expect(fixture.saved.payload.pending_generation).toBeNull();
+  expect(fixture.saved.payload.messages).toEqual(before.payload.messages);expect(fixture.saved.payload.draft).toBe('keep draft');
+  const revision=fixture.saved.revision;
+  await deviceFetch('/api/chat/generations/remote?session_id=chat');expect(fixture.saved.revision).toBe(revision);
+});
+
+it('retains the orphan status and session when recovery cannot be saved',async()=>{
+  fixture.saved={id:'chat',owner:'fixture-owner',revision:2,payload:{pending_generation:'orphan',messages:[{content:'preserve'}]}};
+  fixture.meta.set('generation:fixture-owner:orphan',{generation_id:'orphan',session_id:'chat',status:'pending',execution_lock:deviceExecutionLockName('fixture-owner')});
+  const before=structuredClone(fixture.saved);
+  expect((await deviceFetch('/api/chat/generations/orphan?session_id=chat')).status).toBe(400);
+  expect(fixture.saved).toEqual(before);expect(fixture.meta.get('generation:fixture-owner:orphan').status).toBe('pending');
+  expect(fixture.locks.size).toBe(0);
+});
+
+it('rejects unsupported Web Locks before loading a model or persisting input',async()=>{
+  vi.stubGlobal('navigator',{});
+  const response=await deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify({session_id:'chat',generation_id:'unsupported',model_id:'fixture',messages:[{role:'user',content:'hello'}]})});
+  expect(response.status).toBe(503);expect(fixture.saved).toBeUndefined();expect(fixture.started).toBe(false);
+});
+
+it('requires explicit confirmation and the current revision to recover an unmarked older generation',async()=>{
+  fixture.fail=false;
+  fixture.saved={id:'chat',owner:'fixture-owner',revision:2,payload:{pending_generation:'legacy',messages:[{content:'old input'}],draft:'new draft'}};
+  const key='generation:fixture-owner:legacy';fixture.meta.set(key,{generation_id:'legacy',session_id:'chat',status:'pending',assistant_id:null,user_id:1});
+  const before=structuredClone(fixture.saved),path='/api/chat/generations/legacy',query='?session_id=chat';
+  expect(await (await deviceFetch(path+query)).json()).toMatchObject({status:'pending',legacy_recovery_revision:2});
+  expect(fixture.saved).toEqual(before);expect(fixture.meta.get(key)).not.toHaveProperty('legacy_recovery_revision');
+  for(const body of [{},{legacy_recovery_confirmed:true,expected_revision:1},{legacy_recovery_confirmed:false,expected_revision:2}])
+    expect((await deviceFetch(path+'/cancel'+query,{method:'POST',body:JSON.stringify(body)})).status).toBe(409);
+  expect(fixture.saved).toEqual(before);
+  const accepted=await deviceFetch(path+'/cancel'+query,{method:'POST',body:JSON.stringify({legacy_recovery_confirmed:true,expected_revision:2})});
+  expect(accepted.status).toBe(200);expect((await accepted.json()).status).toBe('failed');
+  expect(fixture.saved.payload).toEqual({...before.payload,pending_generation:null});
+  const revision=fixture.saved.revision;
+  await deviceFetch(path+'/cancel'+query,{method:'POST',body:JSON.stringify({legacy_recovery_confirmed:true,expected_revision:2})});
+  expect(fixture.saved.revision).toBe(revision);
+});
 it('reports the generation and persistence failures through SSE while retaining the pending input',async()=>{
   vi.stubGlobal('location',{href:'https://device.test/device/'});
   const response=await deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify({session_id:'chat',generation_id:'generation-fixture',model_id:'fixture',messages:[{role:'user',content:'未送信を残す'}]})});

@@ -267,7 +267,7 @@ function ActiveChatSession() {
     setBaselineModel(conversationModel(history));
     setHistoryReady(true);
     void loadSessions();
-  });
+  }, confirm);
   const input = recovery.input;
   const setInput = recovery.change;
   const mutationLocked = streaming || recovery.unresolved || sessionAction;

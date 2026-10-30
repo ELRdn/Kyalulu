@@ -34,7 +34,9 @@ import { fromBase64 } from './portableBinary';
 const request=async(path:string,body?:unknown,method=body?'POST':'GET')=>{
   const response=await deviceFetch(path,{method,...(body?{body:JSON.stringify(body)}:{})});return {status:response.status,body:await response.json()};
 };
-beforeEach(()=>{fixture.records.clear();fixture.parts.clear();fixture.meta.clear();fixture.owner='owner-a';fixture.sequence=0;fixture.turns=[];fixture.putFailure=undefined;vi.stubGlobal('IDBKeyRange',{bound:(lower:unknown,upper:unknown)=>({lower,upper})});vi.stubGlobal('location',{href:'https://device.test/device/'});vi.stubGlobal('fetch',vi.fn(()=>{throw Error('No external calls allowed');}));});
+beforeEach(()=>{fixture.records.clear();fixture.parts.clear();fixture.meta.clear();fixture.owner='owner-a';fixture.sequence=0;fixture.turns=[];fixture.putFailure=undefined;vi.stubGlobal('IDBKeyRange',{bound:(lower:unknown,upper:unknown)=>({lower,upper})});vi.stubGlobal('location',{href:'https://device.test/device/'});vi.stubGlobal('fetch',vi.fn(()=>{throw Error('No external calls allowed');}));
+  const held=new Set<string>();vi.stubGlobal('navigator',{locks:{request:async(name:string,_options:any,fn:any)=>{if(held.has(name))return fn(null);held.add(name);try{return await fn({name});}finally{held.delete(name);}}}});
+});
 afterEach(()=>{vi.unstubAllGlobals();});
 const form=(raw:Uint8Array)=>{const value=new FormData();value.set('file',new File([new Uint8Array(raw)],'fake.html',{type:'text/html'}));return value;};
 it('requires media rights, sniffs uploaded bytes and isolates asset retrieval by owner',async()=>{

@@ -19,6 +19,7 @@ let active:{owner:string;request:string;controller:AbortController}|null=null;
 export const deviceResearchBusy=()=>active!==null;
 const prefix=(owner:string)=>'device-research:'+JSON.stringify(owner)+':';
 const key=(owner:string,kind:string,id='')=>prefix(owner)+kind+':'+id;
+export const deviceExecutionLockName=(owner:string)=>key(owner,'lock');
 const fail=(message:string,status=400)=>Object.assign(Error(message),{status});
 const ownerCheck=(owner:string)=>{if(owner!==deviceOwner())throw fail('Account changed',409);};
 const identifier=(id:unknown)=>{if(typeof id!=='string'||! /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id))throw fail('Invalid research ID');return id;};
@@ -26,7 +27,7 @@ const integer=(value:unknown,fallback:number,min:number,max:number)=>{const n=va
 const json=(value:unknown,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
 async function exclusive<T>(owner:string,id:string,signal:AbortSignal|undefined,task:(controller:AbortController)=>Promise<T>) {
   if(!navigator.locks)throw fail('Web Locks are required for on-device research',503);
-  return navigator.locks.request(key(owner,'lock'),{ifAvailable:true},async lock=>{
+  return navigator.locks.request(deviceExecutionLockName(owner),{ifAvailable:true},async lock=>{
     if(!lock||generationBusy()||active)throw fail('A generation is already running',409);
     ownerCheck(owner);signal?.throwIfAborted();
     const controller=new AbortController(),abort=()=>controller.abort(),changed=()=>{if(deviceOwner()!==owner)controller.abort('account_changed');};
@@ -64,7 +65,7 @@ async function detail(owner:string,id:string) {
 }
 async function recover(owner:string) {
   if(!navigator.locks)throw fail('Web Locks are required for on-device research',503);
-  await navigator.locks.request(key(owner,'lock'),{ifAvailable:true},async lock=>{
+  await navigator.locks.request(deviceExecutionLockName(owner),{ifAvailable:true},async lock=>{
     if(!lock)return;
     const experiments=await list<Experiment>(owner,'experiment');
     for(const record of experiments)if(record.meta.status==='running'){

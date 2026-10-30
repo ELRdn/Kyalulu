@@ -7,6 +7,7 @@ export type GenerationStatus = {
   status: string;
   assistant_id: number | null;
   user_id: number | null;
+  legacy_recovery_revision?: number;
 };
 type StorageLike = Pick<Storage, "getItem" | "setItem">;
 
@@ -81,7 +82,7 @@ export async function reconcileGeneration<T extends { id?: number }>(
   const result = await loadStatus(pending.id, store.sessionId);
   if (!active()) return null;
   const outcome = generationOutcome(result, pending, store.sessionId);
-  if (outcome === "pending") return { outcome, history: null, value: store.read() };
+  if (outcome === "pending") return { outcome, history: null, value: store.read(), status: result };
   const history = await loadHistory(store.sessionId);
   if (!active()) return null;
   if (!Array.isArray(history) || (outcome === "committed" && !history.some(m => m.id === result.assistant_id))) {

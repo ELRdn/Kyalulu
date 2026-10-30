@@ -1,6 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { friendlyError, friendlyMessage, localTransferMessage } from "./errors";
 
+it.each(['Web Locks are required for on-device generation','A generation is already running in another tab',
+  'Generation is running in another tab; stop it there','Reconcile the pending generation before sending again',
+  'Pending generation changed; reload before recovery',
+  'Close the original app tabs and confirm the saved result before recovering this older generation'])('localizes device generation recovery instructions: %s',text=>{
+  expect(friendlyMessage(text,'ja')).toMatch(/[\u3040-\u9fff]/u);
+  expect(friendlyMessage(text,'en')).toBe(text);
+});
+
 describe("friendlyError", () => {
   it.each(['provider_rate_limited', 'HTTP 429', Object.assign(Error('Too Many Requests'), { status: 429 })])('explains upstream rate limiting with manual retry or model selection: %s', raw => {
     const result = friendlyError(raw);
