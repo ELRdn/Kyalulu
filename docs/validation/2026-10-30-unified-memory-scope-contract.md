@@ -90,6 +90,11 @@ saved prompt, a current-settings preview and an unavailable original prompt.
   a Promise-valued query predicate was not a reliable broker barrier. The test now
   awaits an actual queued lock acquisition after document close. It passed locally;
   the new commit still requires clean cross-platform CI.
+- `2b1c423` Ubuntu CI reached browser acceptance after Python/build checks, then
+  the offline-cache race fixture failed: its direct competing transaction omitted
+  the `meta` store required by the new memory fence, so the injected edit aborted.
+  The fixture now declares all three stores; all **6 offline-cache cases** passed
+  locally. This is not a clean CI pass or a production data-loss incident.
 
 ## Remaining adapter work
 

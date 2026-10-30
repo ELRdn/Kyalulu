@@ -61,7 +61,7 @@ async function run(){
       raced=true;
       if(scenario==='account')rememberOwner(foreign);
       if(scenario==='race'){
-        const edit=transaction.call(this,['entities','parts'],'readwrite'),store=edit.objectStore('entities');raceTransactions.add(edit);
+        const edit=transaction.call(this,['entities','parts','meta'],'readwrite');raceTransactions.add(edit);
         for(const [index,change] of [[6,{opened:999}],[7,{dirty:true,revision:3}],[8,{pinned:true}],
           [9,{payload:{pending_generation:{id:'late'}}}],[10,{payload:{storage_policy:'local'}}],
           [11,{serverRevision:2}],[12,{deleted:true}],[13,{kind:'character'}]]){
