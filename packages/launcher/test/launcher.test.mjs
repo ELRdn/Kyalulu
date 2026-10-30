@@ -4,6 +4,7 @@ import fs,{mkdtemp,readFile,rm,writeFile,readdir,mkdir} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import childProcess,{spawnSync,spawn} from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
+import {readFileSync} from 'node:fs';
 import {createServer} from 'node:http';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import os from 'node:os';
@@ -96,6 +97,113 @@ test('reviewed manifest validation fails before changing the publication manifes
   } finally {await rm(root,{recursive:true,force:true});}
 });
 
+test('saved runtime ownership and actual process exit guard stop and start',async t=>{
+  const root=await mkdtemp(path.join(os.tmpdir(),'kyalulu-exit-'));
+  const savedHome=process.env.KYALULU_HOME;
+  const state={pid:424242,token:'isolated-owner-token',url:'http://127.0.0.1:18000'};
+  try {
+    for(const scenario of [
+      {name:'missing state',missing:true},
+      {name:'dead stale PID',dead:true},
+      {name:'HTTP disappears before actual exit',exits:true},
+      {name:'live shutdown never exits',error:/has not exited/,hangs:true},
+      {name:'EPERM is not process exit',error:/has not exited/,hangs:true,probeError:'EPERM'},
+      {name:'unknown probe failure',error:{code:'EACCES'},probeError:'EACCES'},
+      {name:'unreachable owner',error:/ownership cannot be verified/,offline:true},
+      {name:'forged owner PID',error:/ownership cannot be verified/,owner:{owned:true,pid:424243}},
+      {name:'truthy forged ownership',error:/ownership cannot be verified/,owner:{owned:'true',pid:state.pid}},
+      {name:'rejected owner',error:/ownership cannot be verified/,ownerStatus:403},
+      {name:'rejected shutdown',error:/shutdown rejected \(403\)/,shutdownStatus:403},
+      {name:'shutdown transport failure',error:/shutdown disconnected/,shutdownError:true},
+      {name:'corrupt JSON',error:SyntaxError,raw:'{broken'},
+      ...[null,{}, {...state,pid:0},{...state,pid:-1},{...state,pid:'424242'},
+        {...state,pid:0x80000000},{...state,token:''},{...state,url:'http://evil.test'},
+        {...state,url:state.url+'/path'},{...state,url:'http://user:pass@127.0.0.1:18000'}]
+        .map((value,index)=>({name:`invalid saved state ${index}`,error:/Invalid saved/,raw:JSON.stringify(value)})),
+      {name:'start cannot overwrite live unverifiable state',command:'start',error:/ownership cannot be verified/,offline:true},
+      {name:'start cannot bootstrap over live state',command:'start',error:/ownership cannot be verified/,offline:true,noCurrent:true},
+      {name:'start cannot overwrite corrupt state',command:'start',error:SyntaxError,raw:'{broken'},
+      {name:'start cannot trust forged owner',command:'start',error:/ownership cannot be verified/,owner:{owned:true,pid:424243}},
+      {name:'restore cannot run over live unverifiable state',command:'restore',error:/ownership cannot be verified/,offline:true},
+      {name:'healthy start reuses runtime',command:'start'}
+    ]) await t.test(scenario.name,async t=>{
+      const home=await mkdtemp(path.join(root,'case-'));
+      process.env.KYALULU_HOME=home;
+      const file=path.join(home,'process.json'), bytes=scenario.raw ?? JSON.stringify(state);
+      if(!scenario.missing) await writeFile(file,bytes);
+      if(!scenario.noCurrent) await writeFile(path.join(home,'current.json'),JSON.stringify({release:'0.0.1',directory:home}));
+      let alive=!scenario.dead, probes=0, ownerCalls=0, shutdowns=0, waits=0, now=0;
+      const spawner=t.mock.method(childProcess,'spawn',()=>assert.fail('No runtime may be spawned'));
+      syncBuiltinESMExports();
+      t.mock.method(process,'kill',(pid,signal)=>{
+        assert.equal(pid,state.pid);assert.equal(signal,0,'Saved PIDs must never receive a termination signal');probes++;
+        if(!alive) throw Object.assign(Error('absent'),{code:'ESRCH'});
+        if(scenario.probeError) throw Object.assign(Error('probe failed'),{code:scenario.probeError});
+        return true;
+      });
+      t.mock.method(globalThis,'fetch',async(url,options)=>{
+        assert.equal(options.redirect,'error');
+        assert.equal(options.headers['x-kyalulu-owner'],state.token);
+        if(url===state.url+'/api/local/owner') {
+          ownerCalls++;assert.equal(ownerCalls,1,'HTTP disappearance cannot establish process exit');
+          if(scenario.offline) throw Error('owner disconnected');
+          return Response.json(scenario.owner ?? {owned:true,pid:state.pid},{status:scenario.ownerStatus ?? 200});
+        }
+        assert.equal(url,state.url+'/api/local/shutdown');
+        assert.equal(options.method,'POST');assert.equal(options.headers.origin,state.url);shutdowns++;
+        if(scenario.shutdownError) throw Error('shutdown disconnected');
+        return Response.json({ok:true},{status:scenario.shutdownStatus ?? 200});
+      });
+      t.mock.method(Date,'now',()=>now);
+      t.mock.method(globalThis,'setTimeout',(callback,ms)=>{
+        assert.equal(ms,100);assert.equal(readFileSync(file,'utf8'),bytes,'Keep state while the PID exists');
+        now+=ms;waits++;
+        if(scenario.exits && waits===2) alive=false;
+        queueMicrotask(callback);
+      });
+      try {
+        const command=scenario.command || 'stop';
+        const action=()=>main(command==='restore'?[command,'fixture.zip']:[command]);
+        if(scenario.error) {
+          await assert.rejects(action,scenario.error);
+          assert.equal(await readFile(file,'utf8'),bytes);
+        } else {
+          await action();
+          if(command==='start') assert.equal(await readFile(file,'utf8'),bytes);
+          else await assert.rejects(()=>readFile(file),{code:'ENOENT'});
+        }
+        assert.equal(spawner.mock.callCount(),0);
+        assert.equal(shutdowns,scenario.exits || scenario.hangs || scenario.shutdownStatus || scenario.shutdownError ? 1 : 0);
+        if(scenario.missing || scenario.raw!==undefined) assert.equal(probes,0);
+        if(scenario.dead || scenario.missing || scenario.raw!==undefined || scenario.probeError==='EACCES') assert.equal(ownerCalls,0);
+        if(scenario.exits) assert.equal(waits,2);
+        if(scenario.hangs) assert.equal(waits,100);
+        assert.ok(!(await readdir(home)).includes('launcher.lock'));
+      } finally {
+        t.mock.restoreAll();syncBuiltinESMExports();
+      }
+    });
+    await t.test('saved state read errors are preserved',async t=>{
+      const home=await mkdtemp(path.join(root,'case-'));
+      process.env.KYALULU_HOME=home;
+      const file=path.join(home,'process.json'), bytes=JSON.stringify(state), originalRead=fs.readFile;
+      await writeFile(file,bytes);
+      t.mock.method(fs,'readFile',async(...args)=>{
+        if(args[0]===file) throw Object.assign(Error('state unreadable'),{code:'EACCES'});
+        return originalRead(...args);
+      });
+      syncBuiltinESMExports();
+      try {
+        await assert.rejects(()=>main(['stop']),{code:'EACCES'});
+        assert.equal(await originalRead(file,'utf8'),bytes);
+      } finally {t.mock.restoreAll();syncBuiltinESMExports();}
+    });
+  } finally {
+    if(savedHome===undefined) delete process.env.KYALULU_HOME;else process.env.KYALULU_HOME=savedHome;
+    await rm(root,{recursive:true,force:true});
+  }
+});
+
 test('update and rollback commit failures preserve the live PID, data and both pointers',async t=>{
   const root=await mkdtemp(path.join(os.tmpdir(),'kyalulu-pointer-'));
   const savedHome=process.env.KYALULU_HOME;
@@ -115,7 +223,7 @@ test('update and rollback commit failures preserve the live PID, data and both p
     for(const command of ['update','rollback']) {
       const faults=[['writeFile','current.tmp'],['rename','current.tmp']];
       if(command==='update') faults.push(['writeFile','previous.tmp'],['writeFile','previous.restore.tmp'],['rename','previous.tmp']);
-      for(const [operation,filename,missingPrevious=false] of [...faults,[null,null],...(command==='update'?[['rename','current.tmp',true]]:[])]) await t.test(`${command}: ${operation || 'successful commit'} ${filename || ''}${missingPrevious?' without previous pointer':''}`,async()=>{
+      for(const [operation,filename,missingPrevious=false] of [...faults,[null,null],[null,'shutdown rejected'],...(command==='update'?[['rename','current.tmp',true]]:[])]) await t.test(`${command}: ${operation || 'successful commit'} ${filename || ''}${missingPrevious?' without previous pointer':''}`,async()=>{
         const home=await mkdtemp(path.join(root,'case-'));
         process.env.KYALULU_HOME=home;
         const directory=path.join(home,'releases',release);
@@ -136,11 +244,12 @@ test('update and rollback commit failures preserve the live PID, data and both p
           if(req.url==='/api/local/shutdown') {
             // The stopping boundary must see already-committed pointers.
             assert.equal(JSON.parse(requirePointer()).release,command==='update'?release:'0.0.0');
-            shutdowns++;alive=false;running.kill();res.end('{}');
+            shutdowns++;
+            if(filename==='shutdown rejected') {res.statusCode=403;res.end('{}');return;}
+            alive=false;running.kill();res.end('{}');
           } else res.end(JSON.stringify({owned:alive,pid:running.pid}));
         });
         // A synchronous read in the shutdown handler checks ordering at the actual call.
-        const {readFileSync}=await import('node:fs');
         function requirePointer(){return readFileSync(path.join(home,'current.json'),'utf8');}
         await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
         await writeFile(path.join(home,'process.json'),JSON.stringify({pid:running.pid,token:'isolated-test-token',url:`http://127.0.0.1:${server.address().port}`}));
@@ -163,7 +272,16 @@ test('update and rollback commit failures preserve the live PID, data and both p
             if(missingPrevious) await assert.rejects(()=>readFile(path.join(home,'previous.json')),{code:'ENOENT'});
             else assert.equal(await readFile(path.join(home,'previous.json'),'utf8'),previous);
           } else {
-            await isolatedMain([command]);assert.equal(shutdowns,1);
+            if(filename==='shutdown rejected') {
+              await assert.rejects(()=>isolatedMain([command]),/shutdown rejected/);
+              assert.equal(JSON.parse(await readFile(path.join(home,'process.json'),'utf8')).pid,running.pid);
+              assert.doesNotThrow(()=>process.kill(running.pid,0));
+            } else {
+              await isolatedMain([command]);
+              assert.throws(()=>process.kill(running.pid,0),{code:'ESRCH'});
+              await assert.rejects(()=>readFile(path.join(home,'process.json')),{code:'ENOENT'});
+            }
+            assert.equal(shutdowns,1);
             assert.equal(JSON.parse(await readFile(path.join(home,'current.json'),'utf8')).release,command==='update'?release:'0.0.0');
             assert.equal(await readFile(path.join(home,'previous.json'),'utf8'),command==='update'?current:previous);
           }

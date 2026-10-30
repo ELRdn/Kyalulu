@@ -67,3 +67,46 @@ Docker's error UI exit is unverified and a human Quit action was requested.
 No factory reset, diagnostics upload, settings/volume change or engine repair was
 performed. The separately requested production-backup authorization is still
 pending. Private record: `.artifacts/unified-linux-a22984a/local-engine-check.json`.
+
+## Packed browser result and shutdown correction
+
+The committed ac2ffc2 Native archive (`1bde27fb4505f6f0e7fc3ab0e7156a5802af725e1326e8bffbc544fa68f25fb9`)
+passed the actual browser first-use, guardian denial, Mock browser Send, canonical
+Cloud handoff and restart checks with four persisted history rows, no external
+requests and no page errors. This is fictional-policy/Mock evidence only.
+
+An earlier failed browser run exposed a second defect: the launcher reported
+stopped as soon as HTTP ownership disappeared while its Python PID remained.
+The failed fixture log contained Windows error 10054 from Python 3.13.7's
+Proactor transport `socket.shutdown()`. Its exception skips socket close/server
+detach and can leave `Server.wait_closed()` waiting indefinitely. A read-only
+stack probe confirmed the old fixture still waited in its event loop. That exact
+failed fixture process was identity-checked and forcibly cleaned up; this is
+recorded separately and is **not** normal-shutdown acceptance.
+
+Native now uses the standard Selector event loop on Windows; macOS/Linux retain
+the existing automatic choice. It supports at most 512 sockets and no asyncio
+subprocesses on Windows. The current Python runtime has no async subprocess
+callers; revisit the loop if Native needs either capability. No dependency or
+bundled interpreter version was changed.
+
+The lifecycle regression exercises real loopback TCP resets and fault-injects
+the observed shutdown syscall error. On the actual bundled Python 3.13.7, the
+original Proactor configuration reproduced the hang (owned fixture cleanup was
+required), while the corrected loop exited normally. The lifecycle and local
+onboarding suites passed 23 checks. Real-reset-only checks passed too; ordinary
+TCP resets do not reproduce the timing fault on every run.
+
+The combined lifecycle/onboarding/package/source-boundary selection passed 62
+tests, and launcher tests passed 50, including live-unverifiable/corrupt state,
+shutdown rejection, deferred PID exit and pointer-commit failure boundaries.
+
+The launcher keeps `process.json` until its PID is confirmed absent, checks
+shutdown responses, preserves unverified/live ownership records and refuses to
+overwrite them on start. PID probes send only signal 0; saved PIDs are never
+terminated. Restore cannot proceed while shutdown is incomplete. Update/rollback
+retain the existing pointer-commit-before-stop ordering, so a stop failure can
+leave the new selection committed while preserving the old process record.
+Packed CLI/browser acceptance now checks actual process exit and emits success
+only after final cleanup. The ac2ffc2 artifact predates these lifecycle fixes;
+the new matching artifact still needs its separate packaging/browser acceptance.
