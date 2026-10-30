@@ -191,3 +191,10 @@ import巻き戻しによる暗号化失敗と入力/復元先の重複を修正�
 [本番backupの具体的な範囲](UNIFIED_PRODUCTION_BACKUP_REVIEW.md)を用意したが、
 本番停止・master secret利用・暗号文取得・隔離復元は未承認/未実施。
 flock・systemd・実mount/信号・実schema互換の証拠とは区別する。
+
+旧Cloud originの退役設定を追加し、旧API/callbackの410・日英再ログイン案内・
+コード/Cookie/本文を転送しない境界と、明示更新でキャッシュを消さないWorkerを実装。
+配布/対応ソース/指紋の39試験と、Caddy 2.10.2＋ChromiumのHTTPS試験16項目が成功。
+旧キャッシュ画面は架空fixtureであり、実旧Cloud UIの更新操作や本番配信とは区別する。
+[Legacy Cloud](validation/2026-10-30-unified-legacy-cloud.md) に公開URLの現在の観測と
+原本保持/別タブ拒否/CSPの証拠を記録。本番バックアップの承認待ちは継続している。

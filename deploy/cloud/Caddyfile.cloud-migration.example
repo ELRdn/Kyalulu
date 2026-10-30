@@ -1,0 +1,58 @@
+# Activate only with the canonical APP site and matching Runtime/OAuth configuration.
+# Preserve global no-log settings; do not forward old cookies, codes or request bodies.
+cloud.kyalulu.com {
+    header {
+        -Server
+        Cache-Control "no-store"
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer"
+        X-Robots-Tag "noindex, nofollow"
+    }
+    @documentPolicy not path /sw.js
+    header @documentPolicy Content-Security-Policy "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'"
+    handle /sw.js {
+        header Content-Type "text/javascript; charset=utf-8"
+        header Service-Worker-Allowed "/"
+        header Content-Security-Policy "default-src 'none'; connect-src 'self'; base-uri 'none'; object-src 'none'"
+        # Keep all caches and private stores. Existing UI still requires explicit update.
+        respond `self.addEventListener("message", event => {
+  if (event.data?.type !== "APPLY_UPDATE") return;
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({type:"window",includeUncontrolled:true});
+    const scoped = windows.filter(client => client.url.startsWith(self.registration.scope));
+    if (!event.source || !scoped.some(client => client.id === event.source.id)) return;
+    if (scoped.length > 1) { event.source.postMessage({type:"UPDATE_BLOCKED"}); return; }
+    await self.skipWaiting();
+  })());
+});
+self.addEventListener("activate", event => event.waitUntil(self.clients.claim()));
+self.addEventListener("fetch", event => {
+  if (new URL(event.request.url).origin === self.location.origin) {
+    event.respondWith(fetch(event.request, {redirect:"error"}));
+  }
+});` 200
+    }
+    @entry {
+        method GET HEAD
+        path / /index.html /migration /migration/
+    }
+    handle @entry {
+        header Content-Type "text/html; charset=utf-8"
+        respond `<!doctype html>
+<html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kyalulu — Cloudの移行 / Cloud has moved</title>
+<main><h1>Kyalulu</h1>
+<p>Cloudは統合アプリへ移行しました。同じアカウントでログインしてください。</p>
+<p>未送信の文章や端末内データは自動移動しません。旧データは削除せず保持してください。</p>
+<p lang="en">Cloud has moved to the unified app. Sign in with the same account. Unsent drafts and device data are not transferred automatically. Keep your original data.</p>
+<p><a href="https://{$APP_DOMAIN}/" rel="noreferrer">統合アプリを開く / Open Kyalulu</a></p>
+</main></html>` 200
+    }
+    # This includes OAuth callbacks and every old API method, with no redirects.
+    handle {
+        header Content-Type "application/json; charset=utf-8"
+        respond `{"error":"cloud_origin_retired","app":"https://{$APP_DOMAIN}/"}` 410
+    }
+}
