@@ -37,6 +37,15 @@ accept full-generation or large-domain capacity, real-model parity, physical-dev
 behavior, packages or production. Production cutover remains on hold and PR #9
 stays Draft.
 
+Windows push CI for `8d7f401` timed out at the default 5-second unit-test limit in
+the newly added source-verification regression; its other 1,324 Web cases passed.
+The regression compared complete megabyte-scale typed arrays through the assertion
+framework. It now checks every source piece by length and SHA-256, retaining the
+multi-part requirement, all-piece-read count, zero-message retention, unchanged
+canonical header and fixed-outbox assertions. The deadline and runtime code are
+unchanged. The local 34-case store suite passes in about 0.8 seconds; a new CI run
+must establish Windows acceptance rather than treating the local timing as proof.
+
 ## Separate historical 1 GB source-verification diagnostic
 
 A fresh SHA-matched copy of the original fictional 1,000,000,000-byte profile
