@@ -12,8 +12,16 @@ export type AppEntity = { id: string; owner: string; kind: EntityKind; revision:
 export type Outbox = { request_id: string; changes: {id:string;kind:EntityKind;base_revision:number;payload:Record<string,any>;deleted:boolean;delete_confirmed?:boolean}[] };
 export { guardStorage } from './segmentedStorage';
 const DB = 'kyalulu-app-v1';
+export type ConversationSummary={count:number;last_at:string|null;last_preview:string;character_id:string|null;world_id:string|null;
+  title:string|null;sync_recovery:boolean;offline_available:boolean};
+export function conversationSummary(p:Record<string,any>):ConversationSummary {
+  const last=p.messages?.at(-1),preview=p.cache_evicted?p.cache_preview:{count:p.messages?.length??0,last_at:last?.created_at??null,last_preview:last?.content??''};
+  return {count:preview?.count??0,last_at:preview?.last_at??null,last_preview:String(preview?.last_preview??'').slice(0,160),
+    character_id:p.settings?.character_id??null,world_id:p.settings?.world_id??null,title:p.title??null,
+    sync_recovery:!!p.recovery_from,offline_available:!p.cache_evicted};
+}
 export type EntitySelection={storage_policy?:string;cache_evicted:boolean;pending_generation:boolean;maximumMessageId:number;messageIdsValid:boolean;
-  delete_confirmation_revision?:number;source?:Record<string,unknown>};
+  delete_confirmation_revision?:number;source?:Record<string,unknown>;summary?:ConversationSummary&{token:string}};
 type MemoryReferences={sources:string[];memories:string[];hash:string};
 export type StoredEntity=Omit<AppEntity,'payload'>&{payload?:AppEntity['payload'];payloadParts?:Parts;selection?:EntitySelection;memoryReferences?:MemoryReferences|null};
 export type StoredOutbox=Outbox&{changesParts?:Parts;count?:number};
@@ -72,7 +80,7 @@ function persistEntity(tx:IDBTransaction,value:AppEntity,mode:'put'|'add',done:(
       const {payload,...header}=value,selection=entitySelection(value);
       const write=()=>writeParts(tx,[value.owner,'entity',value.id],payload,payloadParts=>{
         const refs=value.kind==='conversation'?memoryReferences(payload):null;
-        const write=store[mode]({...header,selection,payloadParts,memoryReferences:refs?{...refs,hash:referenceHash(payloadParts.token,refs)}:null});
+        const write=store[mode]({...header,selection:{...selection,...(value.kind==='conversation'?{summary:{...conversationSummary(payload),token:payloadParts.token}}:{})},payloadParts,memoryReferences:refs?{...refs,hash:referenceHash(payloadParts.token,refs)}:null});
         write.onsuccess=()=>removeParts(tx,[value.owner,'entity',value.id],previous?.payloadParts,done);
       });
       if(previous?.payloadParts)readParts(tx,[value.owner,'entity',value.id],previous.payloadParts,write,false);else write();
@@ -152,6 +160,35 @@ export const allEntities=(owner=deviceOwner(),kinds?:readonly EntityKind[])=>app
   });
 });
 export const entity=(id:string,owner=deviceOwner())=>appTransaction<AppEntity|undefined>(['entities'],'readonly',(tx,done)=>readEntity(tx,owner,id,done));
+export type ConversationInfo=Pick<AppEntity,'owner'|'id'|'revision'|'pinned'|'opened'|'deleted'>&{selection:EntitySelection};
+export async function conversationInfo(id:string,owner=deviceOwner()):Promise<ConversationInfo|undefined> {
+  if(owner!==deviceOwner())throw Error('Account changed');
+  const value=await appTransaction<ConversationInfo|undefined>(['entities'],'readonly',(tx,done)=>{
+    const read=tx.objectStore('entities').get([owner,id]);read.onsuccess=()=>storageStep(tx,()=>{
+      const value=read.result as StoredEntity|undefined;
+      if(!value){done(undefined);return;}
+      if(value.owner!==owner||value.id!==id||value.kind!=='conversation')throw Error('Invalid conversation');
+      const {revision,pinned,opened,deleted}=value;done({id,owner,revision,pinned,opened,deleted,selection:entitySelection(value)});
+    });
+  });
+  if(owner!==deviceOwner())throw Error('Account changed');return value;
+}
+export async function readConversationSummary(id:string,owner=deviceOwner()):Promise<ConversationSummary|undefined> {
+  if(owner!==deviceOwner())throw Error('Account changed');
+  const value=await appTransaction<ConversationSummary|undefined>(['entities'],'readonly',(tx,done)=>{
+    const read=tx.objectStore('entities').get([owner,id]);read.onsuccess=()=>storageStep(tx,()=>{
+      const header=read.result as StoredEntity|undefined;if(!header||header.deleted){done(undefined);return;}
+      if(header.owner!==owner||header.id!==id||header.kind!=='conversation')throw Error('Invalid conversation');
+      const finish=(p:any,total:number|undefined)=>{
+        if(!p||!Array.isArray(p.messages)||total===undefined)throw Error('Invalid conversation summary');
+        const summary=conversationSummary(p);done({...summary,count:p.cache_evicted?summary.count:total});
+      };
+      if(header.payloadParts){const parser=new JsonStream({limit:1});readParts(tx,[owner,'entity',id],header.payloadParts,p=>finish(p,parser.totalMessages),parser);}
+      else finish(header.payload,header.payload?.messages?.length);
+    });
+  });
+  if(owner!==deviceOwner())throw Error('Account changed');return value;
+}
 export type ConversationPageCursor={owner:string;id:string;revision:number;bodyToken:string|null;start:number;end:number};
 export type ConversationPage={owner:string;id:string;revision:number;bodyToken:string|null;metadata:Record<string,unknown>;
   messages:unknown[];total:number;start:number;end:number;previous?:ConversationPageCursor;next?:ConversationPageCursor};
