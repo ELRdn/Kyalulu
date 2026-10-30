@@ -364,3 +364,8 @@ Cloud/端末同期の成功・停止・確認失敗通知は、表示後の言�
 Windowsの1b3e5b6 CIはWeb単体/Python試験を通過後、実IDBの60秒待機で失敗した。
 [CI storage diagnostics](validation/2026-10-31-unified-ci-storage-diagnostics.md) にケース/ページ例外/consoleの
 診断追加とローカル53ケース・診断2件の確認を記録する。期限・データ・assertは変更せず、CI原因は未確定。
+
+1de2cacのUbuntu PR CIでは、接続エラー画面のRemote設定欄をProfile読込済みと誤認していた。
+[Remote reload diagnostics](validation/2026-10-31-remote-ci-recovery.md)に認証済みProfileとGET-only再接続の
+境界を記録する。通常reload・制御したaccess失敗・PC/Device/PC復帰を含む15チェック成功。
+保存結果の保留・元のcomposer assertionは維持し、既存UI再接続は各境界1回まで。元の接続切断原因は未確定。
