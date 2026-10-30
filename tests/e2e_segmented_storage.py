@@ -13,6 +13,7 @@ SCENARIOS = ('roundtrip', 'depth-boundary', 'corrupt-missing', 'corrupt-hash', '
 
 
 SCENARIOS += ('metadata-stream', 'metadata-quota', 'metadata-corrupt', 'metadata-owner', 'metadata-conflict', 'metadata-legacy', 'metadata-domain')
+SCENARIOS += ('memory-verify-stream', 'memory-verify-corrupt', 'memory-verify-policy', 'memory-verify-owner', 'memory-verify-quota')
 
 
 async def main():

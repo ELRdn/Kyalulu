@@ -1,5 +1,6 @@
-import { appTransaction,readEntity,writeEntity,recoverPendingConversation,guardStorage,scrubGenerationRecords,type AppEntity,type StoredEntity } from './appStore';
-import { storageStep } from './segmentedStorage';
+import { appTransaction,writeEntity,recoverPendingConversation,guardStorage,scrubGenerationRecords,type AppEntity,type StoredEntity } from './appStore';
+import { readParts,storageStep } from './segmentedStorage';
+import { JsonStream } from './jsonStream';
 import { deviceOwner } from './appContext';
 import { readMemoryDomainTx as readDomain,writeMemoryDomainTx,validateMemoryDomain,type OwnedMemoryDomain } from './deviceMemoryDomainIO';
 import { memoryPolicy,memoryBinding,memorySignature,ownScopeMemories,memoryDomainKey,type MemoryPolicy } from './deviceMemoryScopes';
@@ -86,10 +87,17 @@ export async function commitDeviceMemoryDomain(owner:string,policy:MemoryPolicy,
       let index=0;const saved:AppEntity[]=[];
       const verify=()=>{
         const next=expected[index++];if(!next){index=0;verifyReceipt();return;}
-        readEntity(tx,owner,next.id,record=>{
-          if((record?.revision??0)!==next.revision||record&&(record.kind!=='conversation'||memoryPolicy(record)!==policy)
+        const read=tx.objectStore('entities').get([owner,next.id]);read.onsuccess=()=>storageStep(tx,()=>{
+          const record=read.result as StoredEntity|undefined;
+          if((record?.revision??0)!==next.revision||record&&(record.owner!==owner||record.id!==next.id||record.kind!=='conversation')
             ||!record&&!updates.some(e=>e.id===next.id)||record?.deleted&&!updates.some(e=>e.id===next.id&&e.deleted)){tx.abort();return;}
-          verify();
+          if(!record){verify();return;}
+          const check=(payload:Record<string,any>)=>{
+            if(!payload||typeof payload!=='object'||Array.isArray(payload)||(payload.storage_policy==='sync'?'sync':'local')!==policy){tx.abort();return;}
+            verify();
+          };
+          if(record.payloadParts)readParts(tx,[owner,'entity',next.id],record.payloadParts,check,new JsonStream({limit:0}));
+          else check(record.payload!);
         });
       };
       const receipts=Object.entries(generations);
