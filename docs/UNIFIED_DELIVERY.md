@@ -336,7 +336,16 @@ context取得も完全復元を避け、保存tx内でowner・revision・本文t
 共有記憶commitの参照元照合は、全履歴を復元せず、0件windowで全断片・構文・hashと本文の保存方針を検証する。
 [Memory source verification](validation/2026-10-31-unified-memory-source-verification.md) に
 全Web1,325件・実IDB53ケースと、参照元/固定outbox保持、破損・owner切替・方針偽装・quota時の拒否を記録する。
-生成本体・共有元context・更新projectionの全体保持は残り、この変更だけで大容量生成を合格とはしない。
+生成本体の全体保持は残り、この変更だけで大容量生成を合格とはしない。
+続く[Memory source projections](validation/2026-10-31-unified-memory-source-projection.md)では、
+共有元contextを本文なしの専用型へ変更し、記憶だけの更新も履歴1件ずつの再保存へ接続した。
+全Web1,378件・実Chromium13ケース・日英の既存共有記憶UIを確認し、全履歴/未知field/固定outboxと
+domain/受領のatomic性を維持する。metadata・巨大scalar・記憶domain・生成元の完全履歴は依然保持する。
+
+Core復元の媒体交換中に実process killすると、現在DBの参照媒体が欠落する不具合を再現・修正した。
+[Core interruption](validation/2026-10-31-unified-core-interruption.md)に実kill3地点を含む66件の検証を記録する。
+媒体を検証して両世代分を先に保持し、SQLiteのatomic反映を後に行う。独立復旧ZIPと同期/owner/削除保護は維持。
+不要媒体を自動削除しないため容量増加があり、電源断・fsync耐久性・本番復元は未検証。
 
 生成時の章/arc要約は20発言ずつ受け取るcollectorへ接続し、巨大本文のexcerptのための全Unicode配列化を除去した。
 [Incremental summaries](validation/2026-10-31-unified-incremental-summaries.md) に旧処理との比較20ケース、

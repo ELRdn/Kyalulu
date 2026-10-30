@@ -1,5 +1,6 @@
 """Disposable Core archives only; no production directory or real provider."""
 import json
+import hashlib
 import sqlite3
 import zipfile
 from contextlib import closing
@@ -197,28 +198,34 @@ async def test_core_deletion_records_from_both_databases_prevent_revival(account
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('failure', ['old_asset', 'new_asset', 'database', 'recovery_archive'])
+@pytest.mark.parametrize('failure', ['asset_validation', 'new_asset', 'database', 'recovery_archive'])
 async def test_failed_core_promotion_keeps_db_assets_input_and_independent_recovery(accounts, pc, tmp_path, monkeypatch, failure):
     import python.local_backup as core
     assets = pc.parent / 'library_assets'
     assets.mkdir()
-    asset = assets / ('a' * 64)
-    asset.write_bytes(b'older-fixture-media')
+    older = assets / hashlib.sha256(b'older-fixture-media').hexdigest()
+    older.write_bytes(b'older-fixture-media')
     sync, archive = await prepared(accounts, pc, tmp_path)
     with closing(sqlite3.connect(pc)) as db, db:
         db.execute("UPDATE chat_history SET content='KEEP-AFTER-FAILED-RESTORE' WHERE session_id='selected'")
     sync.stage()
+    # Different content has a different ID; the older asset is archive-only.
+    older.rename(tmp_path / 'retained-older-fixture-media')
+    asset = assets / hashlib.sha256(b'current-fixture-media').hexdigest()
     asset.write_bytes(b'current-fixture-media')
     sentinel = pc.parent / 'unrelated-fixture.txt'
     sentinel.write_text('keep')
     with closing(sqlite3.connect(pc)) as db:
         before = list(db.iterdump())
     input_bytes = archive.read_bytes()
-    if failure in {'old_asset', 'new_asset'}:
+    if failure == 'asset_validation':
+        def unreadable(*_):
+            raise OSError('fixture unreadable media')
+        monkeypatch.setattr(core.hashlib, 'file_digest', unreadable)
+    elif failure == 'new_asset':
         rename = Path.rename
         def reject_move(self, target):
-            if (self == assets and failure == 'old_asset'
-                    or self.name == 'library_assets' and self.parent.name == 'restored' and failure == 'new_asset'):
+            if self.parent.name == 'library_assets' and self.parent.parent.name == 'restored':
                 raise OSError('fixture media promotion failed')
             return rename(self, target)
         monkeypatch.setattr(Path, 'rename', reject_move)
