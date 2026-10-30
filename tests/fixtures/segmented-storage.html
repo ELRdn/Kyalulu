@@ -26,6 +26,34 @@ const physical=()=>appTransaction(['entities','meta','parts'],'readonly',(tx,don
 const header=()=>appTransaction(['entities'],'readonly',(tx,done)=>{const read=tx.objectStore('entities').get([owner,'history']);read.onsuccess=()=>done(read.result);});
 async function rejected(action,message){let failed=false;try{await action();}catch{failed=true;}check(failed,message);}
 async function run(){
+  if(scenario==='kind-selection'||scenario==='kind-selection-owner'){
+    const conversation=huge(),character=newEntity('character','saved-character',{document:{name:'Saved character'}},owner);
+    await save(conversation);await save(character);await save({...character,owner:foreign,payload:{document:{name:'FOREIGN'}}});
+    if(scenario==='kind-selection-owner'){
+      const openCursor=IDBObjectStore.prototype.openCursor;let changed=false;
+      IDBObjectStore.prototype.openCursor=function(...args){const request=openCursor.apply(this,args);if(this.name==='entities')request.addEventListener('success',()=>{changed=true;rememberOwner(foreign);},{once:true});return request;};
+      try{await rejected(()=>allEntities(owner,['preset']),'Owner changed during excluded header scan');}
+      finally{IDBObjectStore.prototype.openCursor=openCursor;rememberOwner(owner);}
+      check(changed,'Owner fault not reached');probes.push('excluded-header-owner-fence');return;
+    }
+    const removeFirst=async id=>{
+      const raw=await physical(),header=raw.entities.find(e=>e.owner===owner&&e.id===id);
+      await appTransaction(['parts'],'readwrite',(tx,done)=>{tx.objectStore('parts').delete([owner,'entity',id,header.payloadParts.token,0]);done();});
+    };
+    await removeFirst(conversation.id);const before=await physical(),get=IDBObjectStore.prototype.get,reads=[];
+    IDBObjectStore.prototype.get=function(key){if(this.name==='parts')reads.push(key);return get.call(this,key);};
+    try{
+      same(await allEntities(owner,['character']),[character],'Selected kind or owner changed');
+      check(reads.length>0&&reads.every(key=>key[0]===owner&&key[2]===character.id),'Unrelated or foreign body read');
+      reads.length=0;same(await allEntities(owner,[]),[],'Empty kind selection returned data');check(!reads.length,'Empty selection read a body');
+      await rejected(()=>allEntities(owner),'Unfiltered read ignored corrupt body');
+    }finally{IDBObjectStore.prototype.get=get;}
+    same(await physical(),before,'Filtered read modified stored data');
+    await removeFirst(character.id);const corrupt=await physical();
+    await rejected(()=>allEntities(owner,['character']),'Selected kind ignored corrupt body');
+    same(await physical(),corrupt,'Rejected read modified stored data');
+    probes.push('kind-filter-before-body','owner-isolation','unfiltered-and-selected-corruption-reject','readonly-preservation');return;
+  }
   if(scenario.startsWith('upgrade-')||scenario==='blocked'){
     const version=scenario==='upgrade-v2'?2:1;
     const request=indexedDB.open(dbName,version);request.onupgradeneeded=()=>{const db=request.result;db.createObjectStore('entities',{keyPath:['owner','id']});const meta=db.createObjectStore('meta');if(version===2)meta.createIndex('sync-outbox-state',['request_id','withdrawn']);};

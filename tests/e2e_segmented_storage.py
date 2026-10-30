@@ -9,7 +9,7 @@ from playwright.async_api import async_playwright
 from browser_fixture_server import local_vite
 
 ROOT = Path(__file__).resolve().parents[1]
-SCENARIOS = ('roundtrip', 'depth-boundary', 'corrupt-missing', 'corrupt-hash', 'corrupt-size', 'owner-fence', 'quota', 'collisions', 'upgrade-v1', 'upgrade-v2', 'blocked', 'late-success', 'versionchange', 'receive-quota', 'receive-generation', 'ack-quota', 'deletion-controls', 'migration', 'device-branch', 'pin-ui', 'outbox-corrupt')
+SCENARIOS = ('roundtrip', 'depth-boundary', 'corrupt-missing', 'corrupt-hash', 'corrupt-size', 'owner-fence', 'kind-selection', 'kind-selection-owner', 'quota', 'collisions', 'upgrade-v1', 'upgrade-v2', 'blocked', 'late-success', 'versionchange', 'receive-quota', 'receive-generation', 'ack-quota', 'deletion-controls', 'migration', 'device-branch', 'pin-ui', 'outbox-corrupt')
 
 
 async def main():

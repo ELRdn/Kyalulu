@@ -9,7 +9,7 @@ vi.mock('../mobile/models',()=>({MODELS:[{id:'fixture',name:'Fixture',runtime:'g
 vi.mock('./appStore',async original=>{
   const read=async(id:string,owner=fixture.owner)=>decoded(fixture.records.get(owner+':'+id),fixture.parts);
   return {...await original<typeof import('./appStore')>(),
-    allEntities:vi.fn(async(owner:string)=>[...fixture.records.values()].filter(e=>e.owner===owner).map(value=>decoded(value,fixture.parts))),
+    allEntities:vi.fn(async(owner:string,kinds?:readonly string[])=>[...fixture.records.values()].filter(e=>e.owner===owner&&(!kinds||kinds.includes(e.kind))).map(value=>decoded(value,fixture.parts))),
     entity:vi.fn(read),openEntity:vi.fn(read),trimOfflineCache:vi.fn(async()=>{}),
     getMeta:vi.fn(async(key:string)=>structuredClone(fixture.meta.get(key))),
     setMeta:vi.fn(async(key:string,value:unknown)=>{fixture.meta.set(key,structuredClone(value));}),
@@ -167,16 +167,30 @@ it('reads generation status from owner metadata without reading entities',async(
 });
 
 it.each([
-  ['/api/chat/sessions','sessions',{session_id:'requested',count:1,last_preview:'Requested history'}],
-  ['/api/library','items',{id:'saved',document:expect.objectContaining({name:'Saved character'})}],
-  ['/api/characters','characters',{id:'saved',display_name:'Saved character'}],
-  ['/api/worlds','worlds',{asset_id:creatorId,display_name:'Saved world'}],
-  ['/api/creator/world','items',{asset_id:creatorId,display_name:'Saved world'}],
-  ['/api/prompts/presets','presets',{id:'preset',content:'Preset text'}],
-])('retains the live owner list for %s',async(path,key,expected)=>{
+  ['/api/characters',['character']],['/api/personas',['persona']],['/api/worlds',['world']],
+  ['/api/creator/persona',['persona']],['/api/creator/world',['world']],
+  ['/api/library',['character','preset']],['/api/prompts/presets',['preset']],
+])('opens %s without decoding unrelated conversation bodies',async(path,kinds)=>{
+  const value=fixture.records.get('owner-a:unrelated');
+  const {payload,...header}=value;
+  fixture.records.set('owner-a:unrelated',{...header,payloadParts:{token:crypto.randomUUID(),chunks:1,size:100,sha256:'0'.repeat(64)}});
+  const before=structuredClone(fixture.records);
+  expect((await request(path as string)).status).toBe(200);
+  expect(allEntities).toHaveBeenCalledExactlyOnceWith('owner-a',kinds);
+  expect(fixture.records).toEqual(before);
+});
+
+it.each([
+  ['/api/chat/sessions','sessions',{session_id:'requested',count:1,last_preview:'Requested history'},undefined],
+  ['/api/library','items',{id:'saved',document:expect.objectContaining({name:'Saved character'})},['character','preset']],
+  ['/api/characters','characters',{id:'saved',display_name:'Saved character'},['character']],
+  ['/api/worlds','worlds',{asset_id:creatorId,display_name:'Saved world'},['world']],
+  ['/api/creator/world','items',{asset_id:creatorId,display_name:'Saved world'},['world']],
+  ['/api/prompts/presets','presets',{id:'preset',content:'Preset text'},['preset']],
+])('retains the live owner list for %s',async(path,key,expected,kinds)=>{
   const response=await request(path);expect(response.status).toBe(200);expect(response.body[key]).toContainEqual(expect.objectContaining(expected));
   expect(JSON.stringify(response.body)).not.toMatch(/Foreign|deleted/);
-  expect(allEntities).toHaveBeenCalledExactlyOnceWith('owner-a');expect(openEntity).not.toHaveBeenCalled();
+  expect(allEntities).toHaveBeenCalledExactlyOnceWith(...(kinds?['owner-a',kinds]:['owner-a']));expect(openEntity).not.toHaveBeenCalled();
 });
 
 it.each([

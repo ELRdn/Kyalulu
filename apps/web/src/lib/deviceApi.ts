@@ -2,7 +2,7 @@ import { PortableDocumentSchema, DeviceGenerationOutputSchema, RuntimeStateSchem
 import catalog from '../mobile/app-catalog.generated.json';
 import { MobileRuntime } from '../mobile/runtime';
 import { MODELS, readyModels } from '../mobile/models';
-import { allEntities, entity, openEntity, saveEntity, newEntity, getMeta, setMeta, appTransaction, writeEntity, scrubGenerationRecords, memoryEventsKey, trimOfflineCache, type AppEntity } from './appStore';
+import { allEntities, entity, openEntity, saveEntity, newEntity, getMeta, setMeta, appTransaction, writeEntity, scrubGenerationRecords, memoryEventsKey, trimOfflineCache, type AppEntity, type EntityKind } from './appStore';
 import { deviceOwner, setGenerationBusy } from './appContext';
 import { estimateTokens, retrieveMemories, renderMemoryBlock, prepareRpg, memoryDecisions, evidenced, refreshSummaries,deviceResponseGrammar, type DeviceMemory } from './deviceCore';
 import { receiveConversation, rebindConversation } from './appSyncData';
@@ -355,8 +355,8 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
     const asset=await readDeviceAsset(owner,media[1]);
     return new Response(new Uint8Array(asset.raw),{headers:{'Content-Type':asset.mime,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
   }
-  const readRecords=async()=>{
-    const records=(await allEntities(owner)).filter(e=>!e.deleted);
+  const readRecords=async(kinds?:readonly EntityKind[])=>{
+    const records=(await (kinds?allEntities(owner,kinds):allEntities(owner))).filter(e=>!e.deleted);
     if(owner!==deviceOwner())throw fail('Account changed',409);
     return records;
   };
@@ -369,16 +369,16 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
   if(path==='/api/diagnostics')return json({ready:true,checks:[{id:'browser',ok:true,message:'On-device runtime',hint:null,detail:null}]});
   if(path==='/api/commands')return json(method==='GET'?{commands:[]}:{ok:false,command:'',output:'Use Settings to manage on-device models',refresh_models:false});
   if(path==='/api/characters')return json({characters:[...builtin.map(c=>({...c,portrait_url:c.id==='senior_cool'?'/icons/rei-senpai.png':c.id==='butler'?'/icons/shion-butler-1.png':c.id==='mocha_sfw'?'/icons/mocha-1.png':null})),
-    ...(await readRecords()).filter(e=>e.kind==='character'&&!e.payload.document?.nsfw).map(e=>({id:e.id,display_name:e.payload.document.name,description:String(e.payload.document.data.description??e.payload.document.data.personality??''),intro:e.payload.document.data.first_mes??'',tags:e.payload.document.data.tags??[],version:String(e.payload.current_revision??e.revision),library_revision:e.payload.current_revision??e.revision}))]});
-  if(path==='/api/personas')return json({personas:[...catalog.personas,...(await readRecords()).filter(e=>e.kind==='persona'&&e.payload.creator).map(e=>creatorView(e))]});
-  if(path==='/api/worlds')return json({worlds:[...catalog.worlds,...(await readRecords()).filter(e=>e.kind==='world'&&e.payload.creator).map(e=>creatorView(e))]});
+    ...(await readRecords(['character'])).filter(e=>e.kind==='character'&&!e.payload.document?.nsfw).map(e=>({id:e.id,display_name:e.payload.document.name,description:String(e.payload.document.data.description??e.payload.document.data.personality??''),intro:e.payload.document.data.first_mes??'',tags:e.payload.document.data.tags??[],version:String(e.payload.current_revision??e.revision),library_revision:e.payload.current_revision??e.revision}))]});
+  if(path==='/api/personas')return json({personas:[...catalog.personas,...(await readRecords(['persona'])).filter(e=>e.kind==='persona'&&e.payload.creator).map(e=>creatorView(e))]});
+  if(path==='/api/worlds')return json({worlds:[...catalog.worlds,...(await readRecords(['world'])).filter(e=>e.kind==='world'&&e.payload.creator).map(e=>creatorView(e))]});
   if(path==='/api/prompt/compile')return json(await compiled(body,[],owner));
   const creator=path.match(/^\/api\/creator\/(persona|world)(?:\/(created_[0-9a-f]{32}@[1-9]\d*)(\/export)?)?$/);
   if(creator){
     const kind=creator[1] as 'persona'|'world',reference=creator[2],match=reference?.match(/^(.*)@(\d+)$/),value=match?await entity(match[1],owner):undefined;
     if(reference&&(!value||value.deleted||value.kind!==kind))throw fail('Saved setting not found',404);
     if(method==='GET'){
-      if(!reference)return json({items:(await readRecords()).filter(e=>e.kind===kind&&e.payload.creator).map(e=>creatorView(e))});
+      if(!reference)return json({items:(await readRecords([kind])).filter(e=>e.kind===kind&&e.payload.creator).map(e=>creatorView(e))});
       const item=creatorView(value!,Number(match![2]));
       if(creator[3]){const document=CreatorDocumentSchema.parse(Object.fromEntries(Object.keys(CreatorDocumentSchema.innerType().shape).map(key=>[key,item[key]])));return json({format:'kyalulu-creator',version:1,kind,document});}
       return json({item,versions:Object.keys(value!.payload.versions).map(r=>creatorView(value!,Number(r))).sort((a,b)=>b.revision-a.revision)});
@@ -609,7 +609,7 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
     await saveEntity(session,session.revision,{[memoryEventsKey(owner,session.id)]:events});return json(memory);
   }
   if(path==='/api/library') {
-    if(method==='GET')return json({items:(await readRecords()).filter(e=>['character','preset'].includes(e.kind)&&e.payload.document).map(e=>libraryView(e))});
+    if(method==='GET')return json({items:(await readRecords(['character','preset'])).filter(e=>['character','preset'].includes(e.kind)&&e.payload.document).map(e=>libraryView(e))});
     const d=PortableDocumentSchema.parse(body);if(d.nsfw)throw fail('Adult verification required',403);
     await validateDeviceDocumentAssets(d,owner);
     const id=crypto.randomUUID(),value=newEntity(d.kind==='character'?'character':'preset',id,{storage_policy:'local',document:d,versions:{'1':d}},owner);
@@ -676,7 +676,7 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
   const commit=path.match(/^\/api\/imports\/([^/]+)\/commit$/);
   if(commit){if(method!=='POST')throw fail('Import requires POST',405);return json(await commitDeviceImport(owner,commit[1],body,await readRecords()));}
   if(path==='/api/prompts/presets') {
-    if(method==='GET')return json({presets:(await readRecords()).filter(e=>e.kind==='preset'&&e.payload.content).map(e=>({id:e.id,...e.payload}))});
+    if(method==='GET')return json({presets:(await readRecords(['preset'])).filter(e=>e.kind==='preset'&&e.payload.content).map(e=>({id:e.id,...e.payload}))});
     if(typeof body.content!=='string'||body.content.length>128000||typeof body.name!=='string')throw fail('Invalid preset');
     const e=await saveEntity(newEntity('preset',crypto.randomUUID(),{...body,storage_policy:'local',nsfw:false},owner));return json({id:e.id,...e.payload});
   }
