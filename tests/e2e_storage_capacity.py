@@ -281,13 +281,18 @@ async def phase(runtime, executable, profile, origin, size, name, folder, record
                     await watchdog
                 return await work
             finally:
+                if not work.done():
+                    # A stalled CDP cleanup needs the owned browser to disconnect first.
+                    record['final_sample'] = owned.sample()
+                    record['cleanup'] = owned.close()
                 for task in (work,watchdog):
                     task.cancel()
                 await asyncio.gather(work,watchdog,return_exceptions=True)
     finally:
         if owned.job:
             record['final_sample'] = owned.sample()
-        record['cleanup'] = owned.close()
+        if 'cleanup' not in record:
+            record['cleanup'] = owned.close()
         record['browser_exit_code'] = owned.process.returncode
 
 
