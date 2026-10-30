@@ -218,7 +218,7 @@ it('does not expose another owner through scoped addresses or memory IDs',async(
   const scope=await prepare('a');fixture.owner='owner-b';
   expect(await route('/api/memory/memory-a')).toBeNull();
   await expect(route('/api/memory?scope='+encodeURIComponent(scope))).rejects.toMatchObject({status:409});
-  expect(await route('/api/memory/scopes')).toBeNull();
+  expect(await data('/api/memory/scopes')).toEqual({scopes:[]});
 });
 
 it('rejects ambiguous memory IDs across policies while preserving scope-addressed access',async()=>{

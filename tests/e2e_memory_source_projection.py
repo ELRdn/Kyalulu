@@ -18,7 +18,7 @@ SCENARIOS = (
     'read-projection', 'rewrite-local', 'rewrite-sync', 'isolation',
     'revision-conflict', 'body-token-conflict', 'corrupt-late-part',
     'missing-late-part', 'invalid-discarded-json', 'rewrite-late-corruption', 'owner-switch-read',
-    'owner-switch-write', 'quota-atomic',
+    'owner-switch-write', 'quota-atomic', 'catalog',
 )
 PRODUCT = ('appStore.ts', 'deviceMemoryStore.ts', 'deviceMemoryScopes.ts',
            'deviceScopedMemory.ts', 'deviceScopedMemoryApi.ts')
