@@ -1,13 +1,80 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import fixture from '../../../../tests/fixtures/unified-core.json';
 import provenance from '../../../../tests/fixtures/unified-memory-provenance.json';
-import { retrieveMemories, renderMemoryBlock, prepareRpg, validateProposals, memoryDecisions, evidenced, extractSummary, refreshSummaries, type DeviceMemory } from './deviceCore';
+import { retrieveMemories, renderMemoryBlock, prepareRpg, validateProposals, memoryDecisions, evidenced, extractSummary, refreshSummaries, summaryRefresh, type DeviceMemory, type DeviceSummary } from './deviceCore';
 import { recommend } from './recommendations';
 import { executionTarget, preferences, generationBusy, setGenerationBusy, switchTarget } from './appContext';
 import { initialData, newConversation } from '../mobile/store';
 import { migrationEnvelope, parseMigration } from '../mobile/migration';
 
 afterEach(()=>{while(generationBusy())setGenerationBusy(false);vi.unstubAllGlobals();});
+
+// Keep the previous array algorithm as the compatibility oracle.
+function previousExtractSummary(messages:{id:number|string;role:string;content:string}[]) {
+  if(!messages.length)return '';
+  const quota=Math.max(1,Math.floor((4000-messages.length*24)/messages.length));
+  return Array.from(messages.map(m=>{const chars=Array.from(m.content);return `[${m.id}:${m.role}] ${chars.length<=quota?m.content:chars.slice(0,quota).join('')+'… [excerpt]'}`;}).join('\n')).slice(0,4000).join('');
+}
+function previousRefreshSummaries(messages:Parameters<typeof refreshSummaries>[0],existing:DeviceSummary[],sessionId:string) {
+  const summaries:DeviceSummary[]=[];
+  const put=(kind:DeviceSummary['kind'],ordinal:number,ids:number[],text:string)=>{
+    const old=existing.find(s=>s.kind===kind&&s.ordinal===ordinal),unchanged=old&&JSON.stringify(old.source_message_ids)===JSON.stringify(ids);
+    const preserve=unchanged&&(kind==='chapter'||old.method!=='extractive'||old.text===text);
+    summaries.push(preserve?old:{id:old?.id??`${sessionId}:${kind}:${ordinal}`,kind,ordinal,text,source_message_ids:ids,method:'extractive',revision:(old?.revision??0)+1});
+  };
+  for(let i=0;i<Math.floor(messages.length/20);i++){const source=messages.slice(i*20,(i+1)*20);put('chapter',i,source.map(m=>m.id),previousExtractSummary(source));}
+  const chapters=[...summaries];
+  for(let i=0;i<Math.floor(chapters.length/10);i++){const source=chapters.slice(i*10,(i+1)*10);put('arc',i,source.flatMap(s=>s.source_message_ids),previousExtractSummary(source.map(s=>({id:s.id,role:'chapter',content:s.text}))));}
+  return summaries;
+}
+const summaryMessages=(length:number)=>Array.from({length},(_,i)=>({id:1000+i*3,role:i%2?'assistant':'user',content:`turn ${i}\n${'猫🌸é'.repeat(i%3?2:300)}`}));
+
+it('reads only a bounded Unicode prefix when extracting a summary from a huge message',()=>{
+  const content='茶🙂é'.repeat(250000),original=String.prototype[Symbol.iterator];let reads=0;
+  const spy=vi.spyOn(String.prototype,Symbol.iterator).mockImplementation(function(this:string){
+    const iterator=original.call(this),next=iterator.next.bind(iterator),tracked=String(this)===content;
+    iterator.next=()=>{if(tracked)reads++;return next();};return iterator;
+  });
+  let result:string;try{result=extractSummary([{id:1,role:'user',content}]);}finally{spy.mockRestore();}
+  expect(result!).toBe(previousExtractSummary([{id:1,role:'user',content:'茶🙂é'.repeat(1100)}]));
+  expect(reads).toBeLessThanOrEqual(4001);
+});
+
+it.each([0,1,19,20,21,199,200,201,219,220,399,400,419,420,439,600,621])('streams %i messages with the exact previous chapter/arc output',length=>{
+  const messages=summaryMessages(length),before=structuredClone(messages),refresh=summaryRefresh([],'chat');
+  for(const message of messages)refresh.push(message);
+  const expected=previousRefreshSummaries(messages,[],'chat');
+  expect(refresh.finish()).toEqual(expected);
+  expect(refreshSummaries(messages,[],'chat')).toEqual(expected);
+  expect(messages).toEqual(before);
+  expect(expected.map(s=>s.kind)).toEqual([
+    ...Array(Math.floor(length/20)).fill('chapter'),...Array(Math.floor(length/200)).fill('arc')
+  ]);
+});
+it.each(['unchanged','content','source IDs'] as const)('preserves previous summary metadata and revisions with %s changes and incomplete tails',change=>{
+  const messages=summaryMessages(439);
+  const existing=previousRefreshSummaries(summaryMessages(620),[],'original').map(s=>({
+    ...s,id:`custom:${s.kind}:${s.ordinal}`,revision:7,extra:{kept:s.ordinal},
+    ...(s.kind==='chapter'&&[0,2].includes(s.ordinal)||s.kind==='arc'&&s.ordinal===1?{text:'手動🌸',method:'manual'}:{})
+  }));
+  const arc=existing.find(s=>s.kind==='arc'&&s.ordinal===0)!;
+  arc.text='outdated extraction';
+  if(change==='content')messages[40].content='changed content with the same source ID';
+  if(change==='source IDs')messages[40].id=-1;
+  const before=structuredClone({messages,existing}),refresh=summaryRefresh(existing,'chat');
+  for(const message of messages)refresh.push(message);
+  const result=refresh.finish(),expected=previousRefreshSummaries(messages,existing,'chat');
+  expect(result).toEqual(expected);
+  expect(refreshSummaries(messages,existing,'chat')).toEqual(expected);
+  expect({messages,existing}).toEqual(before);
+  expect(result).toHaveLength(23);
+  for(const ordinal of [0,1,20])expect(result[ordinal]).toBe(existing[ordinal]);
+  expect(result[2].revision).toBe(change==='source IDs'?8:7);
+  expect(result[2].method).toBe(change==='source IDs'?'extractive':'manual');
+  expect(result[21]).toMatchObject({id:'custom:arc:0',revision:8,method:'extractive'});
+  expect(result[21]).not.toHaveProperty('extra');
+  expect(result[22]).toBe(existing.find(s=>s.kind==='arc'&&s.ordinal===1));
+});
 it('matches shared Python memory and story fixtures',()=>{
   const m=fixture.memory,result=retrieveMemories(m.memories as DeviceMemory[],m.query);
   expect(result.injected).toEqual(m.injected);expect(result.injected_tokens).toEqual(m.tokens);

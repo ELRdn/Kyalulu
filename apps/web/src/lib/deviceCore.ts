@@ -112,20 +112,41 @@ export function memoryDecisions(proposals:Proposal[],existing:DeviceMemory[],use
 }
 type Message={id:number;role:string;content:string};
 export type DeviceSummary={id:string;kind:'chapter'|'arc';ordinal:number;text:string;revision:number;source_message_ids:number[];method:string};
+function summaryPrefix(value:string,limit:number) {
+  let text='',count=0;
+  for(const char of value){if(count++===limit)return {text,clipped:true};text+=char;}
+  return {text,clipped:false};
+}
 export function extractSummary(messages:{id:number|string;role:string;content:string}[]) {
   if(!messages.length)return '';
   const quota=Math.max(1,Math.floor((4000-messages.length*24)/messages.length));
-  return Array.from(messages.map(m=>{const chars=Array.from(m.content);return `[${m.id}:${m.role}] ${chars.length<=quota?m.content:chars.slice(0,quota).join('')+'… [excerpt]'}`;}).join('\n')).slice(0,4000).join('');
+  return summaryPrefix(messages.map(m=>{const prefix=summaryPrefix(m.content,quota);return `[${m.id}:${m.role}] ${prefix.text}${prefix.clipped?'… [excerpt]':''}`;}).join('\n'),4000).text;
 }
-export function refreshSummaries(messages:Message[],existing:DeviceSummary[],sessionId:string) {
-  const summaries:DeviceSummary[]=[];
+export function summaryRefresh(existing:DeviceSummary[],sessionId:string):{push(message:Message):void;finish():DeviceSummary[]} {
+  const chapters:DeviceSummary[]=[];
+  let chapter:Message[]=[];
   const put=(kind:DeviceSummary['kind'],ordinal:number,ids:number[],text:string)=>{
     const old=existing.find(s=>s.kind===kind&&s.ordinal===ordinal),unchanged=old&&JSON.stringify(old.source_message_ids)===JSON.stringify(ids);
     const preserve=unchanged&&(kind==='chapter'||old.method!=='extractive'||old.text===text);
-    summaries.push(preserve?old:{id:old?.id??`${sessionId}:${kind}:${ordinal}`,kind,ordinal,text,source_message_ids:ids,method:'extractive',revision:(old?.revision??0)+1});
+    return preserve?old:{id:old?.id??`${sessionId}:${kind}:${ordinal}`,kind,ordinal,text,source_message_ids:ids,method:'extractive',revision:(old?.revision??0)+1};
   };
-  for(let i=0;i<Math.floor(messages.length/20);i++){const source=messages.slice(i*20,(i+1)*20);put('chapter',i,source.map(m=>m.id),extractSummary(source));}
-  const chapters=[...summaries];
-  for(let i=0;i<Math.floor(chapters.length/10);i++){const source=chapters.slice(i*10,(i+1)*10);put('arc',i,source.flatMap(s=>s.source_message_ids),extractSummary(source.map(s=>({id:s.id,role:'chapter',content:s.text}))));}
-  return summaries;
+  return {
+    push(message) {
+      chapter.push(message);
+      if(chapter.length===20) {
+        chapters.push(put('chapter',chapters.length,chapter.map(m=>m.id),extractSummary(chapter)));
+        chapter=[];
+      }
+    },
+    finish() {
+      const summaries=[...chapters];
+      for(let i=0;i<Math.floor(chapters.length/10);i++){const source=chapters.slice(i*10,(i+1)*10);summaries.push(put('arc',i,source.flatMap(s=>s.source_message_ids),extractSummary(source.map(s=>({id:s.id,role:'chapter',content:s.text})))));}
+      return summaries;
+    }
+  };
+}
+export function refreshSummaries(messages:Message[],existing:DeviceSummary[],sessionId:string) {
+  const refresh=summaryRefresh(existing,sessionId);
+  for(const message of messages)refresh.push(message);
+  return refresh.finish();
 }

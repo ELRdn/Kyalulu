@@ -13,6 +13,18 @@ SESSION = 'history-pages-fixture'
 DRAFT = '未送信の下書き / retained draft'
 
 
+def expected_summaries(messages, regenerated=False):
+    result = []
+    for ordinal in range(len(messages) // 20):
+        source = messages[ordinal * 20:(ordinal + 1) * 20]
+        quota = (4000 - len(source) * 24) // len(source)
+        text = '\n'.join(f"[{m['id']}:{m['role']}] " + (m['content'] if len(m['content']) <= quota else m['content'][:quota] + '… [excerpt]') for m in source)[:4000]
+        result.append({'id': f'{SESSION}:chapter:{ordinal}', 'kind': 'chapter', 'ordinal': ordinal,
+                       'text': text, 'revision': 2 if regenerated and ordinal == 7 else 1,
+                       'source_message_ids': [m['id'] for m in source], 'method': 'extractive'})
+    return result
+
+
 async def main():
     results, blocked, errors = [], [], []
     async with local_vite(OUTPUT) as origin, async_playwright() as runtime:
@@ -118,22 +130,37 @@ async def main():
                     await expect(composer).to_have_value(DRAFT)
                     await expect(nav).to_contain_text('101–150 / 150')
                     await expect(send).to_be_enabled()
-                    # Actual send + recovery uses persisted history; the 100 off-screen messages survive.
+                    # Close a full chapter on the generated assistant, then replace that source on regeneration.
+                    await page.evaluate('''async id=>{
+                        const s=await import('/src/lib/appStore.ts'),record=await s.entity(id);
+                        record.payload.messages.push(...Array.from({length:8},(_,i)=>({id:151+i,uuid:'summary-padding-'+i,
+                            role:i%2?'assistant':'user',content:'Summary padding '+i,created_at:'2026-10-31T00:00:00Z'})));
+                        await s.saveEntity(record,record.revision);await s.setMeta('message-sequence:device-research-fixture',158);
+                    }''', SESSION)
+                    await page.reload()
+                    await mount()
+                    await expect(composer).to_have_value(DRAFT)
+                    await expect(nav).to_contain_text('109–158 / 158')
+                    # Actual send + recovery uses persisted history; all off-screen messages survive.
                     await send.click()
-                    await expect(nav).to_contain_text('103–152 / 152')
+                    await expect(nav).to_contain_text('111–160 / 160')
                     await expect(page.locator('.k-msg')).to_have_count(50)
                     saved = await page.evaluate('''async id=>{const s=await import('/src/lib/appStore.ts');return (await s.entity(id)).payload.messages;}''', SESSION)
-                    assert len(saved) == 152 and all(m['content'] == f'Saved message {i+1}' for i, m in enumerate(saved[:149]))
-                    assert saved[149]['content'] == 'Edited saved reply' and saved[150]['content'] == DRAFT
+                    assert len(saved) == 160 and all(m['content'] == f'Saved message {i+1}' for i, m in enumerate(saved[:149]))
+                    assert saved[149]['content'] == 'Edited saved reply' and saved[158]['content'] == DRAFT
+                    summaries = await page.evaluate('''async id=>{const s=await import('/src/lib/appStore.ts');return (await s.entity(id)).payload.summaries;}''', SESSION)
+                    assert summaries == expected_summaries(saved)
                     assert not await composer.input_value()
                     await page.get_by_role('button', name='Regenerate with direction' if en else '注文して作り直す', exact=True).click()
                     await page.get_by_role('dialog').get_by_role('textbox').fill('短めに / Make it shorter')
                     await page.get_by_role('dialog').get_by_role('button', name='Regenerate' if en else '作り直す', exact=True).click()
                     await page.wait_for_function('window.__DEVICE_RESEARCH__.status().calls===2&&!window.__DEVICE_RESEARCH__.status().busy')
-                    await expect(nav).to_contain_text('103–152 / 152')
+                    await expect(nav).to_contain_text('111–160 / 160')
                     await expect(page.get_by_role('button', name='Regenerate with direction' if en else '注文して作り直す', exact=True)).to_be_enabled()
                     regenerated = await page.evaluate('''async id=>{const s=await import('/src/lib/appStore.ts');return (await s.entity(id)).payload.messages;}''', SESSION)
-                    assert len(regenerated) == 152 and regenerated[:151] == saved[:151]
+                    assert len(regenerated) == 160 and regenerated[:159] == saved[:159]
+                    summaries = await page.evaluate('''async id=>{const s=await import('/src/lib/appStore.ts');return (await s.entity(id)).payload.summaries;}''', SESSION)
+                    assert summaries == expected_summaries(regenerated, regenerated=True)
                     # Closed tools are lazy, but opening them retains their original functionality and edit draft.
                     await page.get_by_role('button', name='Open information panel' if en else '情報パネルを開く', exact=True).click()
                     panel = page.get_by_role('dialog', name='Conversation information' if en else '会話の情報', exact=True)
@@ -155,13 +182,14 @@ async def main():
                     await expect(page.locator('.k-msg')).to_have_count(0)
                     await expect(composer).to_have_value('')
                     await page.evaluate('window.__DEVICE_RESEARCH__.owner("device-research-fixture")')
-                    await expect(nav).to_contain_text('103–152 / 152')
+                    await expect(nav).to_contain_text('111–160 / 160')
                     await expect(page.locator('.k-msg')).to_have_count(50)
                     results.append({'language': language, 'width': width, 'theme': theme, 'initial_body_reads': initial_reads,
                                     'page_dom_limit': 50, 'cursor_revision_rejected': True, 'draft_and_reload': True,
                                     'edit_and_generation_preserve_hidden_history': True, 'owner_isolation': True,
                                     'lazy_tools_and_memory_draft': True,
                                     'recovery_reply_outside_visible_page': True,
+                                    'chapter_closure_and_regeneration_source_revision': True,
                                     'synthetic_inference_calls': 2, 'real_model_inference': False})
                 finally:
                     await context.close()
