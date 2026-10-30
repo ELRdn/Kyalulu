@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { executionTarget, generationBusy, hasLocalRuntime, isDesktop, isUnifiedEntry, setGenerationBusy, switchTarget } from './appContext';
+import { executionTarget, generationBusy, hasLocalRuntime, isDesktop, isUnifiedEntry, pendingConversation, rememberOwner, setGenerationBusy, switchTarget } from './appContext';
+import { ChatRecovery } from './chatRecovery';
+import { connectionScope } from './remoteStore';
 
 let stored: Map<string, string>;
 beforeEach(() => {
@@ -7,12 +9,50 @@ beforeEach(() => {
   vi.stubEnv('MODE', 'native');
   vi.stubGlobal('navigator', { userAgent: 'Chromium', language: 'en' });
   vi.stubGlobal('window', { open: vi.fn(), dispatchEvent: vi.fn() });
-  vi.stubGlobal('location', { hostname: '127.0.0.1', protocol: 'http:', pathname: '/', search: '?private=fixture', hash: '#/chats/private', assign: vi.fn(), reload: vi.fn() });
-  vi.stubGlobal('localStorage', { getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, value: string) => stored.set(key, value) });
+  vi.stubGlobal('location', { origin: 'http://127.0.0.1', hostname: '127.0.0.1', protocol: 'http:', pathname: '/', search: '?private=fixture', hash: '#/chats/private', assign: vi.fn(), reload: vi.fn() });
+  Object.assign(window, { location });
+  vi.stubGlobal('localStorage', { get length() { return stored.size; }, key: (index: number) => [...stored.keys()][index] ?? null,
+    getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, value: string) => stored.set(key, value) });
 });
 afterEach(() => {
+  stored.clear();
+  vi.stubGlobal('localStorage', { getItem: () => null });
   while (generationBusy()) setGenerationBusy(false);
   vi.unstubAllEnvs(); vi.unstubAllGlobals();
+});
+
+it('keeps switching blocked by durable pending work after its chat component leaves and across reloads', () => {
+  const recovery = new ChatRecovery(localStorage, connectionScope(), 'pending:茶');
+  recovery.draft('Unsent input'); recovery.begin('generation');
+  setGenerationBusy(true); setGenerationBusy(false);
+  expect(pendingConversation()).toBe('pending:茶'); expect(generationBusy()).toBe(true);
+  const before = [...stored];
+  for (const target of ['cloud', 'device', 'pc'] as const) expect(() => switchTarget(target)).toThrow('Stop generation');
+  expect([...stored]).toEqual(before); expect(location.assign).not.toHaveBeenCalled(); expect(window.open).not.toHaveBeenCalled();
+  new ChatRecovery(localStorage, connectionScope(), 'pending:茶').settle('generation', false);
+  expect(generationBusy()).toBe(false); expect(pendingConversation()).toBeNull();
+  expect(recovery.read().draft).toBe('Unsent input');
+  switchTarget('device'); expect(location.assign).toHaveBeenCalledWith('/device/#/');
+});
+
+it('only blocks the current destination and owner, leaving other-account recovery records untouched', () => {
+  stored.set('kyalulu-execution-target', 'device'); rememberOwner('owner-a');
+  const recovery = new ChatRecovery(localStorage, connectionScope(), 'same-id'); recovery.begin('generation-a');
+  const before = [...stored];
+  rememberOwner('owner-b'); expect(generationBusy()).toBe(false);
+  stored.set('kyalulu-execution-target', 'pc'); expect(generationBusy()).toBe(false);
+  stored.set('kyalulu-execution-target', 'device'); rememberOwner('owner-a');
+  expect(generationBusy()).toBe(true); expect([...stored]).toEqual(before);
+});
+
+it('fails closed on damaged current recovery or unavailable storage without mutating it', () => {
+  const key = new ChatRecovery(localStorage, connectionScope(), 'damaged').key;
+  stored.set(key, '{invalid'); const before = [...stored];
+  expect(pendingConversation()).toBe(''); expect(() => switchTarget('device')).toThrow('Stop generation');
+  expect([...stored]).toEqual(before);
+  stored.clear(); Object.defineProperty(localStorage, 'length', { get() { throw Error('Storage denied'); } });
+  expect(pendingConversation()).toBe(''); expect(generationBusy()).toBe(true);
+  vi.stubGlobal('localStorage', { getItem: () => null });
 });
 
 it('defaults native browsers to local without treating them as Electron', () => {

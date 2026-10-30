@@ -1,4 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
+import { connectionScope } from './remoteStore';
+import { ChatRecovery } from './chatRecovery';
 
 export type ExecutionTarget = 'cloud' | 'device' | 'pc' | 'local';
 export type StoragePolicy = 'sync' | 'local';
@@ -64,7 +66,22 @@ export function switchTarget(target: ExecutionTarget) {
   location.assign(destination + '#/');
 }
 let busy = 0;
-export function generationBusy() { return busy > 0; }
+export function pendingConversation(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith('kyalulu:chat-recovery:v1:')) continue;
+      const scope = connectionScope(), prefix = `kyalulu:chat-recovery:v1:${encodeURIComponent(scope)}:`;
+      if (!key?.startsWith(prefix)) continue;
+      const session = decodeURIComponent(key.slice(prefix.length)), recovery = new ChatRecovery(localStorage, scope, session);
+      if (recovery.key !== key) return '';
+      if (recovery.read().pending) return session;
+    }
+    return null;
+  } catch { return ''; } // An unreadable recovery record must not authorize a destination change.
+}
+export function generationBusy() { return busy > 0 || pendingConversation() !== null; }
 export function setGenerationBusy(value: boolean) {
   busy = Math.max(0, busy + (value ? 1 : -1));
   window.dispatchEvent(new Event(EVENT));
@@ -82,6 +99,7 @@ export function usePreferences() {
 }
 export function useLanguage() { return useSyncExternalStore(subscribe, () => preferences().language, () => 'ja' as const); }
 export function useGenerationBusy() { return useSyncExternalStore(subscribe, generationBusy, () => false); }
+export function usePendingConversation() { return useSyncExternalStore(subscribe, pendingConversation, () => null); }
 export const labels = {
   ja: { cloud:'Cloud', device:'この端末', pc:'自分のPC', local:'このPC', target:'実行先', model:'モデル',
     home:'ホーム', discover:'さがす', chats:'トーク', create:'つくる', profile:'設定', localOnly:'端末限定', sync:'アカウントに同期',

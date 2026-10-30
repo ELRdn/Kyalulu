@@ -43,6 +43,7 @@ export async function restoreRemote() {
   const id = localStorage.getItem('kyalulu-active-remote');
   selected = id ? (await remoteDevices()).find(d => d.id === id) ?? null : null;
   if (id && !selected) throw new Error('接続先の端末鍵が見つかりません。PCから再登録してください。');
+  window.dispatchEvent(new Event('kyalulu-app-context'));
   return selected;
 }
 export function selectRemote(device: RemoteDevice | null) {

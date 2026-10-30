@@ -43,7 +43,10 @@ export function useChatRecovery(sessionId: string, onHistory: (messages: (ChatMe
   const inputRef = useRef(value.draft);
   const dirtyDraft = useRef(false);
   const cancelling=useRef(false);
-  const apply = (next: ChatDraft) => { inputRef.current = next.draft; setValue(next); };
+  const apply = (next: ChatDraft) => {
+    inputRef.current = next.draft; setValue(next);
+    window.dispatchEvent(new Event('kyalulu-app-context'));
+  };
 
   const change = (draft: string) => {
     inputRef.current = draft;
