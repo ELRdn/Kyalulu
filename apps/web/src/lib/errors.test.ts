@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { friendlyError, friendlyMessage, localTransferMessage } from "./errors";
 
+it.each(['generation_id belongs to a different session', 'Error: generation_id belongs to a different session'])('explains a mismatched generation without assuming cancellation: %s', raw => {
+  expect(friendlyError(raw, 'ja')).toEqual({message:'この送信IDは別の会話に紐づいています。元の会話で結果を確認してください。'});
+  expect(friendlyError(raw, 'en')).toEqual({message:'This send ID belongs to another chat. Check its result in the original chat.'});
+});
+
 it.each(['Memory source does not match this conversation','source session memory scope does not match request scope',
   'Memory source session not found','source session not found','source session was deleted','stop generation before creating memories'])('localizes manual-source rejections: %s',text=>{
   expect(friendlyMessage(text,'ja')).toMatch(/[\u3040-\u9fff]/u);expect(friendlyMessage(text,'en')).toBe(text);

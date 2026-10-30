@@ -98,6 +98,7 @@ export function friendlyError(raw: unknown, language: Language = typeof window =
   if (capabilityFailure) return { message: en ? `Could not retrieve feature information (HTTP ${capabilityFailure[1]})` : text };
   const generationCheck = text.match(/^送信結果の確認に失敗しました \(HTTP (\d{3})\)$/);
   if (generationCheck) return { message: en ? `Could not check the send result (HTTP ${generationCheck[1]}).` : text };
+  if (text === 'generation_id belongs to a different session') return { message: en ? 'This send ID belongs to another chat. Check its result in the original chat.' : 'この送信IDは別の会話に紐づいています。元の会話で結果を確認してください。' };
   if (text === 'Stop generation and confirm its saved result before switching.') return { message: en ? text : '生成を停止し、保存結果を確認してから切り替えてください。' };
   if (text === 'Already imported; select an existing item or explicitly copy') return { message: en ? text : '取り込み済みです。既存の項目を選ぶか、新しい項目として複製することを確認してください。' };
   if (text === 'Content rating must be selected before saving this URL import') return { message: en ? text : '保存前に取り込み内容を確認し、内容区分を選んでください。' };
