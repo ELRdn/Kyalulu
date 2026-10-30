@@ -1,5 +1,5 @@
 import { deviceOwner } from './appContext';
-import { readParts, writeParts, rewriteConversationParts, removeParts, storageStep, storageWrite, type Parts } from './segmentedStorage';
+import { readParts, writeParts, rewriteConversationParts, removeParts, storageStep, storageWrite, type Parts, type ConversationScan } from './segmentedStorage';
 import { memoryDomainKey,eraseMemoryDomain,eraseDeviceMemoryReferences,type MemoryPolicy } from './deviceMemoryScopes';
 import { readMemoryDomainTx,writeMemoryDomainTx } from './deviceMemoryDomainIO';
 import { canonical } from './appSyncData';
@@ -98,6 +98,34 @@ export function writeEntity(tx:IDBTransaction,value:AppEntity,mode:'put'|'add'='
     });
   });
 }
+function adoptConversationRewrite(tx:IDBTransaction,header:StoredEntity,ref:Parts,payload:Record<string,any>,scan:ConversationScan,done:()=>void) {
+  const refs=memoryReferences(payload),{payload:_,...raw}=header;
+  const selection={...header.selection,...entitySelection({...header,payloadParts:undefined,payload}),maximumMessageId:scan.maximumMessageId,messageIdsValid:scan.messageIdsValid,
+    summary:{...conversationSummary(payload),...(!payload.cache_evicted?{count:scan.count,last_preview:scan.last_preview,last_at:scan.last_at}:{}),token:ref.token}};
+  const write=tx.objectStore('entities').put({...raw,revision:header.revision+1,dirty:header.dirty||payload.storage_policy==='sync',selection,payloadParts:ref,
+    memoryReferences:refs?{...refs,hash:referenceHash(ref.token,refs)}:null});
+  write.onsuccess=()=>removeParts(tx,[header.owner,'entity',header.id],header.payloadParts,done);
+}
+/** The caller rechecks the inspected revision in this transaction; never pass a page as a full entity. */
+export function writeConversationMetadata(tx:IDBTransaction,header:StoredEntity,patch:Record<string,unknown>,done:()=>void) {
+  storageWrite(tx,next=>{
+    const complete=()=>{done();next();};
+    const meta=tx.objectStore('meta'),local=meta.get(memoryDomainKey(header.owner,'local')),sync=meta.get(memoryDomainKey(header.owner,'sync'));
+    sync.onsuccess=()=>storageStep(tx,()=>{
+      if(header.owner!==deviceOwner()||header.kind!=='conversation'||header.deleted||!Number.isSafeInteger(header.revision+1)
+        ||Object.keys(patch).some(key=>!['settings','summaries'].includes(key)))throw Error('Invalid conversation metadata update');
+      if(local.result?.pending||sync.result?.pending)throw Error('Stop generation before editing');
+      const check=(p:Record<string,any>)=>{if(p.cache_evicted)throw Error('Conversation unavailable');};
+      if(!header.payloadParts){
+        const p=header.payload;if(!p||!Array.isArray(p.messages))throw Error('Missing conversation body');check(p);
+        persistEntity(tx,{...header,revision:header.revision+1,dirty:header.dirty||p.storage_policy==='sync',payload:{...p,...patch}} as AppEntity,'put',complete);return;
+      }
+      rewriteConversationParts(tx,[header.owner,'entity',header.id],header.payloadParts,patch,(ref,metadata,scan)=>{
+        check(metadata);adoptConversationRewrite(tx,header,ref,{...metadata,...patch,messages:[]},scan,complete);
+      });
+    });
+  });
+}
 /** Caller holds the owner execution lease; domain recovery also commits its pending domain here. */
 export function recoverPendingConversation(tx:IDBTransaction,header:StoredEntity,generationId:string,done:()=>void,domainRecovery=false) {
   storageWrite(tx,next=>{
@@ -116,12 +144,7 @@ export function recoverPendingConversation(tx:IDBTransaction,header:StoredEntity
       rewriteConversationParts(tx,location,previous,{pending_generation:null},(ref,metadata,scan)=>{
         check(metadata);
         if(metadata.pending_generation==null){removeParts(tx,location,ref,complete);return;}
-        const payload={...metadata,pending_generation:null,messages:[]},refs=memoryReferences(payload),{payload:_,...raw}=header;
-        const selection={...header.selection,...entitySelection({...header,payloadParts:undefined,payload}),maximumMessageId:scan.maximumMessageId,messageIdsValid:scan.messageIdsValid,
-          summary:{...conversationSummary(payload),...(!metadata.cache_evicted?{count:scan.count,last_preview:scan.last_preview,last_at:scan.last_at}:{}),token:ref.token}};
-        const write=tx.objectStore('entities').put({...raw,revision:header.revision+1,dirty:header.dirty||metadata.storage_policy==='sync',selection,payloadParts:ref,
-          memoryReferences:refs?{...refs,hash:referenceHash(ref.token,refs)}:null});
-        write.onsuccess=()=>removeParts(tx,location,previous,complete);
+        adoptConversationRewrite(tx,header,ref,{...metadata,pending_generation:null,messages:[]},scan,complete);
       });
     });
     if(domainRecovery){rewrite();return;}

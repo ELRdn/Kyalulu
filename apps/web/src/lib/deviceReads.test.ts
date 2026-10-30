@@ -102,7 +102,7 @@ it.each([
   const before=structuredClone(fixture.records),response=await request(path);
   expect(response.status).toBe(200);expect(response.body).toMatchObject(expected);
   expect(allEntities).not.toHaveBeenCalled();expect(entity).not.toHaveBeenCalled();
-  if(path.startsWith('/api/chat/settings')){
+  if(path.startsWith('/api/chat/settings')||path.startsWith('/api/chat/context/')){
     expect(openEntity).not.toHaveBeenCalled();expect(conversationInfo).toHaveBeenCalledExactlyOnceWith('requested','owner-a');expect(conversationPage).toHaveBeenCalledExactlyOnceWith('requested','owner-a',50,undefined);
     for(const [key,value] of before){const {opened,...expected}=value;const {opened:actual,...record}=fixture.records.get(key);expect(record).toEqual(expected);if(key!=='owner-a:requested')expect(actual).toBe(opened);}
   }else{expect(openEntity).toHaveBeenCalledExactlyOnceWith('requested','owner-a');expect(fixture.records).toEqual(before);}
@@ -220,10 +220,29 @@ it('preserves immutable bindings, pending generation and unsent input when savin
   expect(response).toEqual({status:200,body:{ok:true}});
   expect(saved().payload.settings).toMatchObject({system_prompt:'Updated',library_binding:{character:{id:'saved',revision:1}}});
   for(const key of ['messages','memories','summaries','state','draft','pending_generation'])expect(saved().payload[key]).toEqual(before[key]);
-  expect(saveEntity).toHaveBeenCalledWith(expect.objectContaining({id:'requested',owner:'owner-a'}),3);
-  expect(openEntity).toHaveBeenCalledExactlyOnceWith('requested','owner-a');
+  expect(saveEntity).not.toHaveBeenCalled();expect(openEntity).not.toHaveBeenCalled();
+  expect(conversationPage).toHaveBeenCalledExactlyOnceWith('requested','owner-a',50,undefined);
   expect(vi.mocked(entity).mock.calls.every(([id,owner])=>id==='saved'&&owner==='owner-a')).toBe(true);
   expect(allEntities).not.toHaveBeenCalled();
+});
+
+it('updates only the selected summary and retains complete history and summary extensions',async()=>{
+  const value=saved();value.payload.messages=Array.from({length:120},(_,i)=>({id:i+1,content:'Keep '+i,before:{state:{turn:i}}}));
+  value.payload.summaries[0].extension={keep:true};put(value);await segment(value);vi.clearAllMocks();
+  const response=await request('/api/chat/context/requested/summaries/summary',{expected_revision:1,text:'Manual update'},'PUT');
+  expect(response).toEqual({status:200,body:{...value.payload.summaries[0],text:'Manual update',revision:2,method:'manual'}});
+  const result=saved();expect(result.payload).toEqual({...value.payload,summaries:[response.body]});expect(result.revision).toBe(4);
+  expect(conversationPage).toHaveBeenCalledExactlyOnceWith('requested','owner-a',50,undefined);
+  expect(openEntity).not.toHaveBeenCalled();expect(saveEntity).not.toHaveBeenCalled();
+});
+
+it.each([
+  [{expected_revision:0,text:'Stale'},409],
+  [{expected_revision:1,text:' '},400],
+])('retains canonical data when a manual summary edit is invalid: %j',async(body,status)=>{
+  const before=saved().payload,response=await request('/api/chat/context/requested/summaries/summary',body,'PUT');
+  expect(response.status).toBe(status);expect(saved().payload).toEqual(before);expect(saved().revision).toBe(3);
+  expect(saveEntity).not.toHaveBeenCalled();expect(openEntity).not.toHaveBeenCalled();
 });
 
 it('uses a single conversation for manual memory writes',async()=>{

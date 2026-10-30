@@ -12,6 +12,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SCENARIOS = ('roundtrip', 'depth-boundary', 'corrupt-missing', 'corrupt-hash', 'corrupt-size', 'owner-fence', 'kind-selection', 'kind-selection-owner', 'pending-stream', 'pending-quota', 'pending-corrupt', 'pending-owner', 'pending-legacy', 'pending-json', 'proof-read', 'proof-invalid', 'proof-owner', 'summary-read', 'summary-corrupt', 'summary-owner', 'page-read', 'page-cursor', 'page-owner', 'page-corrupt-json', 'page-corrupt-first', 'page-corrupt-last', 'quota', 'collisions', 'upgrade-v1', 'upgrade-v2', 'blocked', 'late-success', 'versionchange', 'receive-quota', 'receive-generation', 'ack-quota', 'deletion-controls', 'migration', 'device-branch', 'pin-ui', 'outbox-corrupt')
 
 
+SCENARIOS += ('metadata-stream', 'metadata-quota', 'metadata-corrupt', 'metadata-owner', 'metadata-conflict', 'metadata-legacy', 'metadata-domain')
+
+
 async def main():
     results = []
     with TemporaryDirectory(prefix='kyalulu-segmented-') as directory:

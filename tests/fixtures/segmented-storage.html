@@ -28,6 +28,83 @@ const physical=()=>appTransaction(['entities','meta','parts'],'readonly',(tx,don
 const header=()=>appTransaction(['entities'],'readonly',(tx,done)=>{const read=tx.objectStore('entities').get([owner,'history']);read.onsuccess=()=>done(read.result);});
 async function rejected(action,message){let failed=false;try{await action();}catch{failed=true;}check(failed,message);}
 async function run(){
+  if(scenario.startsWith('metadata-')){
+    const value=huge();value.payload.settings={session_id:value.id,system_prompt:'KEEP',temperature:.8};
+    value.payload.messages=Array.from({length:120},(_,i)=>({id:300-i*2,uuid:'metadata-'+i,role:i%2?'assistant':'user',content:'保管🙂'.repeat(4000)+i,
+      unknown:{keep:i},before:{state:{turn:i},memories:[]},after:{state:{turn:i+1},memories:[]}}));
+    value.payload.summaries=[{id:'manual',text:'Original summary',revision:3,unknown:{keep:true}}];value.payload.pending_generation='keep-pending';
+    const {deviceFetch}=await import('/src/lib/deviceApi.ts'),request=(path,body)=>deviceFetch(path,{method:'PUT',body:JSON.stringify(body)});
+    const settings={session_id:value.id,system_prompt:'Updated 茶🙂',temperature:.5},path='/api/chat/settings';
+    const now=Date.now;Date.now=()=>123456;await save(value);
+    await setMeta('sync:'+owner+':outbox',{request_id:'independent',payload:'Fixed unsent snapshot'});
+    check((await deviceFetch(path+'?session_id='+value.id)).ok,'Warm metadata read failed');
+    const before=await physical(),stored=await header();
+    if(scenario==='metadata-stream'){
+      const finish=JsonStream.prototype.finish;let windows=0,rewrites=0;
+      JsonStream.prototype.finish=function(){const p=finish.call(this);if(this.onMessage){rewrites++;check(p.messages.length===0&&this.totalMessages===120,'Metadata rewrite retained history');}
+        else {windows++;check(p.messages.length<=50,'Metadata read retained full history');}return p;};
+      let response,summary;
+      try{
+        response=await request(path,settings);check(response.ok,'Settings update failed: '+await response.text());
+        const context=await deviceFetch('/api/chat/context/'+value.id),body=await context.json();check(context.ok&&body.history_revision==='8','Context read failed');
+        same(body.summaries,value.payload.summaries,'Context summaries changed');
+        summary=await request('/api/chat/context/'+value.id+'/summaries/manual',{expected_revision:3,text:'Updated summary'});
+        check(summary.ok,'Summary update failed');summary=await summary.json();
+      }finally{JsonStream.prototype.finish=finish;Date.now=now;}
+      check(windows===3&&rewrites===2,'Metadata operations did not use bounded reads/rewrites');
+      const record=await entity(value.id,owner),next=await header(),raw=await physical();
+      same(record.payload,{...value.payload,settings:{...settings,character_id:null,persona_id:null,world_id:null,intro:'',
+        library_binding:{character:null,profile:null,lorebooks:[],expression_asset_id:null}},summaries:[{...value.payload.summaries[0],text:'Updated summary',revision:4,method:'manual'}]},'Metadata update lost canonical payload');
+      check(summary.unknown.keep&&record.revision===9&&record.dirty&&record.serverRevision===4,'Metadata lost revision/unknown/dirty fields');
+      check(next.selection.pending_generation&&next.selection.maximumMessageId===300&&next.selection.messageIdsValid&&next.selection.summary.count===120
+        &&next.selection.summary.token===next.payloadParts.token&&next.unknown_header.keep==='茶🙂','Metadata header was not refreshed');
+      check(raw.parts.every(([key])=>key[3]===next.payloadParts.token),'Metadata leaked old parts');same(raw.meta,before.meta,'Metadata changed fixed outbox');
+      probes.push('bounded-settings-and-summary','all-history-snapshots-unknowns-preserved','pending-and-fixed-outbox-retained','atomic-header-parts');return;
+    }
+    if(scenario==='metadata-legacy'){
+      await appTransaction(['entities','parts'],'readwrite',(tx,done)=>{tx.objectStore('entities').put(value);for(let i=0;i<stored.payloadParts.chunks;i++)tx.objectStore('parts').delete([owner,'entity',value.id,stored.payloadParts.token,i]);done();});
+      check((await request(path,settings)).ok,'Legacy settings update failed');Date.now=now;
+      const record=await entity(value.id,owner);same(record.payload.messages,value.payload.messages,'Legacy metadata lost history');check(record.payload.pending_generation==='keep-pending'&&record.revision===8,'Legacy update changed pending/revision');
+      const missing=await request(path,{...settings,session_id:'new-conversation'});check(missing.ok,'Missing settings creation failed');
+      const created=await entity('new-conversation',owner);check(created.revision===1&&created.payload.messages.length===0&&created.payload.settings.system_prompt===settings.system_prompt,'Missing settings created partial entity');
+      probes.push('inline-legacy-compatible','new-conversation-complete');return;
+    }
+    if(scenario==='metadata-domain'){
+      for(const policy of ['local','sync']){
+        const key='device-memory-domain:'+JSON.stringify([owner,policy]);await setMeta(key,{pending:{session_id:'another',generation_id:'active'}});
+        const guarded=await physical();check(!(await request(path,settings)).ok,'Pending memory-domain edit accepted');same(await physical(),guarded,'Domain guard changed canonical data');
+        await appTransaction(['meta'],'readwrite',(tx,done)=>{tx.objectStore('meta').delete(key);done();});
+      }
+      Date.now=now;probes.push('both-memory-policies-blocked-during-generation');return;
+    }
+    if(scenario==='metadata-quota'||scenario==='metadata-owner'){
+      const add=IDBObjectStore.prototype.add;let writes=0;
+      IDBObjectStore.prototype.add=function(...args){if(this.name==='parts'&&++writes===3){
+        if(scenario==='metadata-quota')throw new DOMException('Fictional metadata quota','QuotaExceededError');
+        const request=add.apply(this,args);request.addEventListener('success',()=>rememberOwner(foreign),{once:true});return request;
+      }return add.apply(this,args);};
+      try{check(!(await request(path,settings)).ok,'Metadata fault committed');}finally{IDBObjectStore.prototype.add=add;rememberOwner(owner);Date.now=now;}
+      check(writes===3,'Metadata fault did not reach tentative output');same(await physical(),before,'Metadata fault lost original/outbox');
+      probes.push('tentative-parts-'+scenario+'-rollback');return;
+    }
+    if(scenario==='metadata-corrupt'){
+      const get=IDBObjectStore.prototype.get;let injected=false;
+      IDBObjectStore.prototype.get=function(key){if(this.name==='meta'&&String(key).startsWith('device-memory-domain:')&&!injected){injected=true;
+        this.transaction.objectStore('parts').delete([owner,'entity',value.id,stored.payloadParts.token,stored.payloadParts.chunks-1]);
+      }return get.call(this,key);};
+      try{check(!(await request(path,settings)).ok,'Missing final source part accepted');}finally{IDBObjectStore.prototype.get=get;Date.now=now;}
+      check(injected,'Source fault not reached');same(await physical(),before,'Source corruption adopted tentative output');probes.push('whole-source-verified-before-adoption');return;
+    }
+    if(scenario==='metadata-conflict'){
+      const put=IDBObjectStore.prototype.put;let changed=false;
+      IDBObjectStore.prototype.put=function(record,...args){if(this.name==='entities'&&record.id===value.id&&!changed){changed=true;record={...record,revision:record.revision+1};}return put.call(this,record,...args);};
+      try{check(!(await request(path,settings)).ok,'Stale metadata update accepted');}finally{IDBObjectStore.prototype.put=put;Date.now=now;}
+      const raw=await physical(),next=await header();check(changed&&next.revision===8&&next.payloadParts.token===stored.payloadParts.token,'Conflict changed newer header');
+      same(raw.parts,before.parts,'Conflict replaced source parts');same(raw.meta,before.meta,'Conflict changed outbox');same((await entity(value.id,owner)).payload,value.payload,'Conflict changed newer payload');
+      probes.push('inspected-revision-rechecked-before-writing');return;
+    }
+    Date.now=now;throw Error('Unknown metadata scenario');
+  }
   if(scenario.startsWith('pending-')){
     const value=huge(),generation='stream-orphan',key='generation:'+owner+':'+generation;
     value.payload.pending_generation=generation;value.payload.messages=Array.from({length:40},(_,i)=>({id:300-i*2,uuid:'pending-'+i,role:i%2?'assistant':'user',
