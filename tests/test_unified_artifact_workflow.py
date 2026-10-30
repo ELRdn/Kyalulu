@@ -47,6 +47,19 @@ def test_same_run_wasm_checks_and_pinned_build():
     assert not any(word in '\n'.join(runs) for word in ('docker push', 'docker save', 'pnpm publish', 'npm publish'))
 
 
+def test_native_acceptance_retains_only_explicit_fictional_evidence():
+    upload, = (step for step in JOBS['bundle']['steps']
+               if step.get('uses') == 'actions/upload-artifact@v4'
+               and step.get('with', {}).get('name') == 'acceptance-${{ matrix.target }}')
+    assert upload['if'] == 'always()'
+    assert upload['with']['include-hidden-files'] is True
+    assert upload['with']['path'].splitlines() == [
+        '.artifacts/npm-verify-*/acceptance.json',
+        '.artifacts/native-entry-acceptance/result.json',
+        '.artifacts/native-entry-acceptance/local-chat.png',
+    ]
+
+
 def test_container_sandbox_and_evidence_allowlist():
     runs = [step['run'] for step in CLOUD['steps'] if 'run' in step]
     containers = [shlex.split(run.split("<<'PY'", 1)[0]) for run in runs if run.startswith('docker run ')]

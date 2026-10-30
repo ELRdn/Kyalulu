@@ -112,6 +112,7 @@ jobs:
         if: always()
         with:
           name: acceptance-${{ matrix.target }}
+          include-hidden-files: true
           path: |
             .artifacts/npm-verify-*/acceptance.json
             .artifacts/native-entry-acceptance/result.json
