@@ -59,3 +59,22 @@ as a separate artifact. Enable hidden files only for the explicit three-path
 fictional acceptance allowlist. All eleven workflow/sandbox checks passed. The
 new workflow still needs a fresh actual run before Windows CI is accepted or
 macOS's retained artifact evidence is claimed.
+
+## Compiled-runtime license delivery
+
+The independent static audit of fixed 376d0fc confirmed four missing upstream
+license texts (llama.cpp, jsonhpp and WebGPU C/C++). Its source/218 copied files,
+8,740 safe members, 33 locked Python packages and four WASM hashes passed, but
+the candidate is not distributable. A cryptography SSH-header literal matched the
+locked installed dependency exactly; it is not a discovered private key.
+
+Reuse the existing eight-text Mobile license list through one shared copier.
+Native and unified Cloud now include the same texts under `web/licenses/`;
+legacy Cloud packaging stays unchanged. Validate all origins/targets before
+writing any text; missing, blank and symlinked inputs fail, with no partial text
+output in these failure cases. The Cloud manifest covers the delivered license
+bytes. This does not declare a legal/license-review gate complete.
+
+Source/bundle/readiness/workflow tests passed 35 cases. A fixed revised Native
+archive, its CLI/browser acceptance and exact text hashes remain required before
+selecting a candidate. Retain the old 376 audit as a failed candidate record.

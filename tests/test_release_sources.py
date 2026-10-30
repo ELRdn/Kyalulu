@@ -192,6 +192,32 @@ def test_mobile_packages_shared_corresponding_source(tmp_path, monkeypatch):
     assert sorted(p.name for p in mobile.OUT.iterdir()) == ['index.html', 'licenses', 'release-manifest.json', 'source', 'sw.js']
 
 
+@pytest.mark.parametrize('failure', ['missing', 'empty', 'source-link', 'destination-link'])
+def test_runtime_licenses_fail_before_writing_any_text(tmp_path, monkeypatch, failure):
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.syspath_prepend(str(root / 'scripts'))
+    import collect_release_sources as sources
+
+    original = tmp_path / 'repo'
+    for relative in sources.RUNTIME_LICENSES.values():
+        file = original / relative
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_bytes(b'fictional license')
+    name, relative = list(sources.RUNTIME_LICENSES.items())[-1]
+    origin, destination = original / relative, tmp_path / 'output'
+    if failure == 'missing':
+        origin.unlink()
+    elif failure == 'empty':
+        origin.write_bytes(b'   ')
+    else:
+        linked = origin if failure == 'source-link' else destination / 'licenses' / name
+        is_symlink = Path.is_symlink
+        monkeypatch.setattr(Path, 'is_symlink', lambda path: path == linked or is_symlink(path))
+    with pytest.raises((ValueError, FileNotFoundError)):
+        sources.copy_runtime_licenses(original, destination)
+    assert not list(destination.rglob('*.txt'))
+
+
 def test_corresponding_source_boundaries(tmp_path, monkeypatch):
     path = Path(__file__).resolve().parents[1] / "scripts/collect_release_sources.py"
     spec = importlib.util.spec_from_file_location("release_sources", path)

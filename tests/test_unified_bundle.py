@@ -22,6 +22,11 @@ def bundle(tmp_path, monkeypatch):
                  'apps/web/dist/index.html', '.artifacts/unified-app/index.html', '.artifacts/unified-app/device/index.html'):
         path = root / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_text(name)
     monkeypatch.setattr(module, 'ROOT', root)
+    from collect_release_sources import RUNTIME_LICENSES
+    for name, relative in RUNTIME_LICENSES.items():
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(('fictional license: ' + name).encode())
     monkeypatch.setattr(module, 'collect', lambda destination: shutil.copytree(root, destination))
     def pinned_requirements(arguments, **_):
         Path(arguments[-1]).write_text('fixture==1.0\n')
@@ -40,6 +45,10 @@ def test_unified_bundle_uses_device_build_and_preserves_corresponding_source(bun
         assert 'web/index.html' in archive.extractfile('SHA256SUMS').read().decode()
         assert archive.extractfile('deploy/cloud/Caddyfile.unified.example').read().decode() == 'deploy/cloud/Caddyfile.unified.example'
         assert archive.extractfile('deploy/cloud/Caddyfile.cloud-migration.example').read().decode() == 'deploy/cloud/Caddyfile.cloud-migration.example'
+        from collect_release_sources import RUNTIME_LICENSES
+        for name, relative in RUNTIME_LICENSES.items():
+            assert archive.extractfile('web/licenses/' + name).read() == (root / relative).read_bytes()
+            assert 'web/licenses/' + name in archive.extractfile('SHA256SUMS').read().decode()
 
 
 def test_unified_bundle_rejects_missing_build_and_linked_assets(bundle, monkeypatch):
@@ -64,3 +73,4 @@ def test_legacy_bundle_keeps_its_original_build_and_proxy_selection(bundle):
         assert 'deploy/cloud/Caddyfile.example' in archive.getnames()
         assert 'deploy/cloud/Caddyfile.unified.example' not in archive.getnames()
         assert 'deploy/cloud/Caddyfile.cloud-migration.example' not in archive.getnames()
+        assert not any(name.startswith('web/licenses/') for name in archive.getnames())
