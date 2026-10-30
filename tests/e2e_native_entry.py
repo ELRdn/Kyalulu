@@ -118,6 +118,31 @@ async def check(args):
                 await page.get_by_role('paragraph').filter(has_text='Mock: FICTIONAL-BROWSER-SEND').wait_for(timeout=10000)
                 await page.get_by_role('textbox').last.fill('FICTIONAL-UNSENT-DRAFT')
                 await page.wait_for_timeout(150)
+                await page.get_by_role('button', name='Visual novel', exact=True).click()
+                scene = page.get_by_role('region', name='Visual novel', exact=True)
+                await scene.get_by_role('button', name='Previous scene', exact=True).click()
+                await expect(scene).to_contain_text('Mock: FICTIONAL-NATIVE-MESSAGE')
+                await scene.get_by_role('button', name='Next scene', exact=True).click()
+                await expect(scene).to_contain_text('Mock: FICTIONAL-BROWSER-SEND')
+                await page.get_by_role('button', name='Show chat history', exact=True).click()
+                await page.goto(origin + '/#/profile')
+                await page.get_by_role('heading', name='Take your conversations with you from this PC', exact=True).wait_for()
+                await page.get_by_role('combobox', name='Display language', exact=True).select_option('ja')
+                await page.get_by_role('heading', name='このPCから、会話を持ち歩く', exact=True).wait_for()
+                await page.goto(origin + '/#/status')
+                await page.get_by_text('接続診断', exact=True).wait_for()
+                await page.get_by_text('API 稼働中', exact=True).wait_for(timeout=15000)
+                await page.goto(origin + '/#/profile')
+                await page.get_by_role('combobox', name='表示言語', exact=True).select_option('en')
+                await page.goto(origin + '/#/status')
+                await page.get_by_text('Connection diagnostics', exact=True).wait_for()
+                await page.get_by_text('API is running', exact=True).wait_for(timeout=15000)
+                assert await page.evaluate('document.documentElement.scrollWidth<=innerWidth')
+                await page.goto(origin + '/#/fixture-missing-page')
+                await page.get_by_role('button', name='Back to home', exact=True).click()
+                await page.get_by_role('heading', name='Recommended for you', exact=True).wait_for()
+                await page.goto(origin + '/#/chats/native-ui-fixture')
+                await expect(page.get_by_role('textbox').last).to_have_value('FICTIONAL-UNSENT-DRAFT')
                 snapshot = await page.evaluate("JSON.stringify({target:localStorage.getItem('kyalulu-execution-target'),prefs:localStorage.getItem('kyalulu-app-preferences-v1'),receipt:localStorage.getItem('kyalulu-eligibility-ticket')})")
                 await page.get_by_role('combobox', name='Run on', exact=True).select_option('cloud')
                 dialog = page.get_by_role('dialog')
@@ -150,6 +175,7 @@ async def check(args):
                   'canonical_cloud_handoff_no_credentials_or_referrer': True, 'draft_target_and_receipt_preserved': True,
                   'restart_preserves_local_history_and_draft': True, 'external_requests': len(external),
                   'page_errors': len(errors), 'mock_generations': 2, 'browser_mock_send': True, 'real_inference_attempts': 0,
+                  'native_settings_and_diagnostics_ja_en': True, 'visual_novel_navigation_preserves_authored_messages': True,
                   'physical_device': False, 'regional_policy_approved': False, 'production_used': False}
     finally:
         if started:
