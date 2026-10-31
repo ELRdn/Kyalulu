@@ -133,6 +133,7 @@ FILES = (
     "tests/fixtures/sync-receive-projection.html",
     "docs/validation/2026-11-01-unified-sync-receive-projection.md",
     "docs/validation/2026-11-01-unified-sync-receive-projection-browser.md",
+    "docs/validation/2026-11-01-unified-browser-jsonl-ci.md",
     "docs/validation/2026-10-31-unified-device-export-ci.md",
     "docs/validation/2026-10-31-unified-sync-staging.md",
     "docs/validation/2026-10-31-unified-sync-staging-browser.md",

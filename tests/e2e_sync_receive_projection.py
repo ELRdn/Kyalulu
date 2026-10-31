@@ -128,7 +128,7 @@ async def main(args):
     output.mkdir(parents=True, exist_ok=False)
     stdout = (output / 'stdout.jsonl').open('w', encoding='utf-8')
     def emit(value):
-        line = json.dumps(value, ensure_ascii=False)
+        line = json.dumps(value, ensure_ascii=True)  # Windows console encodings must preserve every JSON value.
         stdout.write(line + '\n'); stdout.flush()
         print(line, flush=True)
     before = fingerprint()
