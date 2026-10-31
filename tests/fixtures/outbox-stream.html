@@ -1,0 +1,279 @@
+<!doctype html><meta charset="utf-8"><title>Fictional fixed outbox stream validation</title>
+<p>Disposable local IndexedDB fixture. Synthetic data only. No providers or models.</p>
+<script type="module">
+import {appTransaction,getMeta,entity,writeEntity} from '/src/lib/appStore.ts';
+import {rememberOwner,deviceOwner,generationBusy,setGenerationBusy} from '/src/lib/appContext.ts';
+import {syncNow,syncState} from '/src/lib/appSync.ts';
+import {uploadSync} from '/src/lib/appTransfers.ts';
+import {JsonStream} from '/src/lib/jsonStream.ts';
+
+const LIMIT=1024*1024,owner='outbox-stream-fictional-owner',root='sync:'+owner+':outbox',prefix='sync:'+owner+':';
+const token='12345678-1234-4234-8234-123456789abc',transfer='87654321-4321-4321-8321-cba987654321';
+const stringify=JSON.stringify,parse=JSON.parse,encode=text=>new TextEncoder().encode(text);
+const check=(condition,message)=>{if(!condition)throw Error(message);};
+const same=(a,b,message)=>check(stringify(a)===stringify(b),message);
+const digest=async bytes=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
+const partKey=index=>[owner,'outbox','fixed',token,index];
+const join=chunks=>{const result=new Uint8Array(chunks.reduce((n,b)=>n+b.length,0));let offset=0;for(const b of chunks){result.set(b,offset);offset+=b.length;}return result;};
+function equalBytes(actual,expected,label){check(actual.length===expected.length,label+' length');for(let i=0;i<actual.length;i++)if(actual[i]!==expected[i])throw Error(label+' byte '+i);}
+function original(small=false){
+  const content=small?'small 日本語🙂 "\\\n\u0000':('日本語🙂"\\\n\t\u0000 boundary '.repeat(1900));
+  const payload={storage_policy:'sync',rating:'general',settings:{session_id:'chat',library_binding:null},state:{session_id:'chat'},
+    messages:Array.from({length:small?1:52},(_,i)=>({id:i+1,uuid:'fictional-message-'+i,role:'user',content:content+i})),
+    memories:[],summaries:[],nested:{changes:[{payload:{keep:'nested payload control'}}]}};
+  return {request_id:'fixed-outbox-stream-request',withdrawn:0,revisions:{chat:7},
+    changes:[{id:'chat',kind:'conversation',base_revision:2,payload,deleted:false}]};
+}
+const receipt={changes:[{id:'chat',revision:3,deleted:false}]};
+async function seed(small=false,legacy=false,cached=false,withdrawn=false){
+  rememberOwner(owner);localStorage.setItem('outbox-stream-unrelated','preserved');
+  const batch=original(small),raw=encode(stringify(batch.changes));
+  const ref={token,size:raw.length,chunks:Math.ceil(raw.length/LIMIT),sha256:await digest(raw)};
+  const header=legacy?batch:{...batch,changes:batch.changes.map(({payload,...control})=>({...control,payload:{}})),count:batch.changes.length,changesParts:ref};
+  if(cached)header.receipt=receipt;
+  if(withdrawn)header.withdrawn=true;
+  const local={id:'chat',owner,kind:'conversation',revision:8,serverRevision:2,dirty:true,deleted:false,pinned:false,opened:1,
+    payload:{...batch.changes[0].payload,messages:[...batch.changes[0].payload.messages,{id:999,uuid:'unsent-local-edit',role:'user',content:'UNSENT LOCAL HISTORY'}]}};
+  await appTransaction(['entities','meta','parts'],'readwrite',(tx,done)=>{
+    writeEntity(tx,local);
+    tx.objectStore('meta').put(header,root);tx.objectStore('meta').put(true,prefix+'consent');tx.objectStore('meta').put(0,prefix+'cursor');
+    tx.objectStore('meta').put(999,'message-sequence:'+owner);
+    tx.objectStore('meta').put({keep:'foreign receipt'},'sync:foreign-stream-owner:remote:other');
+    if(!legacy)for(let i=0;i<ref.chunks;i++)tx.objectStore('parts').put(raw.slice(i*LIMIT,(i+1)*LIMIT),partKey(i));
+    done();
+  });
+  // The byte oracle is intentionally the old serializer over the seed original, never the product source.
+  const wire=encode(stringify({request_id:batch.request_id,changes:batch.changes}));
+  if(!small)check(wire.length>3*LIMIT&&ref.chunks>=4,'Fixture must exceed 3 MiB and span multiple saved parts');
+  return {batch,ref,wire,header,local};
+}
+async function snapshot(){
+  const data=await appTransaction(['entities','meta','parts'],'readonly',(tx,done)=>{
+    const result={},names=['entities','meta','parts'];let n=0;
+    const next=()=>{const name=names[n++];if(!name){done(result);return;}
+      const store=tx.objectStore(name),keys=store.getAllKeys(),values=store.getAll();
+      values.onsuccess=()=>{result[name]=keys.result.map((key,i)=>[key,values.result[i]]);next();};};next();
+  });
+  const parts=[];for(const [key,value] of data.parts)parts.push([key,value instanceof Uint8Array?{length:value.length,sha256:await digest(value)}:value]);
+  return {...data,parts};
+}
+async function editHeader(change){
+  await appTransaction(['meta'],'readwrite',(tx,done)=>{
+    const meta=tx.objectStore('meta'),r=meta.get(root);r.onsuccess=()=>{meta.put(change(r.result),root);done();};
+  });
+}
+async function mutate(kind){
+  if(kind==='owner'){rememberOwner('outbox-stream-other-owner');return;}
+  if(kind==='busy'){setGenerationBusy(true);return;}
+  if(kind==='consent')return appTransaction(['meta'],'readwrite',(tx,done)=>{tx.objectStore('meta').put(false,prefix+'consent');done();});
+  await editHeader(h=>{
+    if(kind==='manifest')return {...h,changesParts:{...h.changesParts,sha256:'0'.repeat(64)}};
+    if(kind==='revision')return {...h,revisions:{...h.revisions,chat:70}};
+    if(kind==='control')return {...h,changes:[{...h.changes[0],base_revision:77}]};
+    if(kind==='count')return {...h,count:h.count+1};
+    if(kind==='request')return {...h,request_id:'replaced-fictional-request'};
+    throw Error('Unknown mutation '+kind);
+  });
+}
+async function damage(kind,ref){
+  let bytes;
+  if(['json','utf8','depth','shape','payload-array','payload-scalar'].includes(kind)){
+    // Correct hashes ensure parser rejection cannot be mistaken for checksum rejection.
+    const raw=encode(stringify(original().changes));
+    if(kind==='json'){bytes=raw.slice();bytes[bytes.length-1]=44;}
+    if(kind==='utf8'){bytes=raw.slice();bytes[bytes.length-4]=255;}
+    if(kind==='depth')bytes=encode(stringify(original().changes).slice(0,-2)+',"lateDepth":'+'['.repeat(65)+'0'+']'.repeat(65)+'}]');
+    if(kind==='shape')bytes=encode(stringify({changes:original().changes}));
+    if(kind.startsWith('payload-')){const changes=original().changes;changes.push({...changes[0],payload:kind==='payload-array'?[]:'scalar'});bytes=encode(stringify(changes));}
+    const manifest={...ref,size:bytes.length,chunks:Math.ceil(bytes.length/LIMIT),sha256:await digest(bytes)};
+    await appTransaction(['meta','parts'],'readwrite',(tx,done)=>{
+      for(let i=0;i<ref.chunks;i++)tx.objectStore('parts').delete(partKey(i));
+      for(let i=0;i<manifest.chunks;i++)tx.objectStore('parts').put(bytes.slice(i*LIMIT,(i+1)*LIMIT),partKey(i));
+      const r=tx.objectStore('meta').get(root);r.onsuccess=()=>{tx.objectStore('meta').put({...r.result,changesParts:manifest},root);done();};
+    });return;
+  }
+  await appTransaction(['meta','parts'],'readwrite',(tx,done)=>{
+    const index=ref.chunks-1,store=tx.objectStore('parts');
+    if(kind==='missing'){store.delete(partKey(index));done();return;}
+    if(kind==='sha'){const r=tx.objectStore('meta').get(root);r.onsuccess=()=>{tx.objectStore('meta').put({...r.result,changesParts:{...ref,sha256:'0'.repeat(64)}},root);done();};return;}
+    const r=store.get(partKey(index));r.onsuccess=()=>{const b=r.result.slice();b[Math.floor(b.length/2)]^=1;store.put(b,partKey(index));done();};
+  });
+}
+function observe(){
+  const oldFeed=JsonStream.prototype.feed,oldFinish=JsonStream.prototype.finish,oldGet=IDBObjectStore.prototype.get;
+  const stats={parserFinishes:0,feedSamples:0,projected:0,payloadTrees:0,retainedMessages:0,maxLivePayloadKeys:0,maxDiscardedFrameKeys:0,maxDecodeBytes:0,maxScalarChars:0,outboxPartReads:0,readonlyOutboxPartReads:0};
+  const oldDecode=TextDecoder.prototype.decode,oldParse=JSON.parse;
+  JsonStream.prototype.feed=function(bytes){
+    const result=oldFeed.call(this,bytes);stats.feedSamples++;
+    // Observe the actual parser's live frames, not a replacement parser or fixture oracle.
+    const changes=Array.isArray(this.root)?this.root:this.root?.changes;
+    if(Array.isArray(changes))for(const change of changes)stats.maxLivePayloadKeys=Math.max(stats.maxLivePayloadKeys,Object.keys(change?.payload??{}).length);
+    for(const frame of this.stack)if(!frame.keep)stats.maxDiscardedFrameKeys=Math.max(stats.maxDiscardedFrameKeys,Object.keys(frame.value).length);
+    return result;
+  };
+  JsonStream.prototype.finish=function(){
+    const value=oldFinish.call(this);stats.parserFinishes++;
+    const changes=Array.isArray(value)&&value.some(c=>c?.kind==='conversation')?value:value?.changes;
+    if(Array.isArray(changes)){
+      stats.projected++;for(const change of changes){if(change.payload&&Object.keys(change.payload).length)stats.payloadTrees++;stats.retainedMessages+=change.payload?.messages?.length??0;}
+    }
+    return value;
+  };
+  IDBObjectStore.prototype.get=function(key){
+    if(this.name==='parts'&&Array.isArray(key)&&key[0]===owner&&key[1]==='outbox'){
+      stats.outboxPartReads++;if(this.transaction.mode==='readonly')stats.readonlyOutboxPartReads++;
+    }
+    return oldGet.call(this,key);
+  };
+  TextDecoder.prototype.decode=function(input,...args){stats.maxDecodeBytes=Math.max(stats.maxDecodeBytes,input?.byteLength??0);return oldDecode.call(this,input,...args);};
+  JSON.parse=function(text,...args){stats.maxScalarChars=Math.max(stats.maxScalarChars,typeof text==='string'?text.length:0);return oldParse.call(this,text,...args);};
+  return {stats,stop(){JsonStream.prototype.feed=oldFeed;JsonStream.prototype.finish=oldFinish;IDBObjectStore.prototype.get=oldGet;TextDecoder.prototype.decode=oldDecode;JSON.parse=oldParse;}};
+}
+async function parserProbe(){
+  const input={request_id:'projection-only',payload:{keep:'root control'},messages:[{content:'root messages retained'}],
+    changes:[{id:'chat',kind:'conversation',base_revision:2,payload:{messages:[{content:'DROP ME'}],nested:{payload:{drop:true}}},deleted:false,
+      controls:{payload:{keep:'nested control'},messages:[{content:'control message retained'}]}}]};
+  const parser=new JsonStream({omitChangePayloads:true}),bytes=encode(stringify(input));
+  for(let i=0;i<bytes.length;i+=7)parser.feed(bytes.subarray(i,i+7));
+  const result=parser.finish();
+  same({...result.changes[0],payload:{}},{...input.changes[0],payload:{}},'Projection damaged change controls');
+  check(!result.changes[0].payload||Object.keys(result.changes[0].payload).length===0,'Projection retained payload');
+  same(result.payload,input.payload,'Projection discarded root payload');same(result.messages,input.messages,'Projection discarded root messages');
+}
+async function run(scenario,resumed=false){
+  const small=['inline','legacy-inline','sync-inline'].includes(scenario),legacy=scenario.includes('legacy');
+  let fixture;
+  if(resumed){rememberOwner(owner);const batch=original();fixture={batch,wire:encode(stringify({request_id:batch.request_id,changes:batch.changes})),ref:(await getMeta(root)).changesParts};}
+  else fixture=await seed(small,legacy,scenario.startsWith('cached-'),scenario==='cached-withdrawn-receipt');
+  if(scenario==='prepare'){
+    const before=await snapshot();check(before.parts.length>4,'Real IndexedDB was not seeded');same(await entity('chat',owner),fixture.local,'Seed round trip');
+    return {ok:true,scenario,wireBytes:fixture.wire.length,storageParts:fixture.ref.chunks,oracleSha256:await digest(fixture.wire),scope:'preparation only; new source API not imported'};
+  }
+  const {outboxSyncSource}=await import('/src/lib/appOutbox.ts');
+  check(typeof outboxSyncSource==='function','Missing planned product API');
+  if(scenario==='wire')await parserProbe();
+  if(scenario.startsWith('late-'))await damage(scenario.slice(5),fixture.ref);
+  const before=await snapshot(),header=await getMeta(root),source=legacy?{request_id:header.request_id,changes:header.changes}:outboxSyncSource(owner,header);
+  const oracleText=scenario==='wire'?new TextDecoder().decode(fixture.wire):null;
+  check(source.request_id===fixture.batch.request_id,'Source request ID changed');
+  const stats=observe(),calls=[],indices=[],chunks=[],networkFenceViolations=[],stubNetworkViolations=[],mutated={value:false},expectedParts=Math.ceil(fixture.wire.length/LIMIT);
+  const originalFetch=globalThis.fetch,originalStringify=JSON.stringify;
+  let committed=false,inline=false,opened=0,rejected=false,failure='',preserve=before;
+  const resume=scenario==='resume'||scenario==='sync-resume',sync=scenario.startsWith('sync-')||scenario.startsWith('cached-');
+  const negative=scenario.startsWith('late-')||scenario.startsWith('upload-late-')||scenario.startsWith('source-')||scenario.startsWith('sync-last-')||/^(hash|open|part|last)-/.test(scenario)||/^sync-(owner|busy|consent|manifest|revision|control)$/.test(scenario)||scenario.startsWith('serialize-');
+  async function change(kind){check(!mutated.value,'Mutation fired twice');mutated.value=true;await mutate(kind);preserve=await snapshot();}
+  async function active(){
+    if(scenario.startsWith('hash-')&&!mutated.value)await change(scenario.slice(5));
+    check(deviceOwner()===owner&&!generationBusy()&&(await getMeta(prefix+'consent'))===true,'active fence changed');
+    // Helper callers own the active contract; sync cases exercise the real product transferActive.
+    same(await getMeta(root),header,'persisted source fence changed');
+  }
+  async function call(path,init={}){
+    calls.push(path);
+    const persisted=await getMeta(root);
+    if(deviceOwner()!==owner||generationBusy()||await getMeta(prefix+'consent')!==true
+      ||stringify(persisted)!==stringify(header))networkFenceViolations.push(path);
+    check(networkFenceViolations.length===0,'Network call crossed changed source/owner/busy/consent fence');
+    if(path==='/transfers'){
+      opened++;const manifest=parse(init.body);
+      same(manifest,{request_id:fixture.batch.request_id,size:fixture.wire.length,sha256:await digest(fixture.wire)},'Manifest differs from old serializer');
+      if(scenario.startsWith('open-'))await change(scenario.slice(5));
+      if(scenario==='committed'||scenario==='sync-committed')return {result:receipt};
+      if(scenario.includes('large-receipt'))return {inline_receipt_required:true};
+      const next=resume?Number(sessionStorage.getItem('outbox-stream-next')??0):0;
+      return {transfer_id:transfer,next,chunk_bytes:LIMIT};
+    }
+    if(path.includes('/parts/')){
+      const index=Number(path.split('/').at(-1)),part=parse(init.body),bytes=Uint8Array.from(atob(part.data),c=>c.charCodeAt(0));
+      check(index>=(resumed?1:0),'Resent resumed part');
+      equalBytes(bytes,fixture.wire.subarray(index*LIMIT,(index+1)*LIMIT),'Wire part '+index);
+      check(bytes.length===Math.min(LIMIT,fixture.wire.length-index*LIMIT),'Incorrect 1 MiB framing');
+      check(await digest(bytes)===part.sha256,'Part SHA differs from independent digest');
+      indices.push(index);chunks.push(bytes);
+      if(resume&&!resumed){sessionStorage.setItem('outbox-stream-next','1');throw Error('FICTIONAL INTERRUPTED RESPONSE AFTER PART 0');}
+      if(scenario.startsWith('part-')&&index===0)await change(scenario.slice(5));
+      if(scenario.startsWith('upload-late-')&&index===0){mutated.value=true;await damage(scenario.slice(12),fixture.ref);preserve=await snapshot();}
+      if(scenario.startsWith('sync-')&&!scenario.startsWith('sync-last-')&&negative&&index===0)await change(scenario.slice(5));
+      if(scenario.startsWith('sync-last-')&&index===expectedParts-1)await change(scenario.slice(10));
+      if(scenario.startsWith('last-')&&index===expectedParts-1)await change(scenario.slice(5));
+      return {next:index+1};
+    }
+    if(path.endsWith('/commit')){committed=true;return receipt;}
+    check(path==='','Unexpected fictional API '+path);inline=true;
+    check(typeof init.body==='string','Inline body must remain a JSON string');equalBytes(encode(init.body),fixture.wire,'Exact inline oracle');return receipt;
+  }
+  globalThis.fetch=async(input,init={})=>{
+    const path=String(input);
+    if(path==='/api/mobile/status')return Response.json({cloud_mode:true,authenticated:true,owner_scope:owner});
+    if(!path.startsWith('/api/cloud/app/sync')||new Headers(init.headers).get('X-Kyalulu-Owner')!==owner)stubNetworkViolations.push(path);
+    check(path.startsWith('/api/cloud/app/sync'),'External/provider/model/API request rejected: '+path);
+    check(new Headers(init.headers).get('X-Kyalulu-Owner')===owner,'Wrong HTTP owner header');
+    const suffix=path.slice('/api/cloud/app/sync'.length);
+    if(suffix.startsWith('?cursor='))return Response.json({changes:[],cursor:0,has_more:false});
+    return Response.json(await call(suffix,init));
+  };
+  if(scenario.startsWith('serialize-')){
+    const [,boundary,kind]=scenario.split('-');
+    JSON.stringify=function(value,...args){
+      const result=originalStringify.call(this,value,...args);
+      if(!mutated.value&&(boundary==='manifest'&&value?.size>LIMIT||boundary==='part'&&typeof value?.data==='string'||boundary==='commit'&&value&&Object.keys(value).length===0)){
+        mutated.value=true;if(kind==='owner')rememberOwner('outbox-stream-other-owner');else setGenerationBusy(true);
+      }
+      return result;
+    };
+  }
+  try{
+    try{
+      if(scenario.startsWith('source-')){
+        for await(const bytes of source.chunks()){chunks.push(bytes);if(chunks.length===1)await change(scenario.slice(7));}
+      }else if(scenario==='wire'){
+        for await(const bytes of source.chunks())chunks.push(bytes);
+        equalBytes(join(chunks),fixture.wire,'Full old serializer oracle');
+        check(chunks.every((b,i)=>b.length===Math.min(LIMIT,fixture.wire.length-i*LIMIT)),'Source output is not 1 MiB framed');
+        same(await source.inline(),{method:'POST',headers:{'Content-Type':'application/json'},body:oracleText},'Source inline RequestInit');
+      }else if(sync)await syncNow(owner);
+      else await uploadSync(source,call,active);
+    }catch(error){rejected=true;failure=String(error);if(!negative&&!resume)throw error;}
+  }finally{stats.stop();globalThis.fetch=originalFetch;JSON.stringify=originalStringify;}
+  check(stubNetworkViolations.length===0,'Forbidden mocked API attempt: '+stringify(stubNetworkViolations));
+  check(networkFenceViolations.length===0,'HTTP called after fence changed: '+stringify(networkFenceViolations));
+  if(sync)rejected=syncState().phase==='error'||negative&&!committed&&!inline;
+  const after=await snapshot();
+  if(negative){
+    if(!scenario.startsWith('late-'))check(mutated.value,'Intended mutation boundary was never reached');
+    check(!committed&&!inline,'Rejected source reached terminal commit/inline');
+    check(rejected,'Invalid or changed source was accepted');
+    if(!scenario.startsWith('serialize-'))same(after,preserve,'Failure changed source parts/header/local history/receipt');
+    else same(after,before,'Serialization race changed storage');
+    check(!after.meta.find(([k])=>k===root)?.[1]?.receipt,'Failure invented a receipt');
+  }else if(resume&&!resumed){
+    check(indices.length===1&&indices[0]===0&&!committed,'Interrupt boundary was not exact');same(after,before,'Interruption changed fixed source or local history');
+  }else if(sync){
+    check(!await getMeta(root),'ACK did not remove fixed outbox');
+    const saved=await entity('chat',owner);check(saved.revision===8&&saved.dirty&&saved.serverRevision===3,'ACK lost unsent local revision');
+    check(saved.payload.messages.at(-1).content==='UNSENT LOCAL HISTORY','ACK lost unsent local message');
+    if(scenario.startsWith('cached-')){
+      check(!calls.length,'Cached receipt resent HTTP body');
+      check(stats.stats.projected>0&&stats.stats.payloadTrees===0&&stats.stats.retainedMessages===0,'No real payload-free parser observation on cached ACK');
+      check(stats.stats.feedSamples>0&&stats.stats.maxLivePayloadKeys===0&&stats.stats.maxDiscardedFrameKeys===0,'Cached ACK retained payload in live parser frames');
+      check(stats.stats.maxDecodeBytes<=LIMIT&&stats.stats.maxScalarChars<100000,'Cached ACK buffered a whole body/scalar');
+    }
+  }else{
+    same(after,before,'Read-only helper changed source or history');
+    if(scenario!=='wire'&&scenario!=='committed'&&!small&&!scenario.includes('large-receipt'))check(committed,'No terminal commit');
+  }
+  if(scenario==='committed'||scenario==='sync-committed')check(!indices.length&&!committed&&!inline,'Committed receipt resent body');
+  if(small||scenario.includes('large-receipt'))check(inline&&!committed,'Required inline path missing');
+  if(resumed)check(indices.length===expectedParts-1&&indices[0]===1&&committed,'Resume did not finish remaining parts');
+  if(!legacy&&['wire','resume','committed'].includes(scenario)){
+    check(stats.stats.outboxPartReads>0&&stats.stats.readonlyOutboxPartReads===stats.stats.outboxPartReads,'Source did not use readonly part transactions');
+    check(stats.stats.payloadTrees===0&&stats.stats.retainedMessages===0,'Client outbox parser retained a full payload');
+    check(stats.stats.maxLivePayloadKeys===0&&stats.stats.maxDiscardedFrameKeys===0,'Client outbox parser buffered a discarded payload');
+  }
+  check(localStorage.getItem('outbox-stream-unrelated')==='preserved','Unrelated local storage changed');
+  return {ok:true,scenario,resumed,wireBytes:fixture.wire.length,oracleSha256:await digest(fixture.wire),indices,opened,committed,inline,rejected,failure,mutated:mutated.value,
+    parser:stats.stats,networkFenceViolations,stubNetworkViolations,oracleMeasurement:'full seed/stringify oracle outside client parser observation; not a process memory bound'};
+}
+window.outboxStreamRun=async(...args)=>{try{return await run(...args);}catch(error){return {ok:false,scenario:args[0],error:String(error),stack:error.stack};}};
+window.__OUTBOX_STREAM_READY__=true;
+</script>

@@ -400,6 +400,13 @@ actorの初期全履歴保持、入力配列、選択前のraw_prompt、ONNXの�
 分岐受領と固定outboxの全量復元は残る。共有writerのencode集約は
 [JSON encoding](validation/2026-10-31-unified-json-encoding.md) に旧byte/part/hash完全一致を記録し、Research19ケースでも再確認した。
 
+保存済みの固定outbox再送と通常の受領照合は、payloadを復元せず同じwire bytesへ組み立てる。
+[Outbox stream](validation/2026-10-31-unified-outbox-stream.md) に全Web1,469件、型/build、
+実ブラウザ79ケースの正確なbyte/再開/receipt/全境界/破損/owner・同意fenceと、既存同期15ケースを記録する。
+初回staging・旧inline・分岐復旧・生成全体の全量経路は残り、1GB全体の合格とはしない。
+e76cc81のWindows CIはRelayの実時計依存試験で失敗したため、製品制限を維持して試験時計を限定した。
+[Relay rate clock](validation/2026-10-31-unified-relay-rate-clock.md) に旧試験の境界再現と関連51件成功を記録する。
+
 Core復元の媒体交換中に実process killすると、現在DBの参照媒体が欠落する不具合を再現・修正した。
 [Core interruption](validation/2026-10-31-unified-core-interruption.md)に実kill3地点を含む66件の検証を記録する。
 媒体を検証して両世代分を先に保持し、SQLiteのatomic反映を後に行う。独立復旧ZIPと同期/owner/削除保護は維持。

@@ -186,6 +186,27 @@ it('keeps small requests inline with the original JSON serialization',async()=>{
   expect(await uploadSync(body,call,async()=>{})).toBe(result);expect(call).toHaveBeenCalledOnce();
 });
 
+it.each(['manifest','part','commit'])('checks the active fence after serializing the %s request',async boundary=>{
+  const {body,raw}=fixture(),stringify=JSON.stringify,paths:string[]=[];let changed=false,parts=0,hits=0;
+  const spy=vi.spyOn(JSON,'stringify').mockImplementation(((value:any,...args:any[])=>{
+    const text=(stringify as any)(value,...args);
+    if(boundary==='manifest'&&value?.request_id===body.request_id&&value?.size!==undefined
+      ||boundary==='part'&&typeof value?.data==='string'
+      ||boundary==='commit'&&parts===Math.ceil(raw.length/chunkBytes)&&value&&typeof value==='object'&&!Object.keys(value).length){changed=true;hits++;}
+    return text;
+  }) as typeof JSON.stringify);
+  const call=async(path:string)=>{
+    expect(changed).toBe(false);paths.push(path);
+    if(path==='/transfers')return {transfer_id:transfer,next:0,chunk_bytes:chunkBytes};
+    if(path.includes('/parts/'))return {next:++parts};return {changes:[]};
+  };
+  try{await expect(uploadSync(body,call,async()=>{if(changed)throw Error('Fence changed');})).rejects.toThrow('Fence changed');}
+  finally{spy.mockRestore();}
+  expect(hits).toBe(1);expect(paths.some(path=>path.endsWith('/commit'))).toBe(false);
+  if(boundary==='manifest')expect(paths).toEqual([]);
+  if(boundary==='part')expect(paths).toEqual(['/transfers']);
+});
+
 it('streams exact legacy bytes across Unicode and escaped-string boundaries using bounded encodings',async()=>{
   const key='\"\n\u0000'.repeat(3000),text='x'.repeat(4095)+'🙂'+'\ud800\udc00\ud800\udfff\udfff\ud800\"\\\n\t\r\b\f\u0000'.repeat(90000);
   const body={request_id:'escaped',changes:[{payload:{[key]:text,values:[null,true,false,undefined,-0,1e30],omit:undefined,nested:{b:2,a:'茶'}}}]};

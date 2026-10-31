@@ -6,6 +6,7 @@ export const SYNC_INLINE_BYTES=1_500_000;
 const CHUNK_BYTES=1024*1024;
 type Call=(path:string,init?:RequestInit)=>Promise<any>;
 type Active=()=>Promise<void>;
+export type SyncUploadSource={request_id:string;chunks:()=>AsyncIterable<Uint8Array>;inline:()=>Promise<RequestInit>};
 const hash=(raw:Uint8Array)=>new Sha256().update(raw).digest();
 const post=(body:unknown):RequestInit=>({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 
@@ -57,28 +58,33 @@ export function* jsonChunks(value:unknown):Generator<Uint8Array> {
   if(used)yield buffer.subarray(0,used);
 }
 
-export async function uploadSync(body:{request_id:string;changes:unknown[]},call:Call,active:Active) {
+export async function uploadSync(body:{request_id:string;changes:unknown[]}|SyncUploadSource,call:Call,active:Active) {
   if(typeof body.request_id!=='string'||!body.request_id||body.request_id.length>100)throw Error('Invalid sync transfer');
+  const chunks='chunks' in body?body.chunks:()=>jsonChunks(body),inline='inline' in body?body.inline:async()=>post(body);
+  const sendInline=async()=>{const init=await inline();await active();return call('',init);};
+  const send=async(path:string,value:unknown)=>{const init=post(value);await active();return call(path,init);};
   let size=0;const digest=new Sha256();
-  for(const chunk of jsonChunks(body)){
+  for await(const chunk of chunks()){
     await active();size+=chunk.length;if(size>1_000_000_000)throw Error('Invalid sync transfer');digest.update(chunk);
   }
-  await active();
-  if(size<=SYNC_INLINE_BYTES)return call('',post(body));
-  const opened=await call('/transfers',post({request_id:body.request_id,size,sha256:digest.digest()}));
-  if(opened.inline_receipt_required===true){await active();return call('',post(body));}
+  const sha256=digest.digest();await active();
+  if(size<=SYNC_INLINE_BYTES)return sendInline();
+  const opened=await send('/transfers',{request_id:body.request_id,size,sha256});
+  if(opened.inline_receipt_required===true){await active();return sendInline();}
   if(opened.result)return opened.result;
   if(typeof opened.transfer_id!=='string'||!/^[0-9a-f-]{36}$/.test(opened.transfer_id)||opened.chunk_bytes!==CHUNK_BYTES
     ||!Number.isSafeInteger(opened.next)||opened.next<0||opened.next>Math.ceil(size/CHUNK_BYTES))throw Error('Invalid sync transfer');
-  let index=0;
-  for(const chunk of jsonChunks(body)){
+  let index=0,sentSize=0;const sentDigest=new Sha256();
+  for await(const chunk of chunks()){
     await active();
+    sentSize+=chunk.length;sentDigest.update(chunk);
     if(index++<opened.next)continue;
-    const received=await call(`/transfers/${opened.transfer_id}/parts/${index-1}`,post({data:encodeBytes(chunk),sha256:hash(chunk)}));
+    const received=await send(`/transfers/${opened.transfer_id}/parts/${index-1}`,{data:encodeBytes(chunk),sha256:hash(chunk)});
     if(received.next!==index)throw Error('Invalid transfer acknowledgment');
   }
+  if(sentSize!==size||sentDigest.digest()!==sha256)throw Error('Sync transfer changed during upload');
   await active();
-  return call(`/transfers/${opened.transfer_id}/commit`,post({}));
+  return send(`/transfers/${opened.transfer_id}/commit`,{});
 }
 
 export async function downloadEntity(entity:any,call:Call,active:Active) {

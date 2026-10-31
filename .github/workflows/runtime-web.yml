@@ -43,6 +43,7 @@ jobs:
       - run: uv run --no-sync python tests/e2e_segmented_storage.py
       - run: uv run --no-sync python tests/e2e_device_history_pages.py
       - run: uv run --no-sync python tests/e2e_sync_selection.py
+      - run: uv run --no-sync python tests/e2e_outbox_stream.py --accept-current-source
       - run: uv run --no-sync python tests/e2e_offline_cache.py
       - run: uv run --no-sync python tests/e2e_device_quota.py
       - run: uv run --no-sync python tests/e2e_device_export.py

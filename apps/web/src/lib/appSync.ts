@@ -1,11 +1,12 @@
-import { appTransaction, entity, getMeta, entitySelection, guardStorage, restoreEntity, readEntity, writeEntity, acknowledgeConversation, restoreOutbox, writeOutbox, scrubGenerationRecords, copyMemoryEvents, trimOfflineCache, type StoredEntity, type AppEntity, type Outbox } from './appStore';
+import { appTransaction, entity, getMeta, entitySelection, guardStorage, restoreEntity, readEntity, writeEntity, acknowledgeConversation, restoreOutbox, writeOutbox, scrubGenerationRecords, copyMemoryEvents, trimOfflineCache, type StoredEntity, type StoredOutbox, type AppEntity, type Outbox } from './appStore';
 import { deviceExecutionLockName } from './deviceExecution';
 import { cloudFetch } from './transport';
 import { deviceOwner, generationBusy } from './appContext';
 import { receiveConversation, receiveLibrarySnapshot, receiveCreatorSnapshot, rebindConversation, withLibrarySnapshots, conversationSettings } from './appSyncData';
 import { downloadEntity, uploadSync } from './appTransfers';
+import { outboxSyncSource,sameOutboxSource } from './appOutbox';
 
-type Batch=Outbox&{revisions:Record<string,number>;withdrawn?:boolean|0;receipt?:{changes:Ack[]}};
+type Batch=StoredOutbox&{revisions:Record<string,number>;withdrawn?:boolean|0;receipt?:{changes:Ack[]}};
 type Ack={id:string;source_id?:string;revision:number;deleted:boolean;branched?:boolean;lineage?:Record<string,unknown>};
 export type SyncState={phase:'off'|'syncing'|'saved'|'error';pending:number;error:string};
 let state:SyncState={phase:'off',pending:0,error:''};
@@ -18,7 +19,7 @@ const report=(next:SyncState,owner=deviceOwner())=>{state=next;stateOwner=owner;
 let flight:Promise<void>|null=null;
 const key=(owner:string,suffix:string)=>`sync:${owner}:${suffix}`;
 
-async function transferActive(owner:string,requestId?:string) {
+async function transferActive(owner:string,requestId?:string,expected?:StoredOutbox) {
   if(owner!==deviceOwner()||generationBusy())throw Error('Sync consent changed');
   if(!requestId){if(!await getMeta(key(owner,'consent')))throw Error('Sync consent changed');return;}
   await appTransaction<void>(['meta'],'readwrite',(tx,done)=>{
@@ -29,11 +30,18 @@ async function transferActive(owner:string,requestId?:string) {
       const probe=meta.index('sync-outbox-state').openKeyCursor(IDBKeyRange.only([requestId,0]));
       probe.onsuccess=()=>{
         if(!current()){tx.abort();return;}
-        if(probe.result){if(probe.result.primaryKey===key(owner,'outbox'))done();else probe.result.continue();return;}
+        if(probe.result){
+          if(probe.result.primaryKey!==key(owner,'outbox')){probe.result.continue();return;}
+          if(!expected?.changesParts){done();return;}
+          const source=meta.get(key(owner,'outbox'));source.onsuccess=()=>{
+            if(!current()||!sameOutboxSource(source.result,expected)){tx.abort();return;}done();
+          };return;
+        }
         const legacy=meta.get(key(owner,'outbox'));
         legacy.onsuccess=()=>{
           const pending=legacy.result as Batch|undefined;
-          if(!current()||!pending||pending.request_id!==requestId||pending.withdrawn){tx.abort();return;}
+          if(!current()||!pending||pending.request_id!==requestId||pending.withdrawn
+            ||expected?.changesParts&&!sameOutboxSource(pending,expected)){tx.abort();return;}
           // A legacy boolean/missing flag is read once; numeric zero is an indexable false value.
           meta.put({...pending,withdrawn:0},key(owner,'outbox'));done();
         };
@@ -357,9 +365,7 @@ async function synchronize(owner:string) {
       }
     };
     await download();current();
-    batch=await appTransaction<Batch|undefined>(['meta','parts'],'readonly',(tx,done)=>{
-      const read=tx.objectStore('meta').get(key(owner,'outbox'));read.onsuccess=()=>restoreOutbox(tx,owner,read.result,done);
-    });
+    batch=await getMeta<Batch>(key(owner,'outbox'));
     if(!batch) {
       batch=await prepareSyncBatch(owner);
       if(batch) {
@@ -369,7 +375,9 @@ async function synchronize(owner:string) {
           consent.onsuccess=()=>{
             if(owner!==deviceOwner()||generationBusy()){tx.abort();return;}
             if(!consent.result){done(undefined);return;}
-            if(!existing.result)writeOutbox(tx,owner,staged,()=>done(staged));else restoreOutbox(tx,owner,existing.result,done);
+            if(!existing.result)writeOutbox(tx,owner,staged,()=>{
+              const stored=meta.get(key(owner,'outbox'));stored.onsuccess=()=>done(stored.result);
+            });else done(existing.result);
           };
         });
       }
@@ -379,8 +387,20 @@ async function synchronize(owner:string) {
       current();
       report({phase:'syncing',pending:batch.changes.length,error:''});
       if(batch.withdrawn&&!batch.receipt)throw Error('Sync cancellation pending');
-      const result=syncReceipt(batch,batch.receipt??await uploadSync({request_id:batch.request_id,changes:batch.changes},
-        (path,init)=>rawRequest(owner,path,init),()=>transferActive(owner,batch!.request_id)));current();
+      const fixedBatch=batch,source=batch.changesParts?outboxSyncSource(owner,batch):undefined;
+      if(batch.receipt&&source)for await(const _ of source.chunks()){current();}
+      const result=syncReceipt(batch,batch.receipt??await uploadSync(source??{request_id:batch.request_id,changes:batch.changes},
+        (path,init)=>rawRequest(owner,path,init),()=>transferActive(owner,batch!.request_id,fixedBatch)));current();
+      if(batch.changesParts&&result.changes.some(ack=>ack.branched)){
+        const expected=batch;
+        batch=await appTransaction<Batch>(['meta','parts'],'readonly',(tx,done)=>{
+          guardStorage(tx,()=>owner===deviceOwner()&&!generationBusy());
+          const read=tx.objectStore('meta').get(key(owner,'outbox'));read.onsuccess=()=>{
+            if(!sameOutboxSource(read.result,expected)){tx.abort();return;}
+            restoreOutbox(tx,owner,expected,value=>done(value!));
+          };
+        });
+      }
       const pending=batch;
       const deleted=result.changes.filter((ack:Ack)=>ack.deleted).map((ack:Ack)=>({id:ack.source_id??ack.id,revision:ack.revision,kind:pending.changes.find(c=>c.id===(ack.source_id??ack.id))?.kind,deleted:true,payload:{}}));
       if(deleted.length)await receiveSyncPage(owner,deleted,await getMeta<number>(key(owner,'cursor'))??0);
@@ -388,7 +408,8 @@ async function synchronize(owner:string) {
         guardStorage(tx,()=>owner===deviceOwner()&&!generationBusy());
         const meta=tx.objectStore('meta'),queued=meta.get(key(owner,'outbox')),consent=meta.get(key(owner,'consent'));
         consent.onsuccess=()=>{
-          if(!consent.result||owner!==deviceOwner()||generationBusy()||queued.result?.request_id!==pending.request_id){tx.abort();return;}
+          if(!consent.result||owner!==deviceOwner()||generationBusy()||queued.result?.request_id!==pending.request_id
+            ||fixedBatch.changesParts&&!sameOutboxSource(queued.result,fixedBatch)){tx.abort();return;}
           const required=new Set<string>(result.changes.map((ack:Ack)=>ack.source_id??ack.id));
           selectSyncHeaders(tx,owner,required,(records,identities,number)=>{
             let index=0;

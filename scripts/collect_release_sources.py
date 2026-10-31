@@ -110,6 +110,8 @@ FILES = (
     "tests/fixtures/device-research.html",
     "tests/e2e_research_storage.py",
     "tests/fixtures/research-storage.html",
+    "tests/e2e_outbox_stream.py",
+    "tests/fixtures/outbox-stream.html",
     "tests/fixtures/memory-language.html",
     "tests/fixtures/portable-prompt.json",
     "tests/fixtures/unified-history.json",

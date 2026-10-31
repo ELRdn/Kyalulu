@@ -22,9 +22,12 @@ export class JsonStream {
   private window?:MessageWindow;
   private ids?:readonly number[];
   private onMessage?:(value:unknown,index:number)=>void;
+  private omitChangePayloads=false;
   // Callers must validate all parts and complete finish() successfully before accepting callback output.
-  constructor(window?:MessageWindow|{ids:readonly number[]}|{onMessage:(value:unknown,index:number)=>void}) {
-    if(window&&'onMessage' in window){
+  constructor(window?:MessageWindow|{ids:readonly number[]}|{onMessage:(value:unknown,index:number)=>void}|{omitChangePayloads:true}) {
+    if(window&&'omitChangePayloads' in window){
+      if(window.omitChangePayloads!==true)throw Error('Invalid changes projection');this.omitChangePayloads=true;
+    }else if(window&&'onMessage' in window){
       const onMessage=window.onMessage;
       if(typeof onMessage!=='function')throw Error('Invalid message callback');
       this.onMessage=onMessage;
@@ -43,6 +46,8 @@ export class JsonStream {
 
   private keepValue() {
     const frame=this.stack.at(-1);
+    if(this.omitChangePayloads&&this.stack.length===3&&this.stack[0].key==='changes'
+      &&Array.isArray(this.stack[1].value)&&!Array.isArray(frame!.value)&&frame!.key==='payload')return false;
     return !frame||frame.keep&&(!frame.messages||!!this.ids||!!this.onMessage||this.window!.limit>0&&(this.window!.start===undefined
       ||frame.index>=this.window!.start&&frame.index-this.window!.start<this.window!.limit));
   }
