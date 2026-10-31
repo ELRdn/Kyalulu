@@ -100,6 +100,8 @@ FILES = (
     "tests/fixtures/memory-source-projection.html",
     "tests/e2e_history_mutations.py",
     "tests/fixtures/history-mutations.html",
+    "tests/e2e_device_branches.py",
+    "tests/fixtures/device-branches.html",
     "tests/e2e_device_memory.py",
     "tests/e2e_device_generation_lock.py",
     "tests/e2e_device_target_switch.py",

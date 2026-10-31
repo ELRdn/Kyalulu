@@ -363,6 +363,19 @@ revision/token競合時の原本/固定outbox保持を確認した。再取得�
 [Custom scenario](validation/2026-10-31-unified-custom-scenario.md)ではrunner/catalogの公式判定を共通化し、
 未登録ID/characterなしの500と誤った公式表示を解消。関連20件が成功した。
 
+Deviceでの明示分岐も、本文を復元せずに選択地点のsnapshotと発言identityだけを検査し、
+コピー先へ1発言ずつ書く経路へ接続した。既存の受信/分岐で使うID・記憶出典・過去の設定の検証を共通化し、
+元のUUIDを保ったまま数値IDと記憶IDを再割り当てる。全Web1,408件・関連237件・型・統合buildが成功。
+[Bounded branches](validation/2026-10-31-unified-device-branches.md)の実Chromium24ケースでは、旧処理を
+固定した独立oracleとの全payload比較36分岐、共有pool分離、原本/固定outbox、破損・quota・owner・
+revision/token競合時のrollbackと再読込を確認。158入力のhash不変、26context終了、再起動2回、外部試行/例外0。
+分岐用の採番は所有者の最大数値IDより後を使い、別アカウントの最大値は採用しない。
+metadata・identity map・snapshotは依然保持し、生成本体や同期の全量保持の解消とは区別する。
+[1 GB branch diagnostic](validation/2026-10-31-unified-branch-capacity.md)では架空1,000,000,000 bytesから
+7,620発言の500 MB分岐を実APIで作成し、元15,240発言と分岐先の全内容・出典を独立照合した。
+分岐自体67.7秒、準備/照合を含む全体283秒。原本/固定outbox保持、6走査でroot発言保持0を確認。
+4 GiB/480秒等の既存制限は維持し、生成/同期/復元/実機の合格とは分ける。
+
 Core復元の媒体交換中に実process killすると、現在DBの参照媒体が欠落する不具合を再現・修正した。
 [Core interruption](validation/2026-10-31-unified-core-interruption.md)に実kill3地点を含む66件の検証を記録する。
 媒体を検証して両世代分を先に保持し、SQLiteのatomic反映を後に行う。独立復旧ZIPと同期/owner/削除保護は維持。

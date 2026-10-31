@@ -60,6 +60,7 @@ jobs:
       - run: uv run --no-sync python tests/e2e_device_memory_scopes.py
       - run: uv run --no-sync python tests/e2e_memory_source_projection.py
       - run: uv run --no-sync python tests/e2e_history_mutations.py
+      - run: uv run --no-sync python tests/e2e_device_branches.py
       - run: uv run --no-sync python tests/e2e_research_language.py
       - run: uv run --no-sync python tests/e2e_device_research.py
       - run: uv run --no-sync python tests/e2e_device_benchmarks.py
