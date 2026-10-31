@@ -59,6 +59,7 @@ jobs:
       - run: uv run --no-sync python tests/e2e_device_target_switch.py
       - run: uv run --no-sync python tests/e2e_device_memory_scopes.py
       - run: uv run --no-sync python tests/e2e_memory_source_projection.py
+      - run: uv run --no-sync python tests/e2e_history_mutations.py
       - run: uv run --no-sync python tests/e2e_research_language.py
       - run: uv run --no-sync python tests/e2e_device_research.py
       - run: uv run --no-sync python tests/e2e_device_benchmarks.py
@@ -66,4 +67,5 @@ jobs:
       - run: node scripts/remote_crypto_build_wrapper.mjs
       - run: uv run --no-sync python scripts/remote_crypto_wrapper_interop.py
       - run: uv run --no-sync python tests/e2e_remote.py
+      - run: uv run --no-sync python -m pytest tests/e2e_remote.py::test_two_device_management_permissions -q
       - run: uv run --no-sync python tests/e2e_runtime_privacy.py

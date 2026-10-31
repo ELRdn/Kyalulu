@@ -18,7 +18,7 @@
 | 同期削除・復元、未送信変更の保護 | 条件付き承認でNative-PC/Browserのowner/revision・撤回fence・永続受領を検証。Native論理復元とCore全体復元は現在outbox/受領/ownerを保護し、自動同期停止・旧受領照合・復元単位の別コピー確認を適用。Core/既存同期の関連132件で検証 | 強制終了時のDB/媒体の一括耐久性、配布版をまたぐ全面復旧、実容量・実機・本番復旧の確認が必要 |
 | 端末限定の外部送信禁止・共有記憶分離 | 実Device保存/架空推論で生成・手動記憶、外部モデル拒否、同期未同意時の自動Cloud/同期/広告通信0を実Chromiumで確認 | 実Worker/モデルの通信、共有記憶の全面隔離、全機能/実機の否定試験は残る |
 | 最近10件＋固定会話のオフライン保存、容量不足とアカウント分離 | 選択/置換の1件ずつ処理・競合と実Chromium quota拒否時の原本/未送信/receipts保持、再開を確認。v3断片保存統合後もcache6・quota4ケース成功 | 実ディスク枯渇、既存DBへの後付quota、PWA/ブラウザ/実機の再起動と実容量試験は残る |
-| Remote端末別の管理権限、失効、対象PCでの管理・診断・実験 | 実装・限定検証 | 既存Remote接続を使った権限/失効/全機能確認 |
+| Remote端末別の管理権限、失効、対象PCでの管理・診断・実験 | 実PWA/Noise/Relay/Host/Runtimeの19 checks成功。診断・commands・providers・Mock実験の管理27要求、同一接続での付与/失効、対象PC保存・登録鍵保持を確認。2principalの権限独立unitも成功 | 2実ブラウザー同時接続・別PC・実モデル管理・TLS/物理端末は未検証 |
 | 旧Mobileの分割移行、SHA-256/revision/size、モデルCloud送信禁止 | 旧公開Workerを有効にした実originのloopback/Chromiumで中立popup・同意・分割会話転送・破損拒否・再送・明示更新・原本IDB/OPFS保持を確認。再取込み時の空下書き/送信待ち保護を修正 | 公開配信と実モデル容量・中断回復、Android/iPhoneでの直接コピー証拠。OPFS保持は架空markerでありモデル転送ではない |
 | PWA明示更新、/device/ の分離ヘッダー、広告との共存 | Native実配信と実Chromiumで日英の明示更新・別タブ拒否・下書き保持・オフラインのブラウザ全終了/復帰と分離状態を確認。生成中拒否はclient試験、オフライン表示はrenderer emulationで確認 | 広告と実提供元の共存、本番配信、実モデル・実機・OSネットワーク切替での受入れは残る |
 | 料金版、月額優位の数量、60/180日、原価×6、成功時精算 | 実装・fixture検証 | 決済再送/旧版条件/失敗0消費と既存残高保持 |
@@ -348,6 +348,21 @@ domain/受領のatomic性を維持する。metadata・巨大scalar・記憶domai
 全会話本文の一括復元を除去した。空一覧・旧形式・local/sync集計を維持し、全Web1,385件・実IDB14ケースが成功。
 一覧用のsource走査は1件ずつだが、本文全走査とmetadata/domain保持の限界は残る。
 
+履歴のPUT/PATCH/DELETE/全消去も1発言ずつの再保存へ接続した。
+[History mutations](validation/2026-10-31-unified-history-mutations.md)では旧実装を固定した独立oracleと
+実Device APIの全payload/domain比較13ケースが成功。world/shared/local/sync、破損・quota・owner・
+revision/token競合時の原本/固定outbox保持を確認した。再取得後の誤409/再退避も修正し、最終全Web1,403件、
+履歴13/記憶14/キャッシュ7の実Chromiumケースと型/統合buildが成功。
+[1 GB history diagnostic](validation/2026-10-31-unified-history-mutation-capacity.md)では架空15,240発言の
+編集・削除・全消去と独立照合が391秒で成功。ただし編集110秒/削除113秒と遅く、生成/同期/分岐/実機の合格ではない。
+
+[Remote management](validation/2026-10-31-unified-remote-management.md)の最終実ブラウザー19 checksは、
+管理権限の付与・失効とcharacter未指定の独自Mock実験を含む。
+[Relay late frame](validation/2026-10-31-unified-relay-late-frame.md)で切断済み宛の遅延応答がHost全体を
+閉じる不具合を修正し、別Hostへの注入拒否は維持した。
+[Custom scenario](validation/2026-10-31-unified-custom-scenario.md)ではrunner/catalogの公式判定を共通化し、
+未登録ID/characterなしの500と誤った公式表示を解消。関連20件が成功した。
+
 Core復元の媒体交換中に実process killすると、現在DBの参照媒体が欠落する不具合を再現・修正した。
 [Core interruption](validation/2026-10-31-unified-core-interruption.md)に実kill3地点を含む66件の検証を記録する。
 媒体を検証して両世代分を先に保持し、SQLiteのatomic反映を後に行う。独立復旧ZIPと同期/owner/削除保護は維持。
@@ -380,3 +395,8 @@ Cloud切替試験のUbuntuでは返信とsidebarの同文言によるlocator重�
 route callbackの終了確認で失敗した。[Cloud CI synchronization](validation/2026-10-31-unified-cloud-ci-locator.md)に
 本文限定locatorと明示的なcallback drainを記録する。最終返信配信後のcallbackだけを意図的に保留し、
 描画/台帳の成功とcallback未完了の同時成立を確認後に解放。日英2ケース成功、再送・課金条件・全体期限は維持。
+
+3688179のPR/push CIはUbuntu成功、Windowsは記憶sourceブラウザーdriverで失敗した。
+[Browser cache CI](validation/2026-10-31-unified-browser-cache-ci.md)にPC固有Chromium pathの除去と
+失敗詳細のconsole出力を記録する。環境変数なしのWindows実ブラウザーで記憶14/履歴13ケース成功。
+公開CIでの再確認は別の条件として残す。
