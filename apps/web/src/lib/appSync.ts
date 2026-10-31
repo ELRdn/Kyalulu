@@ -7,7 +7,8 @@ import { downloadEntity, uploadSync } from './appTransfers';
 import { outboxSyncSource,sameOutboxSource } from './appOutbox';
 import { stageSyncBatch } from './appSyncStage';
 import { acknowledgeBranch } from './appSyncBranch';
-import { storageStep } from './segmentedStorage';
+import { readParts,storageStep } from './segmentedStorage';
+import { JsonStream } from './jsonStream';
 
 type Batch=StoredOutbox&{revisions:Record<string,number>;withdrawn?:boolean|0;receipt?:{changes:Ack[]}};
 type Ack={id:string;source_id?:string;revision:number;deleted:boolean;branched?:boolean;lineage?:Record<string,unknown>};
@@ -63,8 +64,11 @@ async function request(owner:string,path:string,init?:RequestInit) {
   const result=await rawRequest(owner,path.startsWith('?cursor=')?path+'&paged=1':path,init);
   if(Array.isArray(result.changes))for(let index=0;index<result.changes.length;index++){
     if(result.changes[index]?.payload_ref){
-      const remote=result.changes[index],local=await entity(remote.id,owner);
-      if(local&&local.kind===remote.kind&&!local.payload.cache_evicted&&Number.isSafeInteger(remote.revision)&&local.serverRevision>=remote.revision){result.changes.splice(index--,1);continue;}
+      const remote=result.changes[index],local=await appTransaction<StoredEntity|undefined>(['entities'],'readonly',(tx,done)=>{
+        guardStorage(tx,()=>owner===deviceOwner()&&!generationBusy());
+        const read=tx.objectStore('entities').get([owner,remote.id]);read.onsuccess=()=>storageStep(tx,()=>done(read.result));
+      });
+      if(local&&local.kind===remote.kind&&!entitySelection(local).cache_evicted&&Number.isSafeInteger(remote.revision)&&local.serverRevision>=remote.revision){result.changes.splice(index--,1);continue;}
     }
     result.changes[index]=await downloadEntity(result.changes[index],call,()=>transferActive(owner));
   }
@@ -121,13 +125,23 @@ function selectSyncHeaders(tx:IDBTransaction,owner:string,required:Set<string>,
     };
   };
 }
-function selectSyncRecords(tx:IDBTransaction,owner:string,required:Set<string>,
+function selectSyncRecords(tx:IDBTransaction,owner:string,required:Set<string>,full:Set<string>,
   finish:(records:Map<string,AppEntity>,identities:Set<string>,number:number)=>void) {
   selectSyncHeaders(tx,owner,required,(headers,identities,number)=>{
     const records=new Map<string,AppEntity>(),values=[...headers.values()];let index=0;
     const next=()=>{
       const header=values[index++];if(!header){finish(records,identities,number);return;}
-      restoreEntity(tx,header,value=>{records.set(header.id,value!);next();});
+      if(header.kind!=='conversation'||!header.payloadParts||full.has(header.id)){
+        restoreEntity(tx,header,value=>{records.set(header.id,value!);next();});return;
+      }
+      const messages:any[]=[],parser=new JsonStream({onMessage:message=>{
+        const value=message as any;messages.push(value==null?value:{id:value.id,uuid:value.uuid});
+      }});
+      readParts(tx,[owner,'entity',header.id],header.payloadParts,payload=>{
+        if(!payload||typeof payload!=='object'||Array.isArray(payload))throw Error('Missing entity body');
+        const {payloadParts,selection,memoryReferences,...value}=header;
+        records.set(header.id,{...value,payload:{...payload,...(Array.isArray(payload.messages)?{messages}:{})}});next();
+      },parser);
     };next();
   });
 }
@@ -167,7 +181,9 @@ async function receiveSyncPageTransaction(owner:string,changes:any[],cursor:numb
           }
         }
       }catch{tx.abort();return;}
-      selectSyncRecords(tx,owner,required,(records,identities,number)=>{
+      // Deletion recovery still needs the complete original, including any earlier occurrence in this page.
+      const full=new Set<string>(changes.filter(remote=>remote?.deleted).map(remote=>remote.id));
+      selectSyncRecords(tx,owner,required,full,(records,identities,number)=>{
           try {
             const allocate=()=>{if(!Number.isSafeInteger(++number))throw Error('Message ID limit reached');return number;};
             for(const remote of changes) {

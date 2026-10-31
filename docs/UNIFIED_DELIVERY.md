@@ -423,6 +423,12 @@ f9c8d2cのPR/push CIはWindows/Ubuntuとも成功した。旧21ba2faのpush Wind
 全文JSON生成は4→0。旧inline自体の全履歴保持は残る。
 最終コードで全Web1,494件・型・統合build、分岐受領47実行、既存再送79ケース/81実行、guard11件と
 対応source closure3件が成功し、332/321入力hash不変を確認した。公開CIの再確認は別の条件として残す。
+通常受信の[既存履歴投影](validation/2026-11-01-unified-sync-receive-projection.md)では、segmentedな
+既存会話を本文ごと復元せず、全断片を検証してmetadataと発言id/uuidだけを保持する。ページ内で削除されるIDは
+全出現を従来の完全履歴経路に残し、未送信データ退避を保護する。既取得payload_refのskipもヘッダーだけで判断する。
+対象90件・全Web1,499件・型・統合buildと既存同期15件が成功。受信元remote・書込結果・削除退避等の全量保持は残る。
+独立Chromiumは25ケース/26実行に成功し、87完全出力を旧処理と照合。333入力hash不変、最後の断片破損・
+正しいSHAの不正JSON/UTF8・出力後のquota・owner/生成中変更でのatomic rollback、再読込とヘッダーskipを確認した。
 
 e76cc81のWindows CIはRelayの実時計依存試験で失敗したため、製品制限を維持して試験時計を限定した。
 [Relay rate clock](validation/2026-10-31-unified-relay-rate-clock.md) に旧試験の境界再現と関連51件成功を記録する。

@@ -49,6 +49,7 @@ import { deviceFetch } from './deviceApi';
 import { Sha256 } from '../mobile/sha256';
 import { stageSyncBatch } from './appSyncStage';
 import { withLibrarySnapshots } from './appSyncData';
+import * as syncData from './appSyncData';
 import sharedHistory from '../../../../tests/fixtures/unified-history.json';
 import { PortableDocumentSchema, CreatorDocumentSchema } from '../../../../packages/schemas/src';
 
@@ -807,4 +808,69 @@ it.each(['consent','outbox','revisions'])('rolls back branch settlement after a 
   expect(fixture.meta.get('sync:owner-a:outbox')).toEqual(pending);expect(fixture.meta.get('sync:owner-a:consent')).toBe(true);
   expect([...fixture.parts.keys()]).toEqual(parts.map(([key])=>key));
   for(const [key,bytes] of parts)expect(Buffer.compare(Buffer.from(fixture.parts.get(key)),Buffer.from(bytes)),key).toBe(0);
+});
+
+it('projects only previous message identities for segmented receive while preserving old remapping',async()=>{
+  let number=100;
+  const prior=syncData.rebindConversation(syncData.receiveConversation(sharedHistory.payload,undefined,()=>++number),'chat');
+  for(const message of prior.messages)message.content+='茶🙂'.repeat(100000);
+  const source={...local('chat'),payload:prior,serverRevision:2};
+  await appTransaction<void>(['entities'],'readwrite',(tx,done)=>writeEntity(tx,source,'put',done));
+  const unrelated=local('unrelated');unrelated.payload.messages[0].id=900;put(unrelated);
+  const foreign=local('foreign','owner-b');foreign.payload.messages[0].id=9_000_000;put(foreign);
+  const incoming=structuredClone(sharedHistory.payload);incoming.messages.push({id:5,uuid:'new-incoming-message',role:'user',content:'newer'} as any);
+  const expected=syncData.rebindConversation(syncData.receiveConversation(incoming,prior,()=>901),'chat');
+  const normalize=(payload:any)=>{
+    const p=structuredClone(payload);for(const point of [p,...p.messages.flatMap((m:any)=>[m.before,m.after].filter(Boolean))])for(const memory of point.memories??[])memory.id=memory.uuid;
+    return p;
+  };
+  const receive=syncData.receiveConversation,projected:any[]=[],roots:number[]=[],finish=JsonStream.prototype.finish;
+  const receiver=vi.spyOn(syncData,'receiveConversation').mockImplementation((payload,previous,allocate)=>{projected.push(structuredClone(previous));return receive(payload,previous,allocate);});
+  const parser=vi.spyOn(JsonStream.prototype,'finish').mockImplementation(function(this:JsonStream){const p=finish.call(this);if(Array.isArray(p?.messages))roots.push(p.messages.length);return p;});
+  try{await receiveSyncPage('owner-a',[{id:'chat',kind:'conversation',revision:3,deleted:false,payload:incoming}],7);}
+  finally{receiver.mockRestore();parser.mockRestore();}
+  expect(projected).toHaveLength(1);expect(projected[0].messages).toEqual(prior.messages.map((m:any)=>({id:m.id,uuid:m.uuid})));
+  expect(projected[0].memories).toEqual(prior.memories);expect(roots.length).toBeGreaterThan(0);expect(roots.every(count=>count===0)).toBe(true);
+  const saved=get('chat');expect(normalize(saved.payload)).toEqual(normalize(expected));expect(saved.payload.memories[0].id).toBe(prior.memories[0].id);
+  expect(saved.payload.messages.map((m:any)=>m.id)).toEqual([101,102,103,104,901]);expect(saved).toMatchObject({revision:2,serverRevision:3,dirty:false});
+  expect(fixture.meta.get('sync:owner-a:cursor')).toBe(7);expect(get('unrelated')).toEqual(unrelated);expect(get('foreign','owner-b')).toEqual(foreign);
+});
+
+it.each(['corrupt','missing'])('rolls back a receive page with a %s final previous-source part',async failure=>{
+  const source={...local('chat'),serverRevision:2};source.payload.messages[0].content+='茶🙂'.repeat(500000);
+  await appTransaction<void>(['entities'],'readwrite',(tx,done)=>writeEntity(tx,source,'put',done));
+  const header=fixture.entities.get(JSON.stringify(['owner-a','chat'])),ref=header.payloadParts;
+  const part=JSON.stringify(['owner-a','entity','chat',ref.token,ref.chunks-1]);
+  if(failure==='missing')fixture.parts.delete(part);else fixture.parts.get(part)[0]^=1;
+  const entities=structuredClone([...fixture.entities]),parts=structuredClone([...fixture.parts]);
+  await expect(receiveSyncPage('owner-a',[remote('chat',3)],8)).rejects.toThrow('aborted');
+  expect([...fixture.entities]).toEqual(entities);expect(fixture.meta.has('sync:owner-a:cursor')).toBe(false);
+  expect([...fixture.parts.keys()]).toEqual(parts.map(([key])=>key));
+  for(const [key,bytes] of parts)expect(Buffer.compare(Buffer.from(fixture.parts.get(key)),Buffer.from(bytes)),key).toBe(0);
+});
+
+it('retains full unsent history when deletion follows a skipped update for the same page identity',async()=>{
+  const source={...local('chat'),dirty:true,payload:structuredClone(sharedHistory.payload)};
+  for(const message of source.payload.messages)message.content+='UNSENT 茶🙂'.repeat(50000);
+  await appTransaction<void>(['entities'],'readwrite',(tx,done)=>writeEntity(tx,source,'put',done));
+  await receiveSyncPage('owner-a',[remote('chat',2),{id:'chat',kind:'conversation',revision:3,deleted:true,payload:{}}],9);
+  const recovery=[...fixture.entities.values()].map(value=>decoded(value,fixture.parts)).find(value=>value.id!=='chat'&&value.payload.recovery_from==='chat');
+  expect(recovery?.payload.messages.map((m:any)=>m.content)).toEqual(source.payload.messages.map((m:any)=>m.content));
+  expect(recovery?.payload).toMatchObject({storage_policy:'local',recovery_from:'chat',last_generation:null});
+  expect(get('chat').deleted).toBe(true);expect(fixture.meta.get('sync:owner-a:cursor')).toBe(9);
+});
+
+it('skips an already received segmented payload reference using its header without reading body parts',async()=>{
+  const source={...local('chat'),serverRevision:7};source.payload.messages[0].content+='茶🙂'.repeat(500000);
+  await appTransaction<void>(['entities'],'readwrite',(tx,done)=>writeEntity(tx,source,'put',done));
+  const original=structuredClone(fixture.entities.get(JSON.stringify(['owner-a','chat'])));let served=false,bodyReads=0;
+  fixture.readHook=(_mode,kind,id)=>{if(kind==='part'&&id==='entity'){bodyReads++;throw Error('Unneeded body read');}};
+  vi.mocked(cloudFetch).mockImplementation(async path=>{
+    if(path==='/api/mobile/status')return Response.json({cloud_mode:true,authenticated:true,owner_scope:'owner-a'});
+    expect(path).not.toContain('/parts/');
+    const changes=served?[]:[{id:'chat',kind:'conversation',revision:7,deleted:false,payload_ref:{unread:true}}];served=true;
+    return Response.json({changes,cursor:7,has_more:false});
+  });
+  await syncNow('owner-a');expect(syncState().phase,syncState().error).toBe('saved');expect(bodyReads).toBe(0);
+  expect(fixture.entities.get(JSON.stringify(['owner-a','chat']))).toEqual(original);expect(fixture.meta.get('sync:owner-a:cursor')).toBe(7);
 });
