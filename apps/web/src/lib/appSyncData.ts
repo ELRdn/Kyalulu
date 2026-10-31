@@ -110,12 +110,13 @@ export function conversationReceiver(result:AppEntity['payload'],identity:readon
 export function conversationSettings(payload:AppEntity['payload']):Record<string,any>[] {
   return [payload.settings??{},...(payload.messages??[]).flatMap((message:any)=>[message.before?.settings,message.after?.settings].filter(Boolean))];
 }
-export function withLibrarySnapshots(payload: AppEntity['payload'], records: AppEntity[]) {
-  const result=structuredClone(payload),settings=conversationSettings(result);
+export type SnapshotReferences={settings:Record<string,any>[];states:Record<string,any>[]};
+export function withLibrarySnapshots(payload: AppEntity['payload'], records: AppEntity[],history?:SnapshotReferences) {
+  const result=structuredClone(payload),settings=history?[result.settings??{},...history.settings]:conversationSettings(result);
   removeLocalGenerationDiagnostics(result);
   result.library_snapshots={};
   result.creator_snapshots={};
-  for(const sourceSettings of [...settings,...(result.messages??[]).flatMap((message:any)=>[message.before?.state,message.after?.state].filter(Boolean))]){
+  for(const sourceSettings of [...settings,...(history?.states??(result.messages??[]).flatMap((message:any)=>[message.before?.state,message.after?.state].filter(Boolean)))]){
     for(const kind of ['persona','world'] as const){
       const reference=sourceSettings[kind+'_id'],match=typeof reference==='string'?reference.match(/^(created_[0-9a-f]{32})@([1-9]\d*)$/):null;
       if(!match)continue;
