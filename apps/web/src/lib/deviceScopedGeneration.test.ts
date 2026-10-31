@@ -131,7 +131,7 @@ it.each(['clear','delete','edit'])('keeps generation and sync usable after histo
   const before=(await entity('b'))!;expect(before.payload.memories.filter((memory:any)=>memory.origin==='model')).toHaveLength(2);
   const response=await deviceFetch(operation==='clear'?'/api/chat/history?session_id=b':'/api/chat/history/101',
     operation==='edit'?{method:'PUT',body:JSON.stringify({content:'新しい内容'})}:{method:'DELETE'});
-  expect(response.status).toBe(200);
+  expect(response.status,await response.clone().text()).toBe(200);
   const after=(await entity('b'))!;
   expect(after.payload.memories.some((memory:any)=>memory.origin==='model')).toBe(false);
   expect(after.payload.memories.find((memory:any)=>memory.id==='memory-b').content).toBe('お茶が好きです');

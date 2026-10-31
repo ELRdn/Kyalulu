@@ -2,7 +2,8 @@ import { appTransaction,memoryEventsKey,type AppEntity } from './appStore';
 import { deviceOwner } from './appContext';
 import { canonical } from './appSyncData';
 import { readDeviceMemoryDomain,commitDeviceMemoryDomain,readMemorySource,memorySourceProjection,memoryScopeInput,type OwnedMemoryDomain,type MemorySource,type MemoryProjectionUpdate } from './deviceMemoryStore';
-import { bindMemoryScope,memoryBinding,memoryPolicy,memorySignature,ownScopeMemories,type MemoryIdentity,type MemoryPolicy } from './deviceMemoryScopes';
+import { bindMemoryScope,memoryBinding,memoryPolicy,memorySignature,ownScopeMemories,type MemoryIdentity,type MemoryPolicy,type MemoryConversation } from './deviceMemoryScopes';
+import type { HistoryChange } from './deviceHistoryChange';
 
 export type MemoryIdentityResolver=(settings:Record<string,any>)=>Promise<MemoryIdentity>;
 export type ScopedMemory={owner:string;policy:MemoryPolicy;domain:OwnedMemoryDomain;scope:string;records:Map<string,MemorySource>};
@@ -13,7 +14,7 @@ export function parseDeviceMemoryScope(scope:string){
   return match?{scope:match[1],policy:match[2] as MemoryPolicy}:null;
 }
 
-async function bindInitialMemory(domain:OwnedMemoryDomain,session:AppEntity,resolve:MemoryIdentityResolver){
+async function bindInitialMemory(domain:OwnedMemoryDomain,session:MemoryConversation&{owner:string},resolve:MemoryIdentityResolver){
   const existed=memoryBinding(domain,session.id),binding=bindMemoryScope(domain,session,await resolve(session.payload.settings));
   if(!existed){
     const events=await appTransaction<any[]|undefined>(['meta'],'readonly',(tx,done)=>{
@@ -47,12 +48,14 @@ async function sources(context:ScopedMemory,resolve:MemoryIdentityResolver,allow
   return context;
 }
 
-export async function scopedSessionMemory(session:AppEntity,resolve:MemoryIdentityResolver,allowPending=false):Promise<ScopedMemory>{
+export const scopedSessionMemory=(session:AppEntity,resolve:MemoryIdentityResolver,allowPending=false)=>scopedSourceMemory(memorySourceProjection(session),resolve,allowPending);
+export async function scopedSourceMemory(source:MemorySource,resolve:MemoryIdentityResolver,allowPending=false):Promise<ScopedMemory>{
+  const session={...memoryScopeInput(source),owner:source.owner};
   const owner=session.owner,policy=memoryPolicy(session),domain=await readDeviceMemoryDomain(owner,policy);
   if(domain.pending&&!allowPending)throw fail('Reconcile the pending generation before editing memory');
   const binding=domain.pending?memoryBinding(domain,session.id):await bindInitialMemory(domain,session,resolve);
   if(!binding)throw fail('Saved memory scope is missing');
-  return sources({owner,policy,domain,scope:binding.scope,records:new Map([[session.id,memorySourceProjection(session)]])},resolve,allowPending);
+  return sources({owner,policy,domain,scope:binding.scope,records:new Map([[source.id,source]])},resolve,allowPending);
 }
 
 export async function scopedMigrationMemory(session:AppEntity,resolve:MemoryIdentityResolver){
@@ -78,8 +81,9 @@ export function scopedMemoryRows(context:ScopedMemory){
 }
 
 /** Only own projections enter wire bodies, including when foreign rows were retrieved. */
-export async function saveScopedMemory(context:ScopedMemory,updates:AppEntity[]=[],generations:Record<string,Record<string,any>>={}){
+export async function saveScopedMemory(context:ScopedMemory,updates:AppEntity[]=[],generations:Record<string,Record<string,any>>={},history?:{sourceId:string;change:HistoryChange}){
   const records=new Map(context.records),requested=new Set(updates.map(record=>record.id));
+  if(history&&(!records.has(history.sourceId)||requested.has(history.sourceId)))throw fail('Invalid history source');
   for(const record of updates){if(!records.has(record.id))throw fail('Memory source changed');records.set(record.id,memorySourceProjection(record));}
   const projections:AppEntity[]=[],memoryUpdates:MemoryProjectionUpdate[]=[];
   for(const record of records.values()){
@@ -89,7 +93,8 @@ export async function saveScopedMemory(context:ScopedMemory,updates:AppEntity[]=
     if(requested.has(record.id)){
       const complete=updates.find(update=>update.id===record.id)!;
       projections.push({...complete,payload:{...complete.payload,memories}});
-    }else if(canonical(record.metadata.memories??[])!==canonical(memories))memoryUpdates.push({source:record,memories});
+    }else if(history?.sourceId===record.id||canonical(record.metadata.memories??[])!==canonical(memories))
+      memoryUpdates.push({source:record,memories,...(history?.sourceId===record.id?{history:history.change}:{})});
   }
   const result=await commitDeviceMemoryDomain(context.owner,context.policy,context.domain,
     [...context.records.values()].map(({id,revision,bodyToken})=>({id,revision,bodyToken})),projections,generations,memoryUpdates);

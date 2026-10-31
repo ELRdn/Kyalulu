@@ -6,40 +6,41 @@ import { readMemoryDomainTx as readDomain,writeMemoryDomainTx,validateMemoryDoma
 import { memoryPolicy,memoryBinding,memorySignature,ownScopeMemories,memoryDomainKey,type MemoryPolicy,type MemoryConversation } from './deviceMemoryScopes';
 import type { DeviceMemory } from './deviceCore';
 import { deviceExecutionLockName } from './deviceExecution';
+import { changedHistoryMetadata,detachHistoryMemories,validateHistoryChange,type HistoryChange } from './deviceHistoryChange';
 export { validateMemoryDomain,type OwnedMemoryDomain } from './deviceMemoryDomainIO';
 const text=(value:any)=>typeof value==='string'&&value.length>0;
 export type MemorySource={id:string;owner:string;revision:number;deleted:boolean;bodyToken?:string|null;metadata:Record<string,any>};
-export type MemoryProjectionUpdate={source:MemorySource;memories:DeviceMemory[]};
+export type MemoryProjectionUpdate={source:MemorySource;memories:DeviceMemory[];history?:HistoryChange};
 export function memorySourceProjection(record:AppEntity):MemorySource {
   const {messages:_,...metadata}=record.payload;
   return {id:record.id,owner:record.owner,revision:record.revision,deleted:record.deleted,metadata};
 }
 export const memoryScopeInput=(source:MemorySource):MemoryConversation=>({id:source.id,revision:source.revision,deleted:source.deleted,payload:source.metadata});
-function readMemorySourceTx(tx:IDBTransaction,header:StoredEntity,id:string,owner:string,done:(source:MemorySource)=>void) {
+function readMemorySourceTx(tx:IDBTransaction,header:StoredEntity,id:string,owner:string,done:(source:MemorySource)=>void,onMessage?:(message:any)=>void) {
   if(header.owner!==owner||header.id!==id||!text(id)||!Number.isSafeInteger(header.revision)||header.revision<0)throw Error('Invalid memory source');
   const finish=(payload:any)=>{
     if(!payload||typeof payload!=='object'||Array.isArray(payload)||!Array.isArray(payload.messages))throw Error('Invalid memory source');
     const {messages:_,...metadata}=payload;
     done({id,owner,revision:header.revision,deleted:false,bodyToken:header.payloadParts?.token??null,metadata});
   };
-  if(header.payloadParts)readParts(tx,[owner,'entity',id],header.payloadParts,finish,new JsonStream({limit:0}));
-  else finish(header.payload);
+  if(header.payloadParts)readParts(tx,[owner,'entity',id],header.payloadParts,finish,new JsonStream(onMessage?{onMessage}:{limit:0}));
+  else {if(onMessage)for(const message of header.payload?.messages??[])onMessage(message);finish(header.payload);}
 }
 /** Verify the entire source without retaining its message bodies; never return a partial AppEntity. */
-export async function readMemorySource(id:string,owner:string):Promise<MemorySource|undefined> {
+export async function readMemorySource(id:string,owner:string,onMessage?:(message:any)=>void):Promise<MemorySource|undefined> {
   const value=await appTransaction<MemorySource|undefined>(['entities','parts'],'readonly',(tx,done)=>{
     guardStorage(tx,()=>owner===deviceOwner());
     const read=tx.objectStore('entities').get([owner,id]);read.onsuccess=()=>storageStep(tx,()=>{
       const header=read.result as StoredEntity|undefined;
       if(!header||header.deleted||header.kind!=='conversation'){done(undefined);return;}
-      readMemorySourceTx(tx,header,id,owner,done);
+      readMemorySourceTx(tx,header,id,owner,done,onMessage);
     });
   });
   if(owner!==deviceOwner())throw Error('Account changed');return value;
 }
 
 /** Visit synchronously in one snapshot; callers retain only their catalog fields. */
-export async function visitMemorySources(owner:string,visit:(source:MemorySource)=>void) {
+export async function visitMemorySources(owner:string,visit:(source:MemorySource)=>void,onMessage?:(message:any)=>void) {
   await appTransaction<void>(['entities','parts'],'readonly',(tx,done)=>{
     guardStorage(tx,()=>owner===deviceOwner());
     const read=tx.objectStore('entities').openCursor(IDBKeyRange.bound([owner,''],[owner,'\uffff']));
@@ -47,10 +48,38 @@ export async function visitMemorySources(owner:string,visit:(source:MemorySource
       const cursor=read.result;if(!cursor){done();return;}
       const header=cursor.value as StoredEntity;
       if(header.kind!=='conversation'||header.deleted){cursor.continue();return;}
-      readMemorySourceTx(tx,header,header.id,owner,source=>{visit(source);cursor.continue();});
+      readMemorySourceTx(tx,header,header.id,owner,source=>{visit(source);cursor.continue();},onMessage);
     });
   });
   if(owner!==deviceOwner())throw Error('Account changed');
+}
+
+export async function findConversationMessageSource(messageId:number,owner:string) {
+  if(!Number.isSafeInteger(messageId)||messageId<1)return undefined;
+  let found:MemorySource|undefined,matched=false;
+  await visitMemorySources(owner,source=>{if(matched&&!found)found=source;matched=false;},message=>{if(message?.id===messageId)matched=true;});
+  return found;
+}
+
+export async function saveUnscopedHistory(source:MemorySource,change:HistoryChange) {
+  validateHistoryChange(change);
+  const {owner,id,revision,bodyToken}=source;
+  if(owner!==deviceOwner()||bodyToken===undefined)throw Error('Invalid history source');
+  await appTransaction<void>(['entities','meta','parts'],'readwrite',(tx,done)=>{
+    guardStorage(tx,()=>owner===deviceOwner());
+    const meta=tx.objectStore('meta'),local=meta.get(memoryDomainKey(owner,'local')),sync=meta.get(memoryDomainKey(owner,'sync'));
+    sync.onsuccess=()=>storageStep(tx,()=>{
+      if(local.result?.pending||sync.result?.pending)throw Error('Stop generation before editing');
+      const read=tx.objectStore('entities').get([owner,id]);read.onsuccess=()=>storageStep(tx,()=>{
+        const header=read.result as StoredEntity|undefined;
+        if(!header||header.kind!=='conversation'||header.deleted||header.revision!==revision||(header.payloadParts?.token??null)!==bodyToken)throw Error('History source changed');
+        readMemorySourceTx(tx,header,id,owner,actual=>{
+          if(['world','shared'].includes(actual.metadata.memory_scope_mode))throw Error('Scoped history commit required');
+          writeConversationMemories(tx,header,detachHistoryMemories(actual.metadata.memories??[],change),()=>done(),change);
+        });
+      });
+    });
+  });
 }
 
 export const readDeviceMemoryDomain=(owner:string,policy:MemoryPolicy)=>appTransaction<OwnedMemoryDomain>(['meta','parts'],'readonly',(tx,done)=>{
@@ -124,7 +153,8 @@ export async function commitDeviceMemoryDomain(owner:string,policy:MemoryPolicy,
     if(!binding||binding.signature!==memorySignature(update.payload.memories??[])
       ||binding.signature!==memorySignature(ownScopeMemories(domain.pools[binding.scope],update.id)))throw Error('Canonical memory projection changed');
   }
-  for(const {source,memories} of memoryUpdates){
+  for(const {source,memories,history} of memoryUpdates){
+    if(history){validateHistoryChange(history);if(source.bodyToken===undefined)throw Error('Invalid history source');}
     const binding=memoryBinding(domain,source.id);
     if(!binding||binding.signature!==memorySignature(memories)||binding.signature!==memorySignature(ownScopeMemories(domain.pools[binding.scope],source.id)))throw Error('Canonical memory projection changed');
   }
@@ -179,10 +209,10 @@ export async function commitDeviceMemoryDomain(owner:string,policy:MemoryPolicy,
       };
       const writeMemories=()=>{
         const update=memoryUpdates[index++];if(!update){persist();return;}
-        const {source,memories}=update;
+        const {source,memories,history}=update;
         writeConversationMemories(tx,headers.get(source.id)!,memories,bodyToken=>{
-          sources.push({...source,revision:source.revision+1,bodyToken,metadata:{...source.metadata,memories}});writeMemories();
-        });
+          sources.push({...source,revision:source.revision+1,bodyToken,metadata:{...source.metadata,...(history?changedHistoryMetadata(source.metadata,history):{}),memories}});writeMemories();
+        },history);
       };
       const persist=()=>{
         const next=structuredClone(domain);for(const record of [...saved,...sources]){const binding=memoryBinding(next,record.id);if(binding)binding.entity_revision=record.revision;}

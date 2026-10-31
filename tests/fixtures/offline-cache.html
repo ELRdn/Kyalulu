@@ -72,7 +72,7 @@ async function run(){
     return transaction.call(this,stores,mode,...args);
   };
   let failed=false;
-  try{try{await trimOfflineCache(owner);}catch(error){failed=true;if(!['quota','account','scan-account'].includes(scenario))throw error;}}
+  try{try{await trimOfflineCache(owner,scenario==='keep-source'?id(6):undefined);}catch(error){failed=true;if(!['quota','account','scan-account'].includes(scenario))throw error;}}
   finally{
     IDBObjectStore.prototype.getAll=getAll;IDBObjectStore.prototype.openCursor=openCursor;
     IDBObjectStore.prototype.get=get;IDBObjectStore.prototype.put=put;IDBDatabase.prototype.transaction=transaction;
@@ -88,6 +88,7 @@ async function run(){
   }else{
     check(!failed,'Cache trim failed');
     const protectedIds=new Set([...Array.from({length:6},(_,i)=>id(i)),...Array.from({length:10},(_,i)=>id(i+36)),'deleted','library']);
+    if(scenario==='keep-source')protectedIds.add(id(6));
     if(scenario==='race')for(let index=6;index<=13;index++)protectedIds.add(id(index));
     for(const row of after){
       const original=before.find(e=>e.id===row.id);
@@ -99,7 +100,7 @@ async function run(){
       }else if(scenario!=='race'||!Array.from({length:8},(_,i)=>id(i+6)).includes(row.id))check(JSON.stringify(row)===JSON.stringify(original),'Protected conversation changed');
       else check(!row.payload.cache_evicted&&row.payload.messages[0].content===original.payload.messages[0].content,'Concurrent edit lost');
     }
-    check(writes===(scenario==='race'?22:30),'Unexpected eviction count');
+    check(writes===(scenario==='race'?22:scenario==='keep-source'?29:30),'Unexpected eviction count');
   }
   return {ok:true,scenario,failed,scanned,reads,writes,maxOutstanding,getAllCalls,fixtureContentBytes:new TextEncoder().encode(rows[0].payload.messages[0].content).length*46};
 }

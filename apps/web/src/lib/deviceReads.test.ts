@@ -338,7 +338,9 @@ it.each([
   const response=await request(path,body,method);expect(response.status).toBe(200);
   expect(decoded(fixture.records.get('owner-a:unrelated'),fixture.parts).payload[key][0].content).toBe(body.content);
   expect(saved().payload.messages[0].content).toBe('Requested history');
-  expect(allEntities).toHaveBeenCalledExactlyOnceWith('owner-a');expect(openEntity).toHaveBeenCalledExactlyOnceWith('unrelated','owner-a');
+  if(path.startsWith('/api/chat/history/')){
+    expect(allEntities).not.toHaveBeenCalled();expect(openEntity).not.toHaveBeenCalled();
+  }else {expect(allEntities).toHaveBeenCalledExactlyOnceWith('owner-a');expect(openEntity).toHaveBeenCalledExactlyOnceWith('unrelated','owner-a');}
 });
 
 it('keeps history and memory references while a legacy pending result needs recovery',async()=>{
@@ -385,6 +387,33 @@ it('hydrates only the requested evicted conversation',async()=>{
   const response=await request('/api/chat/history?session_id=requested');
   expect(response.status).toBe(200);expect(response.body.history[0].content).toBe('Requested history');
   expect(hydrateConversation).toHaveBeenCalledExactlyOnceWith('requested','owner-a');expect(allEntities).not.toHaveBeenCalled();
+});
+
+it.each(['PUT','PATCH','DELETE','clear'])('applies %s after hydration without evicting the source or rejecting its new revision',async operation=>{
+  const original=structuredClone(saved());original.payload.storage_policy='sync';original.payload.pending_generation=null;original.opened=0;original.serverRevision=1;
+  put({...original,payload:{...original.payload,cache_evicted:true,messages:[{id:71}]}});
+  vi.mocked(hydrateConversation).mockImplementationOnce(async()=>{
+    const hydrated={...structuredClone(original),revision:original.revision+1};put(hydrated);return hydrated;
+  });
+  vi.mocked(trimOfflineCache).mockImplementationOnce(async(_owner,keepId)=>{
+    if(keepId!=='requested')put({...original,payload:{...original.payload,cache_evicted:true,messages:[{id:71}]}});
+  });
+  const response=await request(operation==='clear'?'/api/chat/history?session_id=requested':'/api/chat/history/71',
+    ['PUT','PATCH'].includes(operation)?{content:'Hydrated correction'}:undefined,operation==='clear'?'DELETE':operation);
+  expect(response.status,JSON.stringify(response.body)).toBe(200);expect(saved().payload.cache_evicted).toBeUndefined();
+  expect(saved().payload.messages).toEqual(['PUT','PATCH'].includes(operation)?[{...original.payload.messages[0],content:'Hydrated correction'}]:[]);
+  expect(trimOfflineCache).toHaveBeenCalledExactlyOnceWith('owner-a','requested');expect(saved().dirty).toBe(true);
+});
+
+it('rejects an ID removed by hydration without writing history or recency',async()=>{
+  const original=structuredClone(saved());original.payload.storage_policy='sync';original.payload.pending_generation=null;original.opened=0;
+  put({...original,payload:{...original.payload,cache_evicted:true,messages:[{id:71}]}});
+  let winner:any;
+  vi.mocked(hydrateConversation).mockImplementationOnce(async()=>{
+    winner={...original,revision:original.revision+1,payload:{...original.payload,messages:[]}};put(winner);return winner;
+  });
+  const response=await request('/api/chat/history/71',{content:'Stale correction'},'PATCH');
+  expect(response.status).toBe(404);expect(saved()).toEqual(winner);
 });
 
 it('keeps correction and deletion provenance and ordered operation history without accepting forged identity',async()=>{

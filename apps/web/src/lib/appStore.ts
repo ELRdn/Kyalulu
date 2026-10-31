@@ -7,6 +7,7 @@ import { Sha256 } from '../mobile/sha256';
 import { JsonStream } from './jsonStream';
 import type { GenerationStatus } from './chatRecovery';
 import { deviceExecutionLockName } from './deviceExecution';
+import { changedHistoryMessage,changedHistoryMetadata,validateHistoryChange,type HistoryChange } from './deviceHistoryChange';
 
 export type EntityKind = 'conversation' | 'character' | 'persona' | 'world' | 'preset' | 'profile';
 export type AppEntity = { id: string; owner: string; kind: EntityKind; revision: number; serverRevision: number;
@@ -126,20 +127,23 @@ export function writeConversationMetadata(tx:IDBTransaction,header:StoredEntity,
     });
   });
 }
-/** Only the memory-domain commit calls this after source/receipt verification in this transaction. */
-export function writeConversationMemories(tx:IDBTransaction,header:StoredEntity,memories:unknown[],done:(bodyToken:string)=>void) {
+/** Callers verify source/receipt/pending guards in this transaction before rewriting. */
+export function writeConversationMemories(tx:IDBTransaction,header:StoredEntity,memories:unknown[],done:(bodyToken:string)=>void,history?:HistoryChange) {
   storageWrite(tx,next=>{
     if(header.owner!==deviceOwner()||header.kind!=='conversation'||header.deleted||!Number.isSafeInteger(header.revision+1))throw Error('Invalid memory projection');
     const complete=(token:string)=>{done(token);next();};
-    const check=(p:Record<string,any>)=>{if(p.cache_evicted)throw Error('Conversation unavailable');};
+    if(history)validateHistoryChange(history);
+    const check=(p:Record<string,any>)=>{if(p.cache_evicted)throw Error('Conversation unavailable');if(history&&p.pending_generation)throw Error('Stop generation before editing history');};
+    const patch=(p:Record<string,any>)=>({...(history?changedHistoryMetadata(p,history):{}),memories});
     if(header.payloadParts){
-      rewriteConversationParts(tx,[header.owner,'entity',header.id],header.payloadParts,{memories},(ref,metadata,scan)=>{
+      rewriteConversationParts(tx,[header.owner,'entity',header.id],header.payloadParts,patch,(ref,metadata,scan)=>{
         check(metadata);adoptConversationRewrite(tx,{...header,dirty:metadata.storage_policy==='sync',opened:Date.now()},ref,
-          {...metadata,memories,messages:[]},scan,()=>complete(ref.token));
-      });
+          {...metadata,...patch(metadata),messages:[]},scan,()=>complete(ref.token));
+      },history?message=>changedHistoryMessage(message,history):undefined);
     }else{
       const p=header.payload;if(!p||!Array.isArray(p.messages))throw Error('Missing conversation body');check(p);
-      persistEntity(tx,{...header,revision:header.revision+1,dirty:p.storage_policy==='sync',opened:Date.now(),payload:{...p,memories}} as AppEntity,'put',()=>{
+      const messages=history?p.messages.flatMap((message:any)=>{const changed=changedHistoryMessage(message,history);return changed===null?[]:[changed];}):p.messages;
+      persistEntity(tx,{...header,revision:header.revision+1,dirty:p.storage_policy==='sync',opened:Date.now(),payload:{...p,...patch(p),messages}} as AppEntity,'put',()=>{
         const read=tx.objectStore('entities').get([header.owner,header.id]);read.onsuccess=()=>storageStep(tx,()=>complete(read.result.payloadParts.token));
       });
     }
@@ -462,7 +466,7 @@ export function offlineStub(record:AppEntity):AppEntity {
     messages:(p.messages??[]).map((m:any)=>({id:m.id,uuid:m.uuid})),memories:(p.memories??[]).map((m:any)=>({id:m.id,uuid:m.uuid})),
     summaries:[],cache_preview:{count:p.messages?.length??0,last_at:last?.created_at??null,last_preview:String(last?.content??'').slice(0,160)}}};
 }
-export async function trimOfflineCache(owner=deviceOwner()) {
+export async function trimOfflineCache(owner=deviceOwner(),keepId?:string) {
   const conversations=await appTransaction<(Pick<AppEntity,'id'|'revision'|'opened'|'serverRevision'>&{disposable:boolean})[]>(['entities'],'readonly',(tx,done)=>{
     const records:(Pick<AppEntity,'id'|'revision'|'opened'|'serverRevision'>&{disposable:boolean})[]=[];
     const read=tx.objectStore('entities').openCursor(IDBKeyRange.bound([owner,''],[owner,'\uffff']));
@@ -478,7 +482,7 @@ export async function trimOfflineCache(owner=deviceOwner()) {
   });
   conversations.sort((a,b)=>b.opened-a.opened||a.id.localeCompare(b.id));
   const recent=new Set(conversations.slice(0,10).map(e=>e.id));
-  const disposable=conversations.filter(e=>!recent.has(e.id)&&e.disposable);
+  const disposable=conversations.filter(e=>e.id!==keepId&&!recent.has(e.id)&&e.disposable);
   if(!disposable.length)return;
   await appTransaction<void>(['entities'],'readwrite',(tx,done)=>{
     const store=tx.objectStore('entities');let index=0;

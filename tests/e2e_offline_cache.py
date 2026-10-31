@@ -17,7 +17,7 @@ async def main():
         async with local_vite(OUTPUT) as origin, async_playwright() as runtime:
             browser = await runtime.chromium.launch(headless=True)
             try:
-                for scenario in ('normal', 'race', 'quota', 'account', 'scan-account'):
+                for scenario in ('normal', 'keep-source', 'race', 'quota', 'account', 'scan-account'):
                     context = await browser.new_context()
                     external, errors = [], []
 
