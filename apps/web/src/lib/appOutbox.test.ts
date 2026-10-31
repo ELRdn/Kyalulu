@@ -6,7 +6,8 @@ vi.mock('./appContext',()=>({deviceOwner:()=>fixture.owner,generationBusy:()=>fi
 vi.mock('./appStore',async original=>({...await original<typeof import('./appStore')>(),appTransaction:(_stores:string[],mode:string,action:any)=>
   harness(fixture.entities,fixture.meta,fixture.parts,JSON.stringify,mode,action)}));
 import { appTransaction,writeOutbox,type StoredOutbox } from './appStore';
-import { outboxSyncSource } from './appOutbox';
+import { outboxSyncSource,sameOutboxSource } from './appOutbox';
+import { canonical } from './appSyncData';
 import { uploadSync,SYNC_INLINE_BYTES } from './appTransfers';
 import { Sha256 } from '../mobile/sha256';
 import { decodeBytes } from './remoteRpc';
@@ -20,6 +21,37 @@ const seed=async(value=body())=>{
   return structuredClone(fixture.meta.get(key)) as StoredOutbox;
 };
 beforeEach(()=>{fixture.owner='owner';fixture.busy=false;fixture.entities.clear();fixture.meta.clear();fixture.parts.clear();});
+it('compares immutable inline outbox trees without serializing a batch or changing canonical JSON equality',()=>{
+  const original={...body(),revisions:{chat:2}},copy=structuredClone(original);
+  const stringify=vi.spyOn(JSON,'stringify').mockImplementation(value=>{if(value&&typeof value==='object')throw Error('Whole tree serialization');return String(value);});
+  try{
+    expect(sameOutboxSource(copy,original)).toBe(true);
+    copy.changes[0].payload.messages.at(-1)!.content+='changed';
+    expect(sameOutboxSource(copy,original)).toBe(false);
+  }finally{stringify.mockRestore();}
+  const pairs:[any,any][]=[
+    [{z:1,a:2},{a:2,z:1}], [{optional:undefined},{ }],
+    [[undefined,,NaN,Infinity,-0],[null,null,null,null,0]],
+    [JSON.parse('{"__proto__":{"keep":1}}'),JSON.parse('{"__proto__":{"keep":2}}')],
+    [[1,2],[2,1]], [{a:null},{ }], [{a:[1]},{a:{0:1}}],
+    [{a:1},{b:1}], [{a:'🙂'},{a:'茶'}], [{a:1},{a:'1'}],
+    [{a:1},Object.defineProperty({b:2},'a',{value:1})],
+  ];
+  const pending=(extension:any)=>({...body(1),extension});
+  for(const [left,right] of pairs)expect(sameOutboxSource(pending(left),pending(right))).toBe(canonical(left)===canonical(right));
+  expect(sameOutboxSource({...original,withdrawn:true,receipt:{changes:[]}} as any,original)).toBe(true);
+  const editedRevision={...original,revisions:{chat:3}};
+  expect(sameOutboxSource(editedRevision,original)).toBe(false);
+  expect(sameOutboxSource({...original,request_id:'different'},original)).toBe(false);
+  expect(sameOutboxSource(undefined,original)).toBe(false);
+});
+it('rejects non-JSON, cyclic and excessively deep fixed outbox comparisons',()=>{
+  const cyclic:any={};cyclic.self=cyclic;
+  let deep:any={};for(let index=0;index<65;index++)deep={nested:deep};
+  for(const extension of [1n,new Date(),cyclic,deep]){
+    const pending={...body(1),extension};expect(()=>sameOutboxSource(pending,structuredClone(pending))).toThrow('Invalid fixed outbox');
+  }
+});
 it.each([17,1024*1024,2*1024*1024+17])('finishes streamed storage after prior part writes drain (%i bytes)',async size=>{
   const bytes=new Uint8Array(size).fill(0x72);let completed=0;
   const ref=await appTransaction<any>(['meta','parts'],'readwrite',(tx,done)=>{

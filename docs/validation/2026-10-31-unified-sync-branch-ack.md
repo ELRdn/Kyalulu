@@ -59,6 +59,10 @@ is enforced by staging, rather than limiting the shared local-body writer.
   deselected**, 18.20s. The collected source includes all imported local fixtures.
   Static review of the product changes found no additional concrete defect.
 
+The later [inline comparison follow-up](2026-10-31-unified-inline-outbox-compare.md)
+records a full-CI legacy-outbox serialization regression outside this branch
+matrix, its unchanged-guard reproduction and the shared comparator correction.
+
 Logs: `.artifacts/sync-branch-ack-{focused,web-all,typecheck,build}-final.log`,
 `sync-branch-ack-existing-{sync,staging}-final.log` and
 `sync-branch-ack-parent-evidence-check.json`. Frozen browser artifacts are in
