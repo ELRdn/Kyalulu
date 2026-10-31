@@ -145,6 +145,7 @@ FILES = (
     "docs/validation/2026-11-01-unified-commercial-acceptance.md",
     "docs/validation/2026-11-01-unified-two-browser-permissions.md",
     "docs/validation/2026-11-01-unified-research-startup-diagnostics.md",
+    "docs/validation/2026-11-01-unified-portable-prompt-allocation.md",
     "tests/test_billing_price_history.py",
     "tests/test_unified_reward_acceptance.py",
     "docs/validation/2026-11-01-unified-browser-jsonl-ci.md",

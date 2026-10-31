@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import fixture from '../../../../tests/fixtures/portable-prompt.json';
 import loreValues from '../../../../tests/fixtures/device-lore-values.json';
+import folds from '../mobile/casefold.generated.json';
 import { compilePortable, assemblePortable, selectLore, casefold } from './devicePrompt';
 it('matches Python on null positions and empty/disabled Lore flags',()=>{
   expect(selectLore(loreValues.books,loreValues.history)).toEqual(loreValues.expected);
@@ -38,4 +39,31 @@ it('keeps exact Lore budget boundaries for Unicode and long text without charact
       }
     }finally{spy.mockRestore();}
   }
+});
+
+it('folds Unicode exactly without building a full input character array',()=>{
+  for(const value of ['', Object.keys(folds).join('')+'茶🙂é\ud800x\udc00', 'Straße ς Iı 𐐀 茶🙂'.repeat(10000)]){
+    const expected=Array.from(value,c=>(folds as Record<string,string>)[c]??c).join(''),from=Array.from;
+    const spy=vi.spyOn(Array,'from').mockImplementation(((input:any,...rest:any[])=>{
+      if(input===value)throw Error('Case folding must not materialize input characters');
+      return (from as any)(input,...rest);
+    }) as typeof Array.from);
+    try{expect(casefold(value)).toBe(expected);}finally{spy.mockRestore();}
+  }
+});
+
+it('folds each unchanged Lore scan once and refreshes it after recursive additions',()=>{
+  const scan='Straße 茶🙂',iterate=String.prototype[Symbol.iterator],observed:string[]=[];
+  const spy=vi.spyOn(String.prototype,Symbol.iterator).mockImplementation(function(this:string){
+    const value=String(this);if(value.startsWith(scan))observed.push(value);return iterate.call(value);
+  });
+  try{
+    const repeated=selectLore([{entries:Array.from({length:64},(_,i)=>({keys:['STRASSE'],content:'entry'+i}))}],[{role:'user',content:scan}]);
+    expect(repeated.selected).toHaveLength(64);expect(observed).toEqual([scan]);observed.length=0;
+    const recursive=selectLore([{recursive_scanning:true,entries:[
+      {keys:['STRASSE'],content:'Ω'}, {keys:['ω'],content:'End'}, {keys:['missing'],content:'unused'},
+    ]}],[{role:'user',content:scan}]);
+    expect(recursive.selected.map(entry=>entry.content)).toEqual(['Ω','End']);
+    expect(observed).toEqual([scan,scan+'\nΩ',scan+'\nΩ\nEnd']);
+  }finally{spy.mockRestore();}
 });
