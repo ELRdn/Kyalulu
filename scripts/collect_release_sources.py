@@ -128,6 +128,7 @@ FILES = (
     "scripts/build_device_export_fixture.py",
     "docs/validation/2026-10-31-unified-sync-branch-ack-browser.md",
     "docs/validation/2026-10-31-unified-sync-branch-ack.md",
+    "docs/validation/2026-10-31-unified-inline-outbox-compare.md",
     "docs/validation/2026-10-31-unified-device-export-ci.md",
     "docs/validation/2026-10-31-unified-sync-staging.md",
     "docs/validation/2026-10-31-unified-sync-staging-browser.md",

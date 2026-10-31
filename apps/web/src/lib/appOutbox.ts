@@ -8,7 +8,25 @@ import type { SyncUploadSource } from './appTransfers';
 
 const LIMIT=1024*1024;
 const sourceFields=(value:StoredOutbox)=>{const {receipt:_,withdrawn:__,...source}=value as StoredOutbox&{receipt?:unknown;withdrawn?:unknown};return source;};
-export const sameOutboxSource=(value:StoredOutbox|undefined,expected:StoredOutbox)=>!!value&&canonical(sourceFields(value))===canonical(sourceFields(expected));
+const omitted=(value:unknown)=>['undefined','function','symbol'].includes(typeof value);
+// Inline outboxes already hold their trees; compare JSON values without copying or serializing their histories.
+function sameJson(left:any,right:any,depth=0):boolean {
+  if(typeof left==='bigint'||typeof right==='bigint')throw Error('Invalid fixed outbox');
+  if(omitted(left)||omitted(right))return omitted(left)&&omitted(right);
+  if(typeof left==='number'&&!Number.isFinite(left))left=null;
+  if(typeof right==='number'&&!Number.isFinite(right))right=null;
+  if(left===null||right===null||typeof left!=='object'||typeof right!=='object')return left===right;
+  if(depth>=64||[left,right].some(value=>!Array.isArray(value)&&![Object.prototype,null].includes(Object.getPrototypeOf(value))))throw Error('Invalid fixed outbox');
+  if(Array.isArray(left)||Array.isArray(right)){
+    if(!Array.isArray(left)||!Array.isArray(right)||left.length!==right.length)return false;
+    for(let index=0;index<left.length;index++)if(!sameJson(omitted(left[index])?null:left[index],omitted(right[index])?null:right[index],depth+1))return false;
+    return true;
+  }
+  const keys=Object.keys(left).filter(key=>!omitted(left[key]));
+  return keys.length===Object.keys(right).filter(key=>!omitted(right[key])).length
+    &&keys.every(key=>Object.prototype.propertyIsEnumerable.call(right,key)&&sameJson(left[key],right[key],depth+1));
+}
+export const sameOutboxSource=(value:StoredOutbox|undefined,expected:StoredOutbox)=>!!value&&sameJson(sourceFields(value),sourceFields(expected));
 export function outboxSyncSource(owner:string,batch:StoredOutbox):SyncUploadSource {
   if(!batch.changesParts||!validParts(batch.changesParts)||batch.count!==batch.changes.length
     ||typeof batch.request_id!=='string'||!batch.request_id||batch.request_id.length>100)throw Error('Invalid fixed outbox');

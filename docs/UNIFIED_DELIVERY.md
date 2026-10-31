@@ -417,6 +417,12 @@ metadata・identity map・イベント配列・旧inline・受信/生成の全�
 f9c8d2cのPR/push CIはWindows/Ubuntuとも成功した。旧21ba2faのpush Windowsで起きたexportの60秒停止は
 原因未再現のため、[Export CI診断](validation/2026-10-31-unified-device-export-ci.md)だけを追加した。
 期限・assert・入力条件は維持し、setup/reload各6形式と64入力hash不変を確認した。根因修正とは扱わない。
+89f0f6eのUbuntu CIでは、旧inline outboxの確定時照合が全文JSONを4回作る退行を検出した。
+[Inline outbox comparison](validation/2026-10-31-unified-inline-outbox-compare.md)に同じ失敗のローカル再現と、
+保護条件を維持した共有helperの構造比較への修正を記録する。元のguard11ケースはassertを変えず成功し、
+全文JSON生成は4→0。旧inline自体の全履歴保持は残る。
+最終コードで全Web1,494件・型・統合build、分岐受領47実行、既存再送79ケース/81実行、guard11件と
+対応source closure3件が成功し、332/321入力hash不変を確認した。公開CIの再確認は別の条件として残す。
 
 e76cc81のWindows CIはRelayの実時計依存試験で失敗したため、製品制限を維持して試験時計を限定した。
 [Relay rate clock](validation/2026-10-31-unified-relay-rate-clock.md) に旧試験の境界再現と関連51件成功を記録する。
