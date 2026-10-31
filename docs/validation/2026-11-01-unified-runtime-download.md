@@ -61,6 +61,23 @@ Private evidence: `.artifacts/runtime-download-browser/result.json`,
 used the installed interpreter after sandbox uv-cache access failed; pytest's
 cache warning does not change the three passing test results.
 
+The first published `9d9ef7d` Ubuntu PR/push runs failed in the existing
+Benchmark driver's `expect_download` (30 seconds). Its context still exposed
+the native file picker. A fixed `9d9ef7d` export reproduces the same wait after
+an actual `showSaveFilePicker` call with user activation, rejected by headless
+Chromium with `AbortError`. The Benchmark driver now explicitly selects the
+browser-download fallback, as the existing Research driver already does.
+The separate 16-case OPFS driver retains streaming-sink coverage. No product
+source, timeout or result assertion changes. On that fixed export plus only
+the two-line driver correction, JA/EN cases pass, retaining paired32 turns,
+native export shape, navigation/cross-tab cancellation, interrupted reload,
+account isolation, load timeout and the synthetic100-turn case. All1,181
+tracked input files are compared before/after; only the driver differs from
+the original fixed export. Installed dependencies are reused, not freshly
+resolved. Evidence: `runtime-download-benchmark-{red,green,ci-job}-20261101.log`
+and `runtime-download-benchmark-ci-20261101/proof.json` under `.artifacts`.
+This local repair does not establish subsequent public CI success.
+
 Not verified: native OS picker/permissions, physical disks or disk exhaustion,
 Android/iPhone, peak RSS or arbitrary 1 GB values. Canonical receipt storage,
 legacy diagnostic conversion, bounded debug/detail reads, actor admission,
