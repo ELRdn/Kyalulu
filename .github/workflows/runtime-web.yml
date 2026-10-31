@@ -47,6 +47,7 @@ jobs:
       - run: uv run --no-sync python tests/e2e_sync_staging.py --accept-current-source
       - run: uv run --no-sync python tests/e2e_sync_branch_ack.py --accept-current-source
       - run: uv run --no-sync python tests/e2e_sync_receive_projection.py --accept-current-source
+      - run: uv run --no-sync python tests/e2e_sync_incoming.py --accept-current-source
       - run: uv run --no-sync python tests/e2e_offline_cache.py
       - run: uv run --no-sync python tests/e2e_device_quota.py
       - run: uv run --no-sync python tests/e2e_device_export.py

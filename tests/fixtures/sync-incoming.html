@@ -1,0 +1,468 @@
+<!doctype html><meta charset="utf-8"><title>Disposable incoming spool acceptance</title>
+<p>Fictional Chromium IndexedDB and virtual fetch only.</p>
+<script type="module">
+import history from './unified-history.json';
+import {receiveConversation,rebindConversation,receiveLibrarySnapshot,receiveCreatorSnapshot,conversationSettings} from './sync-staging-oracle.ts';
+import {oldMemoryEvents} from './sync-branch-ack-oracle.ts';
+import {appTransaction,writeEntity,entity,getMeta,memoryEventsKey} from '/src/lib/appStore.ts';
+import {rememberOwner,setGenerationBusy} from '/src/lib/appContext.ts';
+import {receiveSyncPage,syncNow,syncState,hydrateConversation} from '/src/lib/appSync.ts';
+import {emptyMemoryDomain,memoryDomainKey,memoryIdentity} from '/src/lib/deviceMemoryScopes.ts';
+import {writeMemoryDomainTx} from '/src/lib/deviceMemoryDomainIO.ts';
+import {JsonStream} from '/src/lib/jsonStream.ts';
+
+const params=new URL(location.href).searchParams,scenario=params.get('scenario'),resumed=params.has('resume');
+const owner='fictional-incoming-owner',foreign='fictional-incoming-foreign',id='source',prefix='sync:'+owner+':';
+const creator='created_'+'a'.repeat(32),historicCreator='created_'+'b'.repeat(32),maximum=50000,foreignMaximum=9000000;
+const recoveryID='483d7137-2804-46df-bec1-5260522ec299',fixedNow=1793458800000;
+const check=(v,m)=>{if(!v)throw Error(m);};
+const canonical=v=>JSON.stringify(v,(_,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.keys(x).sort().map(k=>[k,x[k]])):x);
+const same=(a,b,m)=>check(canonical(a)===canonical(b),m);
+const sha=async b=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',b))).map(x=>x.toString(16).padStart(2,'0')).join('');
+const encode=v=>new TextEncoder().encode(JSON.stringify(v));
+const row=(id,payload,extra={})=>({owner,id,kind:'conversation',revision:7,serverRevision:3,dirty:false,deleted:false,pinned:true,opened:123,payload,...extra});
+const basic=(session,n=1)=>({storage_policy:'sync',settings:{session_id:session,library_binding:null},state:{session_id:session},messages:[{id:n,uuid:session+'-uuid',role:'user',content:'FICTIONAL'}],memories:[],summaries:[]});
+const allMemories=p=>[...(p.memories??[]),...(p.messages??[]).flatMap(m=>[...(m?.before?.memories??[]),...(m?.after?.memories??[])])];
+function payload(local=false){
+  const p=rebindConversation(history.payload,id);
+  p.source={remote:{source:'fixture',source_id:'fictional-origin',sha256:'a'.repeat(64),document_index:9},unknown:{keep:['日本語','🧪']}};
+  p.draft={text:'未送信',selection:[1,3]};p.extension={['__proto__']:{safe:true},nested:{'10':'ten','2':'two'}};
+  p.messages.forEach((m,i)=>{m.content=(local?'LOCAL ':'REMOTE ')+('日本語🌌🧪 é \\"\n').repeat(local?28000:28000)+i;m.extension={keep:i};});
+  const memory=(identifier,uuid)=>({...structuredClone(p.memories[0]),id:identifier,uuid,scope:id,source_session_id:id,source_message_ids:[1],source_turn:1});
+  p.memories=[memory(local?'local-memory-id':'remote-memory-id','stable-root')];
+  p.messages[1].after.memories=[memory('historic-memory','stable-historic')];
+  p.messages[3].before.memories=[memory('historic-before','stable-before')];
+  p.messages[3].after.memories=[memory('historic-last','stable-last')];
+  p.summaries[0].method='extractive';p.summaries[0].text='[1: user] [2: assistant] [999: unrelated]';
+  p.last_generation={user_id:3,assistant_id:4,raw_prompt:'private',compiled:'private',memory:{candidates:[]},validation:{errors:['private']}};
+  // These references exist only in history, with a distinct required Library/creator record.
+  p.messages[1].before.settings.library_binding.character={id:'historical-character',revision:1};
+  p.messages[1].before.state.world_id=historicCreator+'@1';
+  p.library_snapshots['historical-character@1']=structuredClone(p.library_snapshots['character@1']);
+  p.creator_snapshots[historicCreator+'@1']=structuredClone(p.creator_snapshots[creator+'@1']);
+  if(local){
+    const ids=new Map(p.messages.map((m,i)=>[m.id,41+i]));
+    for(const m of allMemories(p))m.source_message_ids=m.source_message_ids.map(n=>ids.get(n));
+    for(const s of p.summaries)s.source_message_ids=s.source_message_ids.map(n=>ids.get(n));
+    p.messages.forEach((m,i)=>m.id=41+i);p.messages[3].uuid='local-only-uuid';
+    p.last_generation.user_id=43;p.last_generation.assistant_id=44;
+    p.summaries[0].text='[41: user] [42: assistant] [999: unrelated]';
+  }
+  return scenario==='messages-first'?{messages:p.messages,...Object.fromEntries(Object.entries(p).filter(([k])=>k!=='messages'))}:p;
+}
+const events=[{id:1,scope:id,memory_id:'local-memory-id',kind:'edited',detail:{candidates:[{id:'local-memory-id',score:.9},{id:'missing',score:0}]}},
+  {id:2,scope:id,memory_id:'historic-memory',source_memory_id:'older-memory',kind:'accepted',detail:{keep:'whole'}}];
+// Data, snapshot composition and observations reuse sync-receive-projection; old functions remain imported.
+const stats={parts:[],roots:[],previous:[],foreignRows:0,getAll:0,outputParts:0,faults:0,api:[],downloads:0,stageParts:[],manifests:[],metaWrites:[],deletedParts:[],timeline:[]};
+let measuring=false,source,records,changes,before,header,expected,expectedEvents=events,sequence=maximum;
+let scrubExpected,intermediateEvidence=[];
+let networkContext=false,finishedPages=0,wire=[],phase='idle',manifestKey,transactionIDs=new WeakMap(),nextTx=0;
+const txID=tx=>{if(!transactionIDs.has(tx))transactionIDs.set(tx,++nextTx);return transactionIDs.get(tx);};
+const originals={get:IDBObjectStore.prototype.get,openCursor:IDBObjectStore.prototype.openCursor,getAll:IDBObjectStore.prototype.getAll,
+  add:IDBObjectStore.prototype.add,put:IDBObjectStore.prototype.put,delete:IDBObjectStore.prototype.delete,finish:JsonStream.prototype.finish,
+  map:Array.prototype.map,uuid:crypto.randomUUID,now:Date.now,fetch:globalThis.fetch};
+const incomingKey=(who,token)=>'sync-incoming:'+JSON.stringify(who)+':'+token;
+const token='11111111-1111-4111-8111-111111111111',foreignToken='22222222-2222-4222-8222-222222222222';
+const ownOrphanKey=incomingKey(owner,token);
+const faultScenarios=['bad-json','bad-utf8','bad-base64','bad-size','bad-part-sha','bad-overall-sha','second-download-fails','quota','owner-body','busy-body','consent-body','pending-local','pending-sync','late-consent','manifest-mutation','local-collision','snapshot-collision-inline','snapshot-collision-paged','missing-required','conflicting-required'];
+function install(){
+  Date.now=()=>fixedNow;
+  if(scenario==='delete-recovery'){let used=false;crypto.randomUUID=()=>{if(!used){used=true;return recoveryID;}return originals.uuid.call(crypto);};}
+  IDBObjectStore.prototype.get=function(key){
+    const r=originals.get.call(this,key);
+    if(measuring&&this.name==='parts'){phase='apply';stats.parts.push({key,tx:txID(this.transaction)});}
+    return r;
+  };
+  IDBObjectStore.prototype.openCursor=function(...args){const r=originals.openCursor.apply(this,args);if(measuring&&this.name==='entities')r.addEventListener('success',()=>{if(r.result&&r.result.value.owner!==owner)stats.foreignRows++;});return r;};
+  IDBObjectStore.prototype.getAll=function(...args){if(measuring&&this.name==='entities'){stats.getAll++;throw Error('Whole entities.getAll forbidden');}return originals.getAll.apply(this,args);};
+  IDBObjectStore.prototype.delete=function(key){if(measuring&&this.name==='parts')stats.deletedParts.push({key,tx:txID(this.transaction)});return originals.delete.call(this,key);};
+  IDBObjectStore.prototype.put=function(value,key){
+    if(measuring&&this.name==='meta'&&typeof key==='string'&&!key.startsWith('sync-incoming:'))stats.metaWrites.push({key,tx:txID(this.transaction)});
+    if(measuring&&this.name==='meta'&&typeof key==='string'&&key.startsWith('sync-incoming:')){
+      manifestKey=key;stats.manifests.push({key,value:structuredClone(value),tx:txID(this.transaction)});
+      check(value.purpose==='sync-incoming-v1'&&value.owner===owner,'Invalid stage manifest');
+      check(value.ready!==true||value.received===value.ref.chunks,'Ready before complete source');
+    }
+    const request=originals.put.call(this,value,key);
+    if(measuring&&scenario==='delete-then-incoming'&&this.name==='entities'&&value.owner===owner&&value.id===id&&value.revision===2){
+      request.addEventListener('success',()=>{
+        const partial={entities:[[[owner,id],structuredClone(value)]],parts:[]},parts=this.transaction.objectStore('parts');
+        for(let index=0;index<value.payloadParts.chunks;index++){
+          const key=[owner,'entity',id,value.payloadParts.token,index],read=originals.get.call(parts,key);
+          read.addEventListener('success',()=>{
+            partial.parts.push([key,read.result]);
+            if(partial.parts.length===value.payloadParts.chunks)intermediateEvidence.push({...evidence(partial,id,scrubExpected,events,events),phase:'deletion-scrub',transaction:txID(this.transaction)});
+          });
+        }
+      });
+    }
+    return request;
+  };
+  IDBObjectStore.prototype.add=function(value,key){
+    const isPart=measuring&&this.name==='parts'&&Array.isArray(key),isEntity=isPart&&key[1]==='entity',isStage=isPart&&key[1]==='incoming';
+    if(isEntity&&scenario==='quota'&&stats.outputParts>0&&stats.faults===0){stats.faults++;throw new DOMException('Fictional late quota','QuotaExceededError');}
+    if(isStage){check(key[0]===owner&&key[2]===key[3]&&value.length<=1024*1024,'Incoming namespace/1MiB bound');stats.stageParts.push({key,size:value.length,tx:txID(this.transaction)});}
+    const r=originals.add.call(this,value,key);
+    if(isEntity)r.addEventListener('success',()=>{
+      stats.outputParts++;stats.timeline.push({event:'entity-part-success',key,tx:txID(this.transaction)});
+      if(['late-consent','manifest-mutation'].includes(scenario)&&stats.faults===0){
+        stats.faults++;const meta=this.transaction.objectStore('meta');
+        if(scenario==='late-consent')originals.put.call(meta,false,prefix+'consent');
+        else{const read=originals.get.call(meta,manifestKey);read.onsuccess=()=>originals.put.call(meta,{...read.result,received:0},manifestKey);}
+      }
+    });
+    return r;
+  };
+  JsonStream.prototype.finish=function(){
+    const v=originals.finish.call(this);
+    if(measuring&&v&&typeof v==='object'&&Array.isArray(v.messages))stats.roots.push({phase:networkContext?'network':phase,callback:typeof this.onMessage==='function',messages:v.messages.length,content:v.messages.some(m=>m&&Object.hasOwn(m,'content')),count:this.totalMessages});
+    return v;
+  };
+  Array.prototype.map=function(fn,...rest){
+    if(measuring&&/m\.uuid\s*,\s*m\.id/.test(String(fn)))stats.previous.push({count:this.length,content:this.some(m=>m&&Object.hasOwn(m,'content')),keys:[...new Set(this.flatMap(m=>m?Object.keys(m):[]))]});
+    return originals.map.call(this,fn,...rest);
+  };
+  globalThis.fetch=virtualFetch;
+}
+function uninstall(){measuring=false;for(const k of ['get','getAll','openCursor','add','put','delete'])IDBObjectStore.prototype[k]=originals[k];JsonStream.prototype.finish=originals.finish;Array.prototype.map=originals.map;crypto.randomUUID=originals.uuid;Date.now=originals.now;globalThis.fetch=originals.fetch;setGenerationBusy(false);rememberOwner(owner);}
+const raw=()=>appTransaction(['entities','meta','parts'],'readonly',(tx,done)=>{
+  const result={},names=['entities','meta','parts'];let i=0;
+  const next=()=>{const name=names[i++];if(!name){done(result);return;}const s=tx.objectStore(name),keys=s.getAllKeys(),values=s.getAll();values.onsuccess=()=>{result[name]=keys.result.map((k,j)=>[k,values.result[j]]);next();};};next();
+});
+async function physical(value){return {...value,parts:await Promise.all(value.parts.map(async([key,b])=>({key,size:b.length,sha256:await sha(b)})))};}
+const b64=b=>{let s='';for(let i=0;i<b.length;i+=8192)s+=String.fromCharCode(...b.subarray(i,i+8192));return btoa(s);};
+function evidence(value,identifier,target,eventRows,oldEvents){
+  const stored=value.entities.find(([k])=>k[0]===owner&&k[1]===identifier)[1];
+  return {header:stored,parts:value.parts.filter(([k])=>k[0]===owner&&k[1]==='entity'&&k[2]===identifier&&k[3]===stored.payloadParts?.token).map(([key,b])=>({key,data:b64(b)})),
+    inline_json:stored.payload?JSON.stringify(stored.payload):undefined,expected_json:JSON.stringify(target),actual_events_json:JSON.stringify(eventRows),expected_events_json:JSON.stringify(oldEvents),
+    retained_memory_ids:allMemories(source.payload).map(m=>m.id)};
+}
+// Expected full outputs use checksum-frozen receive/bind/snapshot functions, never current product helpers.
+function oracle(){
+  const map=new Map(records.filter(r=>r.owner===owner).map(r=>[r.id,structuredClone(r)]));let n=maximum;
+  for(const remote of changes){
+    const local=map.get(remote.id);
+    if(remote.deleted){
+      if(local.dirty&&!local.deleted){const p=rebindConversation(receiveConversation(local.payload,undefined,()=>++n),recoveryID);p.storage_policy='local';p.recovery_from=local.id;p.last_generation=null;
+        const recovery={...local,id:recoveryID,payload:p,revision:1,serverRevision:0,dirty:false,deleted:false};expectedEvents=oldMemoryEvents(local,recovery,events);map.set('RECOVERY',recovery);}
+      map.set(remote.id,{...remote,owner,payload:{storage_policy:'sync',deleted_revision:remote.revision},revision:local.revision+1,serverRevision:remote.revision,dirty:false,pinned:false,opened:fixedNow});continue;
+    }
+    if(local?.dirty||local&&local.serverRevision>=remote.revision&&!local.payload.cache_evicted)continue;
+    let p=remote.payload;
+    if(remote.kind==='conversation'){
+      p=rebindConversation(receiveConversation(p,local?.payload,()=>++n),remote.id);
+      const libraries=new Set(),creators=new Set();
+      for(const settings of [...conversationSettings(p),...p.messages.flatMap(m=>[m.before?.state,m.after?.state].filter(Boolean))])for(const kind of ['persona','world']){
+        const ref=settings[kind+'_id'];if(typeof ref!=='string'||!ref.startsWith('created_')||creators.has(kind+ref))continue;creators.add(kind+ref);
+        const s=p.creator_snapshots[ref];map.set(ref.split('@')[0],receiveCreatorSnapshot(map.get(ref.split('@')[0]),owner,ref,kind,s.document));
+      }
+      for(const settings of conversationSettings(p))for(const [field,value] of Object.entries(settings.library_binding??{}))for(const ref of (field==='lorebooks'?value:[value])){
+        if(!ref||libraries.has(ref.id+'@'+ref.revision))continue;libraries.add(ref.id+'@'+ref.revision);const s=p.library_snapshots?.[ref.id+'@'+ref.revision];if(s)map.set(ref.id,receiveLibrarySnapshot(map.get(ref.id),owner,ref.id,ref.revision,s));
+      }
+    }
+    map.set(remote.id,{...remote,owner,payload:p,revision:(local?.revision??0)+1,serverRevision:remote.revision,dirty:false,pinned:local?.pinned??false,opened:local?.opened??0});
+  }
+  sequence=n;return map;
+}
+
+async function observedRaw(){const was=measuring;measuring=false;try{return await raw();}finally{measuring=was;}}
+async function seed(persist=true){
+  source=row(id,payload(true),{dirty:scenario==='dirty-schema'||scenario==='delete-recovery'});
+  if(scenario==='inline')source.payload.messages.forEach(m=>m.content='small inline '+m.id);
+  if(scenario==='local-collision')source.payload.storage_policy='local';
+  if(scenario==='hydrate')source.payload.cache_evicted=true;
+  records=[source,row('unselected',basic('unselected',maximum)),row('foreign',basic('foreign',foreignMaximum),{owner:foreign}),row('preset',{storage_policy:'sync',unknown:{keep:true}},{kind:'preset'})];
+  changes=[{id,kind:'conversation',revision:4,deleted:false,payload:payload()}];
+  if(scenario==='inline')changes[0].payload.messages.forEach(m=>m.content='small remote '+m.id);
+  if(scenario==='delete-then-incoming'){
+    source.revision=1;source.payload.messages[3].uuid=changes[0].payload.messages[3].uuid;
+    const kept={id:'keep-A',source_session_id:id,content:'KEEP A'},keptDecision={memory_id:'keep-A',action:'keep'};
+    source.payload.last_generation={...source.payload.last_generation,memory:{candidates:[{id:'fixture-B-memory',source_session_id:'retired',content:'PRIVATE SOURCE B'},kept],decisions:[{memory_id:'fixture-B-memory',action:'drop'},keptDecision],injected:['fixture-B-memory','keep-A'],evidenced:['fixture-B-memory','keep-A']}};
+    scrubExpected=structuredClone(source);scrubExpected.revision=2;
+    scrubExpected.payload.last_generation={user_id:43,assistant_id:44,memory:{candidates:[kept],decisions:[keptDecision],injected:['keep-A'],evidenced:['keep-A']},validation:{errors:[]}};
+    records.push(row('retired',basic('retired',65),{revision:1}));
+    changes.unshift({id:'retired',kind:'conversation',revision:4,deleted:true,payload:{}});
+  }
+  if(scenario.startsWith('snapshot-collision-')){
+    changes[0].payload.settings.library_binding.character={id,revision:1};
+    changes[0].payload.library_snapshots[id+'@1']=structuredClone(history.payload.library_snapshots['character@1']);
+  }
+  if(scenario==='nonconversation')changes=[{id:'preset',kind:'preset',revision:4,deleted:false,payload:{storage_policy:'sync',unknown:{updated:['日本語','🧪']},padding:'P'.repeat(2200000)}}];
+  if(scenario==='delete-recovery')changes=[{id,kind:'conversation',revision:4,deleted:true,payload:{}}];
+  for(const identifier of ['character','historical-character']){
+    let fixed;for(const revision of [1,2])fixed=receiveLibrarySnapshot(fixed,owner,identifier,revision,history.payload.library_snapshots['character@'+revision]);records.push(fixed);
+  }
+  for(const identifier of [creator,historicCreator]){
+    let fixed;for(const revision of [1,2])fixed=receiveCreatorSnapshot(fixed,owner,identifier+'@'+revision,'world',history.payload.creator_snapshots[creator+'@'+revision].document);records.push(fixed);
+  }
+  if(scenario==='required-snapshot')delete changes[0].payload.library_snapshots['historical-character@1'];
+  if(scenario==='missing-required'){delete changes[0].payload.library_snapshots['historical-character@1'];records=records.filter(r=>r.id!=='historical-character');}
+  if(scenario==='conflicting-required')changes[0].payload.library_snapshots['historical-character@1'].name='CONFLICT';
+  if(['dirty-schema','newer-schema'].includes(scenario))changes[0].payload={storage_policy:'sync',settings:{library_binding:{lorebooks:'invalid'}},messages:[{id:1,uuid:'bad',role:'invalid',content:'skip-invalid-schema'}]};
+  if(scenario==='newer-schema')source.serverRevision=9;
+  if(scenario==='cached-header')changes[0].revision=3;
+  if(scenario==='two-sources'||scenario==='second-download-fails'){
+    const second=rebindConversation(source.payload,'second-source');records.push(row('second-source',second));
+    changes.push({...changes[0],id:'second-source',payload:rebindConversation(changes[0].payload,'second-source')});
+  }
+  if(['duplicate-id','multi-page'].includes(scenario)){
+    const next=structuredClone(changes[0]);next.revision=5;next.payload.messages[0].content='SECOND ENTRY '+next.payload.messages[0].content;changes.push(next);
+  }
+  if(scenario==='forged-stage')Object.assign(changes[0],{incoming:{owner,ref:{token},ready:true},stage:{token,ready:true},identities:[],purpose:'sync-incoming-v1'});
+  if(!persist)return;
+  await appTransaction(['entities','meta','parts'],'readwrite',(tx,done)=>{
+    for(const name of ['entities','meta','parts'])tx.objectStore(name).clear();
+    for(const r of records)if(scenario==='inline'&&r.id===id)tx.objectStore('entities').put(r);else writeEntity(tx,r);
+    const meta=tx.objectStore('meta');meta.put(true,prefix+'consent');meta.put(11,prefix+'cursor');meta.put(7,'message-sequence:'+owner);
+    meta.put(events,memoryEventsKey(owner,id));
+    if(scenario==='delete-then-incoming')meta.put([{id:1,scope:'retired',memory_id:'fixture-B-memory',kind:'accepted',detail:{keep:true}}],memoryEventsKey(owner,'retired'));meta.put({keep:'foreign'},'sync:'+foreign+':remote:foreign');
+    meta.put({request_id:'foreign-fixed',changes:[],withdrawn:0},'sync:'+foreign+':outbox');
+    // A failed receive must not rewrite a real pending authored outbox header.
+    if(faultScenarios.includes(scenario)||['reload-orphan','dirty-schema'].includes(scenario))meta.put({request_id:'fictional-fixed',changes:[{id:'preset',kind:'preset',base_revision:3,deleted:false,payload:{storage_policy:'sync'}}],revisions:{preset:7},withdrawn:0},prefix+'outbox');
+    const bytes=encode({keep:'same token authored/outbox',messages:[]});
+    // Same token, different namespace: purge must never infer ownership from the token alone.
+    for(const purpose of ['entity','outbox'])tx.objectStore('parts').add(bytes,[owner,purpose,token,token,0]);
+    const ref={token:foreignToken,size:bytes.length,chunks:1,sha256:'a'.repeat(64)};
+    meta.put({purpose:'sync-incoming-v1',owner:foreign,ref,received:1,ready:false},incomingKey(foreign,foreignToken));
+    tx.objectStore('parts').add(bytes,[foreign,'incoming',foreignToken,foreignToken,0]);
+    const unknownRef={...ref,token};
+    meta.put({purpose:'unknown-purpose',owner,ref:unknownRef,received:1,ready:false},incomingKey(owner,token));
+    tx.objectStore('parts').add(bytes,[owner,'incoming',token,token,0]);
+    const other='33333333-3333-4333-8333-333333333333';
+    meta.put({purpose:'sync-incoming-v1',owner:foreign,ref:{...ref,token:other}},incomingKey(owner,other));
+    tx.objectStore('parts').add(bytes,[owner,'incoming',other,other,0]);
+    const invalid='44444444-4444-4444-8444-444444444444';
+    meta.put({purpose:'sync-incoming-v1',owner,ref:{...ref,token:invalid,chunks:99}},incomingKey(owner,invalid));
+    tx.objectStore('parts').add(bytes,[owner,'incoming',invalid,invalid,0]);
+    if(scenario==='cleanup-isolation'){
+      const orphan='55555555-5555-4555-8555-555555555555',r={...ref,token:orphan};
+      meta.put({purpose:'sync-incoming-v1',owner,ref:r,received:1,ready:false},incomingKey(owner,orphan));
+      tx.objectStore('parts').add(bytes,[owner,'incoming',orphan,orphan,0]);
+      for(const purpose of ['entity','outbox'])tx.objectStore('parts').add(bytes,[owner,purpose,orphan,orphan,0]);
+    }
+    done();
+  });
+  if(scenario.startsWith('pending-')){
+    const policy=scenario.slice(8),domain={...emptyMemoryDomain(),owner,policy};
+    domain.pools['session:'+id]={memories:[],holders:{},events:[]};
+    domain.bindings[JSON.stringify(id)]={scope:'session:'+id,mode:'legacy',signature:'a'.repeat(64),identity:memoryIdentity({},{character_id:null,persona_id:null,world_id:null})};
+    domain.pending={session_id:id,generation_id:'fictional-generation'};
+    await appTransaction(['meta','parts'],'readwrite',(tx,done)=>writeMemoryDomainTx(tx,domain,done));
+  }
+}
+async function buildWire(){
+  wire=[];
+  for(let index=0;index<changes.length;index++){
+    const change=changes[index];
+    if(change.deleted||['inline','snapshot-collision-inline','forged-stage','dirty-schema','newer-schema'].includes(scenario)){
+      const descriptor=structuredClone(change);
+      if(scenario==='forged-stage')Object.assign(descriptor,{incoming:{owner,ref:{token},ready:true},stage:{token,ready:true},identities:[],purpose:'sync-incoming-v1'});
+      wire.push({descriptor,parts:[]});continue;
+    }
+    let bytes=encode(change.payload);
+    if(scenario==='bad-json'){bytes=bytes.slice();bytes[bytes.length-1]=33;}
+    if(scenario==='bad-utf8'){bytes=bytes.slice();bytes[bytes.length-2]=255;}
+    const transfer=index?'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb':'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const ref={id:change.id,revision:change.revision,size:bytes.length,chunks:Math.ceil(bytes.length/(1024*1024)),chunk_bytes:1024*1024,transfer_id:transfer,sha256:await sha(bytes)};
+    const parts=[];for(let i=0;i<ref.chunks;i++){const b=bytes.slice(i*ref.chunk_bytes,(i+1)*ref.chunk_bytes);parts.push({data:b64(b),sha256:await sha(b)});}
+    if(scenario==='bad-base64')parts.at(-1).data='!!!!';
+    if(scenario==='bad-part-sha')parts.at(-1).sha256='0'.repeat(64);
+    if(scenario==='bad-size')parts.at(-1).data=b64(bytes.slice((ref.chunks-1)*ref.chunk_bytes,-1));
+    if(scenario==='bad-overall-sha')ref.sha256='0'.repeat(64);
+    const {payload:_,...descriptor}=change;
+    if(scenario==='cached-header')ref.sha256='invalid cached ref intentionally unfetched';
+    wire.push({descriptor:{...descriptor,payload_ref:ref},parts,first_sha256:await sha(encode(change.payload.messages?.[0]?.content??'')),last_sha256:await sha(encode(change.payload.messages?.at(-1)?.content??''))});
+  }
+}
+async function pauseStage(){
+  const staged=await observedRaw(),physicalStaged=await physical(staged);
+  check(stats.stageParts.length>0,'Pause requires an actual persisted incoming part');
+  window.__incomingSnapshot=async()=>physical(await observedRaw());
+  const originalsEvidence=records.filter(r=>r.owner===owner).map(r=>evidence(staged,r.id,r,staged.meta.find(([k])=>k===memoryEventsKey(owner,r.id))?.[1]??[],r.id===id?events:[]));
+  window.__SYNC_INCOMING__={ok:true,scenario,paused:true,resumed:false,stats,evidences:originalsEvidence,transport_json:JSON.stringify(wire),oracle_inputs_json:JSON.stringify({records,changes}),physical_before_json:JSON.stringify(await physical(before)),physical_after_json:JSON.stringify(physicalStaged),physical_staged_json:JSON.stringify(physicalStaged)};
+  await new Promise(resolve=>window.__releaseIncoming=resolve);
+  delete window.__SYNC_INCOMING__;
+}
+async function virtualFetch(input,init){
+  const path=String(input);stats.api.push(path);
+  if(path==='/api/mobile/status')return Response.json({cloud_mode:true,authenticated:true,owner_scope:owner});
+  check(new Headers(init?.headers).get('X-Kyalulu-Owner')===owner,'Wrong virtual owner');
+  if(path.startsWith('/api/cloud/app/entities/'))return Response.json(wire[0].descriptor);
+  if(path.startsWith('/api/cloud/app/sync?')){
+    const snapshot=await observedRaw();
+    const recognized=snapshot.meta.filter(([k,v])=>typeof k==='string'&&k.startsWith('sync-incoming:')&&v?.purpose==='sync-incoming-v1'&&v.owner===owner&&v.ref?.chunks===Math.ceil(v.ref?.size/(1024*1024)));
+    check(recognized.length===0,'Incoming not purged before next sync page');
+    phase='network';const cursor=Number(new URL('http://fixture'+path).searchParams.get('cursor'));
+    const selected=cursor===11?(scenario==='multi-page'?[wire[0]]:wire):scenario==='multi-page'&&cursor===12?[wire[1]]:[];
+    const more=scenario==='multi-page'&&cursor===11;
+    stats.timeline.push({event:'page',cursor,recognized:recognized.length});finishedPages++;
+    return Response.json({changes:selected.map(w=>w.descriptor),cursor:selected.length?cursor+1:cursor,has_more:more});
+  }
+  const match=path.match(/^\/api\/cloud\/app\/sync\/transfers\/([a-f0-9-]+)\/parts\/(\d+)$/);
+  if(match){
+    const w=wire.find(w=>w.descriptor.payload_ref?.transfer_id===match[1]),index=Number(match[2]);check(w&&w.parts[index],'Unexpected virtual part');
+    stats.downloads++;phase='network';
+    const snapshot=await observedRaw(),active=snapshot.meta.filter(([k,v])=>v?.purpose==='sync-incoming-v1'&&v.owner===owner&&v.ref?.token!==foreignToken&&k!==incomingKey(owner,'33333333-3333-4333-8333-333333333333')&&v.ref?.chunks!==99);
+    for(const [k,v] of active)if(v.ref.token!==token){
+      const parts=snapshot.parts.filter(([key])=>key[0]===owner&&key[1]==='incoming'&&key[2]===v.ref.token);
+      check(parts.length===v.received&&parts.every(([key,b])=>key[2]===key[3]&&b.length<=1024*1024),'Spool completeness/namespace');
+      if(v.ref.sha256===w.descriptor.payload_ref.sha256)check(!v.ready&&v.received===index,'Source became ready before network completion');
+    }
+    if(index===1&&!resumed&&(scenario==='reload-orphan'||scenario.startsWith('lock-')))await pauseStage();
+    if(scenario==='second-download-fails'&&w===wire[1]&&index===w.parts.length-1){stats.faults++;throw Error('Fictional second source final download failed');}
+    if(index===w.parts.length-1&&['owner-body','busy-body','consent-body'].includes(scenario)&&stats.faults===0){
+      stats.faults++;
+      if(scenario==='owner-body')rememberOwner(foreign);else if(scenario==='busy-body')setGenerationBusy(true);
+      else await appTransaction(['meta'],'readwrite',(tx,done)=>{tx.objectStore('meta').put(false,prefix+'consent');done();});
+    }
+    return Response.json(w.parts[index]);
+  }
+  if(path==='/api/cloud/app/sync'&&init?.method==='POST'&&['dirty-schema','reload-orphan'].includes(scenario)){stats.timeline.push({event:'fixture-upload-stopped'});throw Error('FICTIONAL_OUTBOX_UNCHANGED');}
+  throw Error('Unexpected virtual network/upload '+path);
+}
+function minusOrphans(snapshot){
+  const keys=scenario==='cleanup-isolation'?[incomingKey(owner,'55555555-5555-4555-8555-555555555555')]:resumed&&scenario==='reload-orphan'?snapshot.meta.filter(([k,v])=>v?.purpose==='sync-incoming-v1'&&v.owner===owner&&v.ref?.chunks!==99&&v.ref?.token!=='33333333-3333-4333-8333-333333333333').map(([k])=>k):[];
+  const tokens=snapshot.meta.filter(([k])=>keys.includes(k)).map(([,v])=>v.ref.token);
+  return {entities:snapshot.entities,meta:snapshot.meta.filter(([k])=>!keys.includes(k)),parts:snapshot.parts.filter(p=>!(p.key[0]===owner&&p.key[1]==='incoming'&&tokens.includes(p.key[2])&&p.key[2]===p.key[3]))};
+}
+async function run(){
+  rememberOwner(owner);Date.now=()=>fixedNow;await seed(!resumed);await buildWire();before=await raw();header=before.entities.find(([k])=>k[0]===owner&&k[1]===id)[1];
+  const failing=faultScenarios.includes(scenario),isHydrate=scenario==='hydrate';
+  expected=failing?new Map(records.filter(r=>r.owner===owner).map(r=>[r.id,structuredClone(r)])):oracle();
+  const physicalBefore=await physical(before),baseline=minusOrphans(physicalBefore);
+  install();measuring=true;phase='network';let rejection,hydrated;
+  try{
+    if(isHydrate){phase='hydrate';hydrated=await hydrateConversation(id,owner);}
+    else if(['dirty-schema','newer-schema','forged-stage','delete-recovery'].includes(scenario))await receiveSyncPage(owner,wire.map(w=>w.descriptor),12);
+    else await syncNow(owner);
+  }catch(e){rejection=String(e);}finally{uninstall();}
+  const after=await raw(),physicalAfter=await physical(after);
+  window.__incomingSnapshot=async()=>physical(await raw());
+  const data={ok:true,scenario,resumed,stats,state:syncState(),rejection,source_bytes:header.payloadParts?.size,source_chunks:header.payloadParts?.chunks,
+    physical_before_json:JSON.stringify(physicalBefore),physical_after_json:JSON.stringify(physicalAfter),transport_json:JSON.stringify(wire),oracle_inputs_json:JSON.stringify({records,changes}),
+    expected_orphan_removal:baseline.meta.length!==physicalBefore.meta.length};
+  window.__incomingEvidence=data;
+  const outputs=[];
+  for(const [identifier,target] of expected??[]){
+    const actualID=identifier==='RECOVERY'?recoveryID:identifier;
+    let targetEvents=identifier==='RECOVERY'?expectedEvents:identifier===id&&!target.deleted?events:[];
+    const actualEvents=after.meta.find(([k])=>k===memoryEventsKey(owner,actualID))?.[1]??[];
+    outputs.push(evidence(after,actualID,target,actualEvents,targetEvents));
+  }
+  if(scenario==='delete-then-incoming')outputs.push(...intermediateEvidence);
+  data.evidences=outputs;
+
+  check(stats.foreignRows===0&&stats.getAll===0,'Foreign/bulk entity scan');
+  const protectedMeta=baseline.meta.filter(([k,v])=>typeof k==='string'&&k.startsWith('sync-incoming:'));
+  same(physicalAfter.meta.filter(([k])=>protectedMeta.some(([p])=>p===k)),protectedMeta,'Protected owner/purpose manifests changed');
+  const remainingNew=physicalAfter.meta.filter(([k])=>typeof k==='string'&&k.startsWith('sync-incoming:')&&!protectedMeta.some(([p])=>p===k));
+  check(remainingNew.length===0,'Temporary incoming manifest leaked');
+  same(physicalAfter.parts.filter(p=>p.key[1]==='incoming'),baseline.parts.filter(p=>p.key[1]==='incoming'),'Incoming cleanup leaked/deleted protected parts');
+  if(failing){
+    check(rejection||syncState().phase==='error'||['owner-body','consent-body'].includes(scenario),'Invalid incoming accepted');
+    const expectedPhysical=structuredClone(baseline);
+    if(scenario==='consent-body')expectedPhysical.meta=expectedPhysical.meta.map(([k,v])=>[k,k===prefix+'consent'?false:v]);
+    same(physicalAfter,expectedPhysical,'Atomic rollback changed authored/entities/receipts/outbox/cursor/parts');
+    if(['quota','owner-body','busy-body','consent-body','late-consent','manifest-mutation','second-download-fails'].includes(scenario))check(stats.faults===1,'Fault not injected exactly once');
+    if(['quota','late-consent','manifest-mutation'].includes(scenario))check(stats.outputParts>0,'Failure not after successful tentative ENTITY part');
+    if(scenario==='second-download-fails')check(stats.manifests.some(m=>m.value.ready===true)&&stats.outputParts===0,'Second download failure occurred after apply or before first ready');
+    if(scenario.startsWith('snapshot-collision-'))check((stats.stageParts.length>0)===(scenario==='snapshot-collision-paged'),'Collision did not exercise selected inline/paged path');
+    if(['bad-json','bad-utf8','bad-base64','bad-size','bad-part-sha','bad-overall-sha'].includes(scenario))check(!stats.manifests.some(m=>m.value.ready),'Invalid transfer became ready');
+    return {...data,rejected:true};
+  }
+  check(!rejection,'Unexpected API rejection: '+rejection);
+  const direct=['dirty-schema','newer-schema','forged-stage','delete-recovery'].includes(scenario);
+  if(!isHydrate&&!direct&&scenario!=='reload-orphan')check(syncState().phase==='saved','Sync did not finish saved: '+syncState().error);
+  if(scenario==='reload-orphan')check(syncState().phase==='error'&&syncState().error.includes('FICTIONAL_OUTBOX_UNCHANGED'),'Reload retry failed before deliberate fixture upload stop');
+  if(scenario==='forged-stage')check(stats.stageParts.length===0&&wire[0].descriptor.payload.messages.length===4,'Network JSON forged the incoming spool path');
+  const cached=scenario==='cached-header',cursor=isHydrate?11:scenario==='multi-page'?13:12;
+  check(await getMeta(prefix+'cursor')===cursor,'Cursor mismatch');
+  if(cached){check(stats.downloads===0&&stats.parts.length===0&&stats.roots.length===0,'Cached header read a body');same(physicalAfter.entities,baseline.entities,'Cached source changed');same(physicalAfter.parts,baseline.parts,'Cached part bytes changed');}
+  const full=['inline','nonconversation','delete-recovery','delete-then-incoming','forged-stage','dirty-schema','newer-schema'].includes(scenario);
+  if(!full&&!cached){
+    check(wire[0].descriptor.payload_ref.size>2*1024*1024&&wire[0].parts.length>=3,'Remote must exceed 2MiB/multiple parts');
+    const callbacks=stats.roots.filter(r=>r.callback);
+    check(callbacks.length>=3&&callbacks.every(r=>r.messages===0&&!r.content)&&callbacks.some(r=>r.phase==='network')&&callbacks.some(r=>r.phase==='apply'),'Network/apply root retained messages');
+    for(const tx of new Set(stats.timeline.filter(e=>e.event==='entity-part-success').map(e=>e.tx))){
+      for(const name of [prefix+'cursor','message-sequence:'+owner])check(stats.metaWrites.some(w=>w.key===name&&w.tx===tx),'Receipt/cursor/sequence left receive transaction');
+      check(stats.metaWrites.some(w=>w.key.startsWith(prefix+'remote:')&&w.tx===tx),'Remote receipt left receive transaction');
+    }
+    if(!isHydrate)check(stats.roots.every(r=>r.callback&&r.messages===0),'Normal incoming built whole remote tree');
+    check(stats.previous.length>0&&stats.previous.every(r=>!r.content&&r.keys.every(k=>k==='id'||k==='uuid')),'Previous IDs retained content');
+    const byToken=new Map();for(const part of stats.stageParts){const list=byToken.get(part.key[2])??[];list.push(part);byToken.set(part.key[2],list);}
+    for(const list of byToken.values())check(list.every((p,i)=>p.key[4]===i),'Spool part ordering');
+    const reads=stats.parts.filter(p=>p.key[1]==='incoming');check(reads.length>0,'No apply spool reads');
+    check(new Set(stats.timeline.filter(e=>e.event==='entity-part-success').map(e=>e.tx)).size===(scenario==='multi-page'?2:1),'Receive not one transaction per page');
+    if(isHydrate){same(hydrated,await entity(id,owner),'Hydration returned incomplete result');check(stats.roots.some(r=>!r.callback&&r.messages===4&&r.content),'Hydration full return was not observed');}
+  }
+  if(scenario==='delete-then-incoming'){
+    const saved=after.entities.find(([k])=>k[0]===owner&&k[1]===id)[1];
+    check(source.revision===1&&saved.revision===3&&expected.get(id).revision===2,'Intentional revision must be authored 1 -> cleanup 2 -> receive 3 (old coalesced 2)');
+    check(intermediateEvidence.length===1&&intermediateEvidence[0].header.revision===2,'Missing actual same-tx scrubbed A revision 2');
+    check(stats.roots.some(r=>!r.callback&&r.messages===4&&r.content),'Known deletion scrub did not read whole local A');
+    check(stats.roots.filter(r=>r.callback).every(r=>r.messages===0&&!r.content),'Deletion/update network or apply parser retained messages');
+    check(stats.stageParts.length>=3&&stats.parts.some(p=>p.key[1]==='incoming'),'A update did not consume actual paged spool');
+    const actual=await entity(id,owner);
+    same(actual.payload.messages.map(m=>[m.uuid,m.id]),source.payload.messages.map(m=>[m.uuid,m.id]),'Cleanup/update changed original UUID/numeric mapping');
+    check(!JSON.stringify(actual.payload.last_generation).includes('PRIVATE SOURCE B'),'Deleted trace leaked into final A');
+    const transaction=intermediateEvidence[0].transaction;
+    check(stats.timeline.filter(e=>e.event==='entity-part-success').every(e=>e.tx===transaction),'Deletion/scrub/update left shared receive transaction');
+    check(stats.metaWrites.some(w=>w.key===prefix+'cursor'&&w.tx===transaction),'Cursor left deletion/scrub/update transaction');
+    data.intentional_revision_difference={id,authored_revision:1,cleanup_revision:2,old_oracle_revision:2,accepted_revision:3,reason:'Same-page deletion cleanup is an authored revision; receive advances its fresh header'};
+  }
+  const domainAdded=new Set();
+  const expectedMeta=new Map(baseline.meta.map(([k,v])=>[k,structuredClone(v)]));
+  if(!cached){
+    for(const remote of changes)expectedMeta.set(prefix+'remote:'+remote.id,{revision:remote.revision,deleted:remote.deleted,count:remote.payload.messages?.length??0});
+    expectedMeta.set('message-sequence:'+owner,sequence);
+    if(['delete-recovery','delete-then-incoming'].includes(scenario)){
+      const retired=scenario==='delete-then-incoming'?'retired':id;
+      expectedMeta.delete(memoryEventsKey(owner,retired));
+      // The shared Python decoder compares complete recovery events with fresh IDs normalized by UUID.
+      if(scenario==='delete-recovery')expectedMeta.set(memoryEventsKey(owner,recoveryID),after.meta.find(([k])=>k===memoryEventsKey(owner,recoveryID))[1]);
+      for(const policy of ['local','sync']){
+        const name=memoryDomainKey(owner,policy),stored=after.meta.find(([k])=>k===name)?.[1];
+        check(stored?.schema_version===1&&stored.revision===1&&stored.pending===null,'Deletion memory-domain header');
+        const parts=after.parts.filter(([k])=>k[0]===owner&&k[1]==='memory-domain'&&k[2]===policy&&k[3]===stored.parts.token).sort(([a],[b])=>a[4]-b[4]);
+        const bytes=new Uint8Array(parts.reduce((n,[,b])=>n+b.length,0));let offset=0;for(const [,b] of parts){bytes.set(b,offset);offset+=b.length;}
+        check(/^[a-f0-9-]{36}$/.test(stored.parts.token)&&parts.every(([k],i)=>k[4]===i),'Deletion domain part namespace/order');
+        for(const [k] of parts)domainAdded.add(JSON.stringify(k));
+        check(bytes.length===stored.parts.size&&parts.length===stored.parts.chunks&&await sha(bytes)===stored.parts.sha256,'Deletion domain physical checksum');
+        same(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes)),{...emptyMemoryDomain(),revision:1,erased_sessions:[retired],owner,policy},'Deletion domain complete payload');
+        same(Object.keys(stored).sort(),['parts','pending','revision','schema_version'],'Unexpected deletion domain header fields');
+        expectedMeta.set(name,stored);
+      }
+    }
+  }else expectedMeta.set('message-sequence:'+owner,maximum);
+  expectedMeta.set(prefix+'cursor',cursor);
+  same(Object.fromEntries(after.meta),Object.fromEntries(expectedMeta),'All metadata differs (receipts/outbox/events/cursor/sequence)');
+  const changedIDs=new Set([...expected].filter(([identifier,target])=>canonical(records.find(r=>r.owner===owner&&r.id===identifier))!==canonical(target)).map(([identifier])=>identifier==='RECOVERY'?recoveryID:identifier));
+  if(!cached&&!['dirty-schema','newer-schema','delete-recovery','nonconversation'].includes(scenario))for(const identifier of ['character','historical-character',creator,historicCreator])changedIDs.add(identifier);
+  same(physicalAfter.entities.filter(([k])=>k[0]!==owner||!changedIDs.has(k[1])),baseline.entities.filter(([k])=>k[0]!==owner||!changedIDs.has(k[1])),'Untouched complete entity headers changed');
+  const unchangedPart=p=>!domainAdded.has(JSON.stringify(p.key))&&(p.key[1]!=='entity'||p.key[0]!==owner||!changedIDs.has(p.key[2]));
+  same(physicalAfter.parts.filter(unchangedPart),baseline.parts.filter(unchangedPart),'Untouched physical parts changed');
+
+  const oldParts=new Map(baseline.parts.map(p=>[JSON.stringify(p.key),p]));for(const p of physicalAfter.parts)if(oldParts.has(JSON.stringify(p.key)))same(p,oldParts.get(JSON.stringify(p.key)),'Original bytes overwritten in place');
+  return {...data,evidences:data.evidences,paged_projection:!full&&!cached,hydration_full_return:isHydrate,whole_path:full};
+}
+async function peer(){
+  rememberOwner(owner);globalThis.fetch=async(input,init)=>{
+    stats.api.push(String(input));
+    if(String(input)==='/api/mobile/status')return Response.json({cloud_mode:true,authenticated:true,owner_scope:owner});
+    if(String(input).startsWith('/api/cloud/app/sync?'))return Response.json({changes:[],cursor:12,has_more:false});
+    throw Error('Unexpected peer network '+input);
+  };
+  window.__peerStats=stats;window.__PEER_READY__=true;
+  try{
+    if(scenario==='lock-hydrate'){
+      // This response is inline: the contention test concerns the public hydration lock, not another download.
+      const local=await entity(id,owner);
+      globalThis.fetch=async(input)=>{stats.api.push(String(input));check(String(input).startsWith('/api/cloud/app/entities/'),'Unexpected peer hydration');return Response.json({id,kind:'conversation',revision:3,deleted:false,payload:local.payload});};
+      await hydrateConversation(id,owner);
+    }else await syncNow(owner);
+    window.__SYNC_INCOMING__={ok:true,scenario,peer:true,stats};
+  }catch(e){window.__SYNC_INCOMING__={ok:false,scenario,peer:true,error:String(e),stats};}
+}
+if(params.has('peer'))peer();
+else run().then(r=>window.__SYNC_INCOMING__=r).catch(e=>{uninstall();window.__SYNC_INCOMING__={...window.__incomingEvidence,ok:false,scenario,resumed,error:String(e),stack:e.stack,stats};});
+</script>

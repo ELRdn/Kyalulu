@@ -15,13 +15,15 @@ export { valid as validParts };
 // IDB callbacks alone advance the queue; no crypto/network promises can expire a live transaction.
 const owners=new WeakMap<IDBTransaction,string>();
 const guards=new WeakMap<IDBTransaction,()=>boolean>();
+const failed=new WeakSet<IDBTransaction>();
 export const guardStorage=(tx:IDBTransaction,current:()=>boolean)=>{guards.set(tx,current);};
 export function storageStep(tx:IDBTransaction,action:()=>void) {
+  if(failed.has(tx))return;
   try{
     if(!owners.has(tx))owners.set(tx,deviceOwner());
     if(owners.get(tx)!==deviceOwner()||guards.get(tx)?.()===false)throw Error('Account changed');
     action();
-  }catch{tx.abort();}
+  }catch{failed.add(tx);tx.abort();}
 }
 export function readParts(tx:IDBTransaction,location:Location,ref:Parts,done:(value:any)=>void,decode:boolean|JsonStream=true) {
   storageStep(tx,()=>{

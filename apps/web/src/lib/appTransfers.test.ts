@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest';
-import { uploadSync, downloadEntity, jsonChunks } from './appTransfers';
+import { uploadSync, downloadEntity, downloadEntityChunks, jsonChunks } from './appTransfers';
 import { JsonStream } from './jsonStream';
 import { Sha256 } from '../mobile/sha256';
 import { encodeBytes, decodeBytes } from './remoteRpc';
@@ -162,6 +162,119 @@ it('validates all chunk and total hashes before exposing a downloaded entity',as
   await expect(downloadEntity(entity,async path=>({...await call(path),sha256:'0'.repeat(64)}),async()=>{})).rejects.toThrow('SHA-256');
   expect(entity).not.toHaveProperty('payload');
   await expect(downloadEntity({...entity,revision:8},call,async()=>{})).rejects.toThrow('reference');
+});
+
+function downloadFixture(raw:Uint8Array){
+  const entity={id:'chat',revision:7,payload_ref:{id:'chat',revision:7,transfer_id:transfer,size:raw.length,sha256:hash(raw),chunks:Math.ceil(raw.length/chunkBytes),chunk_bytes:chunkBytes}};
+  const call=vi.fn(async(path:string)=>{
+    const index=Number(path.split('/').at(-1)),part=raw.subarray(index*chunkBytes,(index+1)*chunkBytes);
+    return {data:encodeBytes(part),sha256:hash(part)};
+  });
+  return {entity,call};
+}
+
+it('yields exact raw bytes lazily with only a pre-fetch active fence',async()=>{
+  const raw=Uint8Array.from({length:chunkBytes+37},(_,index)=>index%256),{entity,call}=downloadFixture(raw);
+  const active=vi.fn(async()=>{}),chunks=downloadEntityChunks(entity,call,active);
+  expect(call).not.toHaveBeenCalled();expect(active).not.toHaveBeenCalled();
+  let offset=0;
+  for await(const chunk of chunks){
+    expect(chunk).toBeInstanceOf(Uint8Array);expect(chunk.length).toBe(Math.min(chunkBytes,raw.length-offset));
+    expect(chunk.every((byte,index)=>byte===raw[offset+index])).toBe(true);offset+=chunk.length;
+    expect(call).toHaveBeenCalledTimes(Math.ceil(offset/chunkBytes));
+  }
+  expect(offset).toBe(raw.length);expect(active).toHaveBeenCalledTimes(entity.payload_ref.chunks);
+  expect(call.mock.calls.map(([path])=>path)).toEqual([`/transfers/${transfer}/parts/0`,`/transfers/${transfer}/parts/1`]);
+  expect(entity).not.toHaveProperty('payload');
+});
+
+it('requires a valid bounded manifest before the first yield or fetch',async()=>{
+  const {entity,call}=downloadFixture(new TextEncoder().encode('{}')),active=vi.fn(async()=>{});
+  const invalid=[undefined,null,false,{},
+    ...[{id:'other'},{revision:8},{size:0},{size:1_000_000_001},{size:1.5},{size:NaN},
+      {transfer_id:'../parts/0'},{transfer_id:'AAAAAAAA-1111-4111-8111-111111111111'},
+      {chunk_bytes:chunkBytes+1},{chunks:2},{sha256:'a'.repeat(63)},{sha256:'A'.repeat(64)}]
+      .map(change=>({...entity.payload_ref,...change}))];
+  for(const payload_ref of invalid){
+    await expect(downloadEntityChunks({...entity,payload_ref},call,active).next()).rejects.toThrow('Invalid transfer reference');
+  }
+  await expect(downloadEntityChunks(null,call,active).next()).rejects.toThrow('Invalid transfer reference');
+  expect(call).not.toHaveBeenCalled();expect(active).not.toHaveBeenCalled();
+});
+
+it('rejects invalid base64, part sizes and part hashes before yielding the bad part',async()=>{
+  const raw=new TextEncoder().encode('{}'),{entity}=downloadFixture(raw),valid={data:encodeBytes(raw),sha256:hash(raw)};
+  const invalid=[
+    [{...valid,data:undefined},'Invalid transfer chunk'],
+    [{...valid,data:'A'.repeat(4*Math.ceil(chunkBytes/3)+4)},'Invalid transfer chunk'],
+    [{...valid,data:valid.data.slice(0,-1)},'Invalid transfer chunk'],
+    [{...valid,data:'!!!!'},'Invalid transfer chunk'],
+    [{data:encodeBytes(new Uint8Array([1])),sha256:hash(new Uint8Array([1]))},'Transfer SHA-256 mismatch'],
+    [{...valid,sha256:'0'.repeat(64)},'Transfer SHA-256 mismatch'],
+  ] as const;
+  for(const [part,error] of invalid){
+    const call=vi.fn(async()=>part),chunks=downloadEntityChunks(entity,call,async()=>{});
+    await expect(chunks.next()).rejects.toThrow(error);expect(call).toHaveBeenCalledOnce();
+    expect((await chunks.next()).done).toBe(true);
+  }
+});
+
+it('rejects a bad later part without yielding it after a verified prefix',async()=>{
+  const raw=new Uint8Array(chunkBytes+1),{entity,call}=downloadFixture(raw);
+  const chunks=downloadEntityChunks(entity,async path=>{
+    const part=await call(path);return path.endsWith('/1')?{...part,sha256:'0'.repeat(64)}:part;
+  },async()=>{});
+  expect((await chunks.next()).value!.length).toBe(chunkBytes);
+  await expect(chunks.next()).rejects.toThrow('Transfer SHA-256 mismatch');expect(call).toHaveBeenCalledTimes(2);
+});
+
+it('rejects the final manifest SHA after yielding individually verified chunks',async()=>{
+  const raw=new Uint8Array(chunkBytes+1),{entity,call}=downloadFixture(raw),active=vi.fn(async()=>{});
+  entity.payload_ref.sha256='0'.repeat(64);
+  const chunks=downloadEntityChunks(entity,call,active);
+  expect((await chunks.next()).value!.length).toBe(chunkBytes);
+  expect((await chunks.next()).value!.length).toBe(1);
+  await expect(chunks.next()).rejects.toThrow('Transfer size or SHA-256 mismatch');
+  expect(call).toHaveBeenCalledTimes(2);expect(active).toHaveBeenCalledTimes(2);
+});
+
+it.each([0,1])('stops raw and wrapper fetches when active fails after %i parts',async completed=>{
+  const raw=new TextEncoder().encode(JSON.stringify({text:'x'.repeat(chunkBytes)}));
+  for(const wrapper of [false,true]){
+    const {entity,call}=downloadFixture(raw),active=vi.fn(async()=>{if(call.mock.calls.length===completed)throw Error('Consent changed');});
+    const consume=async()=>{for await(const _ of downloadEntityChunks(entity,call,active)){};};
+    await expect(wrapper?downloadEntity(entity,call,active):consume()).rejects.toThrow('Consent changed');
+    expect(call).toHaveBeenCalledTimes(completed);expect(active).toHaveBeenCalledTimes(completed+1);
+    expect(entity).not.toHaveProperty('payload');
+  }
+});
+
+it('does not fetch more parts when a chunk consumer cancels',async()=>{
+  const {entity,call}=downloadFixture(new Uint8Array(chunkBytes+1)),active=vi.fn(async()=>{});
+  const chunks=downloadEntityChunks(entity,call,active);
+  expect((await chunks.next()).done).toBe(false);await chunks.return(undefined);
+  expect((await chunks.next()).done).toBe(true);expect(call).toHaveBeenCalledOnce();expect(active).toHaveBeenCalledOnce();
+});
+
+it('keeps inline entity identity and the wrapper final fence after JSON validation',async()=>{
+  const inline={id:'inline',payload:{text:'unchanged'}},call=vi.fn(),active=vi.fn(async()=>{});
+  expect(await downloadEntity(inline,call,active)).toBe(inline);
+  expect(await downloadEntity(null,call,active)).toBe(null);
+  expect(call).not.toHaveBeenCalled();expect(active).not.toHaveBeenCalled();
+  const payload={text:'茶🙂'.repeat(160000)},raw=new TextEncoder().encode(JSON.stringify(payload));
+  const fixture=downloadFixture(raw),events:string[]=[],feed=vi.spyOn(JsonStream.prototype,'feed'),finish=vi.spyOn(JsonStream.prototype,'finish');
+  try{
+    const result=await downloadEntity(fixture.entity,async path=>{events.push('fetch');return fixture.call(path);},async()=>{
+      events.push('active');
+      if(fixture.call.mock.calls.length===fixture.entity.payload_ref.chunks)expect(finish).toHaveBeenCalledOnce();
+    });
+    expect(result).toEqual({id:'chat',revision:7,payload});expect(fixture.entity).not.toHaveProperty('payload');
+    expect(feed).toHaveBeenCalledTimes(2);expect(events).toEqual(['active','fetch','active','fetch','active']);
+  }finally{feed.mockRestore();finish.mockRestore();}
+  for(const text of ['{','[]','null','false']){
+    const invalid=downloadFixture(new TextEncoder().encode(text)),fence=vi.fn(async()=>{});
+    await expect(downloadEntity(invalid.entity,invalid.call,fence)).rejects.toThrow();expect(fence).toHaveBeenCalledOnce();
+  }
 });
 
 it('uses a committed receipt after a restart without sending the body again',async()=>{
