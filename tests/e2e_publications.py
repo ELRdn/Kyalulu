@@ -179,13 +179,16 @@ async def main():
                     await settings.wait_for_function('window.__PUBLICATIONS_FIXTURE__ !== undefined')
                     async def preference(**changes):
                         await settings.evaluate('(value)=>window.__PUBLICATIONS_FIXTURE__.preference(value)', changes)
-                    for path in ('/published', '/recommendations'):
+                    for path, heading in (('/published', 'Approved works'), ('/recommendations', 'Public works')):
                         await preference(genres=[], moods=[], activities=[], favorites=[], dismissed=[])
+                        reads_before_navigation = len(catalog_reads)
                         await go(path)
+                        # The outgoing catalog has the same card; wait for the destination to commit first.
+                        await page.get_by_role('heading', name=heading, exact=True).wait_for()
                         await page.get_by_role('link', name='School suggestion', exact=True).wait_for()
                         first = page.locator('.k-card h3 a').first
                         reads = len(catalog_reads)
-                        assert reads > 0, 'Catalog traffic must be observed before checking for extra requests'
+                        assert reads > reads_before_navigation, 'Destination catalog must load before measuring preference changes'
                         await preference(moods=['healing'])
                         await expect(first).to_have_text('Comfort suggestion')
                         await preference(favorites=[suggestions['Plain suggestion']])
