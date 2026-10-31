@@ -404,6 +404,10 @@ actorの初期全履歴保持、入力配列、選択前のraw_prompt、ONNXの�
 [Outbox stream](validation/2026-10-31-unified-outbox-stream.md) に全Web1,469件、型/build、
 実ブラウザ79ケースの正確なbyte/再開/receipt/全境界/破損/owner・同意fenceと、既存同期15ケースを記録する。
 初回staging・旧inline・分岐復旧・生成全体の全量経路は残り、1GB全体の合格とはしない。
+初回stagingの後続修正では、選択会話の履歴をまとめて復元せず、出典と固定snapshotを照合してoutboxへ逐次コピーする。
+[Initial sync staging](validation/2026-10-31-unified-sync-staging.md)に全Web1,479件・型・統合build、
+旧JSON全byte/SHA一致と実ブラウザ30結果・既存同期15ケースを記録する。sourceのrevision/token競合・
+quota/破損は原本を残してatomic rollbackし、既存outboxを置き換えない。metadata・旧inline・他の全量経路は残る。
 e76cc81のWindows CIはRelayの実時計依存試験で失敗したため、製品制限を維持して試験時計を限定した。
 [Relay rate clock](validation/2026-10-31-unified-relay-rate-clock.md) に旧試験の境界再現と関連51件成功を記録する。
 

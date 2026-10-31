@@ -1,4 +1,5 @@
 import { beforeEach,expect,it,vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import { harness } from './idbHarness.test-support';
 const fixture=vi.hoisted(()=>({owner:'owner',busy:false,entities:new Map<string,any>(),meta:new Map<string,any>(),parts:new Map<string,any>()}));
 vi.mock('./appContext',()=>({deviceOwner:()=>fixture.owner,generationBusy:()=>fixture.busy}));
@@ -9,6 +10,7 @@ import { outboxSyncSource } from './appOutbox';
 import { uploadSync,SYNC_INLINE_BYTES } from './appTransfers';
 import { Sha256 } from '../mobile/sha256';
 import { decodeBytes } from './remoteRpc';
+import { streamParts } from './segmentedStorage';
 const key='sync:owner:outbox',transfer='10000000-0000-4000-8000-000000000001';
 const body=(repeat=25000)=>({request_id:'fixed',changes:[{id:'chat',kind:'conversation' as const,base_revision:2,deleted:false,
   payload:{messages:Array.from({length:8},(_,id)=>({id:id+1,content:'茶🙂'.repeat(repeat)})),extension:{keep:true}}}]});
@@ -18,6 +20,19 @@ const seed=async(value=body())=>{
   return structuredClone(fixture.meta.get(key)) as StoredOutbox;
 };
 beforeEach(()=>{fixture.owner='owner';fixture.busy=false;fixture.entities.clear();fixture.meta.clear();fixture.parts.clear();});
+it.each([17,1024*1024,2*1024*1024+17])('finishes streamed storage after prior part writes drain (%i bytes)',async size=>{
+  const bytes=new Uint8Array(size).fill(0x72);let completed=0;
+  const ref=await appTransaction<any>(['meta','parts'],'readwrite',(tx,done)=>{
+    const writer=streamParts(tx,['owner','outbox','fixed']);
+    writer.append(bytes.subarray(0,7));writer.append(bytes.subarray(7));
+    const barrier=tx.objectStore('meta').get('after-pending-writes');
+    barrier.onsuccess=()=>writer.finish(ref=>{completed++;done(ref);});
+  });
+  expect(completed).toBe(1);expect(ref.size).toBe(size);expect(ref.chunks).toBe(Math.ceil(size/(1024*1024)));
+  expect(ref.sha256).toBe(createHash('sha256').update(bytes).digest('hex'));
+  const saved=Buffer.concat(Array.from({length:ref.chunks},(_,index)=>Buffer.from(fixture.parts.get(JSON.stringify(['owner','outbox','fixed',ref.token,index])))));
+  expect(Buffer.compare(saved,Buffer.from(bytes))).toBe(0);
+});
 it.each([1,25000])('streams exact stored wire bytes and inline body without payload parsing (%i repeats)',async repeat=>{
   const value=body(repeat),header=await seed(value),source=outboxSyncSource('owner',header),expected=new TextEncoder().encode(JSON.stringify(value));
   const parts:Uint8Array[]=[],parse=vi.spyOn(JSON,'parse');

@@ -46,6 +46,8 @@ import { importMobile } from '../pages/Migration';
 import { initialData, newConversation } from '../mobile/store';
 import { deviceFetch } from './deviceApi';
 import { Sha256 } from '../mobile/sha256';
+import { stageSyncBatch } from './appSyncStage';
+import { withLibrarySnapshots } from './appSyncData';
 import sharedHistory from '../../../../tests/fixtures/unified-history.json';
 import { PortableDocumentSchema, CreatorDocumentSchema } from '../../../../packages/schemas/src';
 
@@ -661,4 +663,55 @@ it('refuses on-demand downloads after consent revocation and leaves the offline 
   const cached=local('chat');cached.serverRevision=1;put(offlineStub(cached));fixture.meta.set('sync:owner-a:consent',false);
   await expect(hydrateConversation('chat','owner-a')).rejects.toThrow('enable sync');
   expect(cloudFetch).not.toHaveBeenCalled();expect(get('chat').payload.cache_evicted).toBe(true);
+});
+
+it('stages the exact complete history and snapshots without retaining root messages',async()=>{
+  const source:AppEntity={...local('chat'),dirty:true,revision:7,payload:structuredClone(sharedHistory.payload)};
+  const originals=source.payload.messages;
+  source.payload.messages=Array.from({length:80},(_,index)=>({...structuredClone(originals[index%originals.length]),id:index+1,uuid:'stage-'+index,content:'茶🙂'.repeat(2000)}));
+  source.payload.draft='Keep initial unsent draft';
+  await appTransaction<void>(['entities'],'readwrite',(tx,done)=>writeEntity(tx,source,'put',done));
+  const entities=structuredClone([...fixture.entities]),parts=structuredClone([...fixture.parts]),roots:number[]=[],counts:number[]=[];
+  const finish=JsonStream.prototype.finish,spy=vi.spyOn(JsonStream.prototype,'finish').mockImplementation(function(this:JsonStream){
+    const value=finish.call(this);if(this.totalMessages!==undefined){roots.push(value.messages.length);counts.push(this.totalMessages);}return value;
+  });
+  let batch;
+  try{batch=await stageSyncBatch('owner-a');}finally{spy.mockRestore();}
+  expect(roots).toEqual([0,0]);expect(counts).toEqual([80,80]);
+  expect(batch!.changesParts!.chunks).toBeGreaterThan(1);expect(batch!.changesParts!.size).toBeGreaterThan(1024*1024);
+  expect(batch!.revisions).toEqual({chat:7});expect(batch!.changes.every(change=>Object.keys(change.payload).length===0)).toBe(true);
+  const expected=[{id:'chat',kind:'conversation',base_revision:0,payload:withLibrarySnapshots(source.payload,[]),deleted:false}];
+  const ref=batch!.changesParts!,raw=Buffer.concat(Array.from({length:ref.chunks},(_,index)=>Buffer.from(fixture.parts.get(JSON.stringify(['owner-a','outbox','fixed',ref.token,index])))));
+  expect(Buffer.compare(raw,Buffer.from(JSON.stringify(expected)))).toBe(0);expect(new Sha256().update(raw).digest()).toBe(ref.sha256);
+  expect([...fixture.entities]).toEqual(entities);
+  for(const [key,bytes] of parts)expect(Buffer.compare(Buffer.from(fixture.parts.get(key)),Buffer.from(bytes)),key).toBe(0);
+  expect(cloudFetch).not.toHaveBeenCalled();
+});
+
+it.each(['quota','owner','busy','consent','checksum'])('leaves the initial source intact when staging fails at %s',async fault=>{
+  const source={...local('chat'),dirty:true};
+  source.payload.messages=Array.from({length:80},(_,index)=>({id:index+1,uuid:'stage-'+index,role:'user',content:'茶🙂'.repeat(2000)}));
+  await appTransaction<void>(['entities'],'readwrite',(tx,done)=>writeEntity(tx,source,'put',done));
+  if(fault==='checksum'){
+    const ref=fixture.entities.get(JSON.stringify(['owner-a','chat'])).payloadParts,key=JSON.stringify(['owner-a','entity','chat',ref.token,ref.chunks-1]);
+    const bytes=fixture.parts.get(key);bytes[bytes.length-1]^=1;
+  }
+  const entities=structuredClone([...fixture.entities]),parts=structuredClone([...fixture.parts]);
+  if(fault==='quota')fixture.failAt=2;
+  if(fault==='consent')fixture.meta.set('sync:owner-a:consent',false);
+  fixture.readHook=(mode,kind)=>{if(mode==='readwrite'&&kind==='get'){if(fault==='owner')fixture.owner='owner-b';if(fault==='busy')fixture.busy=true;}};
+  if(fault==='consent')expect(await stageSyncBatch('owner-a')).toBeUndefined();
+  else await expect(stageSyncBatch('owner-a')).rejects.toThrow();
+  expect([...fixture.entities]).toEqual(entities);expect(fixture.meta.has('sync:owner-a:outbox')).toBe(false);
+  expect([...fixture.parts.keys()]).toEqual(parts.map(([key])=>key));
+  for(const [key,bytes] of parts)expect(Buffer.compare(Buffer.from(fixture.parts.get(key)),Buffer.from(bytes)),key).toBe(0);
+  expect(cloudFetch).not.toHaveBeenCalled();
+});
+
+it('keeps an existing fixed outbox instead of replacing it with a prepared batch',async()=>{
+  put({...local('chat'),dirty:true});
+  const existing={request_id:'older-frozen-request',withdrawn:0,revisions:{chat:1},changes:[{id:'chat',kind:'conversation',base_revision:0,payload:{original:'frozen'},deleted:false}]};
+  fixture.meta.set('sync:owner-a:outbox',existing);
+  expect(await stageSyncBatch('owner-a')).toEqual(existing);expect(fixture.parts.size).toBe(0);
+  expect(fixture.meta.get('sync:owner-a:outbox')).toEqual(existing);expect(get('chat').dirty).toBe(true);
 });

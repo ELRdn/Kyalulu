@@ -2,9 +2,10 @@ import { appTransaction, entity, getMeta, entitySelection, guardStorage, restore
 import { deviceExecutionLockName } from './deviceExecution';
 import { cloudFetch } from './transport';
 import { deviceOwner, generationBusy } from './appContext';
-import { receiveConversation, receiveLibrarySnapshot, receiveCreatorSnapshot, rebindConversation, withLibrarySnapshots, conversationSettings } from './appSyncData';
+import { receiveConversation, receiveLibrarySnapshot, receiveCreatorSnapshot, rebindConversation, conversationSettings } from './appSyncData';
 import { downloadEntity, uploadSync } from './appTransfers';
 import { outboxSyncSource,sameOutboxSource } from './appOutbox';
+import { stageSyncBatch } from './appSyncStage';
 
 type Batch=StoredOutbox&{revisions:Record<string,number>;withdrawn?:boolean|0;receipt?:{changes:Ack[]}};
 type Ack={id:string;source_id?:string;revision:number;deleted:boolean;branched?:boolean;lineage?:Record<string,unknown>};
@@ -263,67 +264,6 @@ async function updateOutbox(owner:string,batch:Batch,next:Batch|null) {
     };
   });
 }
-function prepareSyncBatch(owner:string) {
-  return appTransaction<Batch|undefined>(['entities'],'readonly',(tx,done)=>{
-    const store=tx.objectStore('entities'),selected:StoredEntity[]=[],dirty:AppEntity[]=[];
-    const current=()=>{if(owner!==deviceOwner()||generationBusy()){tx.abort();return false;}return true;};
-    const prepare=()=>{
-      let index=0;
-      const next=()=>{
-        if(!current())return;
-        const value=selected[index++];if(!value){references();return;}
-        if(value.deleted){dirty.push({...value,payload:{delete_confirmation_revision:entitySelection(value).delete_confirmation_revision}} as AppEntity);next();}
-        else restoreEntity(tx,value,record=>{dirty.push(record!);next();});
-      };next();
-    };
-    const references=()=>{
-      try {
-        const required=new Set<string>(),records:AppEntity[]=[];
-        for(const record of dirty){
-          if(record.deleted||record.kind!=='conversation')continue;
-          const payload=record.payload,settings=conversationSettings(payload);
-          for(const setting of [...settings,payload.state,...(payload.messages??[]).flatMap((message:any)=>[message.before?.state,message.after?.state])]){
-            for(const kind of ['persona','world']){
-              const reference=setting?.[kind+'_id'],match=typeof reference==='string'?reference.match(/^(created_[0-9a-f]{32})@([1-9]\d*)$/):null;
-              if(match)required.add(match[1]);
-            }
-          }
-          for(const setting of settings)for(const [field,value] of Object.entries(setting.library_binding??{})){
-            for(const ref of (field==='lorebooks'?value:[value]) as any[])if(typeof ref?.id==='string')required.add(ref.id);
-          }
-        }
-        const finish=()=>{
-          try {
-            done(dirty.length?{request_id:crypto.randomUUID(),withdrawn:0,revisions:Object.fromEntries(dirty.map(e=>[e.id,e.revision])),
-              changes:dirty.map(e=>({id:e.id,kind:e.kind,base_revision:e.serverRevision,
-                payload:e.deleted?{}:e.kind==='conversation'?withLibrarySnapshots(e.payload,records):e.payload,deleted:e.deleted,
-                ...(e.deleted?{delete_confirmed:e.payload.delete_confirmation_revision===e.revision}:{})}))}:undefined);
-          }catch{tx.abort();}
-        };
-        if(!required.size){finish();return;}
-        const ids=[...required];let index=0;
-        const next=()=>{
-          if(!current())return;
-          const id=ids[index++];if(id===undefined){finish();return;}
-          readEntity(tx,owner,id,record=>{if(record)records.push(record);next();});
-        };next();
-      }catch{tx.abort();}
-    };
-    const read=store.openCursor(IDBKeyRange.bound([owner,''],[owner,'\uffff']));
-    read.onsuccess=()=>{
-      if(!current())return;
-      const cursor=read.result;
-      if(!cursor){prepare();return;}
-      const record=cursor.value as StoredEntity,selection=entitySelection(record);
-      if(record.dirty&&selection.storage_policy==='sync'&&!selection.pending_generation){
-        // Keep scanning beyond the cap: the first deletion takes the entire batch.
-        if(record.deleted){selected.length=0;selected.push(record);prepare();return;}
-        if(selected.length<50)selected.push(record);
-      }
-      cursor.continue();
-    };
-  });
-}
 
 async function synchronize(owner:string) {
   if(owner==='guest'||owner!==deviceOwner()||generationBusy())return;
@@ -366,22 +306,7 @@ async function synchronize(owner:string) {
     };
     await download();current();
     batch=await getMeta<Batch>(key(owner,'outbox'));
-    if(!batch) {
-      batch=await prepareSyncBatch(owner);
-      if(batch) {
-        const staged=batch;
-        batch=await appTransaction<Batch|undefined>(['meta','parts'],'readwrite',(tx,done)=>{
-          const meta=tx.objectStore('meta'),existing=meta.get(key(owner,'outbox')),consent=meta.get(key(owner,'consent'));
-          consent.onsuccess=()=>{
-            if(owner!==deviceOwner()||generationBusy()){tx.abort();return;}
-            if(!consent.result){done(undefined);return;}
-            if(!existing.result)writeOutbox(tx,owner,staged,()=>{
-              const stored=meta.get(key(owner,'outbox'));stored.onsuccess=()=>done(stored.result);
-            });else done(existing.result);
-          };
-        });
-      }
-    }
+    if(!batch)batch=await stageSyncBatch(owner);
     if(batch) {
       if(!await getMeta(key(owner,'consent')))return;
       current();

@@ -63,6 +63,33 @@ export function writeParts(tx:IDBTransaction,location:Location,value:unknown,don
     });next();
   });
 }
+/** Tentative streamed bytes and their manifest commit in the caller's transaction. */
+export function streamParts(tx:IDBTransaction,location:Location) {
+  const ref:Parts={token:crypto.randomUUID(),size:0,chunks:0,sha256:''},digest=new Sha256();
+  let buffer=new Uint8Array(LIMIT),used=0,pending=0,closed=false,complete:((ref:Parts)=>void)|undefined;
+  const finish=()=>{if(closed&&!pending&&complete){const done=complete;complete=undefined;done(ref);}};
+  const flush=()=>{
+    if(!used)return;
+    if(ref.size+used>1_000_000_000)throw Error('Storage stream exceeds transfer limit');
+    const bytes=used===LIMIT?buffer:buffer.slice(0,used);digest.update(bytes);ref.size+=bytes.length;pending++;
+    const write=tx.objectStore('parts').add(bytes,partKey(location,ref,ref.chunks++));
+    buffer=new Uint8Array(LIMIT);used=0;
+    write.onsuccess=()=>storageStep(tx,()=>{pending--;finish();});
+  };
+  return {
+    append(bytes:Uint8Array){
+      if(closed)throw Error('Storage stream already closed');
+      for(let offset=0;offset<bytes.length;){
+        const count=Math.min(LIMIT-used,bytes.length-offset);buffer.set(bytes.subarray(offset,offset+count),used);used+=count;offset+=count;
+        if(used===LIMIT)flush();
+      }
+    },
+    finish(done:(ref:Parts)=>void){
+      if(closed)throw Error('Storage stream already closed');
+      flush();closed=true;ref.sha256=digest.digest();complete=done;finish();
+    },
+  };
+}
 /** Tentative output stays in this transaction until the entire original body verifies. */
 export function rewriteConversationParts(tx:IDBTransaction,location:Location,previous:Parts,patch:Record<string,unknown>|((metadata:Record<string,any>)=>Record<string,unknown>),
   done:(ref:Parts,metadata:Record<string,any>,scan:ConversationScan)=>void,transform?:(message:any)=>any|null,destination:Location=location,appended:readonly any[]=[]) {
