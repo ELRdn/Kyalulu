@@ -33,8 +33,9 @@ export function evidenced(memoryContent:string,reply:string) {
   return grams.size>=2&&[...grams].filter(g=>evidence.has(g)).length/grams.size>=.3;
 }
 export function estimateTokens(text:string) {
-  const chars=Array.from(text),cjk=chars.filter(c=>c.codePointAt(0)!>0x2e80).length;
-  return Math.max(1,Math.ceil(cjk/1.5+(chars.length-cjk)/4));
+  let count=0,cjk=0;
+  for(const char of text){count++;if(char.codePointAt(0)!>0x2e80)cjk++;}
+  return Math.max(1,Math.ceil(cjk/1.5+(count-cjk)/4));
 }
 export type DeviceMemory={id:string;type:'semantic'|'episodic'|'relationship';content:string;
   origin:string;supported:boolean|null;status:string;source_kind?:string;[key:string]:any};

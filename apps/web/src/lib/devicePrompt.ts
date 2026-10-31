@@ -5,7 +5,7 @@ type RecordValue=Record<string,any>;
 type Message={role:string;content:string;slot?:string};
 export type PortableSnapshot={document:unknown;character_version?:string|null;persona?:RecordValue|null;world?:RecordValue|null;lorebooks?:RecordValue[];extra_system_prompt?:string|null;[key:string]:any};
 export const casefold=(text:string)=>Array.from(text,c=>(folds as Record<string,string>)[c]??c).join('');
-const estimate=(text:string)=>Math.max(0,Math.floor(Array.from(text).length/1.5));
+const estimate=(text:string)=>{let count=0;for(const _ of text)count++;return Math.max(0,Math.floor(count/1.5));};
 const integer=(value:unknown,fallback=0)=>{
   const parsed=typeof value==='number'?Math.trunc(value):typeof value==='string'&&/^[+-]?\d+$/.test(value.trim())?Number(value):value===true?1:value===false?0:NaN;
   if(value===undefined||value===null||value==='')return fallback;
