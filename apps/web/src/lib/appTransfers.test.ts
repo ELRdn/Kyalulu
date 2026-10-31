@@ -6,6 +6,125 @@ import { encodeBytes, decodeBytes } from './remoteRpc';
 
 const chunkBytes=1024*1024,transfer='11111111-1111-4111-8111-111111111111';
 const hash=(raw:Uint8Array)=>new Sha256().update(raw).digest();
+
+// Independent oracle frozen from e21f63b; do not coalesce its fragments.
+function* legacyJsonText(value:any,ancestors=new Set<object>()):Generator<string> {
+  if(typeof value==='string'){
+    yield '"';
+    for(let start=0;start<value.length;){
+      let end=Math.min(start+4096,value.length);
+      if(end<value.length&&/[\uD800-\uDBFF]/.test(value[end-1])&&/[\uDC00-\uDFFF]/.test(value[end]))end--;
+      yield JSON.stringify(value.slice(start,end)).slice(1,-1);start=end;
+    }
+    yield '"';return;
+  }
+  if(value===null||typeof value!=='object') {const text=JSON.stringify(value);if(text===undefined)throw Error('Invalid sync transfer');yield text;return;}
+  if(ancestors.has(value)||ancestors.size>=64||!Array.isArray(value)&&![Object.prototype,null].includes(Object.getPrototypeOf(value)))throw Error('Invalid sync transfer');
+  ancestors.add(value);
+  if(Array.isArray(value)){
+    yield '[';
+    for(let index=0;index<value.length;index++){if(index)yield ',';yield* legacyJsonText(['undefined','function','symbol'].includes(typeof value[index])?null:value[index],ancestors);}
+    yield ']';
+  }else{
+    yield '{';let first=true;
+    for(const key of Object.keys(value)){
+      const item=value[key];if(['undefined','function','symbol'].includes(typeof item))continue;
+      if(!first)yield ',';first=false;yield* legacyJsonText(key,ancestors);yield ':';yield* legacyJsonText(item,ancestors);
+    }
+    yield '}';
+  }
+  ancestors.delete(value);
+}
+
+function* legacyJsonChunks(value:unknown):Generator<Uint8Array> {
+  const encoder=new TextEncoder();let buffer=new Uint8Array(chunkBytes),used=0;
+  for(const text of legacyJsonText(value)){
+    const raw=encoder.encode(text);let offset=0;
+    while(offset<raw.length){
+      const length=Math.min(raw.length-offset,chunkBytes-used);
+      buffer.set(raw.subarray(offset,offset+length),used);offset+=length;used+=length;
+      if(used===chunkBytes){yield buffer;buffer=new Uint8Array(chunkBytes);used=0;}
+    }
+  }
+  if(used)yield buffer.subarray(0,used);
+}
+function expectLegacy(value:unknown,stringify=true) {
+  const legacy=legacyJsonChunks(value),expected=stringify?new TextEncoder().encode(JSON.stringify(value)):undefined;
+  const before=new Sha256(),after=new Sha256();let size=0,chunks=0;
+  for(const part of jsonChunks(value)){
+    const old=legacy.next();expect(old.done).toBe(false);
+    expect(part.length).toBe(old.value!.length);
+    expect(part.every((byte,index)=>byte===old.value![index])).toBe(true);
+    expect(hash(part)).toBe(hash(old.value!));
+    if(expected)expect(part.every((byte,index)=>byte===expected[size+index])).toBe(true);
+    before.update(old.value!);after.update(part);size+=part.length;chunks++;
+  }
+  expect(legacy.next().done).toBe(true);expect(after.digest()).toBe(before.digest());
+  if(expected)expect(size).toBe(expected.length);
+  return {size,chunks};
+}
+
+it('keeps legacy number, omission, key-order and plain-object JSON bytes',()=>{
+  const shared={tiny:Number.MIN_VALUE},nullObject=Object.assign(Object.create(null),{z:1,a:'茶'});
+  const keys=JSON.parse('{"z":0,"10":10,"2":2,"01":1,"__proto__":{"safe":true},"a":3}');
+  const values=[null,true,false,-0,Number.MIN_VALUE,Number.MAX_VALUE,Number.EPSILON,1e-7,1e-6,1e20,1e21,1.2345678901234567,NaN,Infinity,-Infinity];
+  const omitted={undefined:undefined,fn:()=>0,symbol:Symbol(),[Symbol()]:1,keep:null};
+  Object.defineProperty(omitted,'hidden',{value:3});
+  for(const value of [...values,values,omitted,[,undefined,()=>0,Symbol(),null],keys,nullObject,{left:shared,right:shared}])expectLegacy(value);
+  // The existing writer ignores object toJSON methods; preserve that contract.
+  const toJSON=vi.fn(()=>({changed:true}));expectLegacy({keep:1,toJSON},false);expect(toJSON).not.toHaveBeenCalled();
+  expect(Object.getPrototypeOf(keys)).toBe(Object.prototype);expect(Object.hasOwn(keys,'__proto__')).toBe(true);
+});
+
+it('keeps Unicode and escapes at 4096-string, 16KiB-encoding and 1MiB-part boundaries',()=>{
+  const special='🙂\ud800\udfff\udfff\ud800"\\\n\t\r\b\f\u0000\u001f茶';
+  for(const boundary of [4096,16*1024,chunkBytes])for(const shift of [-1,0,1]){
+    const padding='x'.repeat(boundary-1+shift);
+    expectLegacy(padding+special);
+    expectLegacy({[padding.slice(0,16*1024)+special]:special,values:[padding,special]});
+  }
+  for(const length of [chunkBytes-1,chunkBytes,chunkBytes+1]){
+    expect(expectLegacy('x'.repeat(length-2))).toEqual({size:length,chunks:Math.ceil(length/chunkBytes)});
+  }
+});
+
+it('reduces encode calls for small fragments without growing pending text or stringifying containers',()=>{
+  const value=Array.from({length:3000},(_,id)=>({id,value:id/10,flag:true,text:'茶🙂'}));
+  const encode=vi.spyOn(TextEncoder.prototype,'encode'),stringify=vi.spyOn(JSON,'stringify');
+  try{
+    for(const _ of legacyJsonChunks(value)){};
+    const oldCalls=encode.mock.calls.length;encode.mockClear();stringify.mockClear();
+    for(const _ of jsonChunks(value)){};
+    const lengths=encode.mock.calls.map(([text])=>text!.length);
+    expect(oldCalls).toBeGreaterThan(50_000);expect(lengths.length).toBeLessThan(oldCalls/100);
+    expect(Math.max(...lengths)).toBeLessThanOrEqual(16*1024);
+    expect(Math.min(...lengths.slice(0,-1))).toBeGreaterThan(16*1024-32);
+    expect(stringify.mock.calls.every(([item])=>typeof item!=='object'&&(typeof item!=='string'||item.length<=4096))).toBe(true);
+    encode.mockClear();
+    for(const _ of jsonChunks({text:'\u0000'.repeat(4096*8)})){};
+    expect(Math.max(...encode.mock.calls.map(([text])=>text!.length))).toBe(4096*6);
+    expect(encode.mock.calls.every(([text])=>text!.length<=4096*6)).toBe(true);
+  }finally{encode.mockRestore();stringify.mockRestore();}
+});
+
+it('stays incremental and validates cycle, prototype and depth after an emitted part',()=>{
+  const padding='x'.repeat(chunkBytes+64*1024),cycle:any={};cycle.self=cycle;
+  let deep:any=null;for(let i=0;i<65;i++)deep={child:deep};
+  for(const invalid of [cycle,new Date(),Object.create({inherited:true}),new Number(1),deep,{value:1n}]){
+    for(const run of [legacyJsonChunks,jsonChunks]){
+      const chunks=run({padding,invalid});expect(chunks.next().value!.length).toBe(chunkBytes);
+      expect(()=>{for(const _ of chunks){}}).toThrow();
+    }
+  }
+  for(const invalid of [undefined,()=>0,Symbol(),1n])for(const run of [legacyJsonChunks,jsonChunks])expect(()=>[...run(invalid)]).toThrow();
+  for(const run of [legacyJsonChunks,jsonChunks]){
+    const reached=vi.fn(()=>{throw Error('Unexpected tail');});
+    const chunks=run({padding,get tail(){return reached();}});
+    expect(chunks.next().value!.length).toBe(chunkBytes);chunks.return(undefined);
+    expect(chunks.next().done).toBe(true);expect(reached).not.toHaveBeenCalled();
+  }
+});
+
 it.each(['object','array'])('only serializes %s nesting that the reader can restore',kind=>{
   const nested=(depth:number)=>{let value:any='original';for(let i=0;i<depth;i++)value=kind==='array'?[value]:{extension:value};return value;};
   const value=nested(64),parser=new JsonStream();
