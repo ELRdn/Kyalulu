@@ -264,16 +264,17 @@ async def run():
             async with async_playwright() as p:
                 browser = await p.chromium.launch(headless=True)
                 try:
-                    context = await browser.new_context(
-                        locale="ja-JP",
-                        viewport={"width": 393, "height": 851},
-                        is_mobile=True,
-                        has_touch=True,
-                    )
-                    await context.expose_binding('fixtureBlockedFetch', lambda _source, path:
-                                                 external_attempts.append({'source': 'browser', 'path': path}))
-                    # Keep the browser cache and native WebSocket behavior used by the recovery checks.
-                    await context.add_init_script('''(allowed => {
+                    async def remote_context():
+                        context = await browser.new_context(
+                            locale="ja-JP",
+                            viewport={"width": 393, "height": 851},
+                            is_mobile=True,
+                            has_touch=True,
+                        )
+                        await context.expose_binding('fixtureBlockedFetch', lambda _source, path:
+                                                     external_attempts.append({'source': 'browser', 'path': path}))
+                        # Keep the browser cache and native WebSocket behavior used by the recovery checks.
+                        await context.add_init_script('''(allowed => {
                         const original = window.fetch.bind(window);
                         window.fetch = (input, init) => {
                             const url = new URL(input instanceof Request ? input.url : input, location.href);
@@ -284,13 +285,16 @@ async def run():
                             return original(input, init);
                         };
                     })(%s)''' % json.dumps([web_origin, relay_origin]))
-                    await context.add_init_script('''
+                        await context.add_init_script('''
                         if(!localStorage.getItem('kyalulu-app-preferences-v1')){
                             localStorage.setItem('kyalulu-app-preferences-v1',JSON.stringify({version:1,language:'ja',country:'JP',age:25,accepted:true,
                               genres:[],moods:[],activities:[],favorites:[],dismissed:[]}));
                             localStorage.setItem('kyalulu-execution-target','pc');
                         }
                     ''')
+                        return context
+
+                    context = await remote_context()
                     page = await context.new_page()
                     errors, requests = [], []
                     page.on("pageerror", lambda e: errors.append(str(e)))
@@ -372,8 +376,8 @@ async def run():
                     report['checks'].append('unified PC settings have one destination list; JA/EN review cancellation retains registered keys')
                     await page.goto(web_origin + '/#/chats')
 
-                    async def api(path, method="GET", body=None):
-                        return await page.evaluate(
+                    async def api(path, method="GET", body=None, *, target=page):
+                        return await target.evaluate(
                             """async a => {
                           const {apiFetch} = await import('/src/lib/transport.ts');
                           const r = await apiFetch(a.path, {method:a.method, headers:a.body?{'Content-Type':'application/json'}:undefined, body:a.body?JSON.stringify(a.body):undefined});
@@ -545,6 +549,81 @@ async def run():
                         'management grant never enables pairing, approval, permission changes, revocation, Host stop or admin keys',
                         'same Noise connection observes management revocation on next request; registration, keys, history and conversation remain usable',
                     ])
+                    second_context = await remote_context()
+                    second = await second_context.new_page()
+                    second.on('pageerror', lambda e: errors.append(str(e)))
+                    second.on('request', lambda r: requests.append(r.url))
+                    second.on('websocket', lambda ws: external_attempts.append({'source': 'browser-websocket'})
+                              if urlsplit(ws.url).netloc not in (urlsplit(web_origin).netloc, urlsplit(relay_origin).netloc) else None)
+                    await second.goto((await host.pair())['url'])
+                    await second.get_by_label('この端末の名前').fill('Acceptance second browser')
+                    await second.get_by_role('button', name='このPCに登録する', exact=True).click()
+                    await wait_until(lambda: len(host.status()['pending']) == 1)
+                    second_device = host.status()['pending'][0]['device_id']
+                    assert second_device != device
+                    await host.approve(second_device, await second.locator('form [role="status"] strong').inner_text())
+                    await expect(second.get_by_role('heading', name='登録できました', exact=True)).to_be_visible()
+                    await second.get_by_role('button', name='会話を開く', exact=True).click()
+                    await expect(second.get_by_role('heading', name='チャット', exact=True)).to_be_visible(timeout=30000)
+                    second_keys = await second.evaluate('''async()=>{
+                        const {remoteDevices}=await import('/src/lib/remoteStore.ts');
+                        return JSON.stringify(await remoteDevices());
+                    }''')
+                    second_records = json.loads(second_keys)
+                    first_records = await page.evaluate('''async()=>{
+                        const {remoteDevices}=await import('/src/lib/remoteStore.ts');
+                        return await remoteDevices();
+                    }''')
+                    assert len(second_records) == len(first_records) == 1
+                    assert first_records[0]['deviceId'] == device and second_records[0]['deviceId'] == second_device
+                    assert all(first_records[0][key] != second_records[0][key] for key in ('privateKey', 'token'))
+                    assert all(first_records[0][key] == second_records[0][key] for key in ('ownerId', 'hostId', 'hostKey'))
+                    assert (await api('/api/chat/sessions', target=second))['status'] == 200
+                    simultaneous = dict(host.connections)
+                    assert {c.device_id for c in simultaneous.values()} == {device, second_device}
+                    expected_config = copy.deepcopy(host.config)
+                    permission_matrix = []
+                    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                                 base_url='http://127.0.0.1:5174',
+                                                 headers={'Origin': 'http://127.0.0.1:5174'}) as local:
+                        for enabled in ((), (0,), (0, 1), (1,), ()):
+                            for i, principal in enumerate((device, second_device)):
+                                changed = await local.put('/api/remote/devices/' + principal + '/management',
+                                                          json={'enabled': i in enabled})
+                                assert changed.status_code == 200 and changed.json() == {'management': i in enabled}
+                                expected_config['devices'][principal]['management'] = i in enabled
+                                assert host.config == vault.read() == expected_config
+                            responses = await asyncio.gather(*(
+                                api('/api/diagnostics', target=client) for client in (page, second)))
+                            statuses = [r['status'] for r in responses]
+                            assert statuses == [200 if i in enabled else 403 for i in range(2)]
+                            permission_matrix.append({'enabled': list(enabled), 'diagnostics': statuses})
+                            for i, (client, principal) in enumerate(zip((page, second), (device, second_device))):
+                                status = json.loads((await api('/api/mobile/status', target=client))['body'])
+                                assert status['administrative'] is (i in enabled)
+                                assert (await api('/api/remote/devices/' + principal + '/management', 'PUT',
+                                                  {'enabled': i not in enabled}, target=client))['status'] == 403
+                                assert host.config == vault.read() == expected_config
+                                assert host.authorized(principal) and host.management(principal) is (i in enabled)
+                                assert vault.read()['devices'][principal]['management'] is (i in enabled)
+                                shared = json.loads((await api('/api/chat/history?session_id=' + sid, target=client))['body'])
+                                assert shared['history'] == history
+                            assert host.connections.keys() == simultaneous.keys()
+                            assert all(host.connections[k] is connection for k, connection in simultaneous.items())
+                    assert await second.evaluate('''async()=>{
+                        const {remoteDevices}=await import('/src/lib/remoteStore.ts');
+                        return JSON.stringify(await remoteDevices());
+                    }''') == second_keys
+                    assert await page.evaluate('''async expected=>{
+                        const {remoteDevices}=await import('/src/lib/remoteStore.ts');
+                        const bytes=new TextEncoder().encode(JSON.stringify(await remoteDevices()));
+                        return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),v=>v.toString(16).padStart(2,'0')).join('')===expected;
+                    }''', keys_before)
+                    report['two_browser_permissions'] = {'matrix': permission_matrix,
+                        'independent_registered_keys': True, 'same_live_connections': True,
+                        'history_preserved': True, 'remote_permission_edits_denied': True}
+                    report['checks'].append('two isolated live browser principals independently grant/revoke management without reconnect, key changes or conversation loss')
+                    await second_context.close()
                     from python.api import chat
                     from python.providers.mock import MockProvider
 
