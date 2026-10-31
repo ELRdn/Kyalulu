@@ -11,6 +11,7 @@ import { appTransaction,newEntity,writeEntity,writeOutbox } from './appStore';
 import { readMemorySource,readDeviceGenerationSource,commitDeviceGeneration } from './deviceMemoryStore';
 import { deviceExecutionLockName } from './deviceExecution';
 import { Sha256 } from '../mobile/sha256';
+import { JsonStream } from './jsonStream';
 import type { GenerationChange } from './deviceGenerationChange';
 
 const user={id:100,uuid:'new-user',role:'user',content:'New input 茶🙂'};
@@ -37,7 +38,10 @@ const change=(source:any,status:string):GenerationChange=>({metadata:{...source.
 it.each(['local','sync'])('commits admission and completion with complete prefix/outbox preservation (%s)',async policy=>{
   let source=await seed(policy);const original=body(),outbox=structuredClone(fixture.meta.get('sync:owner:outbox'));
   const read=(await readDeviceGenerationSource('chat','owner'))!,{memoryReferences:_,...publicOriginal}=original;
-  expect(read.source).toEqual(source);expect(read.session).toEqual(publicOriginal);
+  const {payload,...header}=publicOriginal;
+  expect(read.source).toEqual(source);expect(read.header).toEqual(header);
+  expect(read.messages).toEqual(payload.messages.map(({id,uuid,role,content,imported_state}:any)=>({id,uuid,role,content,imported_state})));
+  expect(read.latest).toEqual(payload.messages.at(-1));
   source=await commitDeviceGeneration(source,change(source,'pending'));
   expect(body().payload.messages).toEqual([...original.payload.messages,user]);expect(fixture.meta.get('generation:owner:gen').status).toBe('pending');
   source=await commitDeviceGeneration(source,change(source,'completed'));
@@ -60,4 +64,37 @@ it('preserves a competing same-revision replacement body and keeps the pending r
   await appTransaction<void>(['entities','meta','parts'],'readwrite',(tx,done)=>writeEntity(tx,winner,'put',done));const before=snapshot();
   await expect(commitDeviceGeneration(source,change(source,'completed'))).rejects.toThrow();expect(snapshot()).toEqual(before);
   expect(body().payload.draft).toBe('Winning unsent draft');expect(fixture.meta.get('generation:owner:gen').status).toBe('pending');
+});
+
+it.each(['segmented','inline'])('projects actor history while retaining the complete regeneration tail and stored originals (%s)',async format=>{
+  await seed('local');const original=body();
+  original.payload.messages=original.payload.messages.map((message:any,index:number)=>({...message,
+    imported_state:index===2?'stopped':undefined,unknown:{private:'authored-'+index},
+    before:{state:{turn:index,location:'before-'+index},memories:[{id:'memory-'+index,content:'茶🙂'.repeat(10000)}],settings:{authored:'before'}},
+    after:{state:{turn:index+1},memories:[],settings:{authored:'after'}}}));
+  if(format==='inline')fixture.records.set(JSON.stringify(['owner','chat']),original);
+  else await appTransaction<void>(['entities'],'readwrite',(tx,done)=>writeEntity(tx,original,'put',done));
+  const before=snapshot(),finish=JsonStream.prototype.finish,roots:number[]=[];
+  const observed=vi.spyOn(JsonStream.prototype,'finish').mockImplementation(function(this:JsonStream){const value=finish.call(this);roots.push(value.messages.length);return value;});
+  try{
+    const context=(await readDeviceGenerationSource('chat','owner'))!;
+    expect(context.messages).toEqual(original.payload.messages.map(({id,uuid,role,content,imported_state}:any)=>({id,uuid,role,content,imported_state})));
+    expect(context.messages.every(message=>!Object.hasOwn(message,'before')&&!Object.hasOwn(message,'after')&&!Object.hasOwn(message,'unknown'))).toBe(true);
+    expect(context.latest).toEqual(original.payload.messages.at(-1));
+    expect(context.source.metadata).toEqual(Object.fromEntries(Object.entries(original.payload).filter(([key])=>key!=='messages')));
+    expect(Object.hasOwn(context,'session')).toBe(false);
+    expect(roots).toEqual(format==='segmented'?[0]:[]);
+    const after=snapshot();expect(after.records).toEqual(before.records);expect(after.meta).toEqual(before.meta);
+    expect(after.parts.map(([key])=>key)).toEqual(before.parts.map(([key])=>key));
+    for(const [key,bytes] of before.parts)expect(Buffer.compare(Buffer.from(fixture.parts.get(key)),Buffer.from(bytes)),key).toBe(0);
+    expect(body().payload).toEqual(original.payload);
+  }finally{observed.mockRestore();}
+});
+
+it('rejects a corrupt final actor history part without publishing a partial context or changing originals',async()=>{
+  await seed('local');const header=fixture.records.get(JSON.stringify(['owner','chat'])),ref=header.payloadParts;
+  const key=JSON.stringify(['owner','entity','chat',ref.token,ref.chunks-1]);
+  const bytes=fixture.parts.get(key).slice();bytes[bytes.length-1]^=1;fixture.parts.set(key,bytes);
+  const before=snapshot();await expect(readDeviceGenerationSource('chat','owner')).rejects.toThrow();expect(snapshot()).toEqual(before);
+  await expect(readDeviceGenerationSource('chat','foreign')).rejects.toThrow();expect(snapshot()).toEqual(before);
 });
