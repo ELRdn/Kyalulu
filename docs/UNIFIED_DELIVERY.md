@@ -18,7 +18,7 @@
 | 同期削除・復元、未送信変更の保護 | 条件付き承認でNative-PC/Browserのowner/revision・撤回fence・永続受領を検証。Native論理復元とCore全体復元は現在outbox/受領/ownerを保護し、自動同期停止・旧受領照合・復元単位の別コピー確認を適用。Core/既存同期の関連132件で検証 | 強制終了時のDB/媒体の一括耐久性、配布版をまたぐ全面復旧、実容量・実機・本番復旧の確認が必要 |
 | 端末限定の外部送信禁止・共有記憶分離 | 実Device保存/架空推論で生成・手動記憶、外部モデル拒否、同期未同意時の自動Cloud/同期/広告通信0を実Chromiumで確認 | 実Worker/モデルの通信、共有記憶の全面隔離、全機能/実機の否定試験は残る |
 | 最近10件＋固定会話のオフライン保存、容量不足とアカウント分離 | 選択/置換の1件ずつ処理・競合と実Chromium quota拒否時の原本/未送信/receipts保持、再開を確認。v3断片保存統合後もcache6・quota4ケース成功 | 実ディスク枯渇、既存DBへの後付quota、PWA/ブラウザ/実機の再起動と実容量試験は残る |
-| Remote端末別の管理権限、失効、対象PCでの管理・診断・実験 | 実PWA/Noise/Relay/Host/Runtimeの19 checks成功。診断・commands・providers・Mock実験の管理27要求、同一接続での付与/失効、対象PC保存・登録鍵保持を確認。2principalの権限独立unitも成功 | 2実ブラウザー同時接続・別PC・実モデル管理・TLS/物理端末は未検証 |
+| Remote端末別の管理権限、失効、対象PCでの管理・診断・実験 | 実PWA/Noise/Relay/Host/Runtimeの20 checks成功。既存の管理27要求に加え、独立鍵の2 Chromium contextを同時接続し、5段階の端末別付与/失効・10診断結果・自己権限変更拒否・同一接続/履歴/登録鍵保持を確認。対応source/2principal unitも4件成功 | 独立ブラウザーprocess・別PC・実モデル管理・TLS/物理端末は未検証 |
 | 旧Mobileの分割移行、SHA-256/revision/size、モデルCloud送信禁止 | 旧公開Workerを有効にした実originのloopback/Chromiumで中立popup・同意・分割会話転送・破損拒否・再送・明示更新・原本IDB/OPFS保持を確認。再取込み時の空下書き/送信待ち保護を修正 | 公開配信と実モデル容量・中断回復、Android/iPhoneでの直接コピー証拠。OPFS保持は架空markerでありモデル転送ではない |
 | PWA明示更新、/device/ の分離ヘッダー、広告との共存 | Native実配信と実Chromiumで日英の明示更新・別タブ拒否・下書き保持・オフラインのブラウザ全終了/復帰と分離状態を確認。生成中拒否はclient試験、オフライン表示はrenderer emulationで確認 | 広告と実提供元の共存、本番配信、実モデル・実機・OSネットワーク切替での受入れは残る |
 | 料金版、月額優位の数量、60/180日、原価×6、成功時精算 | 実装・fixture検証 | 決済再送/旧版条件/失敗0消費と既存残高保持 |
@@ -518,3 +518,8 @@ ID/UUID・本文・状態フラグへ投影し、再生成用には最新1発言
 保存済みowner/SKU/priceと入金receiptを照合し、広告の前後検査と24h受付期限・予約返却を統一する。
 実提供元・契約・本番入金の合格とは分け、価格・付与済み残高・既存台帳・検証原資は保持する。
 変更を固定後、通常pytestの課金/広告/統合/価格安全性120件と対応source closure3件が成功した。
+
+[Two-browser permissions](validation/2026-11-01-unified-two-browser-permissions.md)では、
+同じChromiumの独立した2 contextを別端末として同時接続し、PCからの管理権限付与/失効を
+5段階で確認した。全20 checksと対応source/既存2principal unit4件が成功。
+自己権限変更拒否・vault不変・同一接続・登録鍵と会話保持を確認し、別process/実機の証拠とは分ける。
