@@ -108,6 +108,8 @@ FILES = (
     "tests/e2e_device_generation_lock.py",
     "tests/e2e_device_target_switch.py",
     "tests/fixtures/device-research.html",
+    "tests/e2e_research_storage.py",
+    "tests/fixtures/research-storage.html",
     "tests/fixtures/memory-language.html",
     "tests/fixtures/portable-prompt.json",
     "tests/fixtures/unified-history.json",

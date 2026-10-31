@@ -94,6 +94,10 @@ Nativeの旧論理snapshot復元後の送信停止・受領照合・別コピー
 [Device research](validation/2026-10-26-unified-device-research.md) に記録する。
 端末内BenchmarkLabのペア行列・進捗・別タブ中止・期限と中断回復は
 [Device benchmarks](validation/2026-10-26-unified-device-benchmarks.md) に記録する。
+研究実験の本文/結果は既存1MiB writerへ接続し、一覧と復帰では完了済み本文を読み込まない。
+[Research storage](validation/2026-10-31-unified-research-storage.md) に旧inline互換・原本保護・catalog結合hashと、
+全Web1,450件・型・統合build、日英研究/Benchmark各2ケース、複数断片の実Chromium19ケースを記録する。
+100ターンも完了したが、活動中の実験全体の保持・毎回の全体走査・詳細/再実行の全量読込は残る。
 対応ソースのfixture閉包、共通収集、Nativeシナリオと分離ヘッダー、署名前の配布候補は
 [Release sources](validation/2026-10-26-unified-release-sources.md) に記録する。
 PWAの日英表示・明示更新・別タブ拒否・実ブラウザ全終了後の端末会話/下書き復帰は

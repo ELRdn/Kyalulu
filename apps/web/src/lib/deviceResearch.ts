@@ -8,6 +8,7 @@ import { compilePortable } from './devicePrompt';
 import { computeDeviceMetrics, memoryMetrics, memoryProbe, metricRound } from './deviceMetrics';
 import { SSEDecoder } from './sse';
 import { deviceExecutionLockName } from './deviceExecution';
+import { readResearchExperiment,writeResearchExperiment,listResearchExperiments,type ResearchExperiment as Experiment,type ResearchExperimentSummary } from './deviceResearchStore';
 export { deviceExecutionLockName } from './deviceExecution';
 
 type Value=Record<string,any>;
@@ -15,7 +16,6 @@ type Prompt=ReturnType<typeof compilePortable>;
 export type ResearchTurn={session:AppEntity;prompt:Prompt;requested?:Value;memoryOptions:Value;save:(session:AppEntity)=>Promise<AppEntity>};
 type Generate=(body:Value,signal:AbortSignal|undefined,scope:ResearchTurn)=>Promise<Response>;
 type Compile=(settings:Value,history:{role:string;content:string}[],owner:string)=>Promise<Prompt>;
-type Experiment={meta:Value;turns:Value[];raw_prompt:string;session:AppEntity;revision:number;job_id?:string};
 const official:Record<string,string>={mocha_daily_001:'mocha_sfw',senior_daily_001:'senior_cool',butler_daily_001:'butler'};
 let active:{owner:string;request:string;controller:AbortController}|null=null;
 export const deviceResearchBusy=()=>active!==null;
@@ -48,6 +48,7 @@ async function list<T>(owner:string,kind:string) {
   ownerCheck(owner);return result;
 }
 async function write(owner:string,kind:string,id:string,value:Value) {
+  if(kind==='experiment')return writeResearchExperiment(owner,id,value as Experiment);
   return appTransaction<number>(['meta'],'readwrite',(tx,done)=>{
     const store=tx.objectStore('meta'),r=store.get(key(owner,kind,id));
     r.onsuccess=()=>{
@@ -57,21 +58,27 @@ async function write(owner:string,kind:string,id:string,value:Value) {
   });
 }
 async function read(owner:string,id:string) {
-  identifier(id);const record=await getMeta<Experiment>(key(owner,'experiment',id));ownerCheck(owner);
+  identifier(id);const record=await readResearchExperiment(owner,id);ownerCheck(owner);
   if(!record)throw fail('Experiment not found',404);return record;
 }
 async function detail(owner:string,id:string) {
   const record=await read(owner,id),ratings=await getMeta<Value>(key(owner,'ratings',id));ownerCheck(owner);
   return {meta:record.meta,turns:record.turns,raw_prompt:record.raw_prompt,ratings:ratings??{},metrics:record.meta.metrics};
 }
+async function interrupt(owner:string,entry:ResearchExperimentSummary):Promise<ResearchExperimentSummary> {
+  const record=await read(owner,entry.meta.experiment_id);
+  if(record.meta.status==='running'){
+    record.meta={...record.meta,status:'interrupted',metrics:record.meta.metrics??computeDeviceMetrics(record.turns)};
+    record.revision=await write(owner,'experiment',record.meta.experiment_id,record);
+  }
+  return {meta:record.meta,revision:record.revision,...(record.job_id===undefined?{}:{job_id:record.job_id})};
+}
 async function recover(owner:string) {
   if(!navigator.locks)throw fail('Web Locks are required for on-device research',503);
   await navigator.locks.request(deviceExecutionLockName(owner),{ifAvailable:true},async lock=>{
     if(!lock)return;
-    const experiments=await list<Experiment>(owner,'experiment');
-    for(const record of experiments)if(record.meta.status==='running'){
-      record.meta.status='interrupted';record.meta.metrics??=computeDeviceMetrics(record.turns);record.revision=await write(owner,'experiment',record.meta.experiment_id,record);
-    }
+    const experiments=await listResearchExperiments(owner);
+    for(let i=0;i<experiments.length;i++)if(experiments[i].meta.status==='running')experiments[i]=await interrupt(owner,experiments[i]);
     for(const record of await list<Value>(owner,'request'))if(record.status==='running'){
       record.status='interrupted';record.revision=await write(owner,'request',record.id,record);
     }
@@ -263,10 +270,8 @@ async function startBenchmark(owner:string,body:Value,generate:Generate,compile:
       if(accepted&&owner===deviceOwner()){
         try{
           const results=new Map(job.results.map((r:Value)=>[r.experiment_id,r]));
-          for(const record of (await list<Experiment>(owner,'experiment')).filter(e=>e.job_id===id)){
-            if(record.meta.status==='running'){
-              record.meta.status='interrupted';record.meta.metrics??=computeDeviceMetrics(record.turns);record.revision=await write(owner,'experiment',record.meta.experiment_id,record);
-            }
+          for(let record of (await listResearchExperiments(owner)).filter(e=>e.job_id===id)){
+            if(record.meta.status==='running')record=await interrupt(owner,record);
             results.set(record.meta.experiment_id,record.meta);
           }
           job.results=[...results.values()];job.finished_at=new Date().toISOString();await save();
@@ -332,7 +337,7 @@ export async function deviceResearchRoute(path:string,method:string,body:Value,u
     return response;
   }
   if(method!=='GET')throw fail('Research listing requires GET',405);
-  await recover(owner);const experiments=await list<Experiment>(owner,'experiment');
+  await recover(owner);const experiments=await listResearchExperiments(owner);
   if(path==='/api/experiments')return json({experiments:experiments.sort((a,b)=>b.meta.timestamp.localeCompare(a.meta.timestamp)).slice(0,integer(url.searchParams.has('limit')?Number(url.searchParams.get('limit')):undefined,50,0,500)).map(e=>e.meta)});
   if(path==='/api/leaderboard'){
     const scope=url.searchParams.get('scope')==='all'?'all':'official',excluded={invalid:0,mock:0,non_official:0},groups=new Map<string,Value[]>();
