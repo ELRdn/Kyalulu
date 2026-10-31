@@ -416,6 +416,9 @@ native比較への変更と関連93件成功を記録する。製品処理・既
 [Outbox guard CI](validation/2026-10-31-unified-outbox-guard-followup.md)では、compact headerのfence読取と
 保存断片の2巡読取を区別し、全byte/SHA・読取順・全文復元禁止を照合する。旧oracleの失敗を再現し、
 修正後11ケース成功。全件再読込/全文JSON化を挿入する負例2件も検出し、期限や製品処理は変えていない。
+[Source test closure](validation/2026-10-31-unified-source-test-closure.md)では、固定source監査で判明した
+Benchmark/streaming試験・共有pytest設定の同梱漏れ5件を修正した。修正前失敗と収録後のbyte一致、
+source関連全13件成功を確認。依存license一覧が空のsource-only梱包を、配布/法務の合格とは扱わない。
 
 Core復元の媒体交換中に実process killすると、現在DBの参照媒体が欠落する不具合を再現・修正した。
 [Core interruption](validation/2026-10-31-unified-core-interruption.md)に実kill3地点を含む66件の検証を記録する。
