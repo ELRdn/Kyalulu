@@ -1,0 +1,312 @@
+<!doctype html><meta charset="utf-8"><title>History mutation acceptance</title>
+<script type="module">
+const goldenChangeHistorySource="async function changeHistory(session:AppEntity,messages:any[],affected:Set<number>,deleted:Set<number>,clear=false){\r\n  if(session.payload.pending_generation)throw fail('Reconcile the pending generation before editing history',409);\r\n  const context=['world','shared'].includes(session.payload.memory_scope_mode)\r\n    ?await scopedSessionMemory(session,settings=>memoryIdentityFor(settings,session.owner)):undefined;\r\n  const invalidGenerations=new Set<string>(),sourceGenerations=new Set<string>();\r\n  for(const memory of context?Object.values(context.domain.pools).flatMap(pool=>pool.memories).filter(memory=>memory.source_session_id===session.id):session.payload.memories??[])\r\n    if(typeof memory.source_generation_id==='string')sourceGenerations.add(memory.source_generation_id);\r\n  if(!clear)for(const id of sourceGenerations){\r\n    const receipt=session.payload.last_generation?.generation_id===id?session.payload.last_generation:await getMeta<any>('generation:'+session.owner+':'+id);\r\n    if(receipt?.session_id===session.id&&[receipt.user_id,receipt.assistant_id].some(id=>affected.has(id)))invalidGenerations.add(id);\r\n  }\r\n  const invalid=(memory:DeviceMemory)=>memory.origin==='model'&&(clear||invalidGenerations.has(memory.source_generation_id)||(memory.source_message_ids??[]).some((id:number)=>affected.has(id)));\r\n  const detach=(memories:DeviceMemory[])=>memories.filter(memory=>!invalid(memory)).map(memory=>({...memory,\r\n    source_message_ids:(memory.source_message_ids??[]).filter((id:number)=>!deleted.has(id)&&(!clear||messages.some(message=>message.id===id)))}));\r\n  if(context)for(const [scope,pool] of Object.entries(context.domain.pools)){\r\n    const owned=(memory:DeviceMemory)=>memory.source_session_id===session.id||memory.source_session_id==null&&pool.holders[JSON.stringify(memory.id)]===session.id;\r\n    const removed=new Set(pool.memories.filter(memory=>owned(memory)&&invalid(memory)).map(memory=>memory.id));\r\n    for(const event of pool.events)if(event.memory_id!==null&&removed.has(event.memory_id)&&event.source_session_id==null)event.source_session_id=session.id;\r\n    for(const memory of pool.memories)if(removed.has(memory.id))appendScopeEvent(pool,scope,'invalidate',memory.id,null,{session_id:session.id,reason:'history_changed'});\r\n    pool.memories=pool.memories.filter(memory=>!removed.has(memory.id)).map(memory=>owned(memory)?detach([memory])[0]:memory);\r\n    for(const id of removed)delete pool.holders[JSON.stringify(id)];\r\n  }\r\n  const payload:AppEntity['payload']={...session.payload,memories:detach(session.payload.memories??[]),messages:messages.map(message=>{\r\n    const result={...message};for(const name of ['before','after'])if(result[name])result[name]={...result[name],memories:detach(result[name].memories??[])};return result;\r\n  }),summaries:(session.payload.summaries??[]).flatMap((summary:any)=>{\r\n    if(!clear&&!(summary.source_message_ids??[]).some((id:number)=>affected.has(id)))return [summary];\r\n    return summary.method==='manual'?[{...summary,source_message_ids:(summary.source_message_ids??[]).filter((id:number)=>!deleted.has(id)&&!clear)}]:[];\r\n  })};\r\n  const generation=payload.last_generation;\r\n  if(clear||generation&&[generation.user_id,generation.assistant_id].some(id=>affected.has(id)))payload.last_generation=null;\r\n  const update={...session,payload};\r\n  if(context)await saveScopedMemory(context,[update]);else await saveEntity(update,session.revision);\r\n}\r\n";
+import {appTransaction,entity,newEntity,saveEntity,setMeta,getMeta,writeOutbox,memoryEventsKey} from '/src/lib/appStore.ts';
+import {rememberOwner} from '/src/lib/appContext.ts';
+import {deviceFetch} from '/src/lib/deviceApi.ts';
+import {readDeviceMemoryDomain,commitDeviceMemoryDomain} from '/src/lib/deviceMemoryStore.ts';
+import {bindMemoryScope,memoryBinding,memoryIdentity,memorySignature,ownScopeMemories,memoryDomainKey,previewMemoryMigration,migrateMemoryDomain} from '/src/lib/deviceMemoryScopes.ts';
+import {deviceExecutionLockName} from '/src/lib/deviceExecution.ts';
+import {canonical} from '/src/lib/appSyncData.ts';
+import {JsonStream} from '/src/lib/jsonStream.ts';
+import {Sha256} from '/src/mobile/sha256.ts';
+import {compilePortable} from '/src/lib/devicePrompt.ts';
+import catalog from '/src/mobile/app-catalog.generated.json';
+import {PortableDocumentSchema} from '../../packages/schemas/src/index.ts';
+import {physicalSnapshot,fixedOutbox} from './storage-fixture.ts';
+
+const owner='history-fiction-a',foreign='history-fiction-b',actorId='history-actor',peerId='history-peer';
+const encoder=new TextEncoder(),count=80,ids=Array.from({length:count},(_,i)=>1000-i*3),now='2026-10-31T12:34:56.000Z';
+// Reuse the existing IDB/part/hash/parser instrumentation without running its scenarios or modifying it.
+const helperText=await (await fetch(new URL('./memory-source-projection.html',import.meta.url))).text();
+const helperStart=helperText.indexOf('const check='),helperEnd=helperText.indexOf('function memory(');
+const observeStart=helperText.indexOf('async function observe('),observeEnd=helperText.indexOf('async function context(');
+if(helperStart<0||helperEnd<helperStart||observeStart<0||observeEnd<observeStart)throw Error('Projection helper extraction changed');
+const {check,same,hash,header,putHeader,partKey,getPart,putPart,physical,observe}=new Function(
+  'appTransaction','canonical','Sha256','encoder','physicalSnapshot','owner','JsonStream',
+  helperText.slice(helperStart,helperEnd)+helperText.slice(observeStart,observeEnd)+
+  'return {check,same,hash,header,putHeader,partKey,getPart,putPart,physical,observe};')
+  (appTransaction,canonical,Sha256,encoder,physicalSnapshot,owner,JsonStream);
+
+// This is only the frozen expected-value oracle. No product function is replaced or cast.
+const goldenJS=goldenChangeHistorySource
+  .replaceAll(':AppEntity[\'payload\']','').replaceAll(':AppEntity','').replaceAll(':any[]','')
+  .replaceAll(':Set<number>','').replaceAll(':DeviceMemory[]','').replaceAll(':DeviceMemory','')
+  .replaceAll(':number','').replaceAll(':any','').replaceAll('new Set<string>()','new Set()').replaceAll('getMeta<any>','getMeta');
+async function golden(session,domain,receipts,method,id){
+  const clear=method==='CLEAR',affected=new Set(clear?session.payload.messages.map(m=>m.id):[id]);
+  const deleted=clear||method==='DELETE'?affected:new Set();
+  const messages=clear?[]:session.payload.messages.flatMap(m=>m.id!==id?[m]:method==='DELETE'?[]:[{...m,content:'Edited '+method+' 茶🙂'}]);
+  let expected;
+  const scoped=['world','shared'].includes(session.payload.memory_scope_mode),context={domain:structuredClone(domain)};
+  const append=(pool,scope,op,memoryId,generationId,detail)=>{
+    const memory=pool.memories.find(m=>m.id===memoryId);
+    pool.events.push({id:pool.events.length+1,scope,op,memory_id:memoryId,generation_id:generationId,
+      source_session_id:memory?.source_session_id??pool.holders[JSON.stringify(memoryId)]??null,detail,created_at:now});
+  };
+  const save=async update=>{expected=update;};
+  const fn=new Function('fail','scopedSessionMemory','memoryIdentityFor','getMeta','appendScopeEvent','saveScopedMemory','saveEntity',
+    goldenJS+'return changeHistory;')((message,status)=>Object.assign(Error(message),{status}),async()=>context,async()=>null,
+      async key=>receipts[key],append,async(ctx,updates)=>{
+        expected=updates[0];
+        const pool=ctx.domain.pools[memoryBinding(ctx.domain,session.id).scope];
+        expected.payload.memories=pool.memories.filter(m=>m.source_session_id===session.id||m.source_session_id==null&&pool.holders[JSON.stringify(m.id)]===session.id)
+          .map(m=>({...structuredClone(m),scope:session.id}));
+      },save);
+  await fn(structuredClone(session),messages,affected,deleted,clear);
+  return {payload:expected.payload,pools:scoped?context.domain.pools:domain.pools};
+}
+
+function row(sid,label,sourceIds=[],origin='model',generation){
+  return {id:sid+'-'+label,uuid:'uuid-'+sid+'-'+label,scope:sid,type:'semantic',content:'Fictional '+label+' '+sid,
+    origin,status:'active',supported:null,version:2,source_session_id:sid,source_message_ids:sourceIds,source_generation_id:generation,
+    source_kind:'user_statement',created_at:now,updated_at:now,access_count:3,last_accessed:null,legacy_field:{quote:'Keep 茶🙂',nested:[null,true,0]}};
+}
+const memories=sid=>[
+  row(sid,'direct',[ids[0]]),row(sid,'last-receipt',[],'model','last'),row(sid,'stored-receipt',[],'model','stored'),
+  row(sid,'wrong-receipt',[],'model','wrong'),row(sid,'missing-receipt',[],'model','missing'),
+  row(sid,'survivor',[ids.at(-1)]),row(sid,'manual',[ids[0],ids[1],ids[2],ids.at(-1)],'user'),
+  {...row(sid,'holder',[ids[0]]),source_session_id:null},
+];
+function source(sid,policy,mode,settings,large=true){
+  const rows=memories(sid),messageIds=sid===actorId?ids:ids.map(id=>id+10000);
+  if(mode==='legacy')rows.push(row(sid,'empty-receipt',[],'model',''));
+  if(sid!==actorId)for(const m of rows)m.source_message_ids=m.source_message_ids.map(id=>id+10000);
+  const snapshot=i=>({state:{session_id:sid,turn:i,location:'茶🙂',extension:{keep:true}},memories:structuredClone(rows)
+    .map(m=>({...m,source_message_ids:m.source_message_ids.filter(id=>messageIds.slice(0,i).includes(id))})),
+    settings:{...settings,session_id:sid,temperature:.73,unknown_setting:[null,'keep']},legacy_snapshot:{keep:'before/after'}});
+  return {...newEntity('conversation',sid,{storage_policy:policy,memory_scope_mode:mode,rating:'general',settings:{...settings,session_id:sid},
+    state:{session_id:sid,turn:40,location:'Retained location',legacy_state:{keep:'state'}},memory_enabled:true,
+    messages:Array.from({length:count},(_,i)=>({id:messageIds[i],uuid:'message-'+sid+'-'+i,role:i%2?'assistant':'user',
+      content:(large?'架空🙂'.repeat(3600):'Peer input ')+i,created_at:now,model_id:'fixture-unused',before:snapshot(i),after:snapshot(i+1),
+      legacy_message:{keep:'\\"\n茶🙂é',index:i}})),memories:rows,
+    summaries:[{id:'manual-affected',method:'manual',source_message_ids:[ids[0],ids[1],ids[2],ids.at(-1)],text:'Manual summary',legacy_summary:{keep:true}},
+      ...[0,1,2,79].map(i=>({id:'auto-'+i,method:'extractive',source_message_ids:[ids[i]],text:'Auto '+i,unknown:[null,true]})),
+      {id:'manual-other',method:'manual',source_message_ids:[ids.at(-1)],text:'Unrelated manual'}],
+    draft:'Unsent draft 茶🙂',last_generation:{generation_id:'last',session_id:sid,status:'completed',user_id:messageIds[1],assistant_id:messageIds[3],legacy_receipt:true},
+    pending_generation:null,unknown:JSON.parse('{"__proto__":{"keep":true},"extension":[null,true,0,{"text":"茶🙂"}]}'),
+    message_sequence:9000,legacy_payload:{keep:true}},owner),pinned:true,serverRevision:9,unknown_header:{keep:'header'}};
+}
+async function seed(policy,mode){
+  rememberOwner(owner);localStorage.setItem('kyalulu-execution-target','device');
+  const character=catalog.characters.find(c=>c.id==='mocha_sfw'),world=catalog.worlds.find(w=>w.id==='beast_world');
+  check(character&&world,'Required built-in catalog fixtures missing');
+  const settings={character_id:character.id,world_id:world.id,persona_id:null,system_prompt:'',temperature:.8};
+  const document=PortableDocumentSchema.parse({name:character.display_name??character.name,
+    data:{description:character.description??'',personality:character.personality??'',first_mes:character.intro??''},speaking_style:character.speaking_style??'',nsfw:!!character.nsfw});
+  const prompt=compilePortable({document,character_version:character.version??null,library_binding:{character:null,profile:null,lorebooks:[]},
+    lorebooks:[],persona:null,world,extra_system_prompt:''},[]),snapshot=prompt.sections.portable_snapshot;
+  const identity=memoryIdentity(settings,{character_id:prompt.character_version,persona_id:snapshot.persona?.version??null,world_id:snapshot.world?.version??null});
+  let actor=source(actorId,policy,mode==='shared'?'world':mode,settings),peer=source(peerId,policy,mode==='shared'?'world':mode,settings,false);
+  let domain=await readDeviceMemoryDomain(owner,policy);
+  if(mode==='legacy'){
+    actor=await saveEntity(actor,0);peer=await saveEntity(peer,0);
+  }else{
+    for(const record of [actor,peer])bindMemoryScope(domain,record,identity);
+    // Retain retired pools too; history mutations must invalidate this source in every pool.
+    if(mode==='shared')for(const record of [actor,peer]){
+      const preview=previewMemoryMigration(domain,record,identity);
+      migrateMemoryDomain(domain,record,identity,preview.preview_revision,true);
+      record.payload.memory_scope_mode='shared';
+    }
+    for(const record of [actor,peer]){
+      const binding=memoryBinding(domain,record.id),pool=domain.pools[binding.scope];
+      record.payload.memories=ownScopeMemories(pool,record.id);binding.signature=memorySignature(record.payload.memories);
+    }
+    for(const [scope,pool] of Object.entries(domain.pools)){
+      const own=pool.memories.find(m=>m.source_session_id===actorId);
+      pool.events.push({id:pool.events.length+1,scope,op:'legacy_create',memory_id:own.id,generation_id:null,detail:{legacy:'event'},created_at:now});
+      const foreignRow=pool.memories.find(m=>m.source_session_id===peerId);
+      pool.events.push({id:pool.events.length+1,scope,op:'peer_keep',memory_id:foreignRow.id,generation_id:null,source_session_id:peerId,detail:{keep:true},created_at:now});
+    }
+    const result=await commitDeviceMemoryDomain(owner,policy,domain,[{id:actorId,revision:0},{id:peerId,revision:0}],[actor,peer]);
+    [actor,peer]=result.sessions;domain=result.domain;
+    check(memoryBinding(domain,actorId).scope===memoryBinding(domain,peerId).scope,'Catalog/compiled identities did not share a pool');
+  }
+  const receipts={stored:{generation_id:'stored',session_id:actorId,user_id:ids[2],assistant_id:ids[4],status:'completed',unknown:{keep:true}},
+    wrong:{generation_id:'wrong',session_id:peerId,user_id:ids[0],assistant_id:ids[1],status:'completed'},
+    last:{generation_id:'last',session_id:peerId,user_id:ids[0],assistant_id:ids[1],status:'completed',shadowed_by_last_generation:true},
+    '':{generation_id:'',session_id:actorId,user_id:ids[1],assistant_id:ids[3],status:'completed',legacy_empty_id:true}};
+  for(const [id,value] of Object.entries(receipts))await setMeta('generation:'+owner+':'+id,value);
+  await setMeta(memoryEventsKey(owner,actorId),[{id:1,scope:actorId,op:'legacy_keep',detail:{keep:true}}]);
+  const outbox={request_id:'fixed-history',changes:[{id:actorId,kind:'conversation',base_revision:9,deleted:false,
+    payload:{messages:[{id:99999,content:'Fixed unsent snapshot'}],draft:'Independent draft',unknown:{keep:true}}}]};
+  await appTransaction(['meta','parts'],'readwrite',(tx,done)=>writeOutbox(tx,owner,outbox,done));
+  const h=await header(actorId);
+  check(h.payloadParts.size>=2*1024*1024&&h.payloadParts.chunks>=3,'Expected >=2 MiB, >=3 real source parts');
+  return {actor,peer,domain,policy,mode,outbox,receipts:Object.fromEntries(Object.entries(receipts).map(([k,v])=>['generation:'+owner+':'+k,v])),
+    source_bytes:h.payloadParts.size,source_parts:h.payloadParts.chunks};
+}
+const api=async(method,id=ids[0],body)=>{
+  const path=method==='CLEAR'?'/api/chat/history?session_id='+actorId:'/api/chat/history/'+id;
+  const response=await deviceFetch(path,{method:method==='CLEAR'?'DELETE':method,
+    ...(method==='PUT'||method==='PATCH'?{body:JSON.stringify(body??{content:'Edited '+method+' 茶🙂'})}:{})});
+  return {status:response.status,data:await response.json()};
+};
+const fixedPhysical=snapshot=>({meta:snapshot.meta.filter(([key])=>key==='sync:'+owner+':outbox'),
+  parts:snapshot.parts.filter(([key])=>key[0]===owner&&key[1]==='outbox')});
+async function verify(initial,method,id,stats){
+  const {actor,domain}=initial,expected=await golden(actor,domain,initial.receipts,method,id);
+  const actual=await entity(actorId,owner),next=await readDeviceMemoryDomain(owner,initial.policy);
+  same(actual.payload,expected.payload,'Golden complete payload differs: '+method);
+  same(next.pools,expected.pools,'Golden domain pools/events/holders differ: '+method);
+  check(actual.revision===actor.revision+1&&actual.dirty===(initial.policy==='sync'),'Revision/dirty policy differs');
+  for(const key of Object.keys(actor).filter(k=>!['payload','revision','opened','dirty'].includes(k)))same(actual[key],actor[key],'Preserved header '+key);
+  same(await entity(peerId,owner),initial.peer,'Peer entity changed');
+  same(await fixedOutbox(owner),initial.outbox,'Fixed outbox changed');
+  for(const [key,value] of Object.entries(initial.receipts))same(await getMeta(key),value,'Generation receipt was modified');
+  check(stats.max_retained_root_messages===0&&stats.max_callback_messages<=1,'Unbounded retained history/callbacks');
+  check(stats.finishes.some(f=>f.total===actor.payload.messages.length&&f.retained===0),'Actor was not fully streamed');
+  if(initial.mode!=='legacy'){
+    check(memoryBinding(next,actorId).entity_revision===actual.revision,'Binding revision not advanced');
+    same(actual.payload.memories,ownScopeMemories(next.pools[memoryBinding(next,actorId).scope],actorId),'Own-only canonical projection');
+    for(const [scope,pool] of Object.entries(domain.pools))same(next.pools[scope].memories.filter(m=>m.source_session_id===peerId),
+      pool.memories.filter(m=>m.source_session_id===peerId),'Foreign pool rows changed');
+  }
+  const h=await header(actorId);
+  check(!(await physical()).parts.some(([key])=>key[1]==='entity'&&key[2]===actorId&&key[3]!==h.payloadParts.token),'Obsolete actor parts leaked');
+  return {...initial,actor:actual,domain:next};
+}
+async function observedApi(method,id){
+  const DateOriginal=Date;
+  window.Date=class extends DateOriginal{constructor(...args){super(...(args.length?args:[now]));}static now(){return DateOriginal.parse(now);}};
+  try{return await observe(()=>api(method,id));}finally{window.Date=DateOriginal;}
+}
+async function saveExpected(policy){
+  const value={policy,physical:hash(await physical()),entities:await Promise.all([actorId,peerId].map(async id=>({id,hash:hash(await entity(id,owner))}))),
+    domain:hash(await readDeviceMemoryDomain(owner,policy)),outbox:hash(await fixedOutbox(owner))};
+  localStorage.setItem('history-mutations-expected',JSON.stringify(value));
+}
+async function resume(){
+  rememberOwner(owner);const expected=JSON.parse(localStorage.getItem('history-mutations-expected'));
+  same(hash(await physical()),expected.physical,'Physical stores changed on reopen');
+  for(const item of expected.entities)same(hash(await entity(item.id,owner)),item.hash,'Full payload/header changed on reopen');
+  same(hash(await readDeviceMemoryDomain(owner,expected.policy)),expected.domain,'Domain changed on reopen');
+  same(hash(await fixedOutbox(owner)),expected.outbox,'Outbox changed on reopen');
+  return {all_store_bytes_and_complete_entities_after_reload:true};
+}
+async function flow(initial){
+  const observations=[];let current=initial;
+  for(const [method,id] of [['PUT',ids[0]],['PATCH',ids[1]],['DELETE',ids[2]],['CLEAR',null]]){
+    window.__HISTORY_PROGRESS__.stage=method;
+    const {value,stats}=await observedApi(method,id);same(value,{status:200,data:{ok:true}},'Mutation outward contract');
+    current=await verify(current,method,id,stats);observations.push({method,...stats});
+    const response=await deviceFetch('/api/chat/history?session_id='+actorId);
+    check(response.status===200,'Compatibility GET status');same(await response.json(),{history:current.actor.payload.messages},'Compatibility GET full history');
+  }
+  return {observations,complete_golden_payloads:true,compatibility_get:true};
+}
+async function rejection(method,id,snapshot,message){
+  const result=await api(method,id);check(result.status>=400,message+': accepted');
+  same(await physical(),snapshot,message+': changed entities/parts/domain/receipts/outbox');return result;
+}
+async function fault(initial,scenario){
+  const h=await header(actorId),last=h.payloadParts.chunks-1,original=await getPart(h,last);
+  let evidence={},snapshot;
+  if(scenario==='late-part'||scenario==='invalid-json'){
+    let repair;
+    if(scenario==='late-part'){
+      const corrupt=new Uint8Array(original);corrupt[corrupt.length-2]^=1;await putPart(h,last,corrupt);
+      repair=()=>putPart(h,last,original);
+    }else{
+      const raw=encoder.encode('{"messages":[{"id":1000,"content":"'+'x'.repeat(2*1024*1024)+'\\q"}],"storage_policy":"local"}');
+      const parts=await Promise.all(Array.from({length:h.payloadParts.chunks},(_,i)=>getPart(h,i)));
+      const ref={token:h.payloadParts.token,size:raw.length,chunks:Math.ceil(raw.length/(1024*1024)),sha256:new Sha256().update(raw).digest()};
+      await appTransaction(['entities','parts'],'readwrite',(tx,done)=>{
+        for(let i=0;i<ref.chunks;i++)tx.objectStore('parts').put(raw.slice(i*1024*1024,(i+1)*1024*1024),[owner,'entity',actorId,ref.token,i]);
+        tx.objectStore('entities').put({...h,payloadParts:ref});done();
+      });
+      repair=()=>appTransaction(['entities','parts'],'readwrite',(tx,done)=>{
+        for(let i=0;i<parts.length;i++)tx.objectStore('parts').put(parts[i],partKey(h,i));tx.objectStore('entities').put(h);done();
+      });evidence.valid_manifest_hash=ref.sha256;
+    }
+    snapshot=await physical();evidence.rejection=await rejection('PUT',ids[0],snapshot,'Corrupt source');
+    evidence.clear_rejection=await rejection('CLEAR',null,snapshot,'Clear corrupt source');await repair();
+  }else if(scenario.startsWith('quota')){
+    snapshot=await physical();const put=IDBObjectStore.prototype.put,add=IDBObjectStore.prototype.add;
+    const writes={entity_headers:0,entity_parts:0,domain_parts:0,injections:0};
+    IDBObjectStore.prototype.add=function(value,key){if(this.name==='parts'&&Array.isArray(key)){
+      if(key[1]==='entity')writes.entity_parts++;if(key[1]==='memory-domain')writes.domain_parts++;
+    }return add.call(this,value,key);};
+    IDBObjectStore.prototype.put=function(value,key){
+      if(this.name==='entities'&&value.id===actorId){writes.entity_headers++;
+        if(initial.mode==='legacy'){writes.injections++;throw new DOMException('Injected actor-header quota','QuotaExceededError');}}
+      if(this.name==='meta'&&key===memoryDomainKey(owner,initial.policy)){writes.injections++;throw new DOMException('Injected domain-header quota','QuotaExceededError');}
+      return put.call(this,value,key);
+    };
+    try{evidence.rejection=await rejection(scenario==='quota-clear'?'CLEAR':'PUT',ids[0],snapshot,'Quota');}
+    finally{IDBObjectStore.prototype.put=put;IDBObjectStore.prototype.add=add;}
+    check(writes.injections===1&&writes.entity_headers===1&&writes.entity_parts>0,'Quota must follow actor output parts/header');
+    if(initial.mode!=='legacy')check(writes.domain_parts>0,'Quota must follow domain parts');evidence.writes_before_abort=writes;
+  }else if(scenario==='owner-switch'){
+    snapshot=await physical();const get=IDBObjectStore.prototype.get;let switched=false;
+    IDBObjectStore.prototype.get=function(key){const request=get.call(this,key);
+      if(this.name==='parts'&&Array.isArray(key)&&key[2]===actorId&&key.at(-1)===last&&!switched)
+        request.addEventListener('success',()=>{switched=true;rememberOwner(foreign);},{once:true});return request;
+    };
+    try{const result=await api('PUT');check(result.status>=400,'Owner change accepted');evidence.rejection=result;}
+    finally{IDBObjectStore.prototype.get=get;rememberOwner(owner);}
+    check(switched,'Owner fault not reached');same(await physical(),snapshot,'Owner change committed any bytes');
+  }else if(scenario==='cas-revision'||scenario==='cas-token'){
+    const get=IDBObjectStore.prototype.get;let injected=false,competing;
+    const concurrent=structuredClone(h);snapshot=await physical();
+    if(scenario==='cas-revision')concurrent.revision++;
+    else concurrent.payloadParts.token=crypto.randomUUID();
+    snapshot.entities.find(([key])=>key[0]===owner&&key[1]===actorId)[1]=concurrent;
+    if(scenario==='cas-token')for(const [key] of snapshot.parts)
+      if(key[0]===owner&&key[1]==='entity'&&key[2]===actorId)key[3]=concurrent.payloadParts.token;
+    // Queue a real competing IDB transaction after source admission, before its receipt read resolves.
+    IDBObjectStore.prototype.get=function(key){const request=get.call(this,key);
+      if(this.name==='meta'&&key==='generation:'+owner+':stored'&&!injected){
+        request.addEventListener('success',()=>{
+          injected=true;competing=appTransaction(['entities','parts'],'readwrite',(tx,done)=>{
+            const parts=tx.objectStore('parts');let index=0;
+            const next=()=>{
+              if(scenario==='cas-revision'||index===h.payloadParts.chunks){tx.objectStore('entities').put(concurrent);done();return;}
+              const i=index++,read=get.call(parts,partKey(h,i));
+              read.onsuccess=()=>{parts.put(read.result,partKey(concurrent,i));parts.delete(partKey(h,i));next();};
+            };next();
+          });
+        },{once:true});
+      }return request;
+    };
+    try{
+      const result=await api('PUT');await competing;check(result.status>=400,'Stale source CAS accepted');evidence.rejection=result;
+      same(await physical(),snapshot,'CAS changed more than the real competing header/parts');
+    }finally{IDBObjectStore.prototype.get=get;}
+    check(injected,'CAS receipt gate not reached');initial.actor=await entity(actorId,owner);
+    evidence.competing_header={revision:concurrent.revision,body_token:concurrent.payloadParts.token,real_idb_commit:true};
+  }else if(scenario==='contracts'){
+    snapshot=await physical();const cases=[['PATCH',ids[0],{content:''},400],['PUT',ids[0],{content:'x'.repeat(128001)},400],
+      ['PUT',ids[0],{content:7},400],['PATCH',999999,{content:'Missing'},404]];
+    evidence.rejections=[];
+    for(const [method,id,body,status] of cases){const value=await api(method,id,body);check(value.status===status,'Invalid body/missing ID status');
+      same(await physical(),snapshot,'Invalid request changed storage');evidence.rejections.push(value.status);}
+    await navigator.locks.request(deviceExecutionLockName(owner),async()=>{
+      const result=await rejection('CLEAR',null,snapshot,'Execution lock');check(result.status===409,'Execution lock contract');
+    });
+    const pending=await saveEntity({...initial.actor,payload:{...initial.actor.payload,pending_generation:'pending-fiction'}},initial.actor.revision);
+    const pendingSnapshot=await physical();
+    const result=await rejection('PUT',ids[0],pendingSnapshot,'Pending generation');check(result.status===409,'Pending contract');
+    initial.actor=await saveEntity({...pending,payload:{...pending.payload,pending_generation:null}},pending.revision);
+  }else throw Error('Unknown fault '+scenario);
+  const method=scenario==='quota-clear'?'CLEAR':'PUT';
+  const {value,stats}=await observedApi(method,ids[0]);same(value,{status:200,data:{ok:true}},'Fresh retry outward contract');
+  await verify(initial,method,ids[0],stats);
+  return {...evidence,atomic_retry_succeeded:true,retry_observation:stats};
+}
+async function run(scenario){
+  window.__HISTORY_PROGRESS__={scenario,stage:'seed'};window.__PROJECTION_PROGRESS__=window.__HISTORY_PROGRESS__;
+  const flowCase=scenario.startsWith('flow-'),mode=scenario.includes('shared')||scenario==='quota-clear'?'shared':
+    scenario.includes('world')||['quota-scoped','owner-switch','cas-revision','cas-token'].includes(scenario)?'world':'legacy';
+  const policy=scenario.endsWith('sync')||scenario==='quota-clear'?'sync':'local';
+  const initial=await seed(policy,mode),before=fixedPhysical(await physical());
+  window.__HISTORY_PROGRESS__.stage='exercise';
+  const evidence=flowCase?await flow(initial):await fault(initial,scenario);
+  same(fixedPhysical(await physical()),before,'Fixed outbox physical bytes/token changed');
+  await saveExpected(policy);window.__HISTORY_PROGRESS__.stage='passed';
+  return {ok:true,scenario,policy,mode,source_bytes:initial.source_bytes,source_parts:initial.source_parts,messages:count,
+    golden_source_sha256:new Sha256().update(encoder.encode(goldenChangeHistorySource)).digest(),fixed_outbox_physically_unchanged:true,...evidence};
+}
+window.__HISTORY_MUTATIONS__={run,resume};
+</script>

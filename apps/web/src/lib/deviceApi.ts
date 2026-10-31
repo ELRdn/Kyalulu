@@ -15,11 +15,12 @@ import { commitDeviceImport, deviceSourceMatches } from './deviceImport';
 import { parseDeviceImport } from './deviceParseImport';
 import { acceptDeviceMedia, readDeviceAsset, saveDeviceAsset, validateDeviceDocumentAssets } from './deviceAssets';
 import { deviceResearchRoute, deviceResearchBusy, deviceExecutionLockName, type ResearchTurn } from './deviceResearch';
-import { recoverDeviceMemoryGeneration,readDeviceMemoryDomain } from './deviceMemoryStore';
-import { scopedSessionMemory,scopedMemoryRows,saveScopedMemory,deviceMemoryScope,type ScopedMemory } from './deviceScopedMemory';
+import { recoverDeviceMemoryGeneration,readDeviceMemoryDomain,readMemorySource,findConversationMessageSource,saveUnscopedHistory,type MemorySource } from './deviceMemoryStore';
+import { scopedSessionMemory,scopedSourceMemory,scopedMemoryRows,saveScopedMemory,deviceMemoryScope,type ScopedMemory } from './deviceScopedMemory';
 import { memoryIdentity,memoryBinding,memoryPolicy,ownScopeMemories,appendScopeEvent } from './deviceMemoryScopes';
 import { scopedMemoryRoute } from './deviceScopedMemoryApi';
 import { storageStep } from './segmentedStorage';
+import { historyAffected,invalidHistoryMemory,detachHistoryMemories,type HistoryChange } from './deviceHistoryChange';
 
 let runtime:MobileRuntime|undefined, loaded='';
 let running:string|null=null;
@@ -145,38 +146,39 @@ async function memoryIdentityFor(settings:Record<string,any>,owner:string){
   const prompt=await compiled(settings,[],owner),snapshot=prompt.sections.portable_snapshot;
   return memoryIdentity(settings,{character_id:prompt.character_version,persona_id:snapshot.persona?.version??null,world_id:snapshot.world?.version??null});
 }
-async function changeHistory(session:AppEntity,messages:any[],affected:Set<number>,deleted:Set<number>,clear=false){
-  if(session.payload.pending_generation)throw fail('Reconcile the pending generation before editing history',409);
-  const context=['world','shared'].includes(session.payload.memory_scope_mode)
-    ?await scopedSessionMemory(session,settings=>memoryIdentityFor(settings,session.owner)):undefined;
-  const invalidGenerations=new Set<string>(),sourceGenerations=new Set<string>();
-  for(const memory of context?Object.values(context.domain.pools).flatMap(pool=>pool.memories).filter(memory=>memory.source_session_id===session.id):session.payload.memories??[])
-    if(typeof memory.source_generation_id==='string')sourceGenerations.add(memory.source_generation_id);
-  if(!clear)for(const id of sourceGenerations){
-    const receipt=session.payload.last_generation?.generation_id===id?session.payload.last_generation:await getMeta<any>('generation:'+session.owner+':'+id);
-    if(receipt?.session_id===session.id&&[receipt.user_id,receipt.assistant_id].some(id=>affected.has(id)))invalidGenerations.add(id);
+async function historySource(id:string,owner:string,messageId?:number) {
+  let matched=false;
+  const read=()=>readMemorySource(id,owner,messageId===undefined?undefined:message=>{if(message?.id===messageId)matched=true;});
+  let source=await read();
+  if(source?.metadata.cache_evicted){
+    await hydrateConversation(id,owner);await trimOfflineCache(owner,id);matched=false;source=await read();
+    if(!source||source.metadata.cache_evicted)throw fail('Conversation unavailable',503);
   }
-  const invalid=(memory:DeviceMemory)=>memory.origin==='model'&&(clear||invalidGenerations.has(memory.source_generation_id)||(memory.source_message_ids??[]).some((id:number)=>affected.has(id)));
-  const detach=(memories:DeviceMemory[])=>memories.filter(memory=>!invalid(memory)).map(memory=>({...memory,
-    source_message_ids:(memory.source_message_ids??[]).filter((id:number)=>!deleted.has(id)&&(!clear||messages.some(message=>message.id===id)))}));
+  if(!source&&(await conversationInfo(id,owner))?.deleted)throw fail('Conversation deleted',404);
+  if(messageId!==undefined&&!matched)throw fail('Message not found',404);
+  return source;
+}
+async function changeHistory(source:MemorySource,change:HistoryChange){
+  if(source.metadata.pending_generation)throw fail('Reconcile the pending generation before editing history',409);
+  const context=['world','shared'].includes(source.metadata.memory_scope_mode)
+    ?await scopedSourceMemory(source,settings=>memoryIdentityFor(settings,source.owner)):undefined;
+  const invalidGenerations=new Set<string>(),sourceGenerations=new Set<string>();
+  for(const memory of context?Object.values(context.domain.pools).flatMap(pool=>pool.memories).filter(memory=>memory.source_session_id===source.id):source.metadata.memories??[])
+    if(typeof memory.source_generation_id==='string')sourceGenerations.add(memory.source_generation_id);
+  if(change.messageId!==null)for(const id of sourceGenerations){
+    const receipt=source.metadata.last_generation?.generation_id===id?source.metadata.last_generation:await getMeta<any>('generation:'+source.owner+':'+id);
+    if(receipt?.session_id===source.id&&[receipt.user_id,receipt.assistant_id].some(id=>historyAffected(id,change)))invalidGenerations.add(id);
+  }
+  change={...change,invalidGenerations:[...invalidGenerations]};
   if(context)for(const [scope,pool] of Object.entries(context.domain.pools)){
-    const owned=(memory:DeviceMemory)=>memory.source_session_id===session.id||memory.source_session_id==null&&pool.holders[JSON.stringify(memory.id)]===session.id;
-    const removed=new Set(pool.memories.filter(memory=>owned(memory)&&invalid(memory)).map(memory=>memory.id));
-    for(const event of pool.events)if(event.memory_id!==null&&removed.has(event.memory_id)&&event.source_session_id==null)event.source_session_id=session.id;
-    for(const memory of pool.memories)if(removed.has(memory.id))appendScopeEvent(pool,scope,'invalidate',memory.id,null,{session_id:session.id,reason:'history_changed'});
-    pool.memories=pool.memories.filter(memory=>!removed.has(memory.id)).map(memory=>owned(memory)?detach([memory])[0]:memory);
+    const owned=(memory:DeviceMemory)=>memory.source_session_id===source.id||memory.source_session_id==null&&pool.holders[JSON.stringify(memory.id)]===source.id;
+    const removed=new Set(pool.memories.filter(memory=>owned(memory)&&invalidHistoryMemory(memory,change)).map(memory=>memory.id));
+    for(const event of pool.events)if(event.memory_id!==null&&removed.has(event.memory_id)&&event.source_session_id==null)event.source_session_id=source.id;
+    for(const memory of pool.memories)if(removed.has(memory.id))appendScopeEvent(pool,scope,'invalidate',memory.id,null,{session_id:source.id,reason:'history_changed'});
+    pool.memories=pool.memories.filter(memory=>!removed.has(memory.id)).map(memory=>owned(memory)?detachHistoryMemories([memory],change)[0]:memory);
     for(const id of removed)delete pool.holders[JSON.stringify(id)];
   }
-  const payload:AppEntity['payload']={...session.payload,memories:detach(session.payload.memories??[]),messages:messages.map(message=>{
-    const result={...message};for(const name of ['before','after'])if(result[name])result[name]={...result[name],memories:detach(result[name].memories??[])};return result;
-  }),summaries:(session.payload.summaries??[]).flatMap((summary:any)=>{
-    if(!clear&&!(summary.source_message_ids??[]).some((id:number)=>affected.has(id)))return [summary];
-    return summary.method==='manual'?[{...summary,source_message_ids:(summary.source_message_ids??[]).filter((id:number)=>!deleted.has(id)&&!clear)}]:[];
-  })};
-  const generation=payload.last_generation;
-  if(clear||generation&&[generation.user_id,generation.assistant_id].some(id=>affected.has(id)))payload.last_generation=null;
-  const update={...session,payload};
-  if(context)await saveScopedMemory(context,[update]);else await saveEntity(update,session.revision);
+  if(context)await saveScopedMemory(context,[],{},{sourceId:source.id,change});else await saveUnscopedHistory(source,change);
 }
 async function generate(body:Record<string,any>,signal?:AbortSignal,scope?:ResearchTurn) {
   // Research already holds this lock until all its turns and durable writes finish.
@@ -493,21 +495,23 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
   }
   if(path==='/api/chat/history') {
     if(!['GET','DELETE'].includes(method))throw fail('Invalid history operation',405);
-    const session=await conversation(url.searchParams.get('session_id')??'default',owner);
-    if(method==='GET')return json({history:session.payload.messages});
+    const id=url.searchParams.get('session_id')??'default';
+    if(method==='GET')return json({history:(await conversation(id,owner)).payload.messages});
     if(running)throw fail('Stop generation before editing',409);
-    const ids=new Set<number>(session.payload.messages.map((message:any)=>message.id));
-    await changeHistory(session,[],ids,ids,true);return json({ok:true});
+    const source=await historySource(id,owner);
+    if(source)await changeHistory(source,{messageId:null,invalidGenerations:[]});
+    else {const empty=blank(id);await saveEntity({...empty,owner,payload:{...empty.payload,last_generation:null}},0);}
+    return json({ok:true});
   }
   if(/^\/api\/chat\/history\/\d+$/.test(path)) {
     if(!['PUT','PATCH','DELETE'].includes(method))throw fail('Invalid history operation',405);
     if(running)throw fail('Stop generation before editing',409);
-    const id=Number(path.split('/').at(-1)),found=(await readRecords()).find(s=>s.kind==='conversation'&&s.payload.messages.some((m:any)=>m.id===id));
+    const id=Number(path.split('/').at(-1)),found=await findConversationMessageSource(id,owner);
     if(!found)throw fail('Message not found',404);
-    const session=await conversation(found.id,owner);
+    const source=await historySource(found.id,owner,id);
+    if(!source||!found.metadata.cache_evicted&&(source.revision!==found.revision||source.bodyToken!==found.bodyToken))throw fail('Conversation changed',409);
     if(method!=='DELETE'&&(typeof body.content!=='string'||!body.content.trim()||body.content.length>128000))throw fail('Invalid message');
-    const messages=method==='DELETE'?session.payload.messages.filter((m:any)=>m.id!==id):session.payload.messages.map((m:any)=>m.id===id?{...m,content:body.content}:m);
-    await changeHistory(session,messages,new Set([id]),method==='DELETE'?new Set([id]):new Set());return json({ok:true});
+    await changeHistory(source,{messageId:id,...(method==='DELETE'?{}:{content:body.content}),invalidGenerations:[]});return json({ok:true});
   }
   if(path==='/api/chat/intro/inject') {
     const session=await conversation(url.searchParams.get('session_id')??'default',owner);

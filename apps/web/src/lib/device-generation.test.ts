@@ -10,7 +10,24 @@ vi.mock('../mobile/runtime',()=>({MobileRuntime:class {
 }}));
 vi.mock('../mobile/models',()=>({MODELS:[{id:'fixture',runtime:'gguf',temperature:.8,topK:64,topP:.95}],readyModels:async()=>new Set(['fixture'])}));
 vi.mock('./appSync',()=>({hydrateConversation:vi.fn()}));
-vi.mock('./deviceMemoryStore',()=>({recoverDeviceMemoryGeneration:async()=>null}));
+vi.mock('./deviceMemoryStore',async original=>{
+  const projection=(id:string,owner:string)=>{
+    const saved=fixture.saved;if(!saved||saved.id!==id||saved.owner!==owner)return;
+    const {messages:_,...metadata}=saved.payload;return {id,owner,revision:saved.revision,deleted:false,bodyToken:null,metadata:structuredClone(metadata)};
+  };
+  return {...await original<typeof import('./deviceMemoryStore')>(),recoverDeviceMemoryGeneration:async()=>null,
+    readMemorySource:(id:string,owner:string,onMessage?:(message:any)=>void)=>{
+      const source=projection(id,owner);if(source)for(const message of fixture.saved.payload.messages)onMessage?.(message);return source;
+    },
+    findConversationMessageSource:(id:number,owner:string)=>fixture.saved?.payload.messages.some((message:any)=>message.id===id)?projection(fixture.saved.id,owner):undefined,
+    saveUnscopedHistory:async(source:any,change:any)=>{
+      const {saveEntity}=await import('./appStore');
+      const {changedHistoryMessage,changedHistoryMetadata,detachHistoryMemories}=await import('./deviceHistoryChange');
+      const p=fixture.saved.payload;
+      await saveEntity({...fixture.saved,payload:{...p,...changedHistoryMetadata(p,change),memories:detachHistoryMemories(p.memories,change),
+        messages:p.messages.flatMap((message:any)=>{const value=changedHistoryMessage(message,change);return value===null?[]:[value];})}},source.revision);
+    }};
+});
 vi.mock('./appContext',()=>({deviceOwner:()=> 'fixture-owner',setGenerationBusy:fixture.busy}));
 vi.mock('./appStore',async importOriginal=>({
   ...await importOriginal<typeof import('./appStore')>(),
@@ -176,7 +193,8 @@ it('keeps a later manual memory when regenerating a legacy conversation',async()
   const user=fixture.saved.payload.messages.at(-2),generation=fixture.saved.payload.last_generation;
   expect(generation.user_id).toBe(user.id);
   expect(fixture.meta.get('generation:fixture-owner:legacy-replacement')).toMatchObject({user_id:user.id,user_content_sha256:expect.stringMatching(/^[a-f0-9]{64}$/)});
-  fixture.saved.kind='conversation';vi.mocked(allEntities).mockResolvedValue([fixture.saved]);
+  fixture.saved.kind='conversation';
   const edit=await deviceFetch('/api/chat/history/'+user.id,{method:'PUT',body:JSON.stringify({content:'Edited input after regeneration'})});
   expect(edit.ok).toBe(true);expect(fixture.saved.payload.last_generation).toBeNull();
+  expect(allEntities).not.toHaveBeenCalled();
 });
