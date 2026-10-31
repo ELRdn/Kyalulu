@@ -9,6 +9,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
@@ -435,7 +436,10 @@ def test_validation_never_echoes_secret_and_http_bounds(env):
     assert client.get("/v1/hosts?token=secret").status_code == 400
 
 
-def test_rate_limit_bounded_and_http_throttles(env):
+def test_rate_limit_bounded_and_http_throttles(env, monkeypatch):
+    clock = [119.999]
+    # Freeze only Relay's binding; async I/O must keep its real monotonic clock.
+    monkeypatch.setattr('runtime.python.relay.app.time', SimpleNamespace(monotonic=lambda: clock[0]))
     _, client, _ = env
     limiter = Limiter()
     assert all(limiter.allow("same-ip") for _ in range(120))
@@ -445,7 +449,12 @@ def test_rate_limit_bounded_and_http_throttles(env):
     assert len(limiter.ips) <= 2048
     assert not limiter.allow("fresh-ip")
     codes = [client.get("/healthz").status_code for _ in range(121)]
+    assert codes[:-1] == [200] * 120
     assert codes[-1] == 429
+    clock[0] = 120.0
+    assert client.get("/healthz").status_code == 200
+    assert limiter.allow("same-ip")
+    assert limiter.total == 1 and len(limiter.ips) == 1
 
 
 def test_slow_peer_queue_is_bounded_and_cascades(env):
