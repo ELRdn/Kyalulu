@@ -27,7 +27,23 @@ vi.mock('./appStore',async importOriginal=>({
   },
   trimOfflineCache:vi.fn().mockResolvedValue(undefined),
   appTransaction:(_stores:string[],mode:string,action:any)=>{
-    let writes=0;return harness(fixture.entities,fixture.meta,fixture.parts,JSON.stringify,mode,action,{
+    let writes=0;return harness(fixture.entities,fixture.meta,fixture.parts,JSON.stringify,mode,(tx:any,done:any)=>{
+      const objectStore=tx.objectStore.bind(tx);
+      action({...tx,objectStore:(name:string)=>{
+        const store=objectStore(name);if(name!=='meta')return store;
+        // The shared harness exposes entity cursors; model metadata continuations on its request queue.
+        return {...store,openCursor:(range:any)=>{
+          const request:any={},read=store.getAllKeys();
+          read.onsuccess=()=>{
+            const keys=read.result.filter((key:any)=>typeof key==='string'&&key>=range.lower&&key<=range.upper).sort();let index=0;
+            const next=()=>{
+              const key=keys[index++],value=store.get(key??range.lower);
+              value.onsuccess=()=>{request.result=key===undefined?null:{key,primaryKey:key,value:value.result,continue:next};request.onsuccess?.();};
+            };next();
+          };return request;
+        }};
+      }},done);
+    },{
       write:()=>{if(fixture.failAt&&++writes===fixture.failAt)throw Error('Quota');},
       read:(mode,name,k)=>{
         if(name==='meta')fixture.reads.push(String(k));
@@ -50,6 +66,8 @@ import { Sha256 } from '../mobile/sha256';
 import { stageSyncBatch } from './appSyncStage';
 import { withLibrarySnapshots } from './appSyncData';
 import * as syncData from './appSyncData';
+import { downloadIncoming,incomingSource,withIncoming } from './appSyncIncoming';
+import { encodeBytes } from './remoteRpc';
 import sharedHistory from '../../../../tests/fixtures/unified-history.json';
 import { PortableDocumentSchema, CreatorDocumentSchema } from '../../../../packages/schemas/src';
 
@@ -873,4 +891,141 @@ it('skips an already received segmented payload reference using its header witho
   });
   await syncNow('owner-a');expect(syncState().phase,syncState().error).toBe('saved');expect(bodyReads).toBe(0);
   expect(fixture.entities.get(JSON.stringify(['owner-a','chat']))).toEqual(original);expect(fixture.meta.get('sync:owner-a:cursor')).toBe(7);
+});
+
+function pagedIncoming(payload:any,id='chat',revision=3,transfer='22222222-2222-4222-8222-222222222222') {
+  const raw=new TextEncoder().encode(JSON.stringify(payload)),sha=(bytes:Uint8Array)=>new Sha256().update(bytes).digest();
+  const wire={id,kind:'conversation',revision,deleted:false,payload_ref:{id,revision,transfer_id:transfer,size:raw.length,sha256:sha(raw),chunks:Math.ceil(raw.length/(1024*1024)),chunk_bytes:1024*1024}};
+  const call=async(path:string)=>{const index=Number(path.split('/').at(-1)),bytes=raw.subarray(index*1024*1024,(index+1)*1024*1024);return {data:encodeBytes(bytes),sha256:sha(bytes)};};
+  return {wire,raw,call,sha};
+}
+const temporaryIncoming=()=>({meta:[...fixture.meta].filter(([key])=>key.startsWith('sync-incoming:')),parts:[...fixture.parts].filter(([key])=>JSON.parse(key)[1]==='incoming')});
+
+it('does not open incoming storage or a network sync lease for a device-only guest',async()=>{
+  fixture.owner='guest';const lease=vi.spyOn(navigator.locks,'request');
+  await syncNow('guest');expect(lease).not.toHaveBeenCalled();expect(fixture.reads).toEqual([]);expect(cloudFetch).not.toHaveBeenCalled();
+  lease.mockRestore();
+});
+
+it('spools and receives a multi-part remote history without materializing a message array',async()=>{
+  let sequence=100;const prior=syncData.rebindConversation(syncData.receiveConversation(sharedHistory.payload,undefined,()=>++sequence),'chat');
+  const source={...local('chat'),serverRevision:2,payload:prior};
+  await appTransaction<void>(['entities'],'readwrite',(tx,done)=>writeEntity(tx,source,'put',done));
+  const unrelated=local('unrelated');unrelated.payload.messages[0].id=900;put(unrelated);
+  const foreign=local('foreign','owner-b');foreign.payload.messages[0].id=9_000_000;put(foreign);
+  const payload=structuredClone(sharedHistory.payload);for(const message of payload.messages)message.content+='REMOTE 茶🙂'.repeat(80000);
+  payload.messages.push({id:5,uuid:'remote-new-message',role:'user',content:'latest'} as any);
+  const {wire,raw,call}=pagedIncoming(payload);expect(raw.length).toBeGreaterThan(2*1024*1024);
+  const roots:number[]=[],finish=JsonStream.prototype.finish,spy=vi.spyOn(JsonStream.prototype,'finish').mockImplementation(function(this:JsonStream){const p=finish.call(this);if(Array.isArray(p?.messages))roots.push(p.messages.length);return p;});
+  try{
+    await withIncoming('owner-a',async()=>{
+      const staged=await downloadIncoming('owner-a',wire,call,async()=>{}),cache=incomingSource(staged,'owner-a')!;
+      expect(staged.payload.messages).toEqual([]);expect(cache.identities).toEqual(payload.messages.map(m=>({id:m.id,uuid:m.uuid})));
+      expect(temporaryIncoming().parts.length).toBe(wire.payload_ref.chunks);
+      expect(cache.history.settings.every(s=>!Object.hasOwn(s,'system_prompt'))).toBe(true);
+      await receiveSyncPage('owner-a',[staged],10);
+    });
+  }finally{spy.mockRestore();}
+  expect(roots.length).toBeGreaterThanOrEqual(3);expect(roots.every(count=>count===0)).toBe(true);expect(temporaryIncoming()).toEqual({meta:[],parts:[]});
+  const saved=get('chat');expect(saved.payload.messages.map((m:any)=>m.content)).toEqual(payload.messages.map(m=>m.content));
+  expect(saved.payload.messages.map((m:any)=>m.id)).toEqual([101,102,103,104,901]);expect(saved.payload.messages.map((m:any)=>m.uuid)).toEqual(payload.messages.map(m=>m.uuid));
+  expect(saved.payload.memories[0].id).toBe(prior.memories[0].id);expect(saved.payload.summaries[0].source_message_ids).toEqual([101,102]);
+  expect(saved.payload).toMatchObject({settings:{session_id:'chat'},state:{session_id:'chat'}});
+  expect(get('character').payload.versions['1'].name).toBe('Old character');expect(get('character').payload.versions['2'].name).toBe('New character');
+  expect(fixture.meta.get('sync:owner-a:remote:chat')).toEqual({revision:3,deleted:false,count:5});expect(fixture.meta.get('sync:owner-a:cursor')).toBe(10);
+  expect(get('unrelated')).toEqual(unrelated);expect(get('foreign','owner-b')).toEqual(foreign);
+});
+
+it.each(['part-hash','whole-hash','syntax','utf8','quota','consent','manifest','owner','busy'])('preserves authored data and clears incoming bytes after %s failure',async failure=>{
+  const source={...local('chat'),serverRevision:2};put(source);fixture.meta.set('private-marker',{keep:'original'});
+  const beforeEntities=structuredClone([...fixture.entities]),beforeMeta=structuredClone([...fixture.meta]);
+  const payload=structuredClone(sharedHistory.payload),base=pagedIncoming(payload);
+  let bytes=base.raw;
+  if(failure==='syntax'){bytes=bytes.slice();bytes[bytes.length-1]=33;}
+  if(failure==='utf8'){bytes=bytes.slice();bytes[bytes.length-2]=255;}
+  const wire={...base.wire,payload_ref:{...base.wire.payload_ref,sha256:failure==='whole-hash'?'0'.repeat(64):base.sha(bytes)}};
+  const call=async()=>({data:encodeBytes(bytes),sha256:failure==='part-hash'?'0'.repeat(64):base.sha(bytes)});
+  let metadata:Map<string,any>|undefined,injected=false;const clone=structuredClone;
+  const spy=vi.spyOn(globalThis,'structuredClone').mockImplementation((value:any,options?:StructuredSerializeOptions)=>{const result=clone(value,options);if(value===fixture.meta)metadata=result;return result;});
+  try{
+    await expect(withIncoming('owner-a',async()=>{
+      const staged=await downloadIncoming('owner-a',wire,call,async()=>{}),cache=incomingSource(staged,'owner-a')!;
+      fixture.readHook=(mode,kind,id)=>{
+        if(injected||mode!=='readwrite'||kind!=='part'||id!=='incoming')return;
+        injected=true;
+        if(failure==='consent')metadata!.set('sync:owner-a:consent',false);
+        if(failure==='manifest')metadata!.set('sync-incoming:'+JSON.stringify('owner-a')+':'+cache.ref.token,{...cache.manifest,ready:false});
+        if(failure==='owner')fixture.owner='owner-b';
+        if(failure==='busy')fixture.busy=true;
+      };
+      if(failure==='quota')fixture.failAt=1;
+      try{await receiveSyncPage('owner-a',[staged],10);}finally{fixture.failAt=0;}
+    })).rejects.toThrow();
+  }finally{spy.mockRestore();fixture.readHook=undefined;fixture.failAt=0;}
+  if(['consent','manifest','owner','busy'].includes(failure))expect(injected).toBe(true);
+  expect([...fixture.entities]).toEqual(beforeEntities);expect([...fixture.meta]).toEqual(beforeMeta);expect(fixture.parts.size).toBe(0);
+});
+
+it('clears earlier incoming stages when the second entity download fails before page adoption',async()=>{
+  const source={...local('chat'),dirty:true};put(source);const before=structuredClone([...fixture.entities]);
+  const first=pagedIncoming(sharedHistory.payload),second=pagedIncoming(sharedHistory.payload,'other',3,'33333333-3333-4333-8333-333333333333');
+  await expect(withIncoming('owner-a',async()=>{
+    await downloadIncoming('owner-a',first.wire,first.call,async()=>{});
+    await downloadIncoming('owner-a',second.wire,async()=>({data:'!',sha256:'0'.repeat(64)}),async()=>{});
+  })).rejects.toThrow();
+  expect([...fixture.entities]).toEqual(before);expect(temporaryIncoming()).toEqual({meta:[],parts:[]});expect(fixture.meta.has('sync:owner-a:cursor')).toBe(false);
+});
+
+it('keeps numeric identity across two staged changes for the same conversation in one page',async()=>{
+  const a=structuredClone(sharedHistory.payload),b=structuredClone(sharedHistory.payload);a.messages.push({id:5,uuid:'new-user',role:'user',content:'latest'} as any);
+  b.messages=[...structuredClone(a.messages),{id:6,uuid:'new-reply',role:'assistant',content:'response'} as any];
+  const first=pagedIncoming(a,'chat',3),second=pagedIncoming(b,'chat',4,'33333333-3333-4333-8333-333333333333');
+  await withIncoming('owner-a',async()=>{
+    const x=await downloadIncoming('owner-a',first.wire,first.call,async()=>{}),y=await downloadIncoming('owner-a',second.wire,second.call,async()=>{});
+    await receiveSyncPage('owner-a',[x,y],10);
+  });
+  expect(get('chat').payload.messages.map((m:any)=>m.id)).toEqual([1,2,3,4,5,6]);expect(get('chat').payload.messages.map((m:any)=>m.uuid)).toEqual(b.messages.map(m=>m.uuid));
+  expect(get('chat')).toMatchObject({revision:2,serverRevision:4,dirty:false});expect(temporaryIncoming()).toEqual({meta:[],parts:[]});
+});
+
+it('reclaims only recognized owner-scoped incoming stages and protects other namespaces',async()=>{
+  put({...local('chat'),dirty:true});fixture.meta.set('sync:owner-a:outbox',{private:'KEEP'});
+  const fixtureBody=pagedIncoming(payload()),known=await downloadIncoming('owner-a',fixtureBody.wire,fixtureBody.call,async()=>{}),cache=incomingSource(known,'owner-a')!;
+  const unknown=await downloadIncoming('owner-a',fixtureBody.wire,fixtureBody.call,async()=>{}),future=incomingSource(unknown,'owner-a')!;
+  const futureKey='sync-incoming:'+JSON.stringify('owner-a')+':'+future.ref.token;fixture.meta.set(futureKey,{...future.manifest,purpose:'future-unknown'});
+  const entityKey=JSON.stringify(['owner-a','entity','authored',cache.ref.token,0]),outboxKey=JSON.stringify(['owner-a','outbox','fixed',cache.ref.token,0]);
+  fixture.parts.set(entityKey,new Uint8Array([11,22]));fixture.parts.set(outboxKey,new Uint8Array([33,44]));
+  fixture.owner='owner-b';fixture.meta.set('sync:owner-b:consent',true);
+  const foreign=await downloadIncoming('owner-b',fixtureBody.wire,fixtureBody.call,async()=>{}),other=incomingSource(foreign,'owner-b')!;
+  fixture.owner='owner-a';const before=structuredClone([...fixture.entities]);
+  await withIncoming('owner-a',async()=>{});
+  expect([...fixture.entities]).toEqual(before);expect(fixture.meta.get('sync:owner-a:outbox')).toEqual({private:'KEEP'});
+  expect(fixture.meta.has('sync-incoming:'+JSON.stringify('owner-a')+':'+cache.ref.token)).toBe(false);expect(fixture.meta.get(futureKey).purpose).toBe('future-unknown');
+  expect(fixture.meta.has('sync-incoming:'+JSON.stringify('owner-b')+':'+other.ref.token)).toBe(true);
+  expect(fixture.parts.get(entityKey)).toEqual(new Uint8Array([11,22]));expect(fixture.parts.get(outboxKey)).toEqual(new Uint8Array([33,44]));
+  expect(temporaryIncoming().parts).toHaveLength(2);
+});
+
+it.each(['inline','paged'])('rejects a %s conversation whose Library snapshot occupies the same entity identity',async mode=>{
+  const p=payload();p.settings.library_binding.character={id:'chat',revision:1};p.library_snapshots={'chat@1':{name:'Self character'}} as any;
+  const source=pagedIncoming(p),before=structuredClone([...fixture.entities]);
+  await expect(withIncoming('owner-a',async()=>{
+    const value=mode==='paged'?await downloadIncoming('owner-a',source.wire,source.call,async()=>{}):{id:'chat',kind:'conversation',revision:3,deleted:false,payload:p};
+    await receiveSyncPage('owner-a',[value],10);
+  })).rejects.toThrow();
+  expect([...fixture.entities]).toEqual(before);expect(temporaryIncoming()).toEqual({meta:[],parts:[]});expect(fixture.meta.has('sync:owner-a:cursor')).toBe(false);
+});
+
+it.each(['inline','paged'])('receives a %s update after same-page deletion cleanup has revised its previous conversation',async mode=>{
+  const a={...local('chat'),serverRevision:1};a.payload.last_generation={memory:{candidates:[{id:'m',source_session_id:'retired',content:'PRIVATE SOURCE'}]}};
+  const b={...local('retired'),serverRevision:1};
+  await appTransaction<void>(['entities'],'readwrite',(tx,done)=>writeEntity(tx,a,'put',()=>writeEntity(tx,b,'put',done)));
+  const source=pagedIncoming(payload());
+  await withIncoming('owner-a',async()=>{
+    const value=mode==='paged'?await downloadIncoming('owner-a',source.wire,source.call,async()=>{}):{id:'chat',kind:'conversation',revision:3,deleted:false,payload:payload()};
+    await receiveSyncPage('owner-a',[{id:'retired',kind:'conversation',revision:2,deleted:true,payload:{}},value],10);
+  });
+  expect(get('retired').deleted).toBe(true);expect(get('chat')).toMatchObject({kind:'conversation',revision:3,serverRevision:3,dirty:false});
+  expect(get('chat').payload.messages[0].content).toBe('tea');expect(get('chat').payload.last_generation).toBeUndefined();
+  expect(temporaryIncoming()).toEqual({meta:[],parts:[]});expect(fixture.meta.get('sync:owner-a:cursor')).toBe(10);
 });

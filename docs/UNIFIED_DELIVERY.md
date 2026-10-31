@@ -496,3 +496,12 @@ Windows分岐driverでは、固定LF hashのhelperがCRLFで配信されると�
 [Branch CI](validation/2026-10-31-unified-branch-ci.md)にhelper配信の改行正規化とケース別診断を記録する。
 04ea182の製品sourceで全24ケース・161入力hash不変が成功し、CRLFと改行以外の改ざん拒否も確認。
 既存のchecksum・assert・期限を保ち、元CIの例外そのものの回収や修正後のWindows CI成功とは区別する。
+
+通常のpaged受信は[Incoming spool](validation/2026-11-01-unified-sync-incoming.md)で検証済み断片を一時保存し、
+受領transaction内で1発言ずつ既存receiver/binderへ渡す。owner Web Lockをsync/hydrateで共用し、
+失敗・再読込後は認識済み自ownerの一時領域だけを回収する。snapshot ID衝突と同一page内削除後のrevision競合も修正。
+対象142件・全Web1,527件・型/統合build、独立Chromium40件・284完全出力比較・337入力hash不変が成功。
+metadata/maps/1発言・inline/非会話・削除退避・hydrate返却の全量保持と追加ディスク使用は残り、1GB/RSS合格とは扱わない。
+失敗済みtransactionのqueue継続による二重abortも修正し、既存同期15件はpage例外なしで成功した。
+[Staging CI調査](validation/2026-11-01-unified-staging-ci.md)ではb9feb73のWindows PRだけに出た90秒待機を
+130回のローカル結果と60件のtransaction観測で再現できず、未解消とした。修正後の通常初回同期30件は成功。

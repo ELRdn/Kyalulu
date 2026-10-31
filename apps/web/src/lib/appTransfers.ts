@@ -87,14 +87,13 @@ export async function uploadSync(body:{request_id:string;changes:unknown[]}|Sync
   return send(`/transfers/${opened.transfer_id}/commit`,{});
 }
 
-export async function downloadEntity(entity:any,call:Call,active:Active) {
-  if(!entity?.payload_ref)return entity;
-  const ref=entity.payload_ref;
-  if(ref.id!==entity.id||ref.revision!==entity.revision||!Number.isSafeInteger(ref.size)||ref.size<1||ref.size>1_000_000_000
+// Callers must await normal completion before accepting chunks: the whole-manifest check runs after the last yield.
+export async function* downloadEntityChunks(entity:any,call:Call,active:Active):AsyncGenerator<Uint8Array> {
+  const ref=entity?.payload_ref;
+  if(!ref||ref.id!==entity.id||ref.revision!==entity.revision||!Number.isSafeInteger(ref.size)||ref.size<1||ref.size>1_000_000_000
     ||typeof ref.transfer_id!=='string'||!/^[0-9a-f-]{36}$/.test(ref.transfer_id)||ref.chunk_bytes!==CHUNK_BYTES
     ||ref.chunks!==Math.ceil(ref.size/CHUNK_BYTES)||typeof ref.sha256!=='string'||!/^[a-f0-9]{64}$/.test(ref.sha256))throw Error('Invalid transfer reference');
-  // shortcut: decoded entities and individual strings remain whole; segment storage before 1 GB acceptance.
-  const parser=new JsonStream(),digest=new Sha256();let offset=0;
+  const digest=new Sha256();let offset=0;
   for(let index=0;index<ref.chunks;index++){
     await active();
     const part=await call(`/transfers/${ref.transfer_id}/parts/${index}`);
@@ -102,9 +101,16 @@ export async function downloadEntity(entity:any,call:Call,active:Active) {
       ||!/^[A-Za-z0-9+/]*={0,2}$/.test(part.data))throw Error('Invalid transfer chunk');
     const chunk=decodeBytes(part.data);
     if(chunk.length!==Math.min(CHUNK_BYTES,ref.size-offset)||hash(chunk)!==part.sha256)throw Error('Transfer SHA-256 mismatch');
-    digest.update(chunk);offset+=chunk.length;parser.feed(chunk);
+    digest.update(chunk);offset+=chunk.length;yield chunk;
   }
   if(offset!==ref.size||digest.digest()!==ref.sha256)throw Error('Transfer size or SHA-256 mismatch');
+}
+
+export async function downloadEntity(entity:any,call:Call,active:Active) {
+  if(!entity?.payload_ref)return entity;
+  // shortcut: decoded entities and individual strings remain whole; segment storage before 1 GB acceptance.
+  const parser=new JsonStream();
+  for await(const chunk of downloadEntityChunks(entity,call,active))parser.feed(chunk);
   const payload=parser.finish();
   if(!payload||typeof payload!=='object'||Array.isArray(payload))throw Error('Invalid transfer payload');
   await active();

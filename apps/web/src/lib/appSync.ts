@@ -2,13 +2,14 @@ import { appTransaction, entity, getMeta, entitySelection, guardStorage, restore
 import { deviceExecutionLockName } from './deviceExecution';
 import { cloudFetch } from './transport';
 import { deviceOwner, generationBusy } from './appContext';
-import { receiveConversation, receiveLibrarySnapshot, receiveCreatorSnapshot, rebindConversation, conversationSettings } from './appSyncData';
-import { downloadEntity, uploadSync } from './appTransfers';
+import { receiveConversation, receiveLibrarySnapshot, receiveCreatorSnapshot, rebindConversation, conversationSettings,type SnapshotReferences } from './appSyncData';
+import { uploadSync } from './appTransfers';
 import { outboxSyncSource,sameOutboxSource } from './appOutbox';
 import { stageSyncBatch } from './appSyncStage';
 import { acknowledgeBranch } from './appSyncBranch';
-import { readParts,storageStep } from './segmentedStorage';
+import { readParts,storageStep,storageWrite } from './segmentedStorage';
 import { JsonStream } from './jsonStream';
+import { clearIncoming,downloadIncoming,incomingSource,receiveIncoming,withIncoming } from './appSyncIncoming';
 
 type Batch=StoredOutbox&{revisions:Record<string,number>;withdrawn?:boolean|0;receipt?:{changes:Ack[]}};
 type Ack={id:string;source_id?:string;revision:number;deleted:boolean;branched?:boolean;lineage?:Record<string,unknown>};
@@ -70,7 +71,7 @@ async function request(owner:string,path:string,init?:RequestInit) {
       });
       if(local&&local.kind===remote.kind&&!entitySelection(local).cache_evicted&&Number.isSafeInteger(remote.revision)&&local.serverRevision>=remote.revision){result.changes.splice(index--,1);continue;}
     }
-    result.changes[index]=await downloadEntity(result.changes[index],call,()=>transferActive(owner));
+    result.changes[index]=await downloadIncoming(owner,result.changes[index],call,()=>transferActive(owner));
   }
   return result;
 }
@@ -146,6 +147,38 @@ function selectSyncRecords(tx:IDBTransaction,owner:string,required:Set<string>,f
   });
 }
 
+function receiveSnapshots(tx:IDBTransaction,owner:string,conversationId:string,payload:AppEntity['payload'],records:Map<string,AppEntity>,history?:SnapshotReferences) {
+  const creators=new Set<string>(),libraries=new Set<string>();
+  const settings=history?[payload.settings??{},...history.settings]:conversationSettings(payload);
+  for(const setting of [...settings,...(history?.states??(payload.messages??[]).flatMap((message:any)=>[message.before?.state,message.after?.state].filter(Boolean)))]){
+    for(const kind of ['persona','world'] as const){
+      const reference=setting[kind+'_id'];
+      if(typeof reference!=='string'||!reference.startsWith('created_')||creators.has(kind+':'+reference))continue;
+      creators.add(kind+':'+reference);
+      const snapshot=payload.creator_snapshots?.[reference];
+      if(!snapshot||snapshot.kind!==kind)throw Error('Setting snapshot missing');
+      const id=reference.split('@')[0];if(id===conversationId)throw Error('Setting identity conflict');
+      const value=receiveCreatorSnapshot(records.get(id),owner,reference,kind,snapshot.document);
+      records.set(id,value);writeEntity(tx,value);
+    }
+  }
+  for(const setting of settings){
+    const binding=setting.library_binding??{};
+    for(const [field,value] of Object.entries(binding))for(const ref of (field==='lorebooks'?value:[value]) as any[]) {
+      if(!ref||typeof ref.id!=='string'||libraries.has(ref.id+'@'+ref.revision))continue;
+      if(ref.id===conversationId)throw Error('Library identity conflict');
+      libraries.add(ref.id+'@'+ref.revision);
+      const snapshot=payload.library_snapshots?.[ref.id+'@'+ref.revision];
+      if(!snapshot) {
+        if(!records.get(ref.id)?.payload.versions?.[String(ref.revision)])throw Error('Library snapshot missing');
+        continue;
+      }
+      const library=receiveLibrarySnapshot(records.get(ref.id),owner,ref.id,ref.revision,snapshot);
+      records.set(library.id,library);writeEntity(tx,library);
+    }
+  }
+}
+
 export async function receiveSyncPage(owner:string, changes:any[], cursor:number) {
   if(changes.some(change=>change?.deleted)&&typeof navigator!=='undefined'&&navigator.locks){
     return navigator.locks.request(deviceExecutionLockName(owner),{ifAvailable:true},async lock=>{
@@ -169,8 +202,8 @@ async function receiveSyncPageTransaction(owner:string,changes:any[],cursor:numb
           if(remote?.kind!=='conversation'||remote.deleted||!remote.payload)continue;
           // Prefetch must not validate payloads that an unsent/newer local revision will skip.
           const payload=remote.payload,messages=Array.isArray(payload.messages)?payload.messages.filter((message:any)=>message&&typeof message==='object'):[];
-          const settings=conversationSettings({settings:payload.settings,messages});
-          for(const setting of [...settings,...messages.flatMap((message:any)=>[message.before?.state,message.after?.state].filter(Boolean))]){
+          const history=incomingSource(remote,owner)?.history,settings=history?[payload.settings??{},...history.settings]:conversationSettings({settings:payload.settings,messages});
+          for(const setting of [...settings,...(history?.states??messages.flatMap((message:any)=>[message.before?.state,message.after?.state].filter(Boolean)))]){
             for(const kind of ['persona','world']){
               const reference=setting[kind+'_id'];
               if(typeof reference==='string'&&reference.startsWith('created_'))required.add(reference.split('@')[0]);
@@ -184,15 +217,19 @@ async function receiveSyncPageTransaction(owner:string,changes:any[],cursor:numb
       // Deletion recovery still needs the complete original, including any earlier occurrence in this page.
       const full=new Set<string>(changes.filter(remote=>remote?.deleted).map(remote=>remote.id));
       selectSyncRecords(tx,owner,required,full,(records,identities,number)=>{
-          try {
+          let index=0;
+          const next=()=>storageStep(tx,()=>{
+            if(!Number.isSafeInteger(number)||number<0)throw Error('Invalid message sequence');
             const allocate=()=>{if(!Number.isSafeInteger(++number))throw Error('Message ID limit reached');return number;};
-            for(const remote of changes) {
+            while(index<changes.length) {
+              const remote=changes[index++];
               if(!remote||typeof remote.id!=='string'||!remote.id||remote.id.length>200||!Number.isSafeInteger(remote.revision)||remote.revision<1
                 ||typeof remote.deleted!=='boolean'||!['conversation','character','persona','world','preset','profile'].includes(remote.kind)
                 ||!remote.payload||typeof remote.payload!=='object'||Array.isArray(remote.payload))throw Error('Invalid sync entity');
               const local=records.get(remote.id);
               if(local?.kind&&local.kind!==remote.kind)throw Error('Entity kind conflict');
-              meta.put({revision:remote.revision,deleted:remote.deleted,count:remote.payload.messages?.length??0},key(owner,'remote:'+remote.id));
+              const source=incomingSource(remote,owner);
+              meta.put({revision:remote.revision,deleted:remote.deleted,count:source?.count??remote.payload.messages?.length??0},key(owner,'remote:'+remote.id));
               if(local?.payload.storage_policy==='local'&&remote.kind==='conversation')throw Error('Device-only conversation conflict');
               if(remote.deleted) {
                 if(local?.deleted&&local.serverRevision>=remote.revision)continue;
@@ -208,40 +245,28 @@ async function receiveSyncPageTransaction(owner:string,changes:any[],cursor:numb
                   revision:(local?.revision??0)+1,serverRevision:remote.revision,dirty:false,pinned:false,opened:Date.now()};
                 records.set(retired.id,retired);writeEntity(tx,retired);
                 scrubGenerationRecords(tx,owner,remote.id);
-                continue;
+                // Cleanup may revise other conversations; later entries must read those completed writes.
+                storageWrite(tx,complete=>{
+                  selectSyncHeaders(tx,owner,required,(headers,known,position)=>{
+                    const changed=new Set([...headers].filter(([id,value])=>value.revision!==records.get(id)?.revision||value.kind!==records.get(id)?.kind).map(([id])=>id));
+                    for(const id of known)identities.add(id);number=Math.max(number,position);
+                    if(!changed.size){complete();next();return;}
+                    selectSyncRecords(tx,owner,changed,full,(fresh,_,position)=>{
+                      for(const [id,value] of fresh)records.set(id,value);number=Math.max(number,position);complete();next();
+                    });
+                  });
+                });return;
               }
               if(local?.dirty||local&&local.serverRevision>=remote.revision&&!local.payload.cache_evicted)continue;
               if(local&&remote.revision<local.serverRevision)throw Error('Stale hydration revision');
               let payload=remote.payload;
               if(!remote.deleted&&remote.kind==='conversation') {
                 if(payload.storage_policy!=='sync')throw Error('Invalid storage policy');
+                if(source){
+                  receiveIncoming(tx,owner,remote,local,allocate,(payload,history)=>receiveSnapshots(tx,owner,remote.id,payload,records,history),updated=>{records.set(updated.id,updated);next();});return;
+                }
                 payload=rebindConversation(receiveConversation(payload,local?.payload,allocate),remote.id);
-                const creators=new Set<string>(),libraries=new Set<string>();
-                for(const settings of [...conversationSettings(payload),...(payload.messages??[]).flatMap((message:any)=>[message.before?.state,message.after?.state].filter(Boolean))]){
-                  for(const kind of ['persona','world'] as const){
-                    const reference=settings[kind+'_id'];
-                    if(typeof reference!=='string'||!reference.startsWith('created_')||creators.has(kind+':'+reference))continue;
-                    creators.add(kind+':'+reference);
-                    const snapshot=payload.creator_snapshots?.[reference];
-                    if(!snapshot||snapshot.kind!==kind)throw Error('Setting snapshot missing');
-                    const id=reference.split('@')[0],setting=receiveCreatorSnapshot(records.get(id),owner,reference,kind,snapshot.document);
-                    records.set(id,setting);writeEntity(tx,setting);
-                  }
-                }
-                for(const settings of conversationSettings(payload)){
-                  const binding=settings.library_binding??{};
-                  for(const [field,value] of Object.entries(binding))for(const ref of (field==='lorebooks'?value:[value]) as any[]) {
-                    if(!ref||typeof ref.id!=='string'||libraries.has(ref.id+'@'+ref.revision))continue;
-                    libraries.add(ref.id+'@'+ref.revision);
-                    const snapshot=payload.library_snapshots?.[ref.id+'@'+ref.revision];
-                    if(!snapshot) {
-                      if(!records.get(ref.id)?.payload.versions?.[String(ref.revision)])throw Error('Library snapshot missing');
-                      continue;
-                    }
-                    const library=receiveLibrarySnapshot(records.get(ref.id),owner,ref.id,ref.revision,snapshot);
-                    records.set(library.id,library);writeEntity(tx,library);
-                  }
-                }
+                receiveSnapshots(tx,owner,remote.id,payload,records);
               }
               if(!remote.deleted&&['character','preset'].includes(remote.kind)&&payload.versions) {
                 if(local?.payload.storage_policy==='local'&&!local.payload.snapshot_only)throw Error('Device-only library conflict');
@@ -250,11 +275,18 @@ async function receiveSyncPageTransaction(owner:string,changes:any[],cursor:numb
                   current_revision:payload.current_revision??Math.max(...Object.keys(payload.versions).map(Number))};
               }
               const updated={...remote,owner,payload,revision:(local?.revision??0)+1,serverRevision:remote.revision,dirty:false,pinned:local?.pinned??false,opened:local?.opened??0};
-              records.set(updated.id,updated);writeEntity(tx,updated);
+              records.set(updated.id,updated);writeEntity(tx,updated,'put',next);return;
             }
-            meta.put(number,'message-sequence:'+owner);
-            const position=meta.get(key(owner,'cursor'));position.onsuccess=()=>meta.put(Math.max(position.result??0,cursor),key(owner,'cursor'));done();
-          }catch{tx.abort();}
+            storageWrite(tx,complete=>{
+              const consent=meta.get(key(owner,'consent')),position=meta.get(key(owner,'cursor'));
+              position.onsuccess=()=>storageStep(tx,()=>{
+                if(consent.result!==true)throw Error('Sync consent changed');
+                meta.put(number,'message-sequence:'+owner);
+                const write=meta.put(Math.max(position.result??0,cursor),key(owner,'cursor'));
+                write.onsuccess=()=>storageStep(tx,()=>{done();complete();});
+              });
+            });
+          });next();
       });
     };
   });
@@ -317,6 +349,7 @@ async function synchronize(owner:string) {
         const result=await request(owner,'?cursor='+cursor);current();
         if(!Array.isArray(result.changes)||!Number.isSafeInteger(result.cursor)||result.cursor<cursor)throw Error('Invalid sync cursor');
         await receiveSyncPage(owner,result.changes,result.cursor);
+        await clearIncoming(owner);
         if(result.upload_blocked)uploadBlocked=String(result.upload_blocked);
         more=result.has_more===true;
         if(more&&result.cursor===cursor)throw Error('Sync cursor did not advance');
@@ -408,20 +441,26 @@ async function synchronize(owner:string) {
   }
 }
 export function syncNow(owner=deviceOwner()) {
+  if(owner==='guest'||owner!==deviceOwner()||generationBusy())return Promise.resolve();
   if(!navigator.locks){report({phase:'error',pending:0,error:'Web Locks are required for safe synchronization'});return Promise.resolve();}
-  if(!flight)flight=navigator.locks.request<void>('kyalulu-sync:'+owner,()=>synchronize(owner)).finally(()=>{flight=null;});return flight;
+  if(!flight)flight=withIncoming(owner,()=>synchronize(owner)).catch(async error=>{
+    const enabled=await getMeta(key(owner,'consent')).catch(()=>true);report({phase:enabled?'error':'off',pending:state.pending,error:String(error)},owner);
+  }).finally(()=>{flight=null;});return flight;
 }
 export async function hydrateConversation(id:string,owner=deviceOwner()) {
   if(owner==='guest'||owner!==deviceOwner()||!await getMeta(key(owner,'consent')))throw Error('Connect and enable sync to reopen this conversation / 接続して同期を有効にすると、この会話を再取得できます');
-  const response=await cloudFetch('/api/cloud/app/entities/'+encodeURIComponent(id)+'?paged=1',{headers:{'X-Kyalulu-Owner':owner},signal:AbortSignal.timeout(20000)});
-  let remote=await response.json();
-  if(!response.ok)throw Error(remote.error??`HTTP ${response.status}`);
-  if(remote.id!==id||remote.kind!=='conversation')throw Error('Invalid hydration identity');
-  remote=await downloadEntity(remote,(path,init)=>rawRequest(owner,path,init),()=>transferActive(owner));
-  await receiveSyncPage(owner,[remote],await getMeta<number>(key(owner,'cursor'))??0);
-  const result=await entity(id,owner);
-  if(owner!==deviceOwner()||!result||result.payload.cache_evicted)throw Error('Conversation could not be loaded');
-  return result;
+  return withIncoming(owner,async()=>{
+    await transferActive(owner);
+    const response=await cloudFetch('/api/cloud/app/entities/'+encodeURIComponent(id)+'?paged=1',{headers:{'X-Kyalulu-Owner':owner},signal:AbortSignal.timeout(20000)});
+    let remote=await response.json();
+    if(!response.ok)throw Error(remote.error??`HTTP ${response.status}`);
+    if(remote.id!==id||remote.kind!=='conversation')throw Error('Invalid hydration identity');
+    remote=await downloadIncoming(owner,remote,(path,init)=>rawRequest(owner,path,init),()=>transferActive(owner));
+    await receiveSyncPage(owner,[remote],await getMeta<number>(key(owner,'cursor'))??0);
+    const result=await entity(id,owner);
+    if(owner!==deviceOwner()||!result||result.payload.cache_evicted)throw Error('Conversation could not be loaded');
+    return result;
+  });
 }
 export async function reconfirmDeletion(owner:string,id:string,localRevision:number,serverRevision:number) {
   if(owner!==deviceOwner()||owner==='guest'||generationBusy())throw Error('Account or generation changed');
