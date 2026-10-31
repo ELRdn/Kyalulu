@@ -1,4 +1,4 @@
-import { appTransaction, entity, getMeta, entitySelection, guardStorage, restoreEntity, readEntity, writeEntity, restoreOutbox, writeOutbox, scrubGenerationRecords, copyMemoryEvents, trimOfflineCache, type StoredEntity, type AppEntity, type Outbox } from './appStore';
+import { appTransaction, entity, getMeta, entitySelection, guardStorage, restoreEntity, readEntity, writeEntity, acknowledgeConversation, restoreOutbox, writeOutbox, scrubGenerationRecords, copyMemoryEvents, trimOfflineCache, type StoredEntity, type AppEntity, type Outbox } from './appStore';
 import { deviceExecutionLockName } from './deviceExecution';
 import { cloudFetch } from './transport';
 import { deviceOwner, generationBusy } from './appContext';
@@ -94,11 +94,11 @@ function syncReceipt(batch:Batch,result:any):{changes:Ack[]} {
   return {changes:result.changes};
 }
 
-function selectSyncRecords(tx:IDBTransaction,owner:string,required:Set<string>,
-  finish:(records:Map<string,AppEntity>,identities:Set<string>,number:number)=>void) {
+function selectSyncHeaders(tx:IDBTransaction,owner:string,required:Set<string>,
+  finish:(records:Map<string,StoredEntity>,identities:Set<string>,number:number)=>void) {
   const sequence=tx.objectStore('meta').get('message-sequence:'+owner);
   sequence.onsuccess=()=>{
-    const records=new Map<string,AppEntity>(),identities=new Set<string>();let number=sequence.result??0;
+    const records=new Map<string,StoredEntity>(),identities=new Set<string>();let number=sequence.result??0;
     const read=tx.objectStore('entities').openCursor(IDBKeyRange.bound([owner,''],[owner,'\uffff']));
     read.onsuccess=()=>{
       if(owner!==deviceOwner()||generationBusy()){tx.abort();return;}
@@ -106,10 +106,19 @@ function selectSyncRecords(tx:IDBTransaction,owner:string,required:Set<string>,
       if(!cursor){finish(records,identities,number);return;}
       const record=cursor.value as StoredEntity;
       identities.add(record.id);number=Math.max(number,entitySelection(record).maximumMessageId);
-      if(required.has(record.id))restoreEntity(tx,record,value=>{records.set(record.id,value!);cursor.continue();});
-      else cursor.continue();
+      if(required.has(record.id))records.set(record.id,record);cursor.continue();
     };
   };
+}
+function selectSyncRecords(tx:IDBTransaction,owner:string,required:Set<string>,
+  finish:(records:Map<string,AppEntity>,identities:Set<string>,number:number)=>void) {
+  selectSyncHeaders(tx,owner,required,(headers,identities,number)=>{
+    const records=new Map<string,AppEntity>(),values=[...headers.values()];let index=0;
+    const next=()=>{
+      const header=values[index++];if(!header){finish(records,identities,number);return;}
+      restoreEntity(tx,header,value=>{records.set(header.id,value!);next();});
+    };next();
+  });
 }
 
 export async function receiveSyncPage(owner:string, changes:any[], cursor:number) {
@@ -381,32 +390,44 @@ async function synchronize(owner:string) {
         consent.onsuccess=()=>{
           if(!consent.result||owner!==deviceOwner()||generationBusy()||queued.result?.request_id!==pending.request_id){tx.abort();return;}
           const required=new Set<string>(result.changes.map((ack:Ack)=>ack.source_id??ack.id));
-          selectSyncRecords(tx,owner,required,(records,identities,number)=>{
+          selectSyncHeaders(tx,owner,required,(records,identities,number)=>{
+            let index=0;
+            const next=()=>{
               try {
-                for(const ack of result.changes as Ack[]) {
-                  const source=ack.source_id??ack.id;
-                  const local=records.get(source);if(!local)throw Error('Missing local conversation');
-                  const updated=acknowledgeEntity(local,ack,pending);
-                  if(ack.branched) {
-                    if(identities.has(ack.id)||records.has(ack.id))throw Error('Branch identity conflict');
-                    if(local.deleted) {
-                      const sent=pending.changes.find(c=>c.id===source)!;
-                      updated.deleted=false;updated.dirty=false;
-                      updated.payload={...rebindConversation(sent.payload,ack.id),branch_of:source,fork_revision:sent.base_revision};
-                      if(ack.lineage)updated.payload.lineage=ack.lineage;
-                    }
-                    updated.payload=rebindConversation(receiveConversation(updated.payload,undefined,()=>++number),ack.id);
-                    updated.payload.last_generation=null;
-                    copyMemoryEvents(tx,local,updated);
-                    // Retain the source until its Cloud revision is received; the copy contains every local edit.
-                    writeEntity(tx,local.deleted?local:{...local,dirty:false});
-                  }
-                  records.set(updated.id,updated);writeEntity(tx,updated);
+                const ack=(result.changes as Ack[])[index++];
+                if(!ack){
+                  meta.put(number,'message-sequence:'+owner);
+                  if(result.changes.some((ack:Ack)=>ack.branched))meta.put(0,key(owner,'cursor'));
+                  writeOutbox(tx,owner,null,done);return;
                 }
-                meta.put(number,'message-sequence:'+owner);
-                if(result.changes.some((ack:Ack)=>ack.branched))meta.put(0,key(owner,'cursor'));
-                writeOutbox(tx,owner,null,done);
+                const source=ack.source_id??ack.id;
+                const header=records.get(source);if(!header)throw Error('Missing local conversation');
+                if(!ack.branched&&!ack.deleted&&header.kind==='conversation'&&!header.deleted){
+                  acknowledgeConversation(tx,header,ack.revision,header.revision!==pending.revisions[source],ack.lineage,next);return;
+                }
+                restoreEntity(tx,header,local=>{
+                  try{
+                    if(!local)throw Error('Missing local conversation');
+                    const updated=acknowledgeEntity(local,ack,pending);
+                    if(ack.branched) {
+                      if(identities.has(ack.id)||records.has(ack.id))throw Error('Branch identity conflict');
+                      if(local.deleted) {
+                        const sent=pending.changes.find(c=>c.id===source)!;
+                        updated.deleted=false;updated.dirty=false;
+                        updated.payload={...rebindConversation(sent.payload,ack.id),branch_of:source,fork_revision:sent.base_revision};
+                        if(ack.lineage)updated.payload.lineage=ack.lineage;
+                      }
+                      updated.payload=rebindConversation(receiveConversation(updated.payload,undefined,()=>++number),ack.id);
+                      updated.payload.last_generation=null;
+                      copyMemoryEvents(tx,local,updated);
+                      // Retain the source until its Cloud revision is received; the copy contains every local edit.
+                      writeEntity(tx,local.deleted?local:{...local,dirty:false});
+                    }
+                    records.set(updated.id,updated);writeEntity(tx,updated,'put',next);
+                  }catch{tx.abort();}
+                });
               }catch{tx.abort();}
+            };next();
           });
         };
       });

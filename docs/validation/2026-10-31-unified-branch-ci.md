@@ -94,3 +94,11 @@ and the original failed worker's temporary JSON was unavailable in the supplied 
 A later green Windows CI run is still required to confirm that worker environment.
 No new 1 GB, physical-device, model/provider or crash-recovery validation is claimed;
 previous-source evidence remains scoped to its recorded fingerprint.
+
+## Hosted follow-up
+
+`cc0b95f` PR run41192711985, Windows job124512580204, reports the
+`tests/e2e_device_branches.py` step **completed/success**. The same job was still
+running later steps when read. This confirms that hosted branch step after the fix;
+it does not turn the original missing exception into direct causal evidence or
+claim a complete latest-source hosted/release pass.

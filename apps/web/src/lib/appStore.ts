@@ -100,6 +100,32 @@ export function writeEntity(tx:IDBTransaction,value:AppEntity,mode:'put'|'add'='
     });
   });
 }
+/** Sync acceptance changes no authored revision or message identity. */
+export function acknowledgeConversation(tx:IDBTransaction,header:StoredEntity,serverRevision:number,dirty:boolean,lineage:Record<string,unknown>|undefined,done:()=>void) {
+  storageWrite(tx,next=>{
+    const complete=()=>{done();next();};
+    const meta=tx.objectStore('meta'),local=meta.get(memoryDomainKey(header.owner,'local')),sync=meta.get(memoryDomainKey(header.owner,'sync'));
+    sync.onsuccess=()=>storageStep(tx,()=>{
+      if(header.owner!==deviceOwner()||header.kind!=='conversation'||header.deleted||!Number.isSafeInteger(serverRevision)||serverRevision<1
+        ||local.result?.pending||sync.result?.pending)throw Error('Conversation acknowledgment changed');
+      const updated={...header,serverRevision,dirty};
+      if(!header.payloadParts){
+        if(!header.payload)throw Error('Missing conversation body');
+        persistEntity(tx,{...updated,payload:lineage?{...header.payload,lineage}:header.payload} as AppEntity,'put',complete);return;
+      }
+      const location=[header.owner,'entity',header.id] as const;
+      if(lineage){
+        rewriteConversationParts(tx,location,header.payloadParts,{lineage},(ref,metadata,scan)=>{
+          const write=tx.objectStore('entities').put(conversationPartsHeader(updated,ref,{...metadata,lineage,messages:[]},scan));
+          write.onsuccess=()=>removeParts(tx,location,header.payloadParts,complete);
+        });
+      }else readParts(tx,location,header.payloadParts,payload=>{
+        if(!payload||typeof payload!=='object'||Array.isArray(payload)||!Array.isArray(payload.messages))throw Error('Invalid conversation body');
+        const write=tx.objectStore('entities').put(updated);write.onsuccess=()=>storageStep(tx,complete);
+      },new JsonStream({limit:0}));
+    });
+  });
+}
 function conversationPartsHeader(header:StoredEntity,ref:Parts,payload:Record<string,any>,scan:ConversationScan):StoredEntity {
   const refs=memoryReferences(payload),{payload:_,...raw}=header;
   const selection={...header.selection,...entitySelection({...header,payloadParts:undefined,payload}),maximumMessageId:scan.maximumMessageId,messageIdsValid:scan.messageIdsValid,
