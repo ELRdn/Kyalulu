@@ -31,6 +31,22 @@ vi.mock('./appStore',async original=>({...await original<typeof import('./appSto
     }));fixture.transactions=result.catch(()=>undefined);return result;
   },
 }));
+// Route tests retain their in-memory store; the new storage boundary is exercised in real IndexedDB.
+vi.mock('./deviceResearchStore',async()=>{
+  const {appTransaction}=await import('./appStore');
+  const start=(owner:string)=>'device-research:'+JSON.stringify(owner)+':experiment:';
+  return {
+    readResearchExperiment:async(owner:string,id:string)=>structuredClone(fixture.metadata.get(start(owner)+id)),
+    listResearchExperiments:async(owner:string)=>[...fixture.metadata].filter(([key])=>key.startsWith(start(owner))).map(([,value])=>({meta:structuredClone(value.meta),revision:value.revision,...(value.job_id?{job_id:value.job_id}:{})})),
+    writeResearchExperiment:(owner:string,id:string,value:any)=>appTransaction(['meta'],'readwrite',(tx,done)=>{
+      const store=tx.objectStore('meta'),read=store.get(start(owner)+id);
+      read.onsuccess=()=>{
+        if(owner!==fixture.owner||(read.result?.revision??0)!==value.revision){tx.abort();return;}
+        const revision=value.revision+1;store.put({...value,revision},start(owner)+id);done(revision);
+      };
+    }),
+  };
+});
 import { deviceFetch } from './deviceApi';
 import { saveEntity } from './appStore';
 import reference from '../../../../tests/fixtures/device-research.json';
