@@ -1,4 +1,4 @@
-import { appTransaction, entity, getMeta, entitySelection, guardStorage, restoreEntity, readEntity, writeEntity, acknowledgeConversation, restoreOutbox, writeOutbox, scrubGenerationRecords, copyMemoryEvents, trimOfflineCache, type StoredEntity, type StoredOutbox, type AppEntity, type Outbox } from './appStore';
+import { appTransaction, entity, getMeta, entitySelection, guardStorage, restoreEntity, readEntity, writeEntity, acknowledgeConversation, writeOutbox, scrubGenerationRecords, copyMemoryEvents, trimOfflineCache, type StoredEntity, type StoredOutbox, type AppEntity, type Outbox } from './appStore';
 import { deviceExecutionLockName } from './deviceExecution';
 import { cloudFetch } from './transport';
 import { deviceOwner, generationBusy } from './appContext';
@@ -6,6 +6,8 @@ import { receiveConversation, receiveLibrarySnapshot, receiveCreatorSnapshot, re
 import { downloadEntity, uploadSync } from './appTransfers';
 import { outboxSyncSource,sameOutboxSource } from './appOutbox';
 import { stageSyncBatch } from './appSyncStage';
+import { acknowledgeBranch } from './appSyncBranch';
+import { storageStep } from './segmentedStorage';
 
 type Batch=StoredOutbox&{revisions:Record<string,number>;withdrawn?:boolean|0;receipt?:{changes:Ack[]}};
 type Ack={id:string;source_id?:string;revision:number;deleted:boolean;branched?:boolean;lineage?:Record<string,unknown>};
@@ -98,7 +100,7 @@ function syncReceipt(batch:Batch,result:any):{changes:Ack[]} {
     const source=ack?.source_id??ack?.id,sent=batch.changes.find(c=>c.id===source);
     if(!sent||!Number.isSafeInteger(ack?.revision)||ack.revision<1||typeof ack.id!=='string'||!ack.id||ack.id.length>200
       ||typeof ack.deleted!=='boolean'||ack.branched!==undefined&&typeof ack.branched!=='boolean'
-      ||!ack.branched&&ack.id!==source||ack.branched&&ack.deleted||sent.deleted&&!ack.deleted)throw Error('Invalid sync acknowledgment');
+      ||!ack.branched&&ack.id!==source||ack.branched&&(ack.deleted||sent.kind!=='conversation')||sent.deleted&&!ack.deleted)throw Error('Invalid sync acknowledgment');
   }
   return {changes:result.changes};
 }
@@ -316,16 +318,6 @@ async function synchronize(owner:string) {
       if(batch.receipt&&source)for await(const _ of source.chunks()){current();}
       const result=syncReceipt(batch,batch.receipt??await uploadSync(source??{request_id:batch.request_id,changes:batch.changes},
         (path,init)=>rawRequest(owner,path,init),()=>transferActive(owner,batch!.request_id,fixedBatch)));current();
-      if(batch.changesParts&&result.changes.some(ack=>ack.branched)){
-        const expected=batch;
-        batch=await appTransaction<Batch>(['meta','parts'],'readonly',(tx,done)=>{
-          guardStorage(tx,()=>owner===deviceOwner()&&!generationBusy());
-          const read=tx.objectStore('meta').get(key(owner,'outbox'));read.onsuccess=()=>{
-            if(!sameOutboxSource(read.result,expected)){tx.abort();return;}
-            restoreOutbox(tx,owner,expected,value=>done(value!));
-          };
-        });
-      }
       const pending=batch;
       const deleted=result.changes.filter((ack:Ack)=>ack.deleted).map((ack:Ack)=>({id:ack.source_id??ack.id,revision:ack.revision,kind:pending.changes.find(c=>c.id===(ack.source_id??ack.id))?.kind,deleted:true,payload:{}}));
       if(deleted.length)await receiveSyncPage(owner,deleted,await getMeta<number>(key(owner,'cursor'))??0);
@@ -333,8 +325,8 @@ async function synchronize(owner:string) {
         guardStorage(tx,()=>owner===deviceOwner()&&!generationBusy());
         const meta=tx.objectStore('meta'),queued=meta.get(key(owner,'outbox')),consent=meta.get(key(owner,'consent'));
         consent.onsuccess=()=>{
-          if(!consent.result||owner!==deviceOwner()||generationBusy()||queued.result?.request_id!==pending.request_id
-            ||fixedBatch.changesParts&&!sameOutboxSource(queued.result,fixedBatch)){tx.abort();return;}
+          if(consent.result!==true||owner!==deviceOwner()||generationBusy()||queued.result?.request_id!==pending.request_id
+            ||!sameOutboxSource(queued.result,fixedBatch)){tx.abort();return;}
           const required=new Set<string>(result.changes.map((ack:Ack)=>ack.source_id??ack.id));
           selectSyncHeaders(tx,owner,required,(records,identities,number)=>{
             let index=0;
@@ -342,33 +334,29 @@ async function synchronize(owner:string) {
               try {
                 const ack=(result.changes as Ack[])[index++];
                 if(!ack){
-                  meta.put(number,'message-sequence:'+owner);
-                  if(result.changes.some((ack:Ack)=>ack.branched))meta.put(0,key(owner,'cursor'));
-                  writeOutbox(tx,owner,null,done);return;
+                  const consent=meta.get(key(owner,'consent')),queued=meta.get(key(owner,'outbox'));
+                  queued.onsuccess=()=>storageStep(tx,()=>{
+                    if(consent.result!==true||queued.result?.request_id!==pending.request_id
+                      ||!sameOutboxSource(queued.result,fixedBatch))throw Error('Sync consent or fixed outbox changed');
+                    meta.put(number,'message-sequence:'+owner);
+                    if(result.changes.some((ack:Ack)=>ack.branched))meta.put(0,key(owner,'cursor'));
+                    writeOutbox(tx,owner,null,done);
+                  });return;
                 }
                 const source=ack.source_id??ack.id;
                 const header=records.get(source);if(!header)throw Error('Missing local conversation');
                 if(!ack.branched&&!ack.deleted&&header.kind==='conversation'&&!header.deleted){
                   acknowledgeConversation(tx,header,ack.revision,header.revision!==pending.revisions[source],ack.lineage,next);return;
                 }
+                if(ack.branched){
+                  if(identities.has(ack.id)||records.has(ack.id))throw Error('Branch identity conflict');
+                  if(!Number.isSafeInteger(number)||number<0)throw Error('Invalid message sequence');
+                  acknowledgeBranch(tx,header,ack,pending,()=>++number,target=>{records.set(target.id,target);next();});return;
+                }
                 restoreEntity(tx,header,local=>{
                   try{
                     if(!local)throw Error('Missing local conversation');
                     const updated=acknowledgeEntity(local,ack,pending);
-                    if(ack.branched) {
-                      if(identities.has(ack.id)||records.has(ack.id))throw Error('Branch identity conflict');
-                      if(local.deleted) {
-                        const sent=pending.changes.find(c=>c.id===source)!;
-                        updated.deleted=false;updated.dirty=false;
-                        updated.payload={...rebindConversation(sent.payload,ack.id),branch_of:source,fork_revision:sent.base_revision};
-                        if(ack.lineage)updated.payload.lineage=ack.lineage;
-                      }
-                      updated.payload=rebindConversation(receiveConversation(updated.payload,undefined,()=>++number),ack.id);
-                      updated.payload.last_generation=null;
-                      copyMemoryEvents(tx,local,updated);
-                      // Retain the source until its Cloud revision is received; the copy contains every local edit.
-                      writeEntity(tx,local.deleted?local:{...local,dirty:false});
-                    }
                     records.set(updated.id,updated);writeEntity(tx,updated,'put',next);
                   }catch{tx.abort();}
                 });

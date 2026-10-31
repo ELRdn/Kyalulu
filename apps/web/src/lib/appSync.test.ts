@@ -32,6 +32,7 @@ vi.mock('./appStore',async importOriginal=>({
       read:(mode,name,k)=>{
         if(name==='meta')fixture.reads.push(String(k));
         if(name==='entities'){if(mode==='readonly')fixture.reads.push('entity:'+k[1]);fixture.readHook?.(mode,'get',k[1]);}
+        if(name==='parts')fixture.readHook?.(mode,'part',String(k[1]));
         if(name==='cursor')fixture.readHook?.(mode,'cursor',k);
       },
     });
@@ -39,7 +40,7 @@ vi.mock('./appStore',async importOriginal=>({
 }));
 
 import { acknowledgeEntity, receiveSyncPage, runtimeConsent, syncNow, syncState, reconfirmDeletion, hydrateConversation, setSyncConsent } from './appSync';
-import { offlineStub, trimOfflineCache,writeEntity,appTransaction } from './appStore';
+import { offlineStub, trimOfflineCache,writeEntity,writeOutbox,appTransaction } from './appStore';
 import { JsonStream } from './jsonStream';
 import { cloudFetch } from './transport';
 import { importMobile } from '../pages/Migration';
@@ -714,4 +715,96 @@ it('keeps an existing fixed outbox instead of replacing it with a prepared batch
   fixture.meta.set('sync:owner-a:outbox',existing);
   expect(await stageSyncBatch('owner-a')).toEqual(existing);expect(fixture.parts.size).toBe(0);
   expect(fixture.meta.get('sync:owner-a:outbox')).toEqual(existing);expect(get('chat').dirty).toBe(true);
+});
+
+it.each(['live','deleted-retained','tombstone'])('streams cached branch acknowledgments and memory events from %s',async mode=>{
+  const sentPayload=structuredClone(sharedHistory.payload);
+  for(const message of sentPayload.messages)message.content+='茶🙂'.repeat(40000);
+  const current:AppEntity={...local('chat'),revision:8,serverRevision:2,dirty:true,deleted:mode!=='live',payload:structuredClone(sentPayload)};
+  current.payload.messages[0].content='CURRENT LOCAL EDIT '+current.payload.messages[0].content;
+  current.payload.memories[0].id='current-root-id';
+  if(mode==='tombstone')current.payload={storage_policy:'sync',delete_confirmation_revision:8};
+  const profile:AppEntity={...local('profile'),kind:'profile',revision:4,dirty:true,payload:{storage_policy:'sync',draft:'new profile edit'}};
+  await appTransaction<void>(['entities'],'readwrite',(tx,done)=>writeEntity(tx,current,'put',()=>writeEntity(tx,profile,'put',done)));
+  const unrelated=local('unrelated');unrelated.payload.messages[0].id=900;put(unrelated);
+  const foreign=local('foreign','owner-b');foreign.payload.messages[0].id=9_000_000;put(foreign);
+  const event={id:1,scope:'chat',op:'update',memory_id:'current-root-id',source_scope:'kept-origin',detail:{candidates:[{id:'current-root-id',keep:true}]}};
+  fixture.meta.set('memory-events:'+JSON.stringify(['owner-a','chat']),[event]);
+  const lineage={root_id:'chat',fork_revision:2,source:{keep:'provenance'}};
+  const pending={request_id:'branch-'+mode,withdrawn:0 as const,revisions:{profile:3,chat:7},
+    changes:[{id:'profile',kind:'profile' as const,base_revision:0,payload:{storage_policy:'sync',old:'OTHER PAYLOAD '.repeat(50000)},deleted:false},
+      {id:'chat',kind:'conversation' as const,base_revision:2,payload:sentPayload,deleted:false}],
+    receipt:{changes:[{id:'profile',revision:1,deleted:false},{id:'fork',source_id:'chat',revision:1,deleted:false,branched:true,lineage}]}};
+  await appTransaction<void>(['meta','parts'],'readwrite',(tx,done)=>writeOutbox(tx,'owner-a',pending,done));
+  const sourceKey=JSON.stringify(['owner-a','chat']),original=structuredClone(fixture.entities.get(sourceKey));
+  const originalParts=[...fixture.parts].filter(([key])=>{const parts=JSON.parse(key);return parts[1]==='entity'&&parts[2]==='chat';});
+  vi.mocked(cloudFetch).mockImplementation(async(path,init)=>{
+    expect(init?.method??'GET').toBe('GET');
+    return Response.json(path==='/api/mobile/status'?{cloud_mode:true,authenticated:true,owner_scope:'owner-a'}:{changes:[],cursor:0,has_more:false});
+  });
+  const finish=JsonStream.prototype.finish,roots:number[]=[],spy=vi.spyOn(JsonStream.prototype,'finish').mockImplementation(function(this:JsonStream){
+    const value=finish.call(this);
+    if(Array.isArray(value?.messages))roots.push(value.messages.length);
+    for(const change of Array.isArray(value)?value:value?.changes??[])if(Array.isArray(change.payload?.messages))roots.push(change.payload.messages.length);
+    return value;
+  });
+  try{await syncNow('owner-a');}finally{spy.mockRestore();}
+  expect(syncState().phase,syncState().error).toBe('saved');expect(roots.length).toBeGreaterThanOrEqual(2);expect(roots.every(count=>count===0)).toBe(true);
+  const branch=get('fork'),expected=mode==='live'?current.payload:sentPayload;
+  expect(branch).toMatchObject({revision:8,serverRevision:1,dirty:mode==='live',deleted:false});
+  expect(branch.payload.messages.map((m:any)=>m.content)).toEqual(expected.messages.map((m:any)=>m.content));
+  expect(branch.payload.messages.map((m:any)=>m.uuid)).toEqual(expected.messages.map((m:any)=>m.uuid));
+  expect(branch.payload.messages.map((m:any)=>m.id)).toEqual([901,902,903,904]);
+  expect(branch.payload).toMatchObject({branch_of:'chat',fork_revision:2,lineage,last_generation:null,settings:{session_id:'fork'},state:{session_id:'fork'}});
+  expect(branch.payload.delete_confirmation_revision).toBeUndefined();
+  const memory=branch.payload.memories.find((m:any)=>m.uuid===sentPayload.memories[0].uuid),memoryId=mode==='tombstone'?null:memory.id;
+  expect(fixture.meta.get('memory-events:'+JSON.stringify(['owner-a','fork']))).toEqual([{...event,scope:'fork',memory_id:memoryId,source_memory_id:'current-root-id',detail:{candidates:[{id:memoryId,source_id:'current-root-id',keep:true}]}}]);
+  expect(fixture.meta.get('memory-events:'+JSON.stringify(['owner-a','chat']))).toEqual([event]);
+  expect(fixture.entities.get(sourceKey)).toEqual({...original,...(mode==='live'?{dirty:false}:{})});
+  for(const [key,bytes] of originalParts)expect(Buffer.compare(Buffer.from(fixture.parts.get(key)),Buffer.from(bytes)),key).toBe(0);
+  expect(get('unrelated')).toEqual(unrelated);expect(get('foreign','owner-b')).toEqual(foreign);
+  expect(fixture.meta.has('sync:owner-a:outbox')).toBe(false);
+});
+
+it('rejects branch receipts for entity kinds that the Cloud never branches',async()=>{
+  const source:AppEntity={...local('profile'),kind:'profile',dirty:true,payload:{storage_policy:'sync',private:'retain'}};
+  put(source);
+  const pending={request_id:'invalid-profile-branch',revisions:{profile:1},changes:[{id:'profile',kind:'profile',base_revision:0,payload:source.payload,deleted:false}],
+    receipt:{changes:[{id:'fork',source_id:'profile',revision:1,deleted:false,branched:true}]}};
+  fixture.meta.set('sync:owner-a:outbox',pending);
+  vi.mocked(cloudFetch).mockImplementation(async(path,init)=>{
+    expect(init?.method??'GET').toBe('GET');
+    return Response.json(path==='/api/mobile/status'?{cloud_mode:true,authenticated:true,owner_scope:'owner-a'}:{changes:[],cursor:0,has_more:false});
+  });
+  await syncNow('owner-a');
+  expect(syncState().phase).toBe('error');expect(get('profile')).toEqual(source);expect(get('fork')).toBeUndefined();
+  expect(fixture.meta.get('sync:owner-a:outbox')).toEqual(pending);expect(fixture.parts.size).toBe(0);
+});
+
+it.each(['consent','outbox','revisions'])('rolls back branch settlement after a late same-transaction %s change',async change=>{
+  const source={...local('chat'),dirty:true};
+  await appTransaction<void>(['entities'],'readwrite',(tx,done)=>writeEntity(tx,source,'put',done));
+  const pending={request_id:'late-branch-control',revisions:{chat:1},changes:[{id:'chat',kind:'conversation',base_revision:0,payload:source.payload,deleted:false}],
+    receipt:{changes:[{id:'fork',source_id:'chat',revision:1,deleted:false,branched:true}]}};
+  fixture.meta.set('sync:owner-a:outbox',pending);
+  const entities=structuredClone([...fixture.entities]),parts=structuredClone([...fixture.parts]),clone=structuredClone;let metadata:Map<string,any>|undefined,injected=false;
+  const spy=vi.spyOn(globalThis,'structuredClone').mockImplementation((value:any,options?:StructuredSerializeOptions)=>{
+    const copy=clone(value,options);if(value===fixture.meta)metadata=copy;return copy;
+  });
+  fixture.readHook=(mode,kind,id)=>{
+    if(injected||mode!=='readwrite'||kind!=='part'||id!=='entity')return;
+    injected=true;
+    if(change==='consent')metadata!.set('sync:owner-a:consent',false);
+    else if(change==='revisions')metadata!.set('sync:owner-a:outbox',{...metadata!.get('sync:owner-a:outbox'),revisions:{chat:2}});
+    else metadata!.set('sync:owner-a:outbox',{...metadata!.get('sync:owner-a:outbox'),request_id:'different-fixed-request'});
+  };
+  vi.mocked(cloudFetch).mockImplementation(async(path,init)=>{
+    expect(init?.method??'GET').toBe('GET');
+    return Response.json(path==='/api/mobile/status'?{cloud_mode:true,authenticated:true,owner_scope:'owner-a'}:{changes:[],cursor:0,has_more:false});
+  });
+  try{await syncNow('owner-a');}finally{spy.mockRestore();}
+  expect(injected).toBe(true);expect(syncState().phase).toBe('error');expect([...fixture.entities]).toEqual(entities);
+  expect(fixture.meta.get('sync:owner-a:outbox')).toEqual(pending);expect(fixture.meta.get('sync:owner-a:consent')).toBe(true);
+  expect([...fixture.parts.keys()]).toEqual(parts.map(([key])=>key));
+  for(const [key,bytes] of parts)expect(Buffer.compare(Buffer.from(fixture.parts.get(key)),Buffer.from(bytes)),key).toBe(0);
 });
