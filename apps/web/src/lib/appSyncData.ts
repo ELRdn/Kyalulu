@@ -93,8 +93,14 @@ export function conversationReceiver(result:AppEntity['payload'],identity:readon
       if(!Array.isArray(snapshot.memories)||new Set(snapshot.memories.map((m:any)=>m.uuid??m.id)).size!==snapshot.memories.length)throw Error('Invalid historical memories');
       snapshot.state=RuntimeStateSchema.parse(snapshot.state);bindMemories(snapshot.memories);
       if(snapshot.settings!=null)snapshot.settings=ConversationSettingsSchema.parse(snapshot.settings);
-      if(snapshot.memories.some((memory:any)=>(memory.source_message_ids??[]).some((id:number)=>(positions.get(id)??Infinity)>(name==='before'?index-1:index))
-        ||memory.source_turn!=null&&memory.source_turn>snapshot.state.turn))throw Error('Future historical memory source');
+      if(snapshot.memories.some((memory:any)=>{
+        // A confirmed edit remains known when regenerating the turn that originally produced it.
+        const correction=name==='before'&&memory.origin==='model_edited'&&memory.source_kind==='user_correction'
+          &&memory.confirmation==='user_confirmed'&&Number.isSafeInteger(memory.version)&&memory.version>=1
+          &&memory.source_turn===snapshot.state.turn+1;
+        return (memory.source_message_ids??[]).some((id:number)=>(positions.get(id)??Infinity)>(name==='before'?index-1:index))
+          ||memory.source_turn!=null&&memory.source_turn>snapshot.state.turn&&!correction;
+      }))throw Error('Future historical memory source');
     }
     if(message.after.state.turn!==message.before.state.turn+1)throw Error('Invalid historical turn');
     return message;

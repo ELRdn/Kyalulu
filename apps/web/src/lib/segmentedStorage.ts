@@ -64,7 +64,7 @@ export function writeParts(tx:IDBTransaction,location:Location,value:unknown,don
 }
 /** Tentative output stays in this transaction until the entire original body verifies. */
 export function rewriteConversationParts(tx:IDBTransaction,location:Location,previous:Parts,patch:Record<string,unknown>|((metadata:Record<string,any>)=>Record<string,unknown>),
-  done:(ref:Parts,metadata:Record<string,any>,scan:ConversationScan)=>void,transform?:(message:any)=>any|null,destination:Location=location) {
+  done:(ref:Parts,metadata:Record<string,any>,scan:ConversationScan)=>void,transform?:(message:any)=>any|null,destination:Location=location,appended:readonly any[]=[]) {
   storageStep(tx,()=>{
     if(typeof patch!=='function'&&Object.hasOwn(patch,'messages'))throw Error('History cannot be replaced by a metadata patch');
     const digest=new Sha256(),ref:Parts={token:crypto.randomUUID(),size:0,chunks:0,sha256:''},encoder=new TextEncoder();
@@ -80,15 +80,18 @@ export function rewriteConversationParts(tx:IDBTransaction,location:Location,pre
       for(let offset=0;offset<bytes.length;){const count=Math.min(LIMIT-used,bytes.length-offset);buffer.set(bytes.subarray(offset,offset+count),used);used+=count;offset+=count;if(used===LIMIT)write=flush();}return write;
     };
     append(encoder.encode('{"messages":['));let sourceCount=0;
-    const parser=new JsonStream({onMessage:(original:any,index:number)=>{
-      sourceCount=index+1;const message=transform?transform(original):original;if(transform&&message===null)return;
+    const emit=(message:any)=>{
       if(scan.count)append(encoder.encode(','));for(const chunk of jsonChunks(message))append(chunk);
       scan.count++;scan.messageIdsValid&&=Number.isSafeInteger(message?.id)&&message.id>0;
       if(Number.isSafeInteger(message?.id))scan.maximumMessageId=Math.max(scan.maximumMessageId,message.id);
       scan.last_preview=String(message?.content??'').slice(0,160);scan.last_at=message?.created_at??null;
+    };
+    const parser=new JsonStream({onMessage:(original:any,index:number)=>{
+      sourceCount=index+1;const message=transform?transform(original):original;if(transform&&message===null)return;emit(message);
     }});
     readParts(tx,location,previous,p=>{
       if(!p||typeof p!=='object'||Array.isArray(p)||!Array.isArray(p.messages)||parser.totalMessages===undefined||parser.totalMessages!==sourceCount)throw Error('Invalid conversation body');
+      for(const message of appended)emit(message);
       const {messages:_,...metadata}=p,changes=typeof patch==='function'?patch(metadata):patch;
       if(Object.hasOwn(changes,'messages'))throw Error('History cannot be replaced by a metadata patch');
       const updated={...metadata,...changes},hasMetadata=Object.keys(updated).length>0;

@@ -15,12 +15,13 @@ import { commitDeviceImport, deviceSourceMatches } from './deviceImport';
 import { parseDeviceImport } from './deviceParseImport';
 import { acceptDeviceMedia, readDeviceAsset, saveDeviceAsset, validateDeviceDocumentAssets } from './deviceAssets';
 import { deviceResearchRoute, deviceResearchBusy, deviceExecutionLockName, type ResearchTurn } from './deviceResearch';
-import { recoverDeviceMemoryGeneration,readDeviceMemoryDomain,readMemorySource,findConversationMessageSource,saveUnscopedHistory,type MemorySource } from './deviceMemoryStore';
-import { scopedSessionMemory,scopedSourceMemory,scopedMemoryRows,saveScopedMemory,deviceMemoryScope,type ScopedMemory } from './deviceScopedMemory';
+import { recoverDeviceMemoryGeneration,readDeviceMemoryDomain,readMemorySource,readDeviceGenerationSource,memorySourceProjection,commitDeviceGeneration,findConversationMessageSource,saveUnscopedHistory,type MemorySource } from './deviceMemoryStore';
+import { scopedSourceMemory,scopedMemoryRows,saveScopedMemory,deviceMemoryScope,type ScopedMemory } from './deviceScopedMemory';
 import { memoryIdentity,memoryBinding,memoryPolicy,ownScopeMemories,appendScopeEvent } from './deviceMemoryScopes';
 import { scopedMemoryRoute } from './deviceScopedMemoryApi';
 import { storageStep } from './segmentedStorage';
 import { historyAffected,invalidHistoryMemory,detachHistoryMemories,type HistoryChange } from './deviceHistoryChange';
+import type { GenerationChange } from './deviceGenerationChange';
 
 let runtime:MobileRuntime|undefined, loaded='';
 let running:string|null=null;
@@ -51,6 +52,15 @@ async function conversation(id:string,owner=deviceOwner()) {
   if(owner!==deviceOwner())throw fail('Account changed / アカウントが切り替わりました',409);
   if(record?.deleted)throw fail('Conversation deleted / 会話は削除されています',404);
   return record??blank(id);
+}
+async function generationSession(id:string,owner:string) {
+  let result=await readDeviceGenerationSource(id,owner);
+  if(result?.source.metadata.cache_evicted){
+    await hydrateConversation(id,owner);await trimOfflineCache(owner,id);result=await readDeviceGenerationSource(id,owner);
+    if(!result||result.source.metadata.cache_evicted)throw fail('Conversation unavailable',503);
+  }
+  if(result)return result;
+  const session=blank(id);return {session,source:{...memorySourceProjection(session),bodyToken:null}};
 }
 async function openPage(id:string,owner:string,limit=50,cursor?:ConversationPageCursor) {
   const info=await conversationInfo(id,owner);
@@ -200,7 +210,7 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
   const owner=deviceOwner(),currentOwner=()=>{if(owner!==deviceOwner())throw fail('Account changed',409);};
   if(running||deviceResearchBusy()&&!scope)throw fail('A generation is already running',409);
   const id=String(body.session_id??'default'),generationId=body.generation_id;
-  if(typeof generationId!=='string'||generationId.length>200||!Array.isArray(body.messages)||!body.messages.length||body.messages.length>200
+  if(typeof generationId!=='string'||!generationId||generationId.length>200||!Array.isArray(body.messages)||!body.messages.length||body.messages.length>200
     ||body.messages.some((m:any)=>!m||!['user','assistant'].includes(m.role)||typeof m.content!=='string'||m.content.length>128000))throw fail('Invalid generation request');
   if(body.allow_nsfw)throw fail('Adult verification is required',403);
   const existing=scope?null:await getMeta<any>('generation:'+owner+':'+generationId);currentOwner();
@@ -220,17 +230,25 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
       finally{signal?.removeEventListener('abort',stopLoad);}
     }
     currentOwner();
-    const session=scope?.session??await conversation(id,owner),p=session.payload;
+    const opened=scope?undefined:await generationSession(id,owner),session=scope?.session??opened!.session,p=session.payload;
+    let generationSource=opened?.source;
     if(session.owner!==owner||session.id!==id)throw fail('Invalid generation scope',409);
     if(p.pending_generation)throw fail('Reconcile the pending generation before sending again',409);
     const memoryContext:ScopedMemory|undefined=!scope&&['world','shared'].includes(p.memory_scope_mode)
-      ?await scopedSessionMemory(session,settings=>memoryIdentityFor(settings,owner)):undefined;
-    const save=scope?async(value:AppEntity,_revision:number,_metadata:Record<string,unknown>)=>scope.save(value):memoryContext
-      ?async(value:AppEntity,_revision:number,metadata:Record<string,unknown>)=>{
-        memoryContext.domain.pending=value.payload.pending_generation?{session_id:id,generation_id:value.payload.pending_generation}:null;
-        const receipts=Object.fromEntries(Object.entries(metadata).filter(([key])=>key.startsWith('generation:'+owner+':')).map(([key,value])=>[key.slice(('generation:'+owner+':').length),value as Record<string,any>]));
-        const result=await saveScopedMemory(memoryContext,[value],receipts);return result.sessions.find(record=>record.id===id)!;
-      }:saveEntity;
+      ?await scopedSourceMemory(generationSource!,settings=>memoryIdentityFor(settings,owner)):undefined;
+    const save=scope?async(value:AppEntity,_revision:number,_metadata:Record<string,unknown>)=>scope.save(value):
+      async(value:AppEntity,revision:number,extra:Record<string,unknown>)=>{
+        if(generationSource!.revision!==revision)throw fail('Generation source changed',409);
+        const receipt=extra['generation:'+owner+':'+generationId] as Record<string,any>,{messages,...metadata}=value.payload;
+        const change:GenerationChange={metadata,receipt,append:receipt.status==='completed'||receipt.status==='pending'&&!body.regenerate_message_id?[messages.at(-1)]:[],
+          ...(body.regenerate_message_id?{regenerate:body.regenerate_message_id}:{})};
+        if(memoryContext){
+          memoryContext.domain.pending=value.payload.pending_generation?{session_id:id,generation_id:generationId}:null;
+          const result=await saveScopedMemory(memoryContext,[],{[generationId]:receipt},undefined,{sourceId:id,change});
+          generationSource=result.sources.find(source=>source.id===id)!;
+        }else generationSource=await commitDeviceGeneration(generationSource!,change,Object.fromEntries(Object.entries(extra).filter(([key])=>key!=='generation:'+owner+':'+generationId)));
+        return {...value,revision:generationSource.revision,dirty:metadata.storage_policy==='sync',opened:Date.now(),payload:{...generationSource.metadata,messages}};
+      };
     const last=body.messages.at(-1);
     if(last.role!=='user')throw fail('A user message is required');
     const userId=body.regenerate_message_id?p.messages.at(-2)?.id:scope?(p.message_sequence??0)+1:await nextId(owner),assistantId=scope?userId+1:await nextId(owner);

@@ -1,4 +1,4 @@
-import { appTransaction,writeEntity,writeConversationMemories,recoverPendingConversation,guardStorage,scrubGenerationRecords,type AppEntity,type StoredEntity } from './appStore';
+import { appTransaction,writeEntity,writeConversationMemories,writeConversationGeneration,newEntity,memoryEventsKey,recoverPendingConversation,guardStorage,scrubGenerationRecords,type AppEntity,type StoredEntity } from './appStore';
 import { readParts,storageStep } from './segmentedStorage';
 import { JsonStream } from './jsonStream';
 import { deviceOwner } from './appContext';
@@ -7,10 +7,11 @@ import { memoryPolicy,memoryBinding,memorySignature,ownScopeMemories,memoryDomai
 import type { DeviceMemory } from './deviceCore';
 import { deviceExecutionLockName } from './deviceExecution';
 import { changedHistoryMetadata,detachHistoryMemories,validateHistoryChange,type HistoryChange } from './deviceHistoryChange';
+import { generationChangeView,validateGenerationReceipt,type GenerationChange } from './deviceGenerationChange';
 export { validateMemoryDomain,type OwnedMemoryDomain } from './deviceMemoryDomainIO';
 const text=(value:any)=>typeof value==='string'&&value.length>0;
 export type MemorySource={id:string;owner:string;revision:number;deleted:boolean;bodyToken?:string|null;metadata:Record<string,any>};
-export type MemoryProjectionUpdate={source:MemorySource;memories:DeviceMemory[];history?:HistoryChange};
+export type MemoryProjectionUpdate={source:MemorySource;memories:DeviceMemory[];history?:HistoryChange;generation?:GenerationChange};
 export function memorySourceProjection(record:AppEntity):MemorySource {
   const {messages:_,...metadata}=record.payload;
   return {id:record.id,owner:record.owner,revision:record.revision,deleted:record.deleted,metadata};
@@ -37,6 +38,24 @@ export async function readMemorySource(id:string,owner:string,onMessage?:(messag
     });
   });
   if(owner!==deviceOwner())throw Error('Account changed');return value;
+}
+
+/** Actor context still retains history; source token and complete session share this snapshot. */
+export async function readDeviceGenerationSource(id:string,owner:string) {
+  const result=await appTransaction<{source:MemorySource;session:AppEntity}|undefined>(['entities','parts'],'readonly',(tx,done)=>{
+    guardStorage(tx,()=>owner===deviceOwner());
+    const read=tx.objectStore('entities').get([owner,id]);read.onsuccess=()=>storageStep(tx,()=>{
+      const header=read.result as StoredEntity|undefined;if(!header){done(undefined);return;}
+      if(header.deleted)throw Object.assign(Error('Conversation deleted'),{status:404});
+      if(header.kind!=='conversation')throw Error('Conversation unavailable');
+      const messages:any[]=[];
+      readMemorySourceTx(tx,header,id,owner,source=>{
+        const {payloadParts:_,selection:__,memoryReferences:___,payload:____,...raw}=header;
+        done({source,session:{...raw,payload:{...source.metadata,messages}}});
+      },message=>messages.push(message));
+    });
+  });
+  if(owner!==deviceOwner())throw Error('Account changed');return result;
 }
 
 /** Visit synchronously in one snapshot; callers retain only their catalog fields. */
@@ -85,6 +104,32 @@ export async function saveUnscopedHistory(source:MemorySource,change:HistoryChan
 export const readDeviceMemoryDomain=(owner:string,policy:MemoryPolicy)=>appTransaction<OwnedMemoryDomain>(['meta','parts'],'readonly',(tx,done)=>{
   guardStorage(tx,()=>owner===deviceOwner());readDomain(tx,owner,policy,done);
 });
+
+export async function commitDeviceGeneration(source:MemorySource,change:GenerationChange,extra:Record<string,unknown>={}) {
+  const {owner,id}=source,key='generation:'+owner+':'+change.receipt.generation_id;
+  if(owner!==deviceOwner()||source.deleted||source.bodyToken===undefined||['world','shared'].includes(source.metadata.memory_scope_mode)
+    ||['world','shared'].includes(change.metadata.memory_scope_mode)||Object.keys(extra).some(name=>name!==memoryEventsKey(owner,id)))throw Error('Invalid generation scope');
+  return appTransaction<MemorySource>(['entities','meta','parts'],'readwrite',(tx,done)=>{
+    guardStorage(tx,()=>owner===deviceOwner());
+    const meta=tx.objectStore('meta'),local=meta.get(memoryDomainKey(owner,'local')),sync=meta.get(memoryDomainKey(owner,'sync'));
+    sync.onsuccess=()=>storageStep(tx,()=>{
+      if(local.result?.pending||sync.result?.pending)throw Error('Stop generation before editing');
+      const receipt=meta.get(key);receipt.onsuccess=()=>storageStep(tx,()=>{
+        validateGenerationReceipt(owner,id,change,receipt.result);
+        const read=tx.objectStore('entities').get([owner,id]);read.onsuccess=()=>storageStep(tx,()=>{
+          const header=read.result as StoredEntity|undefined;
+          if(header&&(header.owner!==owner||header.id!==id||header.kind!=='conversation'||header.deleted)
+            ||(header?.revision??0)!==source.revision||(header?.payloadParts?.token??null)!==source.bodyToken)throw Error('Generation source changed');
+          const current=header??{...newEntity('conversation',id,{...source.metadata,messages:[]}),owner};
+          writeConversationGeneration(tx,current,change,bodyToken=>{
+            meta.put(change.receipt,key);for(const [name,value] of Object.entries(extra))meta.put(value,name);
+            done({...source,revision:source.revision+1,bodyToken,metadata:{...change.metadata,...(change.receipt.status==='completed'?{last_generation:change.receipt}:{})}});
+          });
+        });
+      });
+    });
+  });
+}
 
 /** Caller holds the owner execution lease; recovery never rewinds canonical user edits. */
 export const recoverDeviceMemoryGeneration=(owner:string,generationId:string,sessionId:string)=>
@@ -153,41 +198,51 @@ export async function commitDeviceMemoryDomain(owner:string,policy:MemoryPolicy,
     if(!binding||binding.signature!==memorySignature(update.payload.memories??[])
       ||binding.signature!==memorySignature(ownScopeMemories(domain.pools[binding.scope],update.id)))throw Error('Canonical memory projection changed');
   }
-  for(const {source,memories,history} of memoryUpdates){
+  for(const {source,memories,history,generation} of memoryUpdates){
     if(history){validateHistoryChange(history);if(source.bodyToken===undefined)throw Error('Invalid history source');}
+    if(generation&&(history||source.bodyToken===undefined||generation.receipt.session_id!==source.id
+      ||generations[generation.receipt.generation_id]!==generation.receipt||memoryPolicy({payload:generation.metadata})!==policy))throw Error('Invalid generation projection');
     const binding=memoryBinding(domain,source.id);
     if(!binding||binding.signature!==memorySignature(memories)||binding.signature!==memorySignature(ownScopeMemories(domain.pools[binding.scope],source.id)))throw Error('Canonical memory projection changed');
   }
   if(Object.keys(generations).length>1)throw Error('Invalid memory generation receipt');
-  for(const [id,value] of Object.entries(generations))if(!text(id)||id.length>200||value.generation_id!==id||!updates.some(e=>e.id===value.session_id)
+  const changed=[...updates,...memoryUpdates.filter(update=>update.generation).map(update=>({id:update.source.id,payload:update.generation!.metadata}))];
+  for(const [id,value] of Object.entries(generations))if(!text(id)||id.length>200||value.generation_id!==id||!changed.some(e=>e.id===value.session_id)
     ||!['pending','completed','failed','deleted'].includes(value.status))throw Error('Invalid memory generation receipt');
   return appTransaction<{domain:OwnedMemoryDomain;sessions:AppEntity[];sources:MemorySource[]}>(['entities','meta','parts'],'readwrite',(tx,done)=>{
     guardStorage(tx,()=>owner===deviceOwner());
     readDomain(tx,owner,policy,current=>{
       if(current.revision!==domain.revision){tx.abort();return;}
       const pending=current.pending;
-      if(pending&&(domain.pending!==null||!updates.some(e=>e.id===pending.session_id&&e.payload.pending_generation==null)
+      if(pending&&(domain.pending!==null||!changed.some(e=>e.id===pending.session_id&&e.payload.pending_generation==null)
         ||!['completed','failed'].includes(generations[pending.generation_id]?.status))){tx.abort();return;}
-      if(domain.pending&&(!updates.some(e=>e.id===domain.pending!.session_id&&e.payload.pending_generation===domain.pending!.generation_id)
+      if(domain.pending&&(!changed.some(e=>e.id===domain.pending!.session_id&&e.payload.pending_generation===domain.pending!.generation_id)
         ||generations[domain.pending.generation_id]?.status!=='pending')){tx.abort();return;}
       let index=0;const saved:AppEntity[]=[],sources:MemorySource[]=[],headers=new Map<string,StoredEntity>();
       const verify=()=>{
         const next=expected[index++];if(!next){index=0;verifyReceipt();return;}
         const read=tx.objectStore('entities').get([owner,next.id]);read.onsuccess=()=>storageStep(tx,()=>{
-          const record=read.result as StoredEntity|undefined;
+          let record=read.result as StoredEntity|undefined;
           if((record?.revision??0)!==next.revision||record&&(record.owner!==owner||record.id!==next.id||record.kind!=='conversation')
             ||next.bodyToken!==undefined&&(record?.payloadParts?.token??null)!==next.bodyToken
-            ||!record&&!updates.some(e=>e.id===next.id)||record?.deleted&&!updates.some(e=>e.id===next.id&&e.deleted)){tx.abort();return;}
-          if(!record){verify();return;}
+            ||!record&&!changed.some(e=>e.id===next.id)||record?.deleted&&!updates.some(e=>e.id===next.id&&e.deleted)){tx.abort();return;}
+          if(!record){
+            const generation=memoryUpdates.find(update=>update.source.id===next.id&&update.generation);
+            if(!generation){verify();return;}
+            record={...newEntity('conversation',next.id,{...generation.source.metadata,messages:[]}),owner};
+          }
           headers.set(next.id,record);
           const projection=memoryUpdates.find(update=>update.source.id===next.id),validator=projection?memorySourceValidator(next.id):undefined;
+          const generation=projection?.generation,view=generation?generationChangeView(generation):undefined;
+          const visit=(message:any)=>{const retained=view?view.message(message):message;if(retained!==null)validator!.message(retained);};
           const check=(payload:Record<string,any>)=>{
             if(!payload||typeof payload!=='object'||Array.isArray(payload)||(payload.storage_policy==='sync'?'sync':'local')!==policy){tx.abort();return;}
-            if(projection)validator!.finish({...payload,memories:projection.memories});
+            if(generation){const metadata=view!.finish(payload);for(const message of generation.append)validator!.message(message);validator!.finish({...metadata,memories:projection!.memories});}
+            else if(projection)validator!.finish({...payload,memories:projection.memories});
             verify();
           };
-          if(record.payloadParts)readParts(tx,[owner,'entity',next.id],record.payloadParts,check,new JsonStream(validator?{onMessage:validator.message}:{limit:0}));
-          else {if(validator)for(const message of record.payload?.messages??[])validator.message(message);check(record.payload!);}
+          if(record.payloadParts)readParts(tx,[owner,'entity',next.id],record.payloadParts,check,new JsonStream(validator?{onMessage:visit}:{limit:0}));
+          else {if(validator)for(const message of record.payload?.messages??[])visit(message);check(record.payload!);}
         });
       };
       const receipts=Object.entries(generations);
@@ -196,6 +251,8 @@ export async function commitDeviceMemoryDomain(owner:string,policy:MemoryPolicy,
         const [id,value]=next,read=tx.objectStore('meta').get('generation:'+owner+':'+id);
         read.onsuccess=()=>{
           const previous=read.result;
+          const generation=memoryUpdates.find(update=>update.generation?.receipt.generation_id===id)?.generation;
+          if(generation){storageStep(tx,()=>{validateGenerationReceipt(owner,value.session_id,generation,previous);verifyReceipt();});return;}
           if(value.status==='pending'?previous!==undefined:value.status!=='deleted'&&(!previous||previous.status!=='pending'||previous.session_id!==value.session_id||previous.generation_id!==id)){
             tx.abort();return;
           }
@@ -209,7 +266,13 @@ export async function commitDeviceMemoryDomain(owner:string,policy:MemoryPolicy,
       };
       const writeMemories=()=>{
         const update=memoryUpdates[index++];if(!update){persist();return;}
-        const {source,memories,history}=update;
+        const {source,memories,history,generation}=update;
+        if(generation){
+          const change={...generation,metadata:{...generation.metadata,memories}};
+          writeConversationGeneration(tx,headers.get(source.id)!,change,bodyToken=>{
+            sources.push({...source,revision:source.revision+1,bodyToken,metadata:{...change.metadata,...(change.receipt.status==='completed'?{last_generation:change.receipt}:{})}});writeMemories();
+          });return;
+        }
         writeConversationMemories(tx,headers.get(source.id)!,memories,bodyToken=>{
           sources.push({...source,revision:source.revision+1,bodyToken,metadata:{...source.metadata,...(history?changedHistoryMetadata(source.metadata,history):{}),memories}});writeMemories();
         },history);

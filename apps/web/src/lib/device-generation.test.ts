@@ -16,6 +16,23 @@ vi.mock('./deviceMemoryStore',async original=>{
     const {messages:_,...metadata}=saved.payload;return {id,owner,revision:saved.revision,deleted:false,bodyToken:null,metadata:structuredClone(metadata)};
   };
   return {...await original<typeof import('./deviceMemoryStore')>(),recoverDeviceMemoryGeneration:async()=>null,
+    readDeviceGenerationSource:async(id:string,owner:string)=>{
+      const {openEntity}=await import('./appStore');const session=(await openEntity(id,owner))!;
+      const {messages:_,...metadata}=session.payload;
+      return {session,source:{id,owner,revision:session.revision,deleted:false,bodyToken:null,metadata:structuredClone(metadata)}};
+    },
+    commitDeviceGeneration:async(source:any,change:any,extra:any)=>{
+      const {saveEntity}=await import('./appStore');
+      const {generationChangeView,validateGenerationReceipt}=await import('./deviceGenerationChange');
+      const key='generation:'+source.owner+':'+change.receipt.generation_id;
+      validateGenerationReceipt(source.owner,source.id,change,fixture.meta.get(key));
+      const view=generationChangeView(change),messages=(fixture.saved?.payload.messages??[]).flatMap((message:any)=>{
+        const result=view.message(message);return result===null?[]:[result];
+      });
+      const metadata=view.finish(source.metadata);messages.push(...change.append);
+      const value=await saveEntity({...fixture.saved,id:source.id,owner:source.owner,revision:source.revision,kind:'conversation',payload:{...metadata,messages}},source.revision,{...extra,[key]:change.receipt});
+      return {...source,revision:value.revision,metadata};
+    },
     readMemorySource:(id:string,owner:string,onMessage?:(message:any)=>void)=>{
       const source=projection(id,owner);if(source)for(const message of fixture.saved.payload.messages)onMessage?.(message);return source;
     },
@@ -55,6 +72,11 @@ beforeEach(()=>{fixture.saved=undefined;fixture.sequence=0;fixture.fail=true;fix
   }}});
 });
 afterEach(()=>{vi.unstubAllGlobals();});
+
+it('rejects an empty generation identity before loading or saving',async()=>{
+  const response=await deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify({session_id:'chat',generation_id:'',model_id:'fixture',messages:[{role:'user',content:'Keep draft'}]})});
+  expect(response.status).toBe(400);expect(fixture.saved).toBeUndefined();expect(fixture.started).toBe(false);
+});
 
 it('holds the shared research/execution lock through inference and the final durable write',async()=>{
   fixture.fail=false;vi.stubGlobal('location',{href:'https://device.test/device/'});

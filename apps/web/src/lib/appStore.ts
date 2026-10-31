@@ -8,6 +8,7 @@ import { JsonStream } from './jsonStream';
 import type { GenerationStatus } from './chatRecovery';
 import { deviceExecutionLockName } from './deviceExecution';
 import { changedHistoryMessage,changedHistoryMetadata,validateHistoryChange,type HistoryChange } from './deviceHistoryChange';
+import { generationChangeView,type GenerationChange } from './deviceGenerationChange';
 
 export type EntityKind = 'conversation' | 'character' | 'persona' | 'world' | 'preset' | 'profile';
 export type AppEntity = { id: string; owner: string; kind: EntityKind; revision: number; serverRevision: number;
@@ -170,6 +171,26 @@ export function writeConversationMemories(tx:IDBTransaction,header:StoredEntity,
       });
     }
   });
+}
+/** Caller verifies the source and receipt in this transaction; no full history enters a save. */
+export function writeConversationGeneration(tx:IDBTransaction,header:StoredEntity,change:GenerationChange,done:(bodyToken:string)=>void) {
+  storageWrite(tx,next=>storageStep(tx,()=>{
+    if(header.owner!==deviceOwner()||header.kind!=='conversation'||header.deleted||!Number.isSafeInteger(header.revision+1))throw Error('Invalid generation source');
+    const view=generationChangeView(change),complete=(token:string)=>{done(token);next();};
+    if(header.payloadParts){
+      let metadata:Record<string,any>;
+      rewriteConversationParts(tx,[header.owner,'entity',header.id],header.payloadParts,p=>metadata=view.finish(p),(ref,_p,scan)=>{
+        adoptConversationRewrite(tx,{...header,dirty:change.metadata.storage_policy==='sync',opened:Date.now()},ref,{...metadata,messages:[]},scan,()=>complete(ref.token));
+      },view.message,undefined,change.append);
+    }else{
+      const p=header.payload;if(!Array.isArray(p?.messages))throw Error('Missing generation source');
+      const messages=p.messages.flatMap((message:any)=>{const value=view.message(message);return value===null?[]:[value];});
+      const metadata=view.finish(p);messages.push(...change.append);
+      persistEntity(tx,{...header,revision:header.revision+1,dirty:metadata.storage_policy==='sync',opened:Date.now(),payload:{...metadata,messages}} as AppEntity,'put',()=>{
+        const read=tx.objectStore('entities').get([header.owner,header.id]);read.onsuccess=()=>storageStep(tx,()=>complete(read.result.payloadParts.token));
+      });
+    }
+  }));
 }
 /** Caller holds the owner execution lease; domain recovery also commits its pending domain here. */
 export function recoverPendingConversation(tx:IDBTransaction,header:StoredEntity,generationId:string,done:()=>void,domainRecovery=false) {

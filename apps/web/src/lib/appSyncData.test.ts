@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 import { receiveConversation, receiveLibrarySnapshot, receiveCreatorSnapshot, rebindConversation, withLibrarySnapshots } from './appSyncData';
 import { offlineStub, type AppEntity } from './appStore';
 import sharedHistory from '../../../../tests/fixtures/unified-history.json';
+import regeneratedHistory from '../../../../tests/fixtures/unified-regeneration-memory.json';
 
 const wire = () => ({storage_policy:'sync',rating:'general',settings:{session_id:'chat'},state:{session_id:'chat',turn:1},
   messages:[{id:1,uuid:'user',role:'user',content:'tea'},{id:2,uuid:'assistant',role:'assistant',content:'yes',
@@ -24,6 +25,29 @@ it('imports the same historical fixture as Python without mixing memory revision
   expect(value.messages[1].after.memories[0].id).toBe(value.memories[0].id);
   expect(value.messages[1].after.settings.system_prompt).toBe('OLD SYSTEM');
   expect(value.messages[1].after.settings.library_binding.character.revision).toBe(1);
+});
+it('retains a confirmed manual correction at the original source turn before a regenerated reply',()=>{
+  let sequence=500;const value=receiveConversation(regeneratedHistory.payload,undefined,()=>++sequence);
+  expect(value.messages[1].before.state.turn).toBe(0);
+  expect(value.messages[1].before.memories[0]).toMatchObject({origin:'model_edited',source_turn:1,source_message_ids:[501],
+    content:'Corrected tea',source_quote:'Corrected tea',source_revision:'manual:4',source_generation_id:'original-turn'});
+});
+
+it.each(['origin','kind','confirmation','unsafe-version','far-future','after','future-id'])('rejects an unconfirmed or misplaced future manual source (%s)',fault=>{
+  const payload:any=structuredClone(regeneratedHistory.payload),memory=payload.messages[1].before.memories[0];
+  if(fault==='origin')memory.origin='model';if(fault==='kind')memory.source_kind='story_event';
+  if(fault==='confirmation')memory.confirmation='unverified';
+  if(fault==='unsafe-version')memory.version=Number.MAX_SAFE_INTEGER+1;
+  if(fault==='far-future')memory.source_turn=2;if(fault==='after')payload.messages[1].after.memories[0].source_turn=2;
+  if(fault==='future-id')memory.source_message_ids=[2];
+  let sequence=0;expect(()=>receiveConversation(payload,undefined,()=>++sequence)).toThrow('Future historical memory source');
+});
+
+it('keeps opaque legacy Native provenance on a confirmed correction',()=>{
+  const payload:any=structuredClone(regeneratedHistory.payload),memory=payload.messages[1].before.memories[0];
+  memory.source_revision=JSON.stringify({entity_id:'device-conversation',memory_id:memory.id,memory_uuid:memory.uuid,source_session_id:memory.source_session_id});
+  let sequence=0;const copy=receiveConversation(payload,undefined,()=>++sequence);
+  expect(copy.messages[1].before.memories[0].source_revision).toBe(memory.source_revision);
 });
 it('uploads only the current and historical setting revisions referenced by the chat',()=>{
   const payload:any=structuredClone(sharedHistory.payload);payload.library_snapshots['unrelated@1']={name:'PRIVATE UNRELATED'};

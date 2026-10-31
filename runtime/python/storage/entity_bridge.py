@@ -113,9 +113,20 @@ def validate(payload):
                 raise CloudError('duplicate_sync_memory')
             if any(source not in positions or positions[source]>(index-1 if name=='before' else index) for memory in snapshot.memories for source in memory.source_message_ids):
                 raise CloudError('invalid_sync_sources')
-            if any(memory.source_turn is not None and memory.source_turn>snapshot.state.turn for memory in snapshot.memories):
-                raise CloudError('invalid_sync_sources')
+            for memory in snapshot.memories:
+                # A confirmed edit remains known when replaying its original source turn.
+                correction=(name=='before' and memory.origin=='model_edited' and memory.source_kind=='user_correction'
+                            and memory.confirmation=='user_confirmed' and memory.version<=2**53-1
+                            and memory.source_turn==snapshot.state.turn+1)
+                if memory.source_turn is not None and memory.source_turn>snapshot.state.turn and not correction:
+                    raise CloudError('invalid_sync_sources')
     return value
+
+
+def memory_provenance(memory, entity_id):
+    value={'entity_id':entity_id,'memory_id':memory.id,'memory_uuid':memory.uuid or memory.id,'source_session_id':memory.source_session_id}
+    if 'source_revision' in memory.model_extra:value['original_source_revision']=memory.model_extra['source_revision']
+    return json.dumps(value)
 
 
 class Links:
@@ -344,7 +355,7 @@ def import_copy(db, entity_id, revision, payload, documents,namespace=None):
     memory_map = {}
     for memory in value.memories:
         mid = 'mem_' + uuid4().hex[:12]
-        provenance = json.dumps({'entity_id': entity_id, 'memory_id': memory.id, 'memory_uuid': memory.uuid or memory.id, 'source_session_id': memory.source_session_id})
+        provenance = memory_provenance(memory, entity_id)
         db.execute('INSERT INTO runtime.memories(id,scope,type,content,origin,supported,source_session_id,source_turn,version,status,source_kind,source_quote,source_revision,source_message_ids,confirmation) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                    (mid, 'session:' + sid, memory.type, memory.content, memory.origin, memory.supported, sid, memory.source_turn,
                     memory.version, memory.status, memory.source_kind, memory.source_quote, provenance,
@@ -385,7 +396,7 @@ def import_copy(db, entity_id, revision, payload, documents,namespace=None):
                 origins={source_generations.get(i) for i in sources}
                 origin=next(iter(origins)) if memory.origin=='model' and len(origins)==1 else None
                 items.append({**memory.model_dump(),'id':native,'scope':'session:'+sid,'source_session_id':sid,
-                              'source_revision':json.dumps({'entity_id':entity_id,'memory_id':memory.id,'memory_uuid':stable,'source_session_id':memory.source_session_id}),
+                              'source_revision':memory_provenance(memory,entity_id),
                               'source_generation_id':origin,'source_message_ids':sources})
             saved[name]={'state':snapshot_state,'memories':items}
             if (message.id,name) in historical_settings:
@@ -472,6 +483,7 @@ def export_session(db, sid, entity_id, mapping):
         item.update(id=original['id'], uuid=original.get('uuid', original['id']), scope=entity_id, source_session_id=original['source_session_id'],
                     supported=None if row['supported'] is None else bool(row['supported']),
                     source_message_ids=[ids[i] for i in sources if i in ids])
+        if 'original_source_revision' in provenance:item['source_revision']=provenance['original_source_revision']
         item.pop('source_generation_id',None)
         return item
     for row in db.execute('SELECT * FROM runtime.memories WHERE source_session_id=? OR (source_session_id IS NULL AND scope=?) ORDER BY rowid', (sid, 'session:' + sid)).fetchall():

@@ -4,6 +4,7 @@ import { canonical } from './appSyncData';
 import { readDeviceMemoryDomain,commitDeviceMemoryDomain,readMemorySource,memorySourceProjection,memoryScopeInput,type OwnedMemoryDomain,type MemorySource,type MemoryProjectionUpdate } from './deviceMemoryStore';
 import { bindMemoryScope,memoryBinding,memoryPolicy,memorySignature,ownScopeMemories,type MemoryIdentity,type MemoryPolicy,type MemoryConversation } from './deviceMemoryScopes';
 import type { HistoryChange } from './deviceHistoryChange';
+import type { GenerationChange } from './deviceGenerationChange';
 
 export type MemoryIdentityResolver=(settings:Record<string,any>)=>Promise<MemoryIdentity>;
 export type ScopedMemory={owner:string;policy:MemoryPolicy;domain:OwnedMemoryDomain;scope:string;records:Map<string,MemorySource>};
@@ -81,9 +82,10 @@ export function scopedMemoryRows(context:ScopedMemory){
 }
 
 /** Only own projections enter wire bodies, including when foreign rows were retrieved. */
-export async function saveScopedMemory(context:ScopedMemory,updates:AppEntity[]=[],generations:Record<string,Record<string,any>>={},history?:{sourceId:string;change:HistoryChange}){
+export async function saveScopedMemory(context:ScopedMemory,updates:AppEntity[]=[],generations:Record<string,Record<string,any>>={},history?:{sourceId:string;change:HistoryChange},generation?:{sourceId:string;change:GenerationChange}){
   const records=new Map(context.records),requested=new Set(updates.map(record=>record.id));
   if(history&&(!records.has(history.sourceId)||requested.has(history.sourceId)))throw fail('Invalid history source');
+  if(generation&&(history||!records.has(generation.sourceId)||requested.has(generation.sourceId)))throw fail('Invalid generation source');
   for(const record of updates){if(!records.has(record.id))throw fail('Memory source changed');records.set(record.id,memorySourceProjection(record));}
   const projections:AppEntity[]=[],memoryUpdates:MemoryProjectionUpdate[]=[];
   for(const record of records.values()){
@@ -93,8 +95,8 @@ export async function saveScopedMemory(context:ScopedMemory,updates:AppEntity[]=
     if(requested.has(record.id)){
       const complete=updates.find(update=>update.id===record.id)!;
       projections.push({...complete,payload:{...complete.payload,memories}});
-    }else if(history?.sourceId===record.id||canonical(record.metadata.memories??[])!==canonical(memories))
-      memoryUpdates.push({source:record,memories,...(history?.sourceId===record.id?{history:history.change}:{})});
+    }else if(history?.sourceId===record.id||generation?.sourceId===record.id||canonical(record.metadata.memories??[])!==canonical(memories))
+      memoryUpdates.push({source:record,memories,...(history?.sourceId===record.id?{history:history.change}:{}),...(generation?.sourceId===record.id?{generation:generation.change}:{})});
   }
   const result=await commitDeviceMemoryDomain(context.owner,context.policy,context.domain,
     [...context.records.values()].map(({id,revision,bodyToken})=>({id,revision,bodyToken})),projections,generations,memoryUpdates);
