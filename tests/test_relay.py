@@ -250,7 +250,8 @@ def test_mux_binary_roundtrip_and_close(env):
                     c2.receive_bytes()
 
 
-def test_cross_host_connection_injection_closes_attacker(env):
+@pytest.mark.parametrize('frame', ['binary', 'close'])
+def test_cross_host_connection_injection_closes_attacker(env, frame):
     store, client, _ = env
     a, b = host(store), host(store)
     phone = device(store, a)
@@ -260,12 +261,55 @@ def test_cross_host_connection_injection_closes_attacker(env):
     ):
         with socket(client, "client", phone["device_token"]) as c:
             opened = ha.receive_json()
-            hb.send_bytes(uuid.UUID(opened["connection_id"]).bytes + b"injected")
+            if frame == 'binary':
+                hb.send_bytes(uuid.UUID(opened["connection_id"]).bytes + b"injected")
+            else:
+                hb.send_json(dict(type='close', connection_id=opened['connection_id']))
             with pytest.raises(WebSocketDisconnect) as error:
                 hb.receive_bytes()
             assert error.value.code == 1008
             c.send_bytes(b"still-alive")
             assert ha.receive_bytes().endswith(b"still-alive")
+
+
+def test_late_frames_for_detached_client_preserve_host_other_client_and_reconnect(env):
+    store, client, hub = env
+    a = host(store)
+    phone, other = device(store, a), device(store, a)
+    with socket(client, 'host', a['host_token']) as h:
+        with socket(client, 'client', other['device_token']) as alive:
+            live = h.receive_json()['connection_id']
+            with socket(client, 'client', phone['device_token']):
+                old = h.receive_json()['connection_id']
+            assert h.receive_json() == dict(type='close', connection_id=old)
+            assert uuid.UUID(old) not in hub.sessions
+            h.send_bytes(uuid.UUID(old).bytes + b'late-opaque-result')
+            h.send_json(dict(type='close', connection_id=old))
+            h.send_bytes(uuid.UUID(live).bytes + b'other-client-retained')
+            assert alive.receive_bytes() == b'other-client-retained'
+            with socket(client, 'client', phone['device_token']) as reopened:
+                current = h.receive_json()['connection_id']
+                assert current != old
+                h.send_bytes(uuid.UUID(old).bytes + b'must-not-enter-new-connection')
+                h.send_bytes(uuid.UUID(current).bytes + b'new-connection-only')
+                assert reopened.receive_bytes() == b'new-connection-only'
+                reopened.send_bytes(b'new-request')
+                assert h.receive_bytes() == uuid.UUID(current).bytes + b'new-request'
+
+
+@pytest.mark.parametrize('frame', [b'bad', '{', '{"type":"open","connection_id":"bad"}',
+    '{"type":"close","connection_id":"bad"}', '{"type":"close","connection_id":"00000000-0000-0000-0000-000000000000","extra":true}'])
+def test_malformed_host_frames_still_close_host(env, frame):
+    store, client, _ = env
+    a = host(store)
+    with socket(client, 'host', a['host_token']) as h:
+        if isinstance(frame, bytes):
+            h.send_bytes(frame)
+        else:
+            h.send_text(frame)
+        with pytest.raises(WebSocketDisconnect) as error:
+            h.receive_bytes()
+        assert error.value.code == 1008
 
 
 def test_revocation_closes_live_socket_and_survives_restart(env):

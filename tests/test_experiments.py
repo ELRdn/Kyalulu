@@ -47,6 +47,85 @@ async def test_nsfw_api_guard(isolated):
         assert response.status_code == 403
 
 
+@pytest.mark.parametrize("character", [None, "mocha_sfw"])
+async def test_custom_scenario_runs_and_replays_as_non_official(isolated, character):
+    import json
+    import yaml
+    path = isolated / "private-scenario.yaml"
+    scenario = {"id": "private_unregistered_scenario", "character": character,
+                "turns": [{"turn": 1, "user": "hello"}]}
+    path.write_text(yaml.safe_dump(scenario), encoding="utf-8")
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
+                                 base_url="http://test") as client:
+        response = await client.post("/api/experiments/run", json={
+            "scenario": str(path), "model_id": "mock-echo", "seed": 42})
+        assert response.status_code == 200, response.text
+        meta = response.json()["results"][0]["meta"]
+        assert meta["status"] == "completed" and not meta["official"]
+        assert meta["character_id"] == character and meta["scenario_snapshot"]["id"] == scenario["id"]
+        saved = experiment.EXPERIMENTS_DIR / meta["experiment_id"]
+        assert json.loads((saved / "meta.json").read_text(encoding="utf-8")) == meta
+        turns = json.loads((saved / "turns.json").read_text(encoding="utf-8"))
+        assert len(turns) == 1 and turns[0]["status"] == "completed"
+        assert turns[0]["assistant"] == "Mock: hello"
+        replay = await client.post(f"/api/experiments/{meta['experiment_id']}/rerun", json={"runs": 1})
+        assert replay.status_code == 200, replay.text
+        replay_meta = replay.json()["results"][0]["meta"]
+        assert replay_meta["status"] == "completed" and not replay_meta["official"]
+        assert replay_meta["scenario_snapshot"] == meta["scenario_snapshot"]
+
+
+@pytest.mark.parametrize('variant,official', [('unknown-empty', False), ('unknown-character', False),
+    ('canonical', True), ('changed-description', False), ('changed-character', False)])
+async def test_scenario_catalog_matches_canonical_official_identity(isolated, monkeypatch, variant, official):
+    import importlib
+    import yaml
+    api = importlib.import_module('python.api.experiments')
+    root = isolated / 'scenario-catalog'
+    directory = root / 'scenarios'
+    directory.mkdir(parents=True)
+    if variant.startswith('unknown'):
+        data = {'id': 'private_unregistered_scenario', 'character': None if variant == 'unknown-empty' else 'mocha_sfw',
+                'turns': [{'turn': 1, 'user': 'hello'}]}
+    else:
+        data = experiment.load_scenario('mocha_daily_001').model_dump()
+        if variant == 'changed-description':
+            data['description'] = 'private altered scenario'
+        if variant == 'changed-character':
+            data['character'] = None
+    source = directory / 'private.yaml'
+    source.write_text(yaml.safe_dump(data, allow_unicode=True), encoding='utf-8')
+    monkeypatch.setattr(api, '__file__', str(root / 'runtime/python/api/experiments.py'))
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+        response = await client.get('/api/scenarios')
+    assert response.status_code == 200
+    row, = [row for row in response.json()['scenarios'] if row.get('path') == str(source)]
+    assert row['id'] == data['id'] and row['official'] is official
+
+
+@pytest.mark.parametrize("changes", [
+    {"character": None}, {"character": "senior_cool"}, {"description": "private clone"},
+])
+async def test_official_id_does_not_make_modified_scenario_official(isolated, changes):
+    scenario = experiment.load_scenario("mocha_daily_001").model_copy(update=changes)
+    meta, turns, _ = await experiment.run_single(scenario, "mock-echo")
+    assert meta.status == "completed" and not meta.official
+    assert len(turns) == len(scenario.turns)
+
+
+@pytest.mark.parametrize("options", [
+    {"extra_system_prompt": "Private experiment instruction."},
+    {"memory": True}, {"history_turn_limit": 1},
+])
+async def test_custom_run_options_exclude_official_scenario(isolated, options):
+    scenario = experiment.load_scenario("mocha_daily_001")
+    meta, turns, _ = await experiment.run_single(scenario, "mock-echo", **options)
+    assert meta.status == "completed" and not meta.official
+    assert len(turns) == len(scenario.turns)
+    for key, value in options.items():
+        assert getattr(meta, "memory_enabled" if key == "memory" else key) == value
+
+
 async def test_mislabeled_scenario_cannot_bypass_character_nsfw(tmp_path):
     import yaml
     scenario = {'id':'custom', 'character':'mocha', 'nsfw':False, 'turns':[{'turn':1,'user':'hello'}]}

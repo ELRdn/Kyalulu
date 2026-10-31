@@ -16,7 +16,11 @@ import subprocess
 import sys
 import threading
 import uuid
+import pytest
+from contextlib import ExitStack
 from pathlib import Path
+from unittest.mock import patch
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "runtime"))
@@ -59,6 +63,40 @@ async def runtime_ready(page, ready):
     return int(retried)
 
 
+@pytest.mark.asyncio
+async def test_two_device_management_permissions():
+    from fastapi import Request
+    from python.api.mobile import local_admin
+    from python.remote.host import HostService
+    from test_remote_bridge import collect, setup, submit
+
+    unused, app, *_ = setup()
+    devices = [str(uuid.uuid4()), str(uuid.uuid4())]
+    vault = MemoryVault(dict(version=1, relay='https://relay.example', app_origin='https://app.example',
+                            owner_id=str(uuid.uuid4()), host_id=str(uuid.uuid4()),
+                            devices={d: {'approved': True, 'name': 'Fictional device'} for d in devices}))
+    host = HostService(app, vault)
+
+    @app.get('/api/diagnostics')
+    async def diagnostics(request: Request):
+        assert not local_admin(request)
+        return {'ready': True}
+
+    try:
+        for enabled, expected in (((), (403, 403)), ((0,), (200, 403)),
+                                  ((0, 1), (200, 200)), ((1,), (403, 200)), ((), (403, 403))):
+            for i, device in enumerate(devices):
+                host.set_management(device, i in enabled)
+            for device, status in zip(devices, expected):
+                assert (await collect(submit(host.bridge, device=device, path='/api/diagnostics')))[0]['status'] == status
+                assert host.authorized(device)
+                assert vault.read()['devices'][device]['management'] == host.management(device)
+                assert (await collect(submit(host.bridge, device=device)))[0]['status'] == 200
+    finally:
+        await host.stop()
+        await unused.aclose()
+
+
 async def run():
     output = ROOT / ".artifacts" / "remote-v1" / ("e2e-" + uuid.uuid4().hex[:8])
     output.mkdir(parents=True)
@@ -68,6 +106,20 @@ async def run():
     os.environ.pop("KYALULU_WEB_DIST", None)
     import httpx
     import uvicorn
+    from python.core import config, registry
+
+    fixture = ExitStack()
+    fixture.enter_context(patch.object(config, 'settings', config.Settings(
+        _env_file=None, le_api_token='', openai_compatible_api_key='', llm_api_key='',
+        le_token_file=str(output / 'unused-le-token'))))
+    from python.api import providers
+
+    models = output / 'models'
+    models.mkdir()
+    (models / 'mock-echo.yaml').write_bytes((ROOT / 'models/mock-echo.yaml').read_bytes())
+    fixture.enter_context(patch.object(registry, 'MODELS_DIR', models))
+    fixture.enter_context(patch.dict(os.environ, {'KYALULU_MODELS_DIR': str(models)}))
+    fixture.enter_context(patch.object(providers, 'TYPES', ('mock',)))
     from playwright.async_api import Error as PlaywrightError
     from playwright.async_api import async_playwright, expect
     from python.api.main import app
@@ -80,6 +132,17 @@ async def run():
         f"http://127.0.0.1:{relay_port}",
         f"http://127.0.0.1:{web_port}",
     )
+    external_attempts = []
+    original_http = httpx.AsyncHTTPTransport.handle_async_request
+
+    async def fixture_http(transport, request):
+        origin = urlsplit(str(request.url))
+        if origin.scheme + '://' + origin.netloc not in (relay_origin, web_origin):
+            external_attempts.append({'source': 'runtime', 'method': request.method, 'path': origin.path})
+            raise AssertionError('non-fixture HTTP request')
+        return await original_http(transport, request)
+
+    fixture.enter_context(patch.object(httpx.AsyncHTTPTransport, 'handle_async_request', fixture_http))
     relay = create_app(str(output / "relay.sqlite3"), [web_origin])
     relay_trace = []
     original_attach = relay.state.hub.attach
@@ -87,6 +150,20 @@ async def run():
     def observe_attach(peer):
         entry = {'role': peer.device['role'], 'existing_peer': peer.device['id'] in relay.state.hub.peers}
         relay_trace.append(entry)
+        original_stop = peer.stop
+
+        def observe_stop(code=1013):
+            caller = sys._getframe(1)
+            stopped = {'code': code, 'source': caller.f_code.co_name, 'line': caller.f_lineno}
+            if error := sys.exception():
+                trace = error.__traceback__
+                while trace and trace.tb_next:
+                    trace = trace.tb_next
+                stopped.update(exception_type=type(error).__name__, exception_line=trace.tb_lineno if trace else None)
+            entry.setdefault('stop', stopped)
+            original_stop(code)
+
+        peer.stop = observe_stop
         try:
             original_attach(peer)
         except Exception as error:
@@ -138,6 +215,7 @@ async def run():
     report = {
         "checks": [],
         "runtime_recoveries": [],
+        "external_attempts": external_attempts,
         "limits": ["Mock model", "emulated Android", "loopback development origins"],
     }
 
@@ -192,6 +270,20 @@ async def run():
                         is_mobile=True,
                         has_touch=True,
                     )
+                    await context.expose_binding('fixtureBlockedFetch', lambda _source, path:
+                                                 external_attempts.append({'source': 'browser', 'path': path}))
+                    # Keep the browser cache and native WebSocket behavior used by the recovery checks.
+                    await context.add_init_script('''(allowed => {
+                        const original = window.fetch.bind(window);
+                        window.fetch = (input, init) => {
+                            const url = new URL(input instanceof Request ? input.url : input, location.href);
+                            if (url.pathname.startsWith('/api/') || !allowed.includes(url.origin)) {
+                                void window.fixtureBlockedFetch(url.pathname);
+                                return Promise.reject(new Error('non-fixture HTTP request'));
+                            }
+                            return original(input, init);
+                        };
+                    })(%s)''' % json.dumps([web_origin, relay_origin]))
                     await context.add_init_script('''
                         if(!localStorage.getItem('kyalulu-app-preferences-v1')){
                             localStorage.setItem('kyalulu-app-preferences-v1',JSON.stringify({version:1,language:'ja',country:'JP',age:25,accepted:true,
@@ -203,6 +295,8 @@ async def run():
                     errors, requests = [], []
                     page.on("pageerror", lambda e: errors.append(str(e)))
                     page.on("request", lambda r: requests.append(r.url))
+                    page.on('websocket', lambda ws: external_attempts.append({'source': 'browser-websocket'})
+                            if urlsplit(ws.url).netloc not in (urlsplit(web_origin).netloc, urlsplit(relay_origin).netloc) else None)
                     link = await host.pair()
                     await page.goto(link["url"])
                     assert "#remote=" not in page.url
@@ -341,6 +435,116 @@ async def run():
                     report["checks"].append(
                         "draft reload, explicit Mock model, one durable user/assistant pair"
                     )
+                    scenario = output / 'management-scenario.yaml'
+                    scenario.write_text(json.dumps({
+                        'id': 'remote_management_fictional', 'description': 'Fictional permission acceptance only',
+                        'character': None,
+                        'turns': [{'turn': 1, 'user': 'REMOTE_MANAGEMENT_FICTIONAL_ONLY'}],
+                    }), encoding='utf-8')
+                    research_body = {'scenario': str(scenario), 'model_id': 'mock-echo', 'runs': 1, 'seed': 42}
+                    management_requests = [('/api/diagnostics', 'GET', None), ('/api/commands', 'GET', None),
+                                           ('/api/providers', 'GET', None),
+                                           ('/api/commands', 'POST', {'input': '/help'}),
+                                           ('/api/experiments', 'GET', None),
+                                           ('/api/experiments/run', 'POST', research_body)]
+                    management_trace = []
+
+                    async def management_request(phase, path, method='GET', body=None, status=200):
+                        response = await api(path, method, body)
+                        management_trace.append({'phase': phase, 'method': method, 'path': path, 'status': response['status']})
+                        assert response['status'] == status, (phase, method, path, response)
+                        return json.loads(response['body'])
+
+                    for path, method, body in management_requests:
+                        await management_request('conversation_only', path, method, body, 403)
+                    assert not (output / 'experiments').exists()
+                    assert not json.loads((await api('/api/mobile/status'))['body'])['administrative']
+                    connections = dict(host.connections)
+                    assert any(c.device_id == device for c in connections.values())
+                    devices_before = copy.deepcopy(host.config['devices'])
+                    browser_entities = await page.evaluate('''async()=>{
+                        const {allEntities}=await import('/src/lib/appStore.ts');
+                        return JSON.stringify(await allEntities());
+                    }''')
+                    # Grant through the existing PC-local API, never a Remote principal.
+                    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                                 base_url='http://127.0.0.1:5174',
+                                                 headers={'Origin': 'http://127.0.0.1:5174'}) as local:
+                        permission_path = '/api/remote/devices/' + device + '/management'
+                        granted = await local.put(permission_path, json={'enabled': True})
+                        assert granted.status_code == 200 and granted.json() == {'management': True}
+                        assert host.management(device) and vault.read()['devices'][device]['management'] is True
+                        assert json.loads((await api('/api/mobile/status'))['body'])['administrative']
+                        diagnostics = await management_request('granted', '/api/diagnostics')
+                        storage = next(c for c in diagnostics['checks'] if c['id'] == 'storage')
+                        assert storage['ok'] and Path(storage['detail']['path']).resolve() == (output / 'data.db').resolve()
+                        commands = await management_request('granted', '/api/commands')
+                        assert any(c['name'] == '/le models' for c in commands['commands'])
+                        provider_info = await management_request('granted', '/api/providers')
+                        assert provider_info['providers'] == [{'id': 'mock', 'type': 'mock',
+                                                               'capabilities': {'streaming': True, 'structured_output': True}}]
+                        help_result = await management_request('granted', '/api/commands', 'POST', {'input': '/help'})
+                        assert help_result['ok'] and '/le models' in help_result['output'] and not help_result['refresh_models']
+                        assert (await management_request('granted', '/api/experiments'))['experiments'] == []
+                        research = await management_request('granted', '/api/experiments/run', 'POST', research_body)
+                        assert research['count'] == 1
+                        result = research['results'][0]
+                        result_dir = Path(result['path']).resolve()
+                        assert result_dir == (output / 'experiments' / result['experiment_id']).resolve()
+                        meta = json.loads((result_dir / 'meta.json').read_text(encoding='utf-8'))
+                        turns = json.loads((result_dir / 'turns.json').read_text(encoding='utf-8'))
+                        assert meta['provider'] == 'mock' and meta['status'] == 'completed' and meta['turns'] == 1
+                        assert meta['character_id'] is None and meta['official'] is False
+                        assert len(turns) == 1 and turns[0]['user'] == 'REMOTE_MANAGEMENT_FICTIONAL_ONLY'
+                        assert turns[0]['status'] == 'completed' and 'REMOTE_MANAGEMENT_FICTIONAL_ONLY' in turns[0]['assistant']
+                        assert all((result_dir / name).is_file() for name in ('turns.jsonl', 'raw_prompt.txt', 'metrics.json'))
+                        assert [e['experiment_id'] for e in (await management_request('granted', '/api/experiments'))['experiments']] == [result['experiment_id']]
+                        saved_hashes = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in result_dir.iterdir()}
+                        local_only = [('/api/remote/status', 'GET', None), ('/api/remote/pair', 'POST', None),
+                                      ('/api/remote/approve', 'POST', {'device_id': device, 'code': '000000'}),
+                                      (permission_path, 'PUT', {'enabled': False}),
+                                      ('/api/remote/devices/' + device, 'DELETE', None),
+                                      ('/api/remote/stop', 'POST', None), ('/api/mobile/admin/code', 'POST', None),
+                                      ('/api/mobile/admin/devices', 'GET', None)]
+                        for path, method, body in local_only:
+                            await management_request('granted_local_only', path, method, body, 403)
+                        assert host.connected and host.management(device)
+                        revoked = await local.put(permission_path, json={'enabled': False})
+                        assert revoked.status_code == 200 and revoked.json() == {'management': False}
+                        # The very next Remote request must observe revocation on this channel.
+                        await management_request('revoked_next_request', '/api/diagnostics', status=403)
+                    for path, method, body in management_requests[1:]:
+                        await management_request('revoked', path, method, body, 403)
+                    assert host.authorized(device) and not host.management(device)
+                    assert vault.read()['devices'][device]['management'] is False
+                    assert not json.loads((await api('/api/mobile/status'))['body'])['administrative']
+                    assert host.connections.keys() == connections.keys()
+                    assert all(host.connections[k] is c for k, c in connections.items())
+                    assert host.config['devices'] == {**devices_before, device: {**devices_before[device], 'management': False}}
+                    assert json.loads((await api('/api/chat/history?session_id=' + sid))['body'])['history'] == history
+                    assert await page.evaluate('''async()=>{
+                        const {allEntities}=await import('/src/lib/appStore.ts');
+                        return JSON.stringify(await allEntities());
+                    }''') == browser_entities
+                    assert await page.evaluate('''async expected=>{
+                        const {remoteDevices}=await import('/src/lib/remoteStore.ts');
+                        const bytes=new TextEncoder().encode(JSON.stringify(await remoteDevices()));
+                        return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),v=>v.toString(16).padStart(2,'0')).join('')===expected;
+                    }''', keys_before)
+                    assert list((output / 'experiments').iterdir()) == [result_dir]
+                    assert {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in result_dir.iterdir()} == saved_hashes
+                    assert all(b'REMOTE_MANAGEMENT_FICTIONAL_ONLY' not in p.read_bytes() for p in output.glob('relay.sqlite3*'))
+                    report['management'] = {'requests': management_trace, 'same_host_connections': True,
+                                            'experiment_directory': str(result_dir), 'result_sha256': saved_hashes,
+                                            'provider': 'mock', 'browser_entities_unchanged': True,
+                                            'registered_keys_unchanged': True, 'runtime_data_root': str(output),
+                                            'relay_has_no_plaintext_research_canary': True}
+                    report['checks'].extend([
+                        'conversation-only rejects diagnostics, model-management help and research; PC-local grant enables them',
+                        'one fictional Mock research turn saves complete results only beneath target PC data root',
+                        'management grant never enables pairing, approval, permission changes, revocation, Host stop or admin keys',
+                        'same Noise connection observes management revocation on next request; registration, keys, history and conversation remain usable',
+                    ])
                     from python.api import chat
                     from python.providers.mock import MockProvider
 
@@ -611,6 +815,7 @@ async def run():
                     )
                     assert not any("/api/" in url for url in requests), requests
                     assert not any("REMOTE_PRIVATE_CANARY" in url for url in requests)
+                    assert not external_attempts, external_attempts
                     report["checks"].append(
                         "Runtime requests never use plaintext browser HTTP URLs"
                     )
@@ -662,6 +867,8 @@ async def run():
                     assert not errors, errors
                     await context.close()
                 except Exception:
+                    (output / 'partial-acceptance.json').write_text(
+                        json.dumps({**report, 'completed': False}, ensure_ascii=False, indent=2), encoding='utf-8')
                     print(json.dumps({'remote_relay_metadata': relay_trace, 'host_connected': host.connected,
                                       'host_connections': len(host.connections)}), flush=True)
                     if "page" in locals():
@@ -677,6 +884,7 @@ async def run():
                     raise
                 finally:
                     await asyncio.wait_for(browser.close(), timeout=10)
+                    report['browser_closed'] = True
             await asyncio.wait_for(host.stop(), timeout=15)
     finally:
         try:
@@ -700,9 +908,18 @@ async def run():
                             vite.kill()
                             await asyncio.to_thread(vite.wait, 5)
                             raise
+                        report['vite_exit_code'] = vite.returncode
                 finally:
                     if log:
                         log.close()
+                    fixture.close()
+                    if sys.exc_info()[0] is not None:
+                        (output / 'partial-acceptance.json').write_text(json.dumps(
+                            {**report, 'completed': False, 'relay_bootstrap': relay_trace},
+                            ensure_ascii=False, indent=2), encoding='utf-8')
+    assert not external_attempts, external_attempts
+    relay_files = list(output.glob('relay.sqlite3*'))
+    assert relay_files and all(b'REMOTE_MANAGEMENT_FICTIONAL_ONLY' not in p.read_bytes() for p in relay_files)
     report['relay_bootstrap'] = relay_trace
     (output / "acceptance.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
