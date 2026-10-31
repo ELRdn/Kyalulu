@@ -158,6 +158,26 @@ def test_source_contains_local_python_helpers(tmp_path, monkeypatch):
         assert (tmp_path / 'source' / name).read_bytes() == (root / name).read_bytes()
 
 
+def test_source_contains_test_tree_and_ci_entrypoints(tmp_path, monkeypatch):
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.syspath_prepend(str(root / 'scripts'))
+    import collect_release_sources as sources
+
+    workflow = '.github/workflows/runtime-web.yml'
+    required = {path.relative_to(root).as_posix() for path in (root / 'tests').rglob('*')
+                if path.is_file() and path.suffix in {'.py', '.html', '.json', '.ts', '.tsx'}}
+    required.update(re.findall(r'\b(?:scripts|tests)/[\w./-]+\.(?:py|mjs)',
+                               (root / workflow).read_text(encoding='utf-8')))
+    required.add(workflow)
+    assert 'tests' not in sources.DIRECTORIES  # Keep private/unreviewed tests outside the offer.
+    assert required <= set(sources.FILES), f'Uncollected test inputs: {sorted(required - set(sources.FILES))}'
+    monkeypatch.setattr(sources, 'DIRECTORIES', ())
+    monkeypatch.setattr(sources, 'FILES', tuple(sorted(required)))
+    sources.collect(tmp_path / 'source')
+    for name in required:
+        assert (tmp_path / 'source' / name).read_bytes() == (root / name).read_bytes()
+
+
 def test_mobile_packages_shared_corresponding_source(tmp_path, monkeypatch):
     root = Path(__file__).resolve().parents[1]
     monkeypatch.syspath_prepend(str(root / 'scripts'))
