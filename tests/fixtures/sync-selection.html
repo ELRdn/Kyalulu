@@ -387,7 +387,7 @@ async function run(){
   check(stats.getAllAttempts===0&&stats.foreignCursorRows===0,'Bulk/foreign record reads detected');
   const request=indexedDB.open('kyalulu-app-v1');
   const db=await new Promise((resolve,reject)=>{request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});
-  check(db.version===3,'DB version changed');db.close();
+  check(db.version===4,'DB version changed');db.close();
   return {ok:true,scenario,probes,unrelatedConversations:count,maximum,foreignMaximum,stats,...details};
 }
 run().then(result=>window.__SYNC_SELECTION__=result).catch(error=>window.__SYNC_SELECTION__={ok:false,scenario,error:String(error),stack:error.stack,probes,stats})

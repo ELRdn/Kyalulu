@@ -42,3 +42,19 @@ because of an observation delay.
 
 Hosted confirmation is still required. The earlier browser resource failure,
 production, physical-device, capacity and provider/region gates remain separate.
+
+## Additional v4 fixture expectations
+
+Follow-up `f7f8844` passed the hosted Web step. Its completed Ubuntu job
+`124673493786` then failed `e2e_outbox_guard.py`: the final fixture still required
+`db.version===3` although the production writer intentionally opens v4. A targeted
+inventory also found that stale expectation in `sync-selection.html`.
+
+Both expected versions now require **4**; index, key-cursor, ownership, exact
+original preservation, streaming, quota, withdrawal and corruption assertions
+remain. The product schema/writer is unchanged. Current local real Chromium
+passes **11/11 outbox guard** and **15/15 selection sync** cases; the latter pins
+before/after source hashes and verifies browser/context/server cleanup. This is
+not a claim that the earlier unrelated navigation resource failure is fixed.
+Evidence: `.artifacts/outbox-guard-v4-20261101/`,
+`.artifacts/sync-selection-browser/`, and their `*-v4-20261101.log` files.
