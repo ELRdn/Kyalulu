@@ -385,6 +385,11 @@ local/sync・legacy/world/shared・通常/再生成・停止/不正JSON・quota�
 元の出典turn/quoteを残し、Native内部wrapperは元revisionを別途保持して再書き出しで復元する。
 actorの初期全履歴保持、入力配列、選択前のraw_prompt、ONNXの全候補token計算は残り、生成全体の容量合格ではない。
 
+記憶とPortable/Loreのトークン概算は、全文字配列を作らずcode pointを数える走査へ変更した。
+[Unicode token estimates](validation/2026-10-31-unified-unicode-token-estimates.md)に、既存計算とのUnicode境界・
+100万code point・Lore予算一致、関連117件と型検査の成功を記録する。全文走査と他の文字処理は残る。
+変更後の実Chromium生成保存84ケース・293入力hash不変、対応source closure3件も成功した。
+
 Core復元の媒体交換中に実process killすると、現在DBの参照媒体が欠落する不具合を再現・修正した。
 [Core interruption](validation/2026-10-31-unified-core-interruption.md)に実kill3地点を含む66件の検証を記録する。
 媒体を検証して両世代分を先に保持し、SQLiteのatomic反映を後に行う。独立復旧ZIPと同期/owner/削除保護は維持。

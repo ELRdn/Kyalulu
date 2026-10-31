@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import fixture from '../../../../tests/fixtures/portable-prompt.json';
 import loreValues from '../../../../tests/fixtures/device-lore-values.json';
 import { compilePortable, assemblePortable, selectLore, casefold } from './devicePrompt';
@@ -21,4 +21,21 @@ it('rejects malformed Lore instead of executing scripts, regex or URL requests',
   expect(()=>selectLore([{entries:[{keys:'not an array'}]}],[])).toThrow('Lore keys');
   const result=selectLore([{entries:[{constant:true,content:'not executed',use_regex:true}]}],[]);
   expect(result.selected).toEqual([]);expect(result.audit[0].reason).toBe('unsupported condition');
+});
+
+it('keeps exact Lore budget boundaries for Unicode and long text without character arrays',()=>{
+  for(const content of ['', '\u2e80\u2e81', '茶🙂é', '\ud800x\udc00', '茶🙂é'.repeat(250000)]){
+    const size=Math.floor(Array.from(content).length/1.5),from=Array.from;
+    const spy=vi.spyOn(Array,'from').mockImplementation(((value:any,...rest:any[])=>{
+      if(value===content)throw Error('Lore token estimates must not materialize the input characters');
+      return (from as any)(value,...rest);
+    }) as typeof Array.from);
+    try{
+      for(const budget of new Set([Math.max(0,size-1),size])){
+        const result=selectLore([{token_budget:budget,entries:[{constant:true,case_sensitive:true,content}]}],[]);
+        expect(result.audit[0]).toMatchObject({selected:size<=budget,estimated_tokens:size});
+        expect(result.selected).toHaveLength(size<=budget?1:0);
+      }
+    }finally{spy.mockRestore();}
+  }
 });

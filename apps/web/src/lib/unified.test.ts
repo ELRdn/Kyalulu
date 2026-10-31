@@ -1,13 +1,25 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import fixture from '../../../../tests/fixtures/unified-core.json';
 import provenance from '../../../../tests/fixtures/unified-memory-provenance.json';
-import { retrieveMemories, renderMemoryBlock, prepareRpg, validateProposals, memoryDecisions, evidenced, extractSummary, refreshSummaries, summaryRefresh, type DeviceMemory, type DeviceSummary } from './deviceCore';
+import { estimateTokens, retrieveMemories, renderMemoryBlock, prepareRpg, validateProposals, memoryDecisions, evidenced, extractSummary, refreshSummaries, summaryRefresh, type DeviceMemory, type DeviceSummary } from './deviceCore';
 import { recommend } from './recommendations';
 import { executionTarget, preferences, generationBusy, setGenerationBusy, switchTarget } from './appContext';
 import { initialData, newConversation } from '../mobile/store';
 import { migrationEnvelope, parseMigration } from '../mobile/migration';
 
 afterEach(()=>{while(generationBusy())setGenerationBusy(false);vi.unstubAllGlobals();});
+
+it('preserves token estimates for code points, threshold boundaries and long text without character arrays',()=>{
+  for(const text of ['', 'abcd', '\u2e80\u2e81', '茶🙂é', '\ud800x\udc00', '茶🙂é'.repeat(250000)]){
+    const chars=Array.from(text),cjk=chars.filter(char=>char.codePointAt(0)!>0x2e80).length;
+    const expected=Math.max(1,Math.ceil(cjk/1.5+(chars.length-cjk)/4)),from=Array.from;
+    const spy=vi.spyOn(Array,'from').mockImplementation(((value:any,...rest:any[])=>{
+      if(value===text)throw Error('Token estimates must not materialize the input characters');
+      return (from as any)(value,...rest);
+    }) as typeof Array.from);
+    try{expect(estimateTokens(text)).toBe(expected);}finally{spy.mockRestore();}
+  }
+});
 
 // Keep the previous array algorithm as the compatibility oracle.
 function previousExtractSummary(messages:{id:number|string;role:string;content:string}[]) {
