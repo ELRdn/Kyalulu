@@ -69,6 +69,7 @@ jobs:
       - run: uv run --no-sync python tests/e2e_generation_commits.py
       - run: uv run --no-sync python tests/e2e_research_language.py
       - run: uv run --no-sync python tests/e2e_device_research.py
+      - run: uv run --no-sync python tests/e2e_runtime_download.py
       - run: uv run --no-sync python tests/e2e_device_benchmarks.py
       - run: uv run --no-sync python tests/e2e_research_storage.py
       - run: uv run --no-sync python tests/e2e_native_restore.py

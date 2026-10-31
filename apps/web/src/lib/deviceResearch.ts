@@ -9,6 +9,7 @@ import { computeDeviceMetrics, memoryMetrics, memoryProbe, metricRound } from '.
 import { SSEDecoder } from './sse';
 import { deviceExecutionLockName } from './deviceExecution';
 import { readResearchExperiment,writeResearchExperiment,listResearchExperiments,type ResearchExperiment as Experiment,type ResearchExperimentSummary } from './deviceResearchStore';
+import { jsonChunks } from './appTransfers';
 export { deviceExecutionLockName } from './deviceExecution';
 
 type Value=Record<string,any>;
@@ -26,6 +27,23 @@ const ownerCheck=(owner:string)=>{if(owner!==deviceOwner())throw fail('Account c
 const identifier=(id:unknown)=>{if(typeof id!=='string'||! /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id))throw fail('Invalid research ID');return id;};
 const integer=(value:unknown,fallback:number,min:number,max:number)=>{const n=value??fallback;if(!Number.isSafeInteger(n)||(n as number)<min||(n as number)>max)throw fail('Invalid research number');return n as number;};
 const json=(value:unknown,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
+// shortcut: saved research trees are still decoded whole; canonical receipt storage is required for large-read acceptance.
+function exportJson(value:unknown,owner:string,filename:string,signal?:AbortSignal) {
+  ownerCheck(owner);signal?.throwIfAborted();
+  const chunks=jsonChunks(value);let closed=false,abort:()=>void=()=>{};
+  const finish=()=>{closed=true;signal?.removeEventListener('abort',abort);chunks.return(undefined);};
+  const body=new ReadableStream<Uint8Array>({
+    start(controller){abort=()=>{if(!closed){finish();controller.error(signal!.reason);}};signal?.addEventListener('abort',abort,{once:true});},
+    pull(controller){
+      try{
+        ownerCheck(owner);signal?.throwIfAborted();const chunk=chunks.next();
+        if(chunk.done){finish();controller.close();}else controller.enqueue(chunk.value);
+      }catch(error){finish();controller.error(error);}
+    },
+    cancel(){finish();},
+  },{highWaterMark:0});
+  return new Response(body,{headers:{'Content-Type':'application/json','Cache-Control':'no-store','Content-Disposition':`attachment; filename="${filename}"`}});
+}
 async function exclusive<T>(owner:string,id:string,signal:AbortSignal|undefined,task:(controller:AbortController)=>Promise<T>) {
   if(!navigator.locks)throw fail('Web Locks are required for on-device research',503);
   return navigator.locks.request(deviceExecutionLockName(owner),{ifAvailable:true},async lock=>{
@@ -283,7 +301,7 @@ async function startBenchmark(owner:string,body:Value,generate:Generate,compile:
   void task.catch(decline).finally(()=>benchmarkTasks.delete(taskKey));
   return started;
 }
-async function benchmarkRoute(path:string,method:string,body:Value,owner:string,generate:Generate,compile:Compile) {
+async function benchmarkRoute(path:string,method:string,body:Value,owner:string,generate:Generate,compile:Compile,signal?:AbortSignal) {
   if(path==='/api/benchmarks'){
     if(method==='POST')return startBenchmark(owner,body,generate,compile);
     if(method!=='GET')throw fail('Benchmarks require GET or POST',405);
@@ -306,10 +324,10 @@ async function benchmarkRoute(path:string,method:string,body:Value,owner:string,
     return json(publicJob(job));
   }
   if(method!=='GET')throw fail('Benchmark requires GET',405);
-  const response=json(publicJob(job));if(match[2]==='export')response.headers.set('Content-Disposition','attachment; filename="benchmark.json"');return response;
+  return match[2]==='export'?exportJson(publicJob(job),owner,'benchmark.json',signal):json(publicJob(job));
 }
 export async function deviceResearchRoute(path:string,method:string,body:Value,url:URL,owner:string,signal:AbortSignal|undefined,generate:Generate,compile:Compile):Promise<Response> {
-  if(path==='/api/benchmarks'||path.startsWith('/api/benchmarks/'))return benchmarkRoute(path,method,body,owner,generate,compile);
+  if(path==='/api/benchmarks'||path.startsWith('/api/benchmarks/'))return benchmarkRoute(path,method,body,owner,generate,compile,signal);
   if(path==='/api/experiments/run') {if(method!=='POST')throw fail('Research run requires POST',405);return run(owner,body,signal,generate,compile);}
   const cancel=path.match(/^\/api\/experiments\/requests\/([^/]+)\/cancel$/);
   if(cancel){if(method!=='POST')throw fail('Cancel requires POST',405);identifier(cancel[1]);if(active?.owner!==owner||active.request!==cancel[1])throw fail('Research request is not running',409);active.controller.abort();return json({ok:true});}
@@ -332,9 +350,8 @@ export async function deviceResearchRoute(path:string,method:string,body:Value,u
         extra_system_prompt:source.meta.extra_system_prompt,request_id:body.request_id},signal,generate,compile,source);
     }
     if(method!=='GET')throw fail('Experiment requires GET',405);
-    await recover(owner);const response=json(await detail(owner,experiment[1]));
-    if(experiment[2]==='export')response.headers.set('Content-Disposition','attachment; filename="experiment.json"');
-    return response;
+    await recover(owner);const value=await detail(owner,experiment[1]);
+    return experiment[2]==='export'?exportJson(value,owner,'experiment.json',signal):json(value);
   }
   if(method!=='GET')throw fail('Research listing requires GET',405);
   await recover(owner);const experiments=await listResearchExperiments(owner);
