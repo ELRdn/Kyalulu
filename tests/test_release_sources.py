@@ -140,7 +140,7 @@ def test_source_contains_local_python_helpers(tmp_path, monkeypatch):
     required = {'tests/e2e_segmented_storage.py', 'tests/conftest.py',
                 'tests/e2e_device_benchmarks.py', 'tests/test_benchmark.py',
                 'tests/test_json_stream.py', 'tests/test_native_outbox_guard.py',
-                'tests/e2e_research_language.py'}
+                'tests/e2e_research_language.py', 'tests/test_chat_storage.py'}
     # Only simple imports of sibling Python modules are used by these tests.
     for name in sources.FILES:
         if name.startswith('tests/') and name.endswith('.py'):

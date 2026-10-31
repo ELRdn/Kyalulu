@@ -1,4 +1,5 @@
 import sqlite3
+import json
 import httpx
 import pytest
 from python.api.main import app
@@ -20,16 +21,27 @@ async def test_migrate_legacy_and_idempotent(isolated):
 async def test_chat_save_before_done_replay_and_edit(isolated):
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         body = {"model_id": "mock-echo", "session_id": "test", "generation_id": "unique",
+                "system_prompt": "NATIVE_DIAGNOSTIC_ONLY_CANARY",
                 "messages": [{"role": "user", "content": "hello"}]}
         response = await client.post("/api/chat/stream", json=body)
         assert response.status_code == 200
         assert "event: done" in response.text
+        completions = [frame for frame in response.text.replace('\r\n', '\n').split('\n\n')
+                       if frame.startswith('event: done\n')]
+        assert len(completions) == 1
+        completed = json.loads(next(line[6:] for line in completions[0].splitlines() if line.startswith('data: ')))
+        assert not {'raw_prompt', 'compiled', 'attempts'} & completed.keys()
+        assert completed['generation_id'] == 'unique' and completed['status'] == 'completed'
         history = (await client.get("/api/chat/history?session_id=test")).json()["history"]
         assert len(history) == 2
         replay = await client.post("/api/chat", json=body)
         assert replay.status_code == 200
         assert len((await client.get("/api/chat/history?session_id=test")).json()["history"]) == 2
-        assert (await client.get("/api/chat/debug?session_id=test")).json()["state"]["turn"] == 1
+        debug = (await client.get("/api/chat/debug?session_id=test")).json()
+        assert debug["state"]["turn"] == 1
+        assert body['system_prompt'] in debug['generation']['raw_prompt']
+        assert body['system_prompt'] in debug['compiled']['system_prompt']
+        assert debug['generation']['attempts']
         assert (await client.put(f'/api/chat/history/{history[0]["id"]}', json={"content": "edited"})).status_code == 200
         assert (await client.get("/api/chat/debug?session_id=test")).json()["state"]["turn"] == 0
         assert (await client.post("/api/chat", json=body)).status_code == 409

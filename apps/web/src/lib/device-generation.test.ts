@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { SSEDecoder } from './sse';
 const fixture=vi.hoisted(()=>({saved:undefined as any,sequence:0,busy:vi.fn(),fail:true,memory:false,memories:[] as any[],reply:'fixture reply',proposals:[] as any[],meta:new Map<string,any>(),locks:new Set<string>(),paused:undefined as Promise<void>|undefined,started:false}));
 vi.mock('../mobile/runtime',()=>({MobileRuntime:class {
   async load(){} async generate(_messages:any,event:any){
@@ -161,6 +162,25 @@ it('freezes the prompt and temperature actually requested in both historical sna
   expect(message.before.settings).toMatchObject({session_id:'chat',system_prompt:'REQUEST PROMPT',temperature:.25});
   expect(message.after.settings).toEqual(message.before.settings);
   expect(fixture.saved.payload.settings).toEqual({});
+});
+
+it('matches the public Runtime completion payload while retaining complete saved diagnostics',async()=>{
+  fixture.fail=false;vi.stubGlobal('location',{href:'https://device.test/device/'});
+  const canary='DEVICE_DIAGNOSTIC_ONLY_茶🙂';
+  const response=await deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify({session_id:'chat',generation_id:'public-payload',model_id:'fixture',
+    system_prompt:canary,messages:[{role:'user',content:'hello'}]})});
+  expect(response.status).toBe(200);
+  const stream=await response.text(),events=new SSEDecoder().feed(stream,true);
+  const completed=events.filter(event=>event.event==='done');expect(completed).toHaveLength(1);
+  const actual=JSON.parse(completed[0].data),saved=fixture.meta.get('generation:fixture-owner:public-payload');
+  const expected=Object.fromEntries(Object.entries(saved).filter(([key])=>!['attempts','compiled','raw_prompt'].includes(key)));
+  expect(actual).toEqual(JSON.parse(JSON.stringify(expected)));
+  for(const key of ['attempts','compiled','raw_prompt'])expect(actual).not.toHaveProperty(key);
+  expect(stream).not.toContain(canary);
+  expect(saved.raw_prompt).toContain(canary);expect(saved.compiled.system_prompt).toContain(canary);
+  expect(fixture.saved.payload.last_generation).toEqual(saved);
+  const debug=await (await deviceFetch('/api/chat/debug?session_id=chat')).json();
+  expect(debug.generation.raw_prompt).toBe(saved.raw_prompt);expect(debug.compiled).toEqual(saved.compiled);
 });
 
 it('exposes actual turn memory evidence, source speakers and audit events through the shared debug contract',async()=>{

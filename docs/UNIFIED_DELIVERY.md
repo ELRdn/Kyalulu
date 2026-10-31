@@ -30,7 +30,7 @@
 | 固定公開snapshot、区分/審査、不明保留、人手/通報/非表示/異議申立て | 固定hash・審査revision、人手確認、公開API、地域/成人/ブロックの先行制限、日英画面と通報→非表示→異議→再承認をASGI/Chromiumで検証。旧Communityは封鎖し元DB保持 | 自動分類・公開媒体adapter、運用規模/旧データ移行、実OAuth/実機/本番の証拠 |
 | 日本の個人事業/未成年/成人AI/投稿/地域への提供元適合 | 外部条件未確定 | 本人の契約・適合確認。代理申込みや購入は行わない |
 | 日英の全画面、アクセシビリティ、日本語IME | Cloud設定/旧同期、記憶・出典・検査・要約訂正、共通エラー、モデル開示/見積同意/公式推論要約、プリセット/Lorebook/表情、研究の実行・比較・採点・検査・ランキング、長ターン比較実験の条件・状態・結果表、会話開始・初回案内・入力/待機・モデル準備・既知mood/日時・共通ナビ・探索/検索・Hub表示を日英対応。393/1280pxの実端末DB操作と同意の撤回、架空Runtimeでの研究下書き・比較条件の保持をChromiumで確認。他にJA中心の画面・提供元の生文が残る | 対象画面一覧を埋めた日英・幅・テーマ・IME確認 |
-| 配布物、対応ソース、移行/復旧手順、接続待ち一覧 | 固定4bca277のWindows Nativeを同梱Python3.13.7で生成し、実CLIの架空復元/rollback、梱包後Chromiumの日英/物語/下書き再起動と実PID終了を確認。8,748 member・製品226件・対応ソース818件・ライセンス8原文を照合。同版Cloud tarの233 manifest・precache61・対応ソース/WASM/ライセンスを確認 | 同版CI 41010931510はWASM/Cloud/Windows/macOS全4ジョブ成功。Linux image219項目・隔離12項目と既定CMDが成功。署名・最終ライセンス審査（renderer原文空欄11件を含む）・クリーンOS/初回公開取得・本番復旧・実機を含む全面受入れは残る |
+| 配布物、対応ソース、移行/復旧手順、接続待ち一覧 | 固定81e5927のNative/統合Cloudをfresh buildし、Native8,898/Cloud236 member・235 manifest・対応source966件・WASM4点・license原文10件を照合。実梱包CLIの架空復元/rollback・pointer故障7件・PID終了と日英の下書き/履歴再起動を確認。Python3.13.7はhash確認済みinterpreterの再利用 | Device完了イベントの診断除外は81より後の変更で、最新配布候補の再作成が必要。現行Linux image・署名・最終license審査（3 grant未確認）・clean OS/初回公開取得・macOS・実機・本番復旧/切替の受入れは残る。旧Linux/macOS証拠を現行版へ流用しない |
 | Android/iPhone実機20ターン、ロック復帰、回線切替 | 未実施 | 実機に基づく個別証拠。PCブラウザで代用しない |
 | 本番反映、残高/台帳/予算維持、旧環境への復旧 | 未実施 | バックアップの隔離復元、反映前後照合、実配信hashと正常性 |
 
@@ -535,3 +535,9 @@ Loreの同一scan変換を走査ごとに1回へまとめ、Unicode変換の全�
 20万件の引数展開エラーをNode forkと実Chromiumで再現し、修正後は全件を照合。
 疎配列・明示null/undefined拒否を含む旧assemblerとの独立比較、関連179件・Python/source8件・型/統合build、
 最終実ブラウザー84件が成功。全履歴/Worker clone/raw prompt/SSE/Researchの全量保持と1GB全体受入れは残る。
+
+[Device completion](validation/2026-11-01-unified-device-completion.md)では、PC/Cloudと同じく
+公開doneからattempts/compiled/raw_promptを除き、完全な保存receipt・debug・研究結果を維持した。
+全Web1,541件・型/統合build、最終ブラウザ84件・完全public payload12比較、Research日英UI2件が成功。
+同じ保存receipt JSON約3.36MBに対し公開done JSONは4.5–7.7KB。Worker入力・原本・診断保存は変えず、
+保存文字列/metadata/Worker clone/ONNX/Researchの全量保持と1GB全体受入れは残す。

@@ -83,6 +83,16 @@ it('executes the shared generator, isolates experiment memories, and keeps succe
   expect(records()[0].session.payload.memories[4].source_message_ids).toEqual([9]);
   expect(records()[0].session.payload.memories[4].source_session_id).toBe(records()[0].turns[4].state_before.session_id);
   expect(records()[0].turns[0]).toMatchObject({user:expect.any(String),assistant:'記憶の試験応答',compiled:expect.any(Object),generation_config:{requested:{seed:42}}});
+  const experiment=records()[0],firstTurn=experiment.turns[0],latest=experiment.session.payload.last_generation;
+  expect(firstTurn.raw_prompt).toBe(JSON.stringify(fixture.turns[0]));
+  expect(firstTurn.compiled.ordered_messages.filter((m:any)=>!m.slot)).toEqual(fixture.turns[0].slice(1,-1));
+  expect(firstTurn.compiled.system_prompt).toBe(fixture.turns[0].slice(1,-1).filter((m:any)=>m.role==='system').map((m:any)=>m.content).join('\n\n'));
+  expect(experiment.session.payload.pending_generation).toBeNull();
+  expect(latest).toMatchObject({status:'completed',compiled:expect.any(Object),raw_prompt:JSON.stringify(fixture.turns[7])});
+  expect(experiment.turns.at(-1)).toMatchObject(latest);
+  const detailResponse=await deviceFetch('/api/experiments/'+experiment.meta.experiment_id);expect(detailResponse.status).toBe(200);
+  const detail=await detailResponse.json();expect(detail.turns).toEqual(experiment.turns);
+  expect(detail.raw_prompt).toBe(firstTurn.compiled.system_prompt);
   const count=fixture.calls;expect(await (await post('/api/experiments/run',request({runs:2}))).json()).toEqual(data);expect(fixture.calls).toBe(count);
   expect((await post('/api/experiments/run',request({runs:3}))).status).toBe(409);
   expect(saveEntity).not.toHaveBeenCalled();expect(fixture.busy).toBe(0);
