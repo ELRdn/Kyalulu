@@ -1,5 +1,6 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
+import { Buffer } from 'node:buffer';
 import { harness } from './idbHarness.test-support';
 
 const fixture=vi.hoisted(()=>({
@@ -79,7 +80,7 @@ it('hashes and counts the exact expanded alias bytes, storing their shared sourc
   expect(header.sections.telemetryMemory).toBeUndefined();
   expect(header.sections.memory!.chunks).toBeGreaterThan(1);
   const raw=await exported(),expected=encode(JSON.stringify(original));
-  expect(raw).toEqual(expected);
+  expect(Buffer.compare(raw,expected)).toBe(0);
   expect(raw.length).toBeGreaterThan(SYNC_INLINE_BYTES);
   expect(await readGenerationReceipt(owner,holder,'audit-gen')).toEqual({state:'stored',bytes:expected.length,sha256:hash(expected)});
 });
@@ -101,7 +102,9 @@ it.each(['read','export'])('rejects unfinished final JSON at EOF after the inlin
   })();
   await expect(result).rejects.toThrow('Invalid streamed JSON');
   if(mode==='export')expect(yielded).toBeGreaterThan(SYNC_INLINE_BYTES);
-  expect(snapshot()).toEqual(before);
+  const after=snapshot();expect(after.meta).toEqual(before.meta);
+  expect(after.parts.map(([key])=>key)).toEqual(before.parts.map(([key])=>key));
+  for(const [index,[,bytes]] of before.parts.entries())expect(Buffer.compare(after.parts[index][1],bytes)).toBe(0);
 });
 it.each(['read','export'])('rejects a BOM-prefixed embedded JSON section after the inline cutoff (%s)',async mode=>{
   const original=value();original.raw_prompt='x'.repeat(2*MIB);original.compiled={saved:true};
