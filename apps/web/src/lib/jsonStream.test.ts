@@ -6,6 +6,30 @@ import cases from '../../../../tests/fixtures/json-stream.json';
 function parse(raw:Uint8Array,width:number){const parser=new JsonStream();for(let index=0;index<raw.length;index+=width)parser.feed(raw.subarray(index,index+width));return parser.finish();}
 function windowed(text:string,window:MessageWindow|{ids:readonly number[]},width:number){const parser=new JsonStream(window),raw=new TextEncoder().encode(text);for(let i=0;i<raw.length;i+=width)parser.feed(raw.subarray(i,i+width));return {value:parser.finish(),total:parser.totalMessages};}
 
+it('projects only direct wire change payloads while validating discarded JSON and preserving controls',()=>{
+  const text='{"request_id":"fixed","changes":[{"id":"chat","kind":"conversation","base_revision":3,"payload":{"messages":[{"content":"茶🙂","__proto__":{"keep":true}}],"nested":{"payload":{"keep":1}}},"deleted":false,"after":{"payload":{"keep":2}}}],"after":{"payload":{"keep":3}}}';
+  const expected=JSON.parse(text);expected.changes[0].payload={};
+  for(const width of [1,2,7,64,1024]){
+    const parser=new JsonStream({omitChangePayloads:true}),bytes=new TextEncoder().encode(text);
+    for(let i=0;i<bytes.length;i+=width){parser.feed(bytes.subarray(i,i+width));
+      for(const change of (parser as any).root?.changes??[])if(change.payload)expect(change.payload).toEqual({});}
+    expect(parser.finish()).toEqual(expected);
+  }
+  for(const value of [false,null,undefined,'true',1])expect(()=>new JsonStream({omitChangePayloads:value as any})).toThrow('Invalid changes projection');
+});
+it('validates every discarded payload at byte boundaries, including depth and UTF-8 errors',()=>{
+  for(const text of [...cases.valid,...cases.invalid])for(const width of [1,2,7]){
+    const wrapped='{"request_id":"fixed","changes":[{"id":"chat","payload":'+text.replace(/^\uFEFF/,'')+'}]}';
+    const parser=new JsonStream({omitChangePayloads:true}),bytes=new TextEncoder().encode(wrapped);
+    const finish=()=>{for(let i=0;i<bytes.length;i+=width)parser.feed(bytes.subarray(i,i+width));return parser.finish();};
+    try{JSON.parse(wrapped);}catch{expect(finish).toThrow();continue;}
+    expect(()=>finish()).not.toThrow();
+  }
+  for(const bytes of [new Uint8Array([0xff]),new TextEncoder().encode('{"changes":[{"payload":'+'['.repeat(62)+']'.repeat(62)+'}]}')]){
+    const parser=new JsonStream({omitChangePayloads:true});expect(()=>{parser.feed(bytes);parser.finish();}).toThrow();
+  }
+});
+
 it('snapshots a typed synchronous callback and preserves every JSON message value',()=>{
   for(const onMessage of [undefined,null,false,true,0,'callback',[],{}])expect(()=>new JsonStream({onMessage:onMessage as any})).toThrow('Invalid message callback');
   const text='{"before":1,"messages":[null,true,false,-0,1.25e-2,1e400,"茶🙂",[],{},[{"messages":[2]}],{"id":1,"id":9,"__proto__":{"keep":true},"messages":[0],"messages":[1]}],"nested":{"messages":[9]},"after":true}',expected=JSON.parse(text);

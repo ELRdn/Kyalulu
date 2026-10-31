@@ -11,6 +11,7 @@ const partKey=(location:Location,ref:Parts,index:number)=>[...location,ref.token
 const valid=(ref:Parts)=>ref&&typeof ref.token==='string'&&/^[0-9a-f-]{36}$/.test(ref.token)
   &&Number.isSafeInteger(ref.size)&&ref.size>0&&Number.isSafeInteger(ref.chunks)&&ref.chunks===Math.ceil(ref.size/LIMIT)
   &&typeof ref.sha256==='string'&&/^[0-9a-f]{64}$/.test(ref.sha256);
+export { valid as validParts };
 // IDB callbacks alone advance the queue; no crypto/network promises can expire a live transaction.
 const owners=new WeakMap<IDBTransaction,string>();
 const guards=new WeakMap<IDBTransaction,()=>boolean>();
