@@ -94,7 +94,7 @@ export default function BenchmarkLab() {
     {!jobs.length && <p>{en ? "No benchmarks yet." : "まだ比較実験はありません。"}</p>}
     {jobs.map(job => <Card key={job.id}>
       <div className="k-lab-actions"><strong>{active(job)&&job.cancel_requested?(en?'Stopping…':'停止要求中'):statusLabels[job.status] ?? job.status}</strong><span>{job.results.length}/{job.planned_runs} {en ? "experiments" : "実験"} · {job.planned_turns} {en ? "planned turns" : "ターン予定"}</span>
-        <RuntimeDownload href={`/api/benchmarks/${encodeURIComponent(job.id)}/export`} download>{en ? "Results JSON" : "結果JSON"}</RuntimeDownload>
+        <RuntimeDownload href={`/api/benchmarks/${encodeURIComponent(job.id)}/export`} download="benchmark.json">{en ? "Results JSON" : "結果JSON"}</RuntimeDownload>
         {active(job) && <Button disabled={busy||job.cancel_requested} variant="secondary" onClick={() => void run(async () => {
           const updated = await labRequest<BenchmarkJob>(`benchmarks/${job.id}/cancel`, { method: "POST" });
           jobsVersion.current++;

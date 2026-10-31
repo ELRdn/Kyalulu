@@ -22,6 +22,8 @@ async def main():
             for language, width, theme in [('ja', 393, 'light'), ('en', 1280, 'dark')]:
                 context = await browser.new_context(viewport={'width': width, 'height': 852})
                 try:
+                    # Exercise the bounded browser-download fallback; the OPFS streaming sink has a separate driver.
+                    await context.add_init_script("Object.defineProperty(window,'showSaveFilePicker',{configurable:true,value:undefined});")
                     async def route(request):
                         url = urlsplit(request.request.url)
                         if url.hostname != '127.0.0.1' or url.port != urlsplit(origin).port or url.path.startswith('/api/'):

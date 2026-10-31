@@ -3,9 +3,9 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { RuntimeDownload, RuntimeImage } from './RuntimeMedia';
 import { apiFetch } from '../lib/transport';
 
-const fixture = vi.hoisted(() => ({scope:'device:owner-a', epoch:1, errors:vi.fn(), language:'en', target:'device'}));
+const fixture = vi.hoisted(() => ({scope:'device:owner-a', epoch:1, errors:vi.fn(), language:'en', target:'device', effects:[] as (()=>unknown)[]}));
 vi.mock('react', async original => ({...await original<typeof import('react')>(),
-  useEffect:()=>{},useRef:(value:unknown)=>({current:value}),useState:(value:unknown)=>[value,typeof value==='string'?fixture.errors:vi.fn()]}));
+  useEffect:(effect:()=>unknown)=>{fixture.effects.push(effect);},useRef:(value:unknown)=>({current:value}),useState:(value:unknown)=>[value,typeof value==='string'?fixture.errors:vi.fn()]}));
 vi.mock('../lib/transport',()=>({apiFetch:vi.fn()}));
 vi.mock('../lib/remoteStore',()=>({activeRemote:()=>null,connectionScope:()=>fixture.scope}));
 vi.mock('../lib/appContext',()=>({useLanguage:()=>fixture.language,executionTarget:()=>fixture.target,useExecutionTarget:()=>fixture.target,useDeviceOwner:()=>fixture.scope}));
@@ -17,6 +17,7 @@ function link(props:Parameters<typeof RuntimeDownload>[0]={href:'/api/experiment
 }
 beforeEach(()=>{
   fixture.scope='device:owner-a';fixture.epoch=1;fixture.language='en';fixture.target='device';fixture.errors.mockReset();vi.mocked(apiFetch).mockReset();
+  fixture.effects=[];vi.stubGlobal('showSaveFilePicker',undefined);
   vi.useFakeTimers();
   anchor={href:'',download:'',click:vi.fn(),remove:vi.fn()};
   vi.stubGlobal('document',{createElement:vi.fn(()=>anchor),body:{appendChild:vi.fn()}});
@@ -36,11 +37,33 @@ it.each(['device:owner-a','remote:owner-a:pc','cloud:owner-a','local'])('exports
 });
 
 it.each(['scope','epoch','target'])('discards a response if %s changes while its private body loads',async changed=>{
-  const response=new Response('{}');response.blob=async()=>{if(changed==='scope')fixture.scope='device:owner-b';else if(changed==='target')fixture.target='local';else fixture.epoch++;return new Blob(['private']);};
+  const body=new ReadableStream<Uint8Array>({pull(controller){if(changed==='scope')fixture.scope='device:owner-b';else if(changed==='target')fixture.target='local';else fixture.epoch++;controller.enqueue(new TextEncoder().encode('private'));}},{highWaterMark:0});
+  const response=new Response(body);
   vi.mocked(apiFetch).mockResolvedValue(response);
   await link().props.onClick(event());
   expect(anchor.click).not.toHaveBeenCalled();expect(URL.createObjectURL).not.toHaveBeenCalled();
   expect(fixture.errors).toHaveBeenLastCalledWith('Account or execution target changed. Export again.');
+  expect(body.locked).toBe(false);
+});
+
+it('opens the save picker synchronously in the export click before fetching',async()=>{
+  let cancel!:(error:unknown)=>void;
+  const picker=vi.fn(()=>new Promise((_,reject)=>{cancel=reject;}));vi.stubGlobal('showSaveFilePicker',picker);
+  const action=link({href:'/api/experiments/id/export',download:'../experiment.json\u0000'}),pending=action.props.onClick(event());
+  expect(picker).toHaveBeenCalledWith({suggestedName:'experiment.json'});expect(apiFetch).not.toHaveBeenCalled();
+  await action.props.onClick(event());expect(picker).toHaveBeenCalledOnce();
+  cancel(new DOMException('cancelled','AbortError'));await pending;
+  expect(apiFetch).not.toHaveBeenCalled();expect(anchor.click).not.toHaveBeenCalled();
+});
+
+it('aborts its own pending reader on unmount without setting an error',async()=>{
+  let reading!:()=>void;const entered=new Promise<void>(resolve=>{reading=resolve;}),cancel=vi.fn();
+  const body=new ReadableStream<Uint8Array>({pull(){reading();},cancel},{highWaterMark:0});
+  vi.mocked(apiFetch).mockResolvedValue(new Response(body));
+  const action=link(),cleanup=fixture.effects[0]() as ()=>void,pending=action.props.onClick(event());
+  await entered;const calls=fixture.errors.mock.calls.length;cleanup();await pending;
+  expect(cancel).toHaveBeenCalledOnce();expect(body.locked).toBe(false);
+  expect(anchor.click).not.toHaveBeenCalled();expect(fixture.errors).toHaveBeenCalledTimes(calls);
 });
 
 it('does not turn an HTTP error or denied permission into a downloaded file',async()=>{

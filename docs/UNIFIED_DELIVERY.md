@@ -541,3 +541,10 @@ Loreの同一scan変換を走査ごとに1回へまとめ、Unicode変換の全�
 全Web1,541件・型/統合build、最終ブラウザ84件・完全public payload12比較、Research日英UI2件が成功。
 同じ保存receipt JSON約3.36MBに対し公開done JSONは4.5–7.7KB。Worker入力・原本・診断保存は変えず、
 保存文字列/metadata/Worker clone/ONNX/Researchの全量保持と1GB全体受入れは残す。
+
+[Runtime download](validation/2026-11-01-unified-runtime-download.md)では、Device研究書き出しを
+最大1MiBの遅延生成にし、共通保存操作で逐次write・EOF後close・失敗時abortを実装した。
+全Web1,589件・型/統合build、実IDB/OPFSの日英16件・既存Research UI2件・source closure3件が成功。
+4,500,276 bytesの完全SHA-256照合、途中失敗時の元ファイル保持、picker取消時の読取なしを確認。
+保存非対応ブラウザは実測1,500,000 bytesまでの明示fallbackとし、超過は保存せず案内する。
+OS pickerは置換しており実機証拠ではない。診断tree読取/保存/Workerの容量課題と1GB全体受入れは残す。
