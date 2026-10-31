@@ -126,7 +126,7 @@ export function acknowledgeConversation(tx:IDBTransaction,header:StoredEntity,se
     });
   });
 }
-function conversationPartsHeader(header:StoredEntity,ref:Parts,payload:Record<string,any>,scan:ConversationScan):StoredEntity {
+export function conversationPartsHeader(header:StoredEntity,ref:Parts,payload:Record<string,any>,scan:ConversationScan):StoredEntity {
   const refs=memoryReferences(payload),{payload:_,...raw}=header;
   const selection={...header.selection,...entitySelection({...header,payloadParts:undefined,payload}),maximumMessageId:scan.maximumMessageId,messageIdsValid:scan.messageIdsValid,
     summary:{...conversationSummary(payload),...(!payload.cache_evicted?{count:scan.count,last_preview:scan.last_preview,last_at:scan.last_at}:{}),token:ref.token}};
@@ -453,16 +453,15 @@ export const setMeta=(key:string,value:unknown)=>appTransaction<void>(['meta'],'
   tx.objectStore('meta').put(value,key);done();
 });
 export const memoryEventsKey=(owner:string,sessionId:string)=>'memory-events:'+JSON.stringify([owner,sessionId]);
-export function copyMemoryEvents(tx:IDBTransaction,source:AppEntity,target:AppEntity) {
+export function copyMemoryEvents(tx:IDBTransaction,source:AppEntity,target:AppEntity,mapping?:ReadonlyMap<unknown,string|undefined>,done:()=>void=()=>{}) {
   const meta=tx.objectStore('meta'),read=meta.get(memoryEventsKey(source.owner,source.id));
-  read.onsuccess=()=>{
-    try{
-      if(read.result===undefined)return;
+  read.onsuccess=()=>storageStep(tx,()=>{
+      if(read.result===undefined){done();return;}
       if(source.owner!==target.owner||source.owner!==deviceOwner()||source.id===target.id)throw Error('Invalid memory history destination');
       if(!Array.isArray(read.result))throw Error('Invalid memory history');
       const memories=(p:AppEntity['payload'])=>[...(p.memories??[]),...(p.messages??[]).flatMap((m:any)=>[...(m.before?.memories??[]),...(m.after?.memories??[])])];
-      const targetIds=new Map(memories(target.payload).map((m:any)=>[m.uuid??m.id,m.id]));
-      const ids=new Map(memories(source.payload).map((m:any)=>[m.id,targetIds.get(m.uuid??m.id)]));
+      const targetIds=mapping?undefined:new Map(memories(target.payload).map((m:any)=>[m.uuid??m.id,m.id]));
+      const ids=mapping??new Map(memories(source.payload).map((m:any)=>[m.id,targetIds!.get(m.uuid??m.id)]));
       const events=read.result.map((event:any,index:number)=>{
         if(event?.id!==index+1||event.scope!==source.id)throw Error('Invalid memory history');
         const remap=(id:string)=>ids.get(id)??null;
@@ -470,9 +469,8 @@ export function copyMemoryEvents(tx:IDBTransaction,source:AppEntity,target:AppEn
           memory_id:event.memory_id?remap(event.memory_id):null,source_memory_id:event.source_memory_id??event.memory_id,
           detail:Array.isArray(event.detail?.candidates)?{...event.detail,candidates:event.detail.candidates.map((c:any)=>({...c,id:remap(c.id),source_id:c.source_id??c.id}))}:event.detail};
       });
-      meta.add(events,memoryEventsKey(target.owner,target.id));
-    }catch{tx.abort();}
-  };
+      const write=meta.add(events,memoryEventsKey(target.owner,target.id));write.onsuccess=()=>storageStep(tx,done);
+  });
 }
 export function scrubGenerationRecords(tx:IDBTransaction,owner:string,sessionId:string) {
   storageWrite(tx,next=>{

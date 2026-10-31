@@ -408,6 +408,16 @@ actorの初期全履歴保持、入力配列、選択前のraw_prompt、ONNXの�
 [Initial sync staging](validation/2026-10-31-unified-sync-staging.md)に全Web1,479件・型・統合build、
 旧JSON全byte/SHA一致と実ブラウザ30結果・既存同期15ケースを記録する。sourceのrevision/token競合・
 quota/破損は原本を残してatomic rollbackし、既存outboxを置き換えない。metadata・旧inline・他の全量経路は残る。
+後続の[分岐受領](validation/2026-10-31-unified-sync-branch-ack.md)では、現在の会話と固定outboxを
+全復元せず、既存の出典・UUID・記憶イベント変換を1発言ずつ適用する。送信時と現在が異なる削除済み会話も
+旧処理と照合し、元の本文断片を保持する。受領開始時と確定直前に同意・request ID・固定outboxを再確認する。
+全Web1,492件、型、統合build、独立Chromium47実行/46ケース、既存同期15件と初回staging30結果が成功。
+332入力のhash不変と独立oracleの全payload比較、破損・quota・同意変更時のatomic rollbackを記録した。
+metadata・identity map・イベント配列・旧inline・受信/生成の全量経路は残り、1GB/RSS全面合格ではない。
+f9c8d2cのPR/push CIはWindows/Ubuntuとも成功した。旧21ba2faのpush Windowsで起きたexportの60秒停止は
+原因未再現のため、[Export CI診断](validation/2026-10-31-unified-device-export-ci.md)だけを追加した。
+期限・assert・入力条件は維持し、setup/reload各6形式と64入力hash不変を確認した。根因修正とは扱わない。
+
 e76cc81のWindows CIはRelayの実時計依存試験で失敗したため、製品制限を維持して試験時計を限定した。
 [Relay rate clock](validation/2026-10-31-unified-relay-rate-clock.md) に旧試験の境界再現と関連51件成功を記録する。
 

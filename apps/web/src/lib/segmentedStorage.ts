@@ -70,7 +70,6 @@ export function streamParts(tx:IDBTransaction,location:Location) {
   const finish=()=>{if(closed&&!pending&&complete){const done=complete;complete=undefined;done(ref);}};
   const flush=()=>{
     if(!used)return;
-    if(ref.size+used>1_000_000_000)throw Error('Storage stream exceeds transfer limit');
     const bytes=used===LIMIT?buffer:buffer.slice(0,used);digest.update(bytes);ref.size+=bytes.length;pending++;
     const write=tx.objectStore('parts').add(bytes,partKey(location,ref,ref.chunks++));
     buffer=new Uint8Array(LIMIT);used=0;

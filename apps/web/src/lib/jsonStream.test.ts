@@ -1,10 +1,148 @@
 import { expect, expectTypeOf, it } from 'vitest';
 import { JsonStream } from './jsonStream';
 import type { MessageWindow } from './jsonStream';
+import { createHash } from 'node:crypto';
+import { Sha256 } from '../mobile/sha256';
 import cases from '../../../../tests/fixtures/json-stream.json';
 
 function parse(raw:Uint8Array,width:number){const parser=new JsonStream();for(let index=0;index<raw.length;index+=width)parser.feed(raw.subarray(index,index+width));return parser.finish();}
 function windowed(text:string,window:MessageWindow|{ids:readonly number[]},width:number){const parser=new JsonStream(window),raw=new TextEncoder().encode(text);for(let i=0;i<raw.length;i+=width)parser.feed(raw.subarray(i,i+width));return {value:parser.finish(),total:parser.totalMessages};}
+
+it('streams only the selected saved-outbox payload messages and keeps all controls at every byte boundary',()=>{
+  const messages='[null,true,false,-0,1.25e-2,1e400,"茶🙂",[],{},[{"messages":[2]}],{"__proto__":{"keep":true},"snapshot":{"payload":{"messages":[3]}},"messages":[4],"messages":[5]}]';
+  for(const payloadFirst of [false,true])for(const width of [1,2,7,1024]){
+    const payload='"payload":{"__proto__":{"metadata":true},"nested":{"payload":{"messages":[8]}},"messages":'+messages+',"after":true}';
+    const controls='"id":"middle","kind":"conversation","deleted":false,"base_revision":4,"messages":[9],"after":{"payload":{"keep":true}}';
+    const text='[{"id":"before","payload":{"messages":[0],"nested":{"payload":{"keep":1}}},"deleted":true},{'+(payloadFirst?payload+','+controls:controls+','+payload)+'},{"payload":{"messages":[6]},"id":"after","base_revision":7}]';
+    const expected=JSON.parse(text),selected=expected[1].payload,seen:[unknown,number][]=[];
+    const parser=new JsonStream({outboxChange:{index:1,onMessage:(value,index)=>{
+      expectTypeOf(value).toEqualTypeOf<unknown>();expectTypeOf(index).toEqualTypeOf<number>();
+      seen.push([value,index]);expect((parser as any).root[1].payload.messages).toEqual([]);
+    }}}),bytes=new TextEncoder().encode(text);
+    for(let i=0;i<bytes.length;i+=width){
+      parser.feed(bytes.subarray(i,i+width));
+      const root=(parser as any).root;
+      for(const index of [0,2])if(root?.[index]?.payload)expect(Object.keys(root[index].payload)).toEqual([]);
+      if(Array.isArray(root?.[1]?.payload?.messages))expect(root[1].payload.messages).toEqual([]);
+      for(const frame of (parser as any).stack)if(!frame.keep){
+        expect(Object.keys(frame.value)).toEqual([]);expect((parser as any).pieces).toEqual([]);
+      }
+    }
+    expect(seen).toEqual(selected.messages.map((value:unknown,index:number)=>[value,index]));
+    expected[0].payload={};expected[2].payload={};selected.messages=[];
+    expect(parser.finish()).toEqual(expected);expect(parser.totalMessages).toBe(JSON.parse(messages).length);
+    expect(Object.getPrototypeOf(seen.at(-1)![0])).toBe(Object.prototype);
+    expect(Object.hasOwn(seen.at(-1)![0] as object,'__proto__')).toBe(true);
+    expect(Object.hasOwn(selected,'__proto__')).toBe(true);expect(({} as any).metadata).toBeUndefined();
+  }
+});
+
+it('discards nonselected payload scalars and containers without retaining token contents',()=>{
+  for(const payload of ['null','true','false','123','"'+'茶🙂'.repeat(1024)+'"','[1,{"messages":[2]}]','{"__proto__":{"messages":[1]},"large":"'+'x'.repeat(8192)+'"}'])for(const width of [1,2,7,1024]){
+    const parser=new JsonStream({outboxChange:{index:1,onMessage:()=>{throw Error('Unexpected callback');}}});
+    const bytes=new TextEncoder().encode('[{"payload":'+payload+',"id":"first"},{"id":"target","payload":{}},{"payload":'+payload+',"id":"last"}]');
+    for(let i=0;i<bytes.length;i+=width){
+      parser.feed(bytes.subarray(i,i+width));
+      for(const index of [0,2]){
+        const value=(parser as any).root?.[index]?.payload;
+        if(value!==undefined){expect(typeof value).toBe('object');expect(Object.keys(value)).toEqual([]);}
+      }
+      if(!(parser as any).tokenKeep)expect((parser as any).pieces).toEqual([]);
+    }
+    const discarded=payload[0]==='{'?{}:payload[0]==='['?[]:undefined;
+    expect(parser.finish()).toEqual([{payload:discarded,id:'first'},{id:'target',payload:{}},{payload:discarded,id:'last'}]);
+    expect(parser.totalMessages).toBeUndefined();
+  }
+});
+
+it('targets only a direct object payload in a saved root array and counts only its direct array messages',()=>{
+  for(const target of ['{}','{"payload":null}','{"payload":[]}','{"payload":[{"messages":[1]}]}',
+    '{"payload":{"nested":{"messages":[1]}}}','{"payload":{"messages":null}}','{"payload":{"messages":true}}',
+    '{"payload":{"messages":1}}','{"payload":{"messages":"text"}}','{"payload":{"messages":{"messages":[1]}}}',
+    '{"payload":{"__proto__":{"messages":[1]}}}','{"payload":{"messages":[]}}'])for(const width of [1,2,7,1024]){
+    const seen:unknown[]=[],text='[{"payload":{"messages":[0]}},'+target+',{"payload":{"messages":[2]}}]';
+    const parser=new JsonStream({outboxChange:{index:1,onMessage:value=>seen.push(value)}}),bytes=new TextEncoder().encode(text);
+    for(let i=0;i<bytes.length;i+=width)parser.feed(bytes.subarray(i,i+width));
+    const expected=JSON.parse(text);expected[0].payload={};expected[2].payload={};
+    expect(parser.finish()).toEqual(expected);expect(seen).toEqual([]);
+    expect(parser.totalMessages).toBe(target==='{"payload":{"messages":[]}}'?0:undefined);
+  }
+  for(const text of ['{"messages":[1]}','{"changes":[{"payload":{"messages":[1]}}]}','{"payload":{"messages":[1]}}','[[{"payload":{"messages":[1]}}]]','[{"payload":{"messages":[1]}}]']){
+    const parser=new JsonStream({outboxChange:{index:1,onMessage:()=>{throw Error('Wrong path');}}});
+    parser.feed(new TextEncoder().encode(text));const value=parser.finish();
+    expect(parser.totalMessages).toBeUndefined();
+    if(!Array.isArray(value))expect(value).toEqual(JSON.parse(text));
+  }
+});
+
+it('validates correct-hash discarded outbox JSON and UTF-8 before accepting a finish',()=>{
+  const encode=(text:string)=>new TextEncoder().encode(text);
+  const rejected:Uint8Array[]=[];
+  for(const text of [...cases.valid,...cases.invalid])for(const other of [0,2])for(const width of [1,2,7,1024]){
+    const payload=text.replace(/^\uFEFF/,'');
+    const raw='[{"payload":'+(other===0?payload:'{}')+'},{"payload":{"messages":["selected"]}},{"payload":'+(other===2?payload:'{}')+'}]';
+    const parser=new JsonStream({outboxChange:{index:1,onMessage:()=>{}}}),bytes=encode(raw);
+    const finish=()=>{for(let i=0;i<bytes.length;i+=width)parser.feed(bytes.subarray(i,i+width));return parser.finish();};
+    expect(new Sha256().update(bytes).digest()).toBe(createHash('sha256').update(bytes).digest('hex'));
+    let expected;try{expected=JSON.parse(raw);}catch{expect(finish,raw).toThrow();continue;}
+    const discarded=expected[other].payload;
+    expected[other].payload=discarded&&typeof discarded==='object'?(Array.isArray(discarded)?[]:{}):undefined;
+    expected[1].payload.messages=[];expect(finish()).toEqual(expected);expect(parser.totalMessages).toBe(1);
+  }
+  for(const hex of cases.invalid_utf8_hex)for(const other of [0,2]){
+    const prefix=encode(other===0?'[{"payload":"':'[{"payload":{}},{"payload":{"messages":[1]}},{"payload":"');
+    const invalid=Uint8Array.from(hex.match(/../g)!,v=>parseInt(v,16));
+    const suffix=encode(other===0?'"},{"payload":{"messages":[1]}},{"payload":{}}]':'"}]');
+    const bytes=new Uint8Array(prefix.length+invalid.length+suffix.length);bytes.set(prefix);bytes.set(invalid,prefix.length);bytes.set(suffix,prefix.length+invalid.length);rejected.push(bytes);
+  }
+  for(const other of [0,2])rejected.push(encode('[{"payload":'+(other===0?'['.repeat(63)+']'.repeat(63):'{}')+'},{"payload":{"messages":[1]}},{"payload":'+(other===2?'['.repeat(63)+']'.repeat(63):'{}')+'}]'));
+  for(const bytes of rejected)for(const width of [1,2,7,1024]){
+    expect(new Sha256().update(bytes).digest()).toBe(createHash('sha256').update(bytes).digest('hex'));
+    const parser=new JsonStream({outboxChange:{index:1,onMessage:()=>{}}});
+    expect(()=>{for(let i=0;i<bytes.length;i+=width)parser.feed(bytes.subarray(i,i+width));parser.finish();}).toThrow();
+    expect(()=>parser.finish()).toThrow();
+  }
+  for(const selected of [false,true])for(const depth of [selected?60:62,selected?61:63])for(const width of [1,2,7,1024]){
+    const nested='['.repeat(depth)+']'.repeat(depth);
+    const text=selected?'[{"payload":{}},{"payload":{"messages":['+nested+']}},{"payload":{}}]':
+      '[{"payload":'+nested+'},{"payload":{"messages":[1]}},{"payload":{}}]';
+    const parser=new JsonStream({outboxChange:{index:1,onMessage:()=>{}}}),bytes=encode(text);
+    const finish=()=>{for(let i=0;i<bytes.length;i+=width)parser.feed(bytes.subarray(i,i+width));return parser.finish();};
+    if(depth===(selected?60:62)){expect(finish()).toEqual([{payload:selected?{}:[]},{payload:{messages:[]}},{payload:{}}]);expect(parser.totalMessages).toBe(1);}
+    else expect(finish).toThrow();
+  }
+});
+
+it('rejects duplicate selected messages keys and requires finish after early outbox callbacks',()=>{
+  for(const payload of ['{"messages":[1],"messages":[2]}','{"mess\\u0061ges":[],"messages":null}','{"messages":null,"messages":[]}','{"messages":[],"mess\\u0061ges":[]}'])for(const width of [1,2,7,1024]){
+    const parser=new JsonStream({outboxChange:{index:1,onMessage:()=>{}}}),bytes=new TextEncoder().encode('[{"payload":{}},{"payload":'+payload+'},{"payload":{}}]');
+    expect(()=>{for(let i=0;i<bytes.length;i+=width)parser.feed(bytes.subarray(i,i+width));parser.finish();}).toThrow('Duplicate root messages key');
+    expect(()=>parser.finish()).toThrow();
+  }
+  for(const width of [1,2,7,1024]){
+    const seen:unknown[]=[],parser=new JsonStream({outboxChange:{index:1,onMessage:value=>seen.push(value)}});
+    const bytes=new TextEncoder().encode('[{"payload":{}},{"payload":{"messages":[{"snapshot":{"messages":[1]}}]}},{"payload":{"tail":true');
+    for(let i=0;i<bytes.length;i+=width)parser.feed(bytes.subarray(i,i+width));
+    expect(seen).toEqual([{snapshot:{messages:[1]}}]);expect(()=>parser.finish()).toThrow();expect(()=>parser.finish()).toThrow();
+  }
+  for(const value of ['null','"text"','[]','{}']){
+    const failure=Error('Outbox callback failed'),parser=new JsonStream({outboxChange:{index:0,onMessage:()=>{throw failure;}}});
+    expect(()=>parser.feed(new TextEncoder().encode('[{"payload":{"messages":['+value+']}}]'))).toThrow(failure);
+    expect(()=>parser.feed(new Uint8Array())).toThrow();expect(()=>parser.finish()).toThrow();
+  }
+});
+
+it('validates and snapshots the selected outbox index and callback',()=>{
+  for(const index of [undefined,null,-1,1.5,Infinity,NaN,Number.MAX_SAFE_INTEGER+1,'1',true])expect(()=>new JsonStream({outboxChange:{index:index as any,onMessage:()=>{}}})).toThrow('Invalid outbox change index');
+  for(const change of [undefined,null,false,0,{},[]])expect(()=>new JsonStream({outboxChange:change as any})).toThrow('Invalid outbox change index');
+  for(const onMessage of [undefined,null,false,true,0,'callback',[],{}])expect(()=>new JsonStream({outboxChange:{index:0,onMessage:onMessage as any}})).toThrow('Invalid message callback');
+  const seen:unknown[]=[],options={outboxChange:{index:0,onMessage:(value:unknown)=>{seen.push(value);}}},parser=new JsonStream(options);
+  options.outboxChange.index=1;options.outboxChange.onMessage=()=>{throw Error('Changed callback');};
+  options.outboxChange={index:2,onMessage:()=>{throw Error('Changed options');}};
+  parser.feed(new TextEncoder().encode('[{"payload":{"messages":[1]}},{"payload":{"messages":[2]}}]'));
+  expect(parser.finish()).toEqual([{payload:{messages:[]}},{payload:{}}]);expect(seen).toEqual([1]);expect(parser.totalMessages).toBe(1);
+  expect(()=>new JsonStream({outboxChange:{index:Number.MAX_SAFE_INTEGER,onMessage:()=>{}}})).not.toThrow();
+});
 
 it('projects only direct wire change payloads while validating discarded JSON and preserving controls',()=>{
   const text='{"request_id":"fixed","changes":[{"id":"chat","kind":"conversation","base_revision":3,"payload":{"messages":[{"content":"茶🙂","__proto__":{"keep":true}}],"nested":{"payload":{"keep":1}}},"deleted":false,"after":{"payload":{"keep":2}}}],"after":{"payload":{"keep":3}}}';

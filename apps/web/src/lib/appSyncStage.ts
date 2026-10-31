@@ -93,8 +93,10 @@ export async function stageSyncBatch(owner:string) {
     consent.onsuccess=()=>storageStep(tx,()=>{
       if(!consent.result){done(undefined);return;}
       if(existing.result){done(existing.result);return;}
-      const output=streamParts(tx,[owner,'outbox','fixed']),encoder=new TextEncoder(),text=(value:string)=>output.append(encoder.encode(value));
-      const value=(item:unknown)=>{for(const bytes of jsonChunks(item))output.append(bytes);};
+      const output=streamParts(tx,[owner,'outbox','fixed']),encoder=new TextEncoder();let size=0;
+      const append=(bytes:Uint8Array)=>{size+=bytes.length;if(size>1_000_000_000)throw Error('Storage stream exceeds transfer limit');output.append(bytes);};
+      const text=(value:string)=>append(encoder.encode(value));
+      const value=(item:unknown)=>{for(const bytes of jsonChunks(item))append(bytes);};
       text('[');let index=0;
       const next=()=>storageStep(tx,()=>{
         const source=prepared.sources[index],change=prepared.batch.changes[index++];
