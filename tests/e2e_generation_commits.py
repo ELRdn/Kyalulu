@@ -54,11 +54,17 @@ def assert_actor_context(rows):
     assert all(item['full_original_reference_equal'] and item['settings_equal'] and item['grammar_equal'] for item in inputs)
     successes = [row for row in rows if row.get('outcome') == 'success']
     assert len(successes) == 12 and all(row['observation']['worker_inputs'][0]['raw_prompt_equal'] for row in successes)
+    completions = [item for row in successes for item in row['observation']['public_completions']]
+    assert len(completions) == 12 and all(item['full_payload_equal'] and item['diagnostics_absent']
+                                        and item['saved_diagnostics_preserved'] for item in completions)
     large = [row for row in rows if row.get('large_snapshots')]
     assert len(large) == 1 and max(item['historical_snapshot_bytes'] for item in large[0]['observation']['actor_projections']) >= 4 * 1024 * 1024
     assert len(rows) == 84, 'Original 36 normal + 36 fault + 12 reload matrix must remain'
     return {'direct_idb_helper_reads': len(projections), 'historical_byte_comparisons': len(preservation),
             'worker_full_original_comparisons': len(inputs), 'raw_prompt_exact_comparisons': len(successes),
+            'public_completion_comparisons': len(completions),
+            'public_completion_json_bytes': [item['event_json_bytes'] for item in completions],
+            'saved_receipt_json_bytes': [item['saved_receipt_json_bytes'] for item in completions],
             'multiple_mib_snapshot_cases': len(large), 'maximum_historical_snapshot_bytes': max(item['historical_snapshot_bytes'] for item in projections),
             'older_snapshots_retained': 0, 'latest_complete': True, 'peak_ram_measured': False}
 

@@ -13,6 +13,7 @@ const {RuntimeStateSchema}=await import('/@fs/'+location.pathname.split('/@fs/')
 const catalog=(await import('/src/mobile/app-catalog.generated.json')).default;
 const {refreshSummaries,retrieveMemories,renderMemoryBlock,deviceResponseGrammar}=await import('/src/lib/deviceCore.ts');
 const {assemblePortable}=await import('/src/lib/devicePrompt.ts');
+const {SSEDecoder}=await import('/src/lib/sse.ts');
 const {canonical}=await import('/src/lib/appSyncData.ts');
 const check=(value,label)=>{if(!value)throw Error(label);};
 const same=(left,right)=>canonical(left)===canonical(right);
@@ -22,7 +23,7 @@ const clone=structuredClone;
 let active=false,caseId='',quota=null,worker=null,calls=0,callsAtSetup=0,held=null;
 let observation,latest=null,seeded,workerInput;
 const requestKeys=new WeakMap(),parserSources=new WeakMap(),transactions=new WeakMap();
-const reset=()=>observation={part_reads:{readonly:0,readwrite:0},part_writes:0,parsers:[],transactions:[],quota_hits:0,actor_projections:[],historical_preservation:[],worker_inputs:[]};
+const reset=()=>observation={part_reads:{readonly:0,readwrite:0},part_writes:0,parsers:[],transactions:[],quota_hits:0,actor_projections:[],historical_preservation:[],worker_inputs:[],public_completions:[]};
 reset();
 // Capture mode in the native result getter: feed/finish run synchronously before its microtask expires.
 const get=IDBObjectStore.prototype.get,result=Object.getOwnPropertyDescriptor(IDBRequest.prototype,'result');
@@ -266,6 +267,12 @@ async function run(options){
     check(same(reply.before.state,options.regenerate?before.actor.payload.messages.at(-1).before.state:before.actor.payload.state)&&same(reply.after.state,after.actor.payload.state),'Before/after state snapshots use latest regeneration origin');
     check(after.receipt.raw_prompt===JSON.stringify(workerInput.messages),'Saved raw_prompt equals actual Worker input byte for byte');
     check(same(after.receipt.compiled,(await (await deviceFetch('/api/prompt/compile',{method:'POST',body:JSON.stringify(before.actor.payload.settings)})).json())),'Saved compiled prompt equals original-settings reference');
+    const completions=new SSEDecoder().feed(stream,true).filter(event=>event.event==='done');check(completions.length===1,'Exactly one public completion');
+    const completed=JSON.parse(completions[0].data),expected=Object.fromEntries(Object.entries(after.receipt).filter(([key])=>!['attempts','compiled','raw_prompt'].includes(key)));
+    check(same(completed,JSON.parse(JSON.stringify(expected))),'Complete public completion equals saved receipt minus Runtime diagnostic fields');
+    check(['attempts','compiled','raw_prompt'].every(key=>!Object.hasOwn(completed,key)),'Diagnostic fields are absent from public completion');
+    observation.public_completions.push({full_payload_equal:true,diagnostics_absent:true,saved_diagnostics_preserved:true,
+      event_json_bytes:new TextEncoder().encode(completions[0].data).length,saved_receipt_json_bytes:new TextEncoder().encode(JSON.stringify(after.receipt)).length});
     observation.worker_inputs.at(-1).raw_prompt_equal=true;
     check(same(reply.after.memories,after.actor.payload.memories),'After own memory snapshot');
     check(same(after.actor.payload.summaries[0],before.actor.payload.summaries[0]),'Authored chapter summary remains exact');

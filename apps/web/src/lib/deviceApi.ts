@@ -372,7 +372,7 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
           current=await save({...current,payload:{...current.payload,messages,memories:stored,state,last_generation:done,pending_generation:null,
             summaries:summaries.finish()}},current.revision,{['generation:'+owner+':'+generationId]:done,
               ...(!scope&&!memoryContext&&trace?{[memoryEventsKey(owner,id)]:events}:{})});
-          send('done',done);
+          send('done',Object.fromEntries(Object.entries(done).filter(([key])=>!['attempts','compiled','raw_prompt'].includes(key))));
         } catch(error) {
           let saveError='';
           if(memoryContext&&admittedMemory)memoryContext.domain=admittedMemory;
