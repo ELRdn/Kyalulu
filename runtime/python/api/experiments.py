@@ -5,7 +5,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from python.core.experiment import load_scenario, run_single, save_experiment, list_experiments
+from python.core.experiment import load_scenario, run_single, save_experiment, list_experiments, is_official_scenario
 
 router = APIRouter()
 
@@ -63,11 +63,11 @@ async def list_scenarios(include_nsfw: bool = False):
     for f in sorted(root.glob("*.yaml")):
         try:
             data = yaml.safe_load(f.read_text(encoding="utf-8"))
-            data["nsfw"] = load_scenario(str(f)).nsfw
+            scenario = load_scenario(str(f))
+            data["nsfw"] = scenario.nsfw
             if not include_nsfw and data.get("nsfw"):
                 continue
-            from python.core.experiment import OFFICIAL_SCENARIOS
-            out.append({"official": not data["nsfw"] and OFFICIAL_SCENARIOS.get(data.get("id")) == data.get("character"), "id": data.get("id"), "version": data.get("version"), "character": data.get("character"), "difficulty": data.get("difficulty"), "turns": len(data.get("turns", [])), "nsfw": bool(data.get("nsfw")), "nsfw_level": data.get("nsfw_level"), "path": str(f)})
+            out.append({"official": is_official_scenario(scenario), "id": data.get("id"), "version": data.get("version"), "character": data.get("character"), "difficulty": data.get("difficulty"), "turns": len(data.get("turns", [])), "nsfw": bool(data.get("nsfw")), "nsfw_level": data.get("nsfw_level"), "path": str(f)})
         except Exception as e:
             out.append({"path": str(f), "error": str(e)})
     from python.core.benchmark import scenario_catalog
