@@ -564,3 +564,5 @@ c41d5c8の両OS CIは数MBのtyped arrayをdeep matcherで照合する監査試�
 metadata/part順序/keys/件数の完全照合を維持した修正を記録する。入力規模・assert・期限・並列数は維持。
 固定c41＋試験修正だけの1,188入力hash不変のexportで、既定並列の全Web1,683件が成功。
 同じ3ケースはローカル約3.1–3.7秒から0.11–0.34秒へ短縮。Hosted確認と前版のbrowser資源障害は別途残す。
+f7f8844のCIはWebを通過後、outbox試験の古いversion=3期待で失敗。outbox/選択同期fixtureの期待を4へ直し、
+index・key/原本・owner・撤回・quota等のassertを維持した。実Chromium11＋15ケース成功、選択同期のhash不変とcleanupも確認。

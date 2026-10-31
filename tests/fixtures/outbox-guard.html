@@ -157,7 +157,7 @@ async function run(){
     check(maxEncodedText<=4096*6&&wholeBatchWrites===0,'Serializer buffered the entire batch: '+JSON.stringify({maxEncodedText,wholeBatchWrites}));
     check(localStorage.getItem('fixture-existing-storage')==='retain','Unrelated storage changed');
     const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('kyalulu-app-v1');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
-    check(db.version===3&&db.transaction('meta').objectStore('meta').indexNames.contains('sync-outbox-state'),'Index upgrade missing');db.close();
+    check(db.version===4&&db.transaction('meta').objectStore('meta').indexNames.contains('sync-outbox-state'),'Index upgrade missing');db.close();
     return {ok:true,scenario,parts:chunks.length,committed,keyProbes,bodyReads,foreignReads,maxEncodedText,wholeBatchWrites,compactHeaderWrites,storagePartReads,partCounts,partReads,headerPayloadReads,restoredPayloads,streamPasses,hashAccountChanged,state:syncState().phase,networkCalls:api.length};
   }finally{IDBObjectStore.prototype.get=originalGet;IDBIndex.prototype.openKeyCursor=originalKeys;TextEncoder.prototype.encode=originalEncode;JSON.stringify=originalStringify;JsonStream.prototype.finish=originalFinish;}
 }
