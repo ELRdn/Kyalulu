@@ -10,40 +10,48 @@ function removeLocalGenerationDiagnostics(payload:AppEntity['payload']) {
   }
 }
 
-export function rebindConversation(payload: AppEntity['payload'], id: string) {
-  const result = structuredClone(payload);
+export function conversationBinder(payload:AppEntity['payload'],id:string) {
   const sourceIds=new Set([payload.settings?.session_id??payload.state?.session_id,payload.branch_of,payload.recovery_from].filter(value=>typeof value==='string'&&value!==id));
-  const bind = (snapshot: any) => {
+  return (snapshot:any)=>{
     if(snapshot?.settings)snapshot.settings.session_id=id;
-    if (snapshot?.state) snapshot.state.session_id = id;
-    for (const memory of snapshot?.memories ?? []) {
+    if(snapshot?.state)snapshot.state.session_id=id;
+    for(const memory of snapshot?.memories??[]) {
       if(memory.scope)memory.scope=id;
       if(sourceIds.has(memory.source_session_id)){
         memory.original_source_session_id??=memory.source_session_id;memory.source_session_id=id;
       }
     }
   };
+}
+export function rebindConversation(payload: AppEntity['payload'], id: string) {
+  const result=structuredClone(payload),bind=conversationBinder(result,id);
   bind(result);
-  for (const message of result.messages ?? []) { bind(message.before); bind(message.after); }
+  for(const message of result.messages??[]){bind(message.before);bind(message.after);}
   return result;
 }
 
 /** Numeric IDs belong to this device; UUIDs retain identity across sync and branches. */
 export function receiveConversation(payload: AppEntity['payload'], previous: AppEntity['payload'] | undefined,
   allocate: () => number) {
-  const result = structuredClone(payload), ids = new Map<number, number>(), uuids = new Set<string>();
-  // An independent device/branch cannot resume another document's runtime worker.
+  const result=structuredClone(payload);
+  if(!Array.isArray(result.messages))throw Error('Invalid conversation');
+  const receive=conversationReceiver(result,result.messages,previous,allocate);
+  for(const [index,message] of result.messages.entries())receive(message,index);
+  return result;
+}
+
+/** Mutates owned metadata and one message at a time after a complete identity scan. */
+export function conversationReceiver(result:AppEntity['payload'],identity:readonly {id:number;uuid:string}[],
+  previous:AppEntity['payload']|undefined,allocate:()=>number) {
+  const ids=new Map<number,number>(),uuids=new Set<string>();
   if(result.pending_generation!=null)result.pending_generation=null;
-  if (!Array.isArray(result.messages) || !Array.isArray(result.memories) || !Array.isArray(result.summaries)) throw Error('Invalid conversation');
-  result.state = RuntimeStateSchema.parse(result.state);
-  const oldMessages = new Map((previous?.messages ?? []).map((m: any) => [m.uuid, m.id]));
-  for (const message of result.messages) {
-    if (!Number.isSafeInteger(message.id) || message.id < 1 || ids.has(message.id) || typeof message.uuid !== 'string'
-      || !message.uuid || uuids.has(message.uuid) || !['user','assistant','system'].includes(message.role) || typeof message.content !== 'string') throw Error('Invalid message identity');
-    uuids.add(message.uuid);
-    const id = oldMessages.get(message.uuid) as number | undefined ?? allocate();
-    if (!Number.isSafeInteger(id) || id < 1) throw Error('Message ID limit reached');
-    ids.set(message.id, id); message.id = id;
+  if(!Array.isArray(result.memories)||!Array.isArray(result.summaries))throw Error('Invalid conversation');
+  result.state=RuntimeStateSchema.parse(result.state);
+  const oldMessages=new Map((previous?.messages??[]).map((m:any)=>[m.uuid,m.id]));
+  for(const message of identity){
+    if(!Number.isSafeInteger(message.id)||message.id<1||ids.has(message.id)||typeof message.uuid!=='string'||!message.uuid||uuids.has(message.uuid))throw Error('Invalid message identity');
+    uuids.add(message.uuid);const id=oldMessages.get(message.uuid) as number|undefined??allocate();
+    if(!Number.isSafeInteger(id)||id<1)throw Error('Message ID limit reached');ids.set(message.id,id);
   }
   const sources = (items: any[]) => {
     for (const item of items) if (item.source_message_ids) item.source_message_ids = item.source_message_ids.map((id: number) => {
@@ -69,11 +77,19 @@ export function receiveConversation(payload: AppEntity['payload'], previous: App
   for (const summary of result.summaries) if (summary.method === 'extractive') {
     summary.text = summary.text.replace(/\[(\d+):/g, (match: string, id: string) => ids.has(Number(id)) ? `[${ids.get(Number(id))}:` : match);
   }
-  const positions=new Map<number,number>(result.messages.map((message:any,index:number)=>[message.id,index]));
-  for (const [index,message] of result.messages.entries()) {
-    if(message.before==null&&message.after==null)continue;
+  const positions=new Map<number,number>(identity.map((message,index)=>[ids.get(message.id)!,index]));
+  if (result.last_generation) for (const key of ['user_id','assistant_id']) {
+    const id = result.last_generation[key];
+    if (id != null) { if (!ids.has(id)) throw Error('Missing generation message'); result.last_generation[key] = ids.get(id); }
+  }
+  removeLocalGenerationDiagnostics(result);
+  return (message:any,index:number)=>{
+    if(message?.id!==identity[index]?.id||message?.uuid!==identity[index]?.uuid
+      ||!['user','assistant','system'].includes(message.role)||typeof message.content!=='string')throw Error('Invalid message identity');
+    message.id=ids.get(message.id)!;
+    if(message.before==null&&message.after==null)return message;
     if(message.role!=='assistant'||!message.before||!message.after)throw Error('Invalid historical snapshot');
-    for(const [name,snapshot] of [['before',message.before],['after',message.after]] as const) {
+    for(const [name,snapshot] of [['before',message.before],['after',message.after]] as const){
       if(!Array.isArray(snapshot.memories)||new Set(snapshot.memories.map((m:any)=>m.uuid??m.id)).size!==snapshot.memories.length)throw Error('Invalid historical memories');
       snapshot.state=RuntimeStateSchema.parse(snapshot.state);bindMemories(snapshot.memories);
       if(snapshot.settings!=null)snapshot.settings=ConversationSettingsSchema.parse(snapshot.settings);
@@ -81,13 +97,8 @@ export function receiveConversation(payload: AppEntity['payload'], previous: App
         ||memory.source_turn!=null&&memory.source_turn>snapshot.state.turn))throw Error('Future historical memory source');
     }
     if(message.after.state.turn!==message.before.state.turn+1)throw Error('Invalid historical turn');
-  }
-  if (result.last_generation) for (const key of ['user_id','assistant_id']) {
-    const id = result.last_generation[key];
-    if (id != null) { if (!ids.has(id)) throw Error('Missing generation message'); result.last_generation[key] = ids.get(id); }
-  }
-  removeLocalGenerationDiagnostics(result);
-  return result;
+    return message;
+  };
 }
 
 export function conversationSettings(payload:AppEntity['payload']):Record<string,any>[] {

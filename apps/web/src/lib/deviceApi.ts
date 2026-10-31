@@ -5,7 +5,7 @@ import { MODELS, readyModels } from '../mobile/models';
 import { allEntities, entity, openEntity, conversationInfo, conversationPage, conversationSummary, readConversationSummary, generationHistory, recoverConversationGeneration, saveEntity, newEntity, getMeta, setMeta, appTransaction, writeEntity, writeConversationMetadata, scrubGenerationRecords, memoryEventsKey, trimOfflineCache, type AppEntity, type EntityKind, type ConversationPage, type ConversationPageCursor, type ConversationSummary } from './appStore';
 import { deviceOwner, setGenerationBusy } from './appContext';
 import { estimateTokens, retrieveMemories, renderMemoryBlock, prepareRpg, memoryDecisions, evidenced, summaryRefresh,deviceResponseGrammar, type DeviceMemory } from './deviceCore';
-import { receiveConversation, rebindConversation } from './appSyncData';
+import { branchDeviceConversation } from './deviceBranch';
 import { hydrateConversation } from './appSync';
 import { compilePortable, assemblePortable } from './devicePrompt';
 import { sampling } from '../mobile/sampling';
@@ -553,6 +553,7 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
   if(branch) {
     if(branch[2]==='data'?method!=='DELETE':method!=='POST')throw fail('Invalid conversation operation',405);
     if(running)throw fail('Stop generation before editing',409);
+    if(branch[2]==='branch')return json({session_id:await branchDeviceConversation(branch[1],body.message_id,owner)});
     const source=await conversation(branch[1],owner);
     if(branch[2]==='data'){
       if(source.payload.storage_policy==='sync')await saveEntity({...source,deleted:true,payload:{...source.payload,delete_confirmation_revision:source.revision+1}},source.revision,{[memoryEventsKey(owner,source.id)]:[]});
@@ -566,31 +567,7 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
       });
       return json({ok:true});
     }
-    const index=source.payload.messages.findIndex((m:any)=>m.id===body.message_id);
-    if(index<0)throw fail('Branch point not found');
-    const point=source.payload.messages[index],snapshot=point.role==='assistant'?point.after:source.payload.messages[index+1]?.before??source.payload.messages.slice(0,index).reverse().find((m:any)=>m.after)?.after;
-    if(!snapshot)throw fail('Historical state is unavailable for branching',409);
-    const id=crypto.randomUUID(),payload=structuredClone(source.payload),turn=snapshot?.state.turn??0;
-    payload.messages=payload.messages.slice(0,index+1);payload.memories=structuredClone(snapshot?.memories??[]);payload.state=structuredClone(snapshot?.state??RuntimeStateSchema.parse({session_id:id}));
-    if(snapshot.settings)payload.settings=structuredClone(snapshot.settings);
-    payload.summaries=payload.summaries.filter((s:any)=>s.source_message_ids?.every((mid:number)=>payload.messages.some((m:any)=>m.id===mid)));
-    payload.branch_of=source.id;payload.fork_revision=source.revision;payload.settings.session_id=id;payload.state.session_id=id;payload.state.turn=turn;
-    payload.last_generation=null;
-    await appTransaction<void>(['entities','meta'],'readwrite',(tx,done)=>{
-      const store=tx.objectStore('entities'),meta=tx.objectStore('meta'),read=store.get([owner,source.id]);
-      read.onsuccess=()=>{
-        if(read.result?.revision!==source.revision||owner!==deviceOwner()){tx.abort();return;}
-        const sequence=meta.get('message-sequence:'+owner);
-        sequence.onsuccess=()=>{
-          try {
-            let number=sequence.result??0;
-            const copy=rebindConversation(receiveConversation(payload,undefined,()=>++number),id);
-            writeEntity(tx,{...newEntity('conversation',id,copy),owner,revision:1,dirty:copy.storage_policy==='sync'},'add');
-            meta.put(number,'message-sequence:'+owner);done();
-          }catch{tx.abort();}
-        };
-      };
-    });return json({session_id:id});
+
   }
   const context=path.match(/^\/api\/chat\/context\/([^/]+)(?:\/summaries\/([^/]+))?$/);
   if(context) {

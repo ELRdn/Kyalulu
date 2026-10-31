@@ -99,13 +99,35 @@ export function writeEntity(tx:IDBTransaction,value:AppEntity,mode:'put'|'add'='
     });
   });
 }
-function adoptConversationRewrite(tx:IDBTransaction,header:StoredEntity,ref:Parts,payload:Record<string,any>,scan:ConversationScan,done:()=>void) {
+function conversationPartsHeader(header:StoredEntity,ref:Parts,payload:Record<string,any>,scan:ConversationScan):StoredEntity {
   const refs=memoryReferences(payload),{payload:_,...raw}=header;
   const selection={...header.selection,...entitySelection({...header,payloadParts:undefined,payload}),maximumMessageId:scan.maximumMessageId,messageIdsValid:scan.messageIdsValid,
     summary:{...conversationSummary(payload),...(!payload.cache_evicted?{count:scan.count,last_preview:scan.last_preview,last_at:scan.last_at}:{}),token:ref.token}};
-  const write=tx.objectStore('entities').put({...raw,revision:header.revision+1,dirty:header.dirty||payload.storage_policy==='sync',selection,payloadParts:ref,
-    memoryReferences:refs?{...refs,hash:referenceHash(ref.token,refs)}:null});
+  return {...raw,selection,payloadParts:ref,memoryReferences:refs?{...refs,hash:referenceHash(ref.token,refs)}:null};
+}
+function adoptConversationRewrite(tx:IDBTransaction,header:StoredEntity,ref:Parts,payload:Record<string,any>,scan:ConversationScan,done:()=>void) {
+  const write=tx.objectStore('entities').put(conversationPartsHeader({...header,revision:header.revision+1,dirty:header.dirty||payload.storage_policy==='sync'},ref,payload,scan));
   write.onsuccess=()=>removeParts(tx,[header.owner,'entity',header.id],header.payloadParts,done);
+}
+/** Caller verifies source revision/token in this transaction; copying never removes source parts. */
+export function writeConversationCopy(tx:IDBTransaction,source:StoredEntity,id:string,metadata:Record<string,any>,transform:(message:any)=>any|null,done:()=>void) {
+  storageWrite(tx,next=>{
+    const meta=tx.objectStore('meta'),local=meta.get(memoryDomainKey(source.owner,'local')),sync=meta.get(memoryDomainKey(source.owner,'sync'));
+    sync.onsuccess=()=>storageStep(tx,()=>{
+      if(source.owner!==deviceOwner()||source.kind!=='conversation'||source.deleted||id===source.id
+        ||Object.hasOwn(metadata,'messages')||local.result?.pending||sync.result?.pending)throw Error('Invalid conversation copy');
+      const target={...newEntity('conversation',id,{}),owner:source.owner,revision:1,dirty:metadata.storage_policy==='sync'},complete=()=>{done();next();};
+      if(source.payloadParts){
+        rewriteConversationParts(tx,[source.owner,'entity',source.id],source.payloadParts,()=>metadata,(ref,_source,scan)=>{
+          const write=tx.objectStore('entities').add(conversationPartsHeader(target,ref,{...metadata,messages:[]},scan));write.onsuccess=()=>storageStep(tx,complete);
+        },transform,[source.owner,'entity',id]);
+      }else{
+        if(!Array.isArray(source.payload?.messages))throw Error('Missing conversation body');
+        const messages=source.payload.messages.flatMap((message:any)=>{const copy=transform(structuredClone(message));return copy===null?[]:[copy];});
+        persistEntity(tx,{...target,payload:{...metadata,messages}},'add',complete);
+      }
+    });
+  });
 }
 /** The caller rechecks the inspected revision in this transaction; never pass a page as a full entity. */
 export function writeConversationMetadata(tx:IDBTransaction,header:StoredEntity,patch:Record<string,unknown>,done:()=>void) {

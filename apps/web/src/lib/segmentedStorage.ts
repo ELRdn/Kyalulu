@@ -64,7 +64,7 @@ export function writeParts(tx:IDBTransaction,location:Location,value:unknown,don
 }
 /** Tentative output stays in this transaction until the entire original body verifies. */
 export function rewriteConversationParts(tx:IDBTransaction,location:Location,previous:Parts,patch:Record<string,unknown>|((metadata:Record<string,any>)=>Record<string,unknown>),
-  done:(ref:Parts,metadata:Record<string,any>,scan:ConversationScan)=>void,transform?:(message:any)=>any|null) {
+  done:(ref:Parts,metadata:Record<string,any>,scan:ConversationScan)=>void,transform?:(message:any)=>any|null,destination:Location=location) {
   storageStep(tx,()=>{
     if(typeof patch!=='function'&&Object.hasOwn(patch,'messages'))throw Error('History cannot be replaced by a metadata patch');
     const digest=new Sha256(),ref:Parts={token:crypto.randomUUID(),size:0,chunks:0,sha256:''},encoder=new TextEncoder();
@@ -73,7 +73,7 @@ export function rewriteConversationParts(tx:IDBTransaction,location:Location,pre
     const flush=()=>{
       if(!used)return;
       const bytes=used===LIMIT?buffer:buffer.slice(0,used);digest.update(bytes);ref.size+=bytes.length;
-      const write=tx.objectStore('parts').add(bytes,partKey(location,ref,ref.chunks++));buffer=new Uint8Array(LIMIT);used=0;return write;
+      const write=tx.objectStore('parts').add(bytes,partKey(destination,ref,ref.chunks++));buffer=new Uint8Array(LIMIT);used=0;return write;
     };
     const append=(bytes:Uint8Array)=>{
       let write:IDBRequest|undefined;
