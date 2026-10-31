@@ -41,7 +41,12 @@ function* jsonText(value:any,ancestors=new Set<object>()):Generator<string> {
 // shortcut: decoded trees and scalar strings stay whole; bound them before large-memory acceptance.
 export function* jsonChunks(value:unknown):Generator<Uint8Array> {
   const encoder=new TextEncoder();let buffer=new Uint8Array(CHUNK_BYTES),used=0;
-  for(const text of jsonText(value)){
+  const texts=jsonText(value);let step=texts.next();
+  while(!step.done){
+    let text=step.value;step=texts.next();
+    while(!step.done&&text.length+step.value.length<=16*1024){
+      text+=step.value;step=texts.next();
+    }
     const raw=encoder.encode(text);let offset=0;
     while(offset<raw.length){
       const length=Math.min(raw.length-offset,CHUNK_BYTES-used);
