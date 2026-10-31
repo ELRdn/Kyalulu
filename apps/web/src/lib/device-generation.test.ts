@@ -18,8 +18,8 @@ vi.mock('./deviceMemoryStore',async original=>{
   return {...await original<typeof import('./deviceMemoryStore')>(),recoverDeviceMemoryGeneration:async()=>null,
     readDeviceGenerationSource:async(id:string,owner:string)=>{
       const {openEntity}=await import('./appStore');const session=(await openEntity(id,owner))!;
-      const {messages:_,...metadata}=session.payload;
-      return {session,source:{id,owner,revision:session.revision,deleted:false,bodyToken:null,metadata:structuredClone(metadata)}};
+      const {messages,...metadata}=session.payload,{payload:_,...header}=session;
+      return {header,messages:messages.map((message:any)=>({id:message.id,uuid:message.uuid,role:message.role,content:message.content,imported_state:message.imported_state})),latest:messages.at(-1),source:{id,owner,revision:session.revision,deleted:false,bodyToken:null,metadata:structuredClone(metadata)}};
     },
     commitDeviceGeneration:async(source:any,change:any,extra:any)=>{
       const {saveEntity}=await import('./appStore');

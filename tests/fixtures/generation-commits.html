@@ -11,16 +11,18 @@ const scopes=await import('/src/lib/deviceMemoryScopes.ts');
 const memory=await import('/src/lib/deviceMemoryStore.ts');
 const {RuntimeStateSchema}=await import('/@fs/'+location.pathname.split('/@fs/')[1].split('/tests/')[0]+'/packages/schemas/src/index.ts');
 const catalog=(await import('/src/mobile/app-catalog.generated.json')).default;
-const {refreshSummaries}=await import('/src/lib/deviceCore.ts');
+const {refreshSummaries,retrieveMemories,renderMemoryBlock,deviceResponseGrammar}=await import('/src/lib/deviceCore.ts');
+const {assemblePortable}=await import('/src/lib/devicePrompt.ts');
 const {canonical}=await import('/src/lib/appSyncData.ts');
 const check=(value,label)=>{if(!value)throw Error(label);};
 const same=(left,right)=>canonical(left)===canonical(right);
-const snapshotHash=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(canonical(value))))).map(byte=>byte.toString(16).padStart(2,'0')).join('');
+const hashBytes=async bytes=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(byte=>byte.toString(16).padStart(2,'0')).join('');
+const snapshotHash=value=>hashBytes(new TextEncoder().encode(canonical(value)));
 const clone=structuredClone;
 let active=false,caseId='',quota=null,worker=null,calls=0,callsAtSetup=0,held=null;
-let observation,latest=null;
+let observation,latest=null,seeded,workerInput;
 const requestKeys=new WeakMap(),parserSources=new WeakMap(),transactions=new WeakMap();
-const reset=()=>observation={part_reads:{readonly:0,readwrite:0},part_writes:0,parsers:[],transactions:[],quota_hits:0};
+const reset=()=>observation={part_reads:{readonly:0,readwrite:0},part_writes:0,parsers:[],transactions:[],quota_hits:0,actor_projections:[],historical_preservation:[],worker_inputs:[]};
 reset();
 // Capture mode in the native result getter: feed/finish run synchronously before its microtask expires.
 const get=IDBObjectStore.prototype.get,result=Object.getOwnPropertyDescriptor(IDBRequest.prototype,'result');
@@ -78,7 +80,7 @@ Object.defineProperty(globalThis,'Worker',{configurable:true,value:class{
   constructor(){worker=this;}
   emit(data){queueMicrotask(()=>this.onmessage?.(new MessageEvent('message',{data})));}
   postMessage(data){
-    if(data.type==='generate'){calls++;held=data;return;}
+    if(data.type==='generate'){calls++;held=data;workerInput=clone(data);return;}
     if(data.type==='stop'){if(held){this.emit({id:held.id,type:'done',stopped:true,measurement:{}});held=null;}return;}
     check(['load','unload'].includes(data.type),'Unexpected synthetic Worker operation');this.emit({id:data.id,type:'done'});
   }
@@ -94,11 +96,25 @@ function terminal(outcome){
 }
 const receiptKey=()=>`generation:${caseId}:turn`;
 const rawHeader=()=>store.appTransaction(['entities'],'readonly',(tx,done)=>{const read=tx.objectStore('entities').get([caseId,'actor']);read.onsuccess=()=>done(read.result);});
+async function historicalBytes(header,actor){
+  const ref=header.payloadParts;
+  const parts=await store.appTransaction(['parts'],'readonly',(tx,done)=>{
+    const read=tx.objectStore('parts').getAll(IDBKeyRange.bound([caseId,'entity','actor',ref.token,0],[caseId,'entity','actor',ref.token,ref.chunks-1]));
+    read.onsuccess=()=>done(read.result);
+  });
+  const bytes=new Uint8Array(ref.size);let offset=0;
+  for(const part of parts){bytes.set(part,offset);offset+=part.length;}
+  check(offset===ref.size,'Direct IDB original body has all bytes');
+  const raw=new TextDecoder('utf-8',{fatal:true}).decode(bytes),prefix=JSON.stringify(actor.payload.messages.slice(0,79)).slice(1,-1);
+  const start=raw.indexOf('"messages":[')+12;
+  check(start>=12&&raw.slice(start,start+prefix.length)===prefix,'Original first 79 messages match actual stored UTF-8 bytes');
+  return {raw:raw.slice(start,start+prefix.length),bytes:new TextEncoder().encode(prefix).length,sha256:await hashBytes(new TextEncoder().encode(prefix))};
+}
 async function snapshot(){
   const observing=active;active=false;
   try{
-    const actor=await store.entity('actor',caseId),peer=await store.entity('peer',caseId);
-    return {actor,peer,receipt:await store.getMeta(receiptKey())??null,header:await rawHeader(),
+    const actor=await store.entity('actor',caseId),peer=await store.entity('peer',caseId),header=await rawHeader();
+    return {actor,peer,receipt:await store.getMeta(receiptKey())??null,header,historical:await historicalBytes(header,actor),
       domain:await memory.readDeviceMemoryDomain(caseId,actor.payload.storage_policy),outbox:await store.getMeta('sync:'+caseId+':outbox'),
       outbox_parts:await store.appTransaction(['parts'],'readonly',(tx,done)=>{
         const read=tx.objectStore('parts').getAll(IDBKeyRange.bound([caseId,'outbox','fixed'],[caseId,'outbox','fixed','\uffff']));
@@ -107,19 +123,29 @@ async function snapshot(){
 }
 const identity=settings=>scopes.memoryIdentity(settings,{character_id:catalog.characters.find(row=>row.id===settings.character_id)?.version??null,persona_id:null,world_id:null});
 async function setup(options){
-  active=false;quota=null;held=null;callsAtSetup=calls;caseId=options.id;localStorage.setItem('kyalulu-execution-target','device');app.rememberOwner(caseId);
+  active=false;quota=null;held=null;workerInput=null;callsAtSetup=calls;caseId=options.id;localStorage.setItem('kyalulu-execution-target','device');app.rememberOwner(caseId);
   const sid='actor',state=RuntimeStateSchema.parse({session_id:sid,turn:40,last_summary:'Authored story summary'});
   const fact=(id,source,content,extra={})=>({id,scope:source,type:'semantic',content,origin:'user',supported:null,status:'active',version:1,
     source_session_id:source,source_kind:'user_statement',source_message_ids:[source==='actor'?79:901],access_count:0,...extra});
   const own=[fact('own','actor','お茶が好きです'),fact('old-model','actor','古い返信の記憶',{origin:'model',supported:true,source_generation_id:'old',source_message_ids:[80]}),
     fact('manual','actor','手動訂正を保持',{source_generation_id:'old',source_message_ids:[80],source_quote:'古い返信の引用',source_revision:'17',confirmation:'user_confirmed'})];
-  const before={state:clone(state),memories:[],settings:{session_id:sid,system_prompt:'',temperature:.8}};
+  const before={state:{...clone(state),location:'Regeneration origin'},memories:[],settings:{session_id:sid,system_prompt:'',temperature:.8},unknown:{tail:'complete before 茶🙂'}};
   const messages=Array.from({length:80},(_,index)=>({id:index+1,uuid:'message-'+index,role:index%2?'assistant':'user',
     content:index===78?'鮭のお寿司が好きです。お茶が好きです':index===79?'古い確定返信':`${index}:`+'x'.repeat(43*1024),
-    ...(index===79?{before,after:{state:clone(state),memories:clone(own),settings:clone(before.settings)}}:{})}));
+    unknown:{authored:'Original row '+index+' 茶🙂',nested:[null,false,{keep:true}]},
+    ...(index===2?{imported_state:'stopped'}:index===3?{imported_state:'interrupted'}:index===4?{imported_state:'completed'}:{}),
+    ...(index===79?{before,after:{state:clone(state),memories:clone(own),settings:clone(before.settings),unknown:{tail:'complete after 茶🙂'}}}:
+      {before:{state:{turn:index,location:'historical before'},memories:[],settings:{system_prompt:'Authored before '+index},unknown:{keep:'before'}},
+       after:{state:{turn:index+1,location:'historical after'},memories:[],settings:{system_prompt:'Authored after '+index},unknown:{keep:'after'}}})}));
+  if(options.largeSnapshots){
+    messages[0].before.settings.system_prompt='Multiple MiB before 茶🙂'+ 'b'.repeat(2*1024*1024);
+    messages[0].after.settings.system_prompt='Multiple MiB after 茶🙂'+ 'a'.repeat(2*1024*1024);
+    messages[0].unknown.large='Unknown original 茶🙂'+ 'u'.repeat(128*1024);
+  }
   const summaries=refreshSummaries(messages,[],sid);summaries[0]={...summaries[0],text:'Author supplied chapter summary',method:'model',revision:7};
   const payload={storage_policy:options.policy,memory_scope_mode:options.mode,settings:{session_id:sid,character_id:'mocha_sfw',system_prompt:'',temperature:.8},
     messages,memories:own,summaries,state,memory_enabled:true,draft:'Unsent draft must survive',pending_generation:null,
+    unknown:{authored:'Top-level original 茶🙂',nested:[false,null,17]},
     last_generation:{generation_id:'old',session_id:sid,status:'completed',assistant_id:80,user_id:79,reply:'古い確定返信'}};
   let actor=await store.saveEntity(store.newEntity('conversation',sid,payload,caseId),0);
   let peer=await store.saveEntity(store.newEntity('conversation','peer',{...payload,settings:{...payload.settings,session_id:'peer'},
@@ -141,7 +167,50 @@ async function setup(options){
   await store.appTransaction(['meta','parts'],'readwrite',(tx,done)=>store.writeOutbox(tx,caseId,fixed,done));
   const saved=await snapshot();check(saved.header.payloadParts.size>=3*1024*1024&&saved.header.payloadParts.chunks>=4,'Large real source >=3MiB and >=4 parts');
   check(saved.actor.payload.messages.length===80,'Exactly 80 original messages');check(saved.outbox.changesParts.chunks>=2,'Fixed outbox is actually segmented');
-  reset();return {bytes:saved.header.payloadParts.size,parts:saved.header.payloadParts.chunks,messages:80};
+  reset();seeded=saved;await assertProjection(saved,'seed');
+  return {bytes:saved.header.payloadParts.size,parts:saved.header.payloadParts.chunks,messages:80,large_snapshots:!!options.largeSnapshots};
+}
+async function assertProjection(saved,stage){
+  const observing=active;active=true;
+  let context;try{context=await memory.readDeviceGenerationSource('actor',caseId);}finally{active=observing;}
+  check(same(Object.keys(context).sort(),['header','latest','messages','source']),'Actual IDB helper returns only the new context shape');
+  const rows=saved.actor.payload.messages;
+  check(context.messages.length===rows.length,'Actual IDB projected message count');
+  for(let index=0;index<rows.length;index++){
+    const expected=Object.fromEntries(['id','uuid','role','content','imported_state'].map(key=>[key,rows[index][key]]));
+    check(same(context.messages[index],expected),'Actual IDB projection has exact five fields and values at '+index);
+    check(same(Object.keys(context.messages[index]).sort(),Object.keys(expected).sort()),'No snapshot/unknown retained in projected row '+index);
+  }
+  check(same(context.latest,rows.at(-1)),'Latest retains complete original before/after/settings/memories/unknown');
+  const {messages,...metadata}=saved.actor.payload;
+  check(same(context.source.metadata,metadata),'Projection metadata preserves all non-history fields');
+  check(context.source.bodyToken===saved.header.payloadParts.token&&context.source.revision===saved.actor.revision,'Projection uses verified real source stamp');
+  const {payload,memoryReferences,...header}=saved.actor;
+  check(same(context.header,header),'Context header excludes storage internals and payload');
+  const historicalSnapshotBytes=rows.slice(0,-1).reduce((sum,row)=>sum+new TextEncoder().encode(JSON.stringify({before:row.before,after:row.after,unknown:row.unknown})).length,0);
+  observation.actor_projections.push({stage,messages:rows.length,projected_keys:['id','uuid','role','content','imported_state'],older_snapshot_fields:0,
+    historical_snapshot_bytes:historicalSnapshotBytes,latest_bytes:new TextEncoder().encode(JSON.stringify(context.latest)).length,
+    latest_sha256:await snapshotHash(context.latest),latest_complete:true,metadata_complete:true,header_complete:true});
+}
+async function assertWorkerInput(regenerate){
+  const p=seeded.actor.payload,history=regenerate?p.messages.slice(0,-1):[...p.messages,{role:'user',content:requestBody.messages.at(-1).content}];
+  // The compile endpoint and assembler are unchanged; the oracle uses full originals, never the actor projection.
+  const response=await deviceFetch('/api/prompt/compile',{method:'POST',body:JSON.stringify(p.settings)});check(response.ok,'Reference prompt compilation');
+  const prompt=await response.json(),state=regenerate?p.messages.at(-1).before.state:p.state;
+  let recall=clone(p.memories);
+  if(p.memory_scope_mode!=='legacy')recall=clone(seeded.domain.pools[scopes.memoryBinding(seeded.domain,'actor').scope].memories);
+  if(regenerate)recall=recall.filter(row=>!(row.source_session_id==='actor'&&row.source_generation_id==='old'&&row.origin==='model'));
+  const trace=retrieveMemories(recall,requestBody.messages.at(-1).content),memories=trace.injected.map(id=>trace.candidates.find(row=>row.id===id));
+  const story=Object.fromEntries(['location','time','mood','active_scene','relationship_state'].map(key=>[key,state[key]]));
+  const contract="Never choose the user's thoughts, actions or speech."+'\nPrior conversation summary: Authored story summary'+renderMemoryBlock(memories,true)+
+    '\nJSON only; continue current state: '+JSON.stringify({reply:'in-character reply',state_update:story,memory_proposals:[]})+
+    '. Memories: <=3 {type:semantic|episodic|relationship,content,source_kind:user_statement|user_correction|work_setting|story_event}. Never invent user facts.';
+  const expected=assemblePortable(prompt,history.filter(row=>!['stopped','interrupted'].includes(row.imported_state)).map(({role,content})=>({role,content})),contract);
+  check(JSON.stringify(workerInput.messages)===JSON.stringify(expected),'Worker real messages equal full-original history reference exactly');
+  check(same(workerInput.settings,{temperature:.8})&&workerInput.responseGrammar===deviceResponseGrammar,'Worker real settings and response grammar');
+  check(!JSON.stringify(workerInput.messages).includes('Multiple MiB before'),'Historical snapshots never enter Worker input');
+  observation.worker_inputs.push({messages:expected.length,bytes:new TextEncoder().encode(JSON.stringify(expected)).length,sha256:await snapshotHash(expected),
+    full_original_reference_equal:true,imported_states_filtered:true,settings_equal:true,grammar_equal:true,regeneration_state:regenerate?'latest.before':'current'});
 }
 let responsePromise,bodyPromise,requestBody;
 async function start(regenerate=false){
@@ -150,10 +219,14 @@ async function start(regenerate=false){
   responsePromise=deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify(requestBody)});
   const response=await responsePromise;bodyPromise=response.text();
   if(!response.ok){const text=await bodyPromise;active=false;return {status:response.status,text};}
-  check(held!==null,'Actual API admitted and invoked synthetic Worker');return {status:response.status};
+  check(held!==null,'Actual API admitted and invoked synthetic Worker');await assertWorkerInput(regenerate);return {status:response.status};
 }
 function invariant(before,after){
   check(after.actor.payload.draft==='Unsent draft must survive','Unsent draft preserved');
+  check(same(before.actor.payload.unknown,after.actor.payload.unknown),'Top-level unknown original preserved');
+  check(same(before.actor.payload.messages.slice(0,79),after.actor.payload.messages.slice(0,79)),'All historical before/after/settings/unknown decoded originals preserved');
+  check(before.historical.raw===after.historical.raw&&before.historical.bytes===after.historical.bytes&&before.historical.sha256===after.historical.sha256,'Historical original stored UTF-8 bytes and hash preserved exactly');
+  observation.historical_preservation.push({bytes:after.historical.bytes,sha256:after.historical.sha256,stored_bytes_equal:true,decoded_equal:true});
   check(same(before.outbox,after.outbox)&&same(before.outbox_parts,after.outbox_parts),'Fixed segmented outbox unchanged byte for byte');
   check(same(before.peer.payload.messages,after.peer.payload.messages),'Full peer history preserved');
   for(const snapshot of [after.actor.payload,...after.actor.payload.messages.flatMap(message=>[message.before,message.after]).filter(Boolean)]){
@@ -176,11 +249,13 @@ async function run(options){
   if(!options.regenerate)check(pending.actor.payload.messages.at(-1).role==='user'&&pending.actor.payload.messages.at(-1).id===1001,'Durable user ID 1001');
   check(same(before.actor.payload.state,pending.actor.payload.state)&&same(before.actor.payload.memories,pending.actor.payload.memories),'Pending applies no story state or memories');
   invariant(before,pending);
+  await assertProjection(pending,'pending');
   if(options.mode!=='legacy')check(same(pending.domain.pending,{session_id:'actor',generation_id:'turn'}),'Domain pending admission');
   terminal(options.outcome);const stream=await bodyPromise;const after=await snapshot();active=false;
   const success=options.outcome==='success';check(stream.includes(success?'event: done':'event: error'),'Explicit terminal SSE event');
   check(after.receipt.status===(success?'completed':'failed')&&after.actor.payload.pending_generation===null,'Terminal receipt and pending clear agree');
   invariant(before,after);
+  await assertProjection(after,'terminal');
   if(success){
     check(same(after.actor.payload.messages.slice(0,options.regenerate?79:80),before.actor.payload.messages.slice(0,options.regenerate?79:80)),'Full message prefix preserved exactly');
     check(after.actor.payload.messages.length===(options.regenerate?80:82),'Success append or replacement count');
@@ -188,7 +263,10 @@ async function run(options){
     check(after.receipt.assistant_id===reply.id&&after.receipt.user_id===(options.regenerate?79:1001),'Receipt source IDs');
     check(same(after.actor.payload.last_generation,after.receipt),'Saved last_generation equals atomic receipt');
     check(after.actor.payload.state.turn===41&&after.actor.payload.state.location==='library'&&after.actor.payload.state.last_summary==='Authored story summary','Explicit state update and authored summary preservation');
-    check(same(reply.before.state,before.actor.payload.state)&&same(reply.after.state,after.actor.payload.state),'Before/after state snapshots');
+    check(same(reply.before.state,options.regenerate?before.actor.payload.messages.at(-1).before.state:before.actor.payload.state)&&same(reply.after.state,after.actor.payload.state),'Before/after state snapshots use latest regeneration origin');
+    check(after.receipt.raw_prompt===JSON.stringify(workerInput.messages),'Saved raw_prompt equals actual Worker input byte for byte');
+    check(same(after.receipt.compiled,(await (await deviceFetch('/api/prompt/compile',{method:'POST',body:JSON.stringify(before.actor.payload.settings)})).json())),'Saved compiled prompt equals original-settings reference');
+    observation.worker_inputs.at(-1).raw_prompt_equal=true;
     check(same(reply.after.memories,after.actor.payload.memories),'After own memory snapshot');
     check(same(after.actor.payload.summaries[0],before.actor.payload.summaries[0]),'Authored chapter summary remains exact');
     check(same(after.actor.payload.summaries.slice(0,3),before.actor.payload.summaries.slice(0,3)),'All unchanged chapter summaries remain exact');
@@ -261,6 +339,7 @@ async function resume(){
   check(same(before,await snapshot()),'Rejected reload retry does not change durable data');
   const recovered=await deviceFetch('/api/chat/generations/turn?session_id=actor');check(recovered.ok&&(await recovered.json()).status==='failed','Actual generation status API recovers orphan');
   const after=await snapshot();check(after.receipt.status==='failed'&&after.actor.payload.pending_generation===null&&after.domain.pending===null,'Recovery clears actor/domain/receipt atomically');
+  invariant(before,after);await assertProjection(after,'recovered');
   check(same(before.actor.payload.messages,after.actor.payload.messages)&&same(before.domain.pools,after.domain.pools),'Recovery retains durable user and memory pools');
   const again=await deviceFetch('/api/chat/generations/turn?session_id=actor');check(again.ok,'Repeated recovery');check(same(after,await snapshot()),'Recovery is idempotent');
   assertAtomic('failed',options);

@@ -40,19 +40,23 @@ export async function readMemorySource(id:string,owner:string,onMessage?:(messag
   if(owner!==deviceOwner())throw Error('Account changed');return value;
 }
 
-/** Actor context still retains history; source token and complete session share this snapshot. */
+/** Verified actor inputs are transient; commits always reread and preserve the complete stored history. */
 export async function readDeviceGenerationSource(id:string,owner:string) {
-  const result=await appTransaction<{source:MemorySource;session:AppEntity}|undefined>(['entities','parts'],'readonly',(tx,done)=>{
+  const result=await appTransaction<{source:MemorySource;header:Omit<AppEntity,'payload'>;messages:any[];latest:any}|undefined>(['entities','parts'],'readonly',(tx,done)=>{
     guardStorage(tx,()=>owner===deviceOwner());
     const read=tx.objectStore('entities').get([owner,id]);read.onsuccess=()=>storageStep(tx,()=>{
       const header=read.result as StoredEntity|undefined;if(!header){done(undefined);return;}
       if(header.deleted)throw Object.assign(Error('Conversation deleted'),{status:404});
       if(header.kind!=='conversation')throw Error('Conversation unavailable');
-      const messages:any[]=[];
+      const messages:any[]=[];let latest:any;
       readMemorySourceTx(tx,header,id,owner,source=>{
         const {payloadParts:_,selection:__,memoryReferences:___,payload:____,...raw}=header;
-        done({source,session:{...raw,payload:{...source.metadata,messages}}});
-      },message=>messages.push(message));
+        done({source,header:raw,messages,latest});
+      },message=>{
+        latest=message;
+        messages.push(message&&typeof message==='object'&&!Array.isArray(message)
+          ?{id:message.id,uuid:message.uuid,role:message.role,content:message.content,imported_state:message.imported_state}:message);
+      });
     });
   });
   if(owner!==deviceOwner())throw Error('Account changed');return result;

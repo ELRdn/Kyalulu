@@ -505,3 +505,10 @@ metadata/maps/1発言・inline/非会話・削除退避・hydrate返却の全量
 失敗済みtransactionのqueue継続による二重abortも修正し、既存同期15件はpage例外なしで成功した。
 [Staging CI調査](validation/2026-11-01-unified-staging-ci.md)ではb9feb73のWindows PRだけに出た90秒待機を
 130回のローカル結果と60件のtransaction観測で再現できず、未解消とした。修正後の通常初回同期30件は成功。
+
+[Actor context](validation/2026-11-01-unified-actor-context.md)では、通常Device生成の過去メッセージを
+ID/UUID・本文・状態フラグへ投影し、再生成用には最新1発言だけのbefore/afterを完全保持する。
+保存は原本を再検証する既存delta処理のまま、過去の独自項目・スナップショット・下書きを保持する。
+全Web1,530件と型/統合buildが成功。全本文・Worker入力・raw_prompt・ONNX・Researchの容量課題は残る。
+独立Chromium84件は生成用投影156回・過去原本byte120回・Worker入力66回・raw_prompt12回を照合し、
+約4.36MBの過去snapshotを含む再生成も成功。301入力hash不変と所有process終了を確認し、source closure3件も成功。

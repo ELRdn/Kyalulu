@@ -53,14 +53,14 @@ async function conversation(id:string,owner=deviceOwner()) {
   if(record?.deleted)throw fail('Conversation deleted / 会話は削除されています',404);
   return record??blank(id);
 }
-async function generationSession(id:string,owner:string) {
+async function generationSession(id:string,owner:string):Promise<{session:AppEntity;source:MemorySource;latest:any}> {
   let result=await readDeviceGenerationSource(id,owner);
   if(result?.source.metadata.cache_evicted){
     await hydrateConversation(id,owner);await trimOfflineCache(owner,id);result=await readDeviceGenerationSource(id,owner);
     if(!result||result.source.metadata.cache_evicted)throw fail('Conversation unavailable',503);
   }
-  if(result)return result;
-  const session=blank(id);return {session,source:{...memorySourceProjection(session),bodyToken:null}};
+  if(result)return {source:result.source,latest:result.latest,session:{...result.header,payload:{...result.source.metadata,messages:result.messages}}};
+  const session=blank(id);return {session,latest:undefined,source:{...memorySourceProjection(session),bodyToken:null}};
 }
 async function openPage(id:string,owner:string,limit=50,cursor?:ConversationPageCursor) {
   const info=await conversationInfo(id,owner);
@@ -256,7 +256,7 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
     let baseState=p.state,baseMemories=p.memories;
     const workingMemory=memoryContext?{...memoryContext,domain:structuredClone(memoryContext.domain)}:undefined;
     if(body.regenerate_message_id){
-      const previous=messages.at(-1);
+      const previous=scope?messages.at(-1):opened!.latest;
       if(previous?.id!==body.regenerate_message_id||previous.role!=='assistant'||messages.at(-2)?.role!=='user'||messages.at(-2)?.content!==last.content)throw fail('Only the latest reply may be regenerated',409);
       if(!previous.before)throw fail('Historical state is unavailable for regeneration',409);
       baseState=previous.before.state;baseMemories=previous.before.memories;messages=messages.slice(0,-1);

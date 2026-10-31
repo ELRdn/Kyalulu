@@ -138,6 +138,8 @@ FILES = (
     "docs/validation/2026-11-01-unified-sync-incoming.md",
     "docs/validation/2026-11-01-unified-sync-incoming-browser.md",
     "docs/validation/2026-11-01-unified-staging-ci.md",
+    "docs/validation/2026-11-01-unified-actor-context.md",
+    "docs/validation/2026-11-01-unified-actor-context-browser.md",
     "docs/validation/2026-11-01-unified-browser-jsonl-ci.md",
     "docs/validation/2026-10-31-unified-device-export-ci.md",
     "docs/validation/2026-10-31-unified-sync-staging.md",
