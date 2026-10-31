@@ -307,6 +307,7 @@ FILES = (
     "scripts/verify_openrouter_quality_controls.py",
     "scripts/verify_openrouter_quality_repairs.py",
     "docs/validation/2026-11-01-unified-source-test-closure.md",
+    "docs/validation/2026-11-01-unified-incoming-deletion-ci.md",
     "scripts/remote_crypto_build_wrapper.mjs",
     "scripts/remote_crypto_wrapper_interop.py",
     "scripts/verify_device_exports.py",

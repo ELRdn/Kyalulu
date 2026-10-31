@@ -579,3 +579,14 @@ Worker送信前に元の範囲descriptorから必要なmerged runだけを生成
 66入力のmessage JSONは選択前約3.35MBからWorker送信1,014–1,261 bytesへ減り、12件の元promptを完全照合。
 正常系GGUFは短い固定版Library作品、長いResearch/100ターンと記憶UIはONNX架空輸送として明記し、Mocha動作保証へ代用しない。
 上記のGGUF文脈制約、main/compiler/Lore/ONNXの全量保持・実容量/実モデル/実機・最新配布物と本番条件は残る。
+
+[Source test closure](validation/2026-11-01-unified-source-test-closure.md)では、従来の対応sourceから
+試験85件とCI入口/補助コードが欠けていたことを確認し、公開済み122ファイルを個別許可へ追加した。
+固定9269 export＋collector/回帰試験だけの隔離projectionでPython全1,426件＋subtest7件が成功。
+最終collectorのsource/fingerprint/license/bundle関連63件も成功した。既存の無関係な変更は梱包へ流用しない。
+
+[Incoming deletion CI](validation/2026-11-01-unified-incoming-deletion-ci.md)は、metadata走査＋stream書換え後も
+本文全件保持を求めていた古い計測assertを修正。製品コードやoracleを変えず、全件走査と本文非保持を検査する。
+元の失敗を再現後、Windows Chromiumの作業treeで対象1件と全40件が成功し、hash不変とcleanupを確認。
+更新後のHosted CI・固定sourceの新Native/Cloud配布物、実GGUF計数・Mocha収容と実機/本番条件は未完了。
+Supabaseは本人がログイン済みだが、CUA起動失敗とdesktop USER_CONTROLによりURL設定値は未読・未変更のまま。

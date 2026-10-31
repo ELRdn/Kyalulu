@@ -115,7 +115,7 @@ function install(){
   };
   JsonStream.prototype.finish=function(){
     const v=originals.finish.call(this);
-    if(measuring&&v&&typeof v==='object'&&Array.isArray(v.messages))stats.roots.push({phase:networkContext?'network':phase,callback:typeof this.onMessage==='function',messages:v.messages.length,content:v.messages.some(m=>m&&Object.hasOwn(m,'content')),count:this.totalMessages});
+    if(measuring&&v&&typeof v==='object'&&Array.isArray(v.messages))stats.roots.push({phase:networkContext?'network':phase,callback:typeof this.onMessage==='function',limit:this.window?.limit,messages:v.messages.length,content:v.messages.some(m=>m&&Object.hasOwn(m,'content')),count:this.totalMessages});
     return v;
   };
   Array.prototype.map=function(fn,...rest){
@@ -399,8 +399,9 @@ async function run(){
     const saved=after.entities.find(([k])=>k[0]===owner&&k[1]===id)[1];
     check(source.revision===1&&saved.revision===3&&expected.get(id).revision===2,'Intentional revision must be authored 1 -> cleanup 2 -> receive 3 (old coalesced 2)');
     check(intermediateEvidence.length===1&&intermediateEvidence[0].header.revision===2,'Missing actual same-tx scrubbed A revision 2');
-    check(stats.roots.some(r=>!r.callback&&r.messages===4&&r.content),'Known deletion scrub did not read whole local A');
-    check(stats.roots.filter(r=>r.callback).every(r=>r.messages===0&&!r.content),'Deletion/update network or apply parser retained messages');
+    // Scrub inspects metadata, then streams the original messages into its replacement parts.
+    check(stats.roots.some(r=>!r.callback&&r.limit===0&&r.count===4&&r.messages===0&&!r.content)&&!stats.roots.some(r=>r.messages===4&&r.content),'Known deletion scrub did not scan A without retaining its body');
+    check(stats.roots.filter(r=>r.callback).every(r=>r.count===4&&r.messages===0&&!r.content),'Deletion/update network or apply parser lost or retained messages');
     check(stats.stageParts.length>=3&&stats.parts.some(p=>p.key[1]==='incoming'),'A update did not consume actual paged spool');
     const actual=await entity(id,owner);
     same(actual.payload.messages.map(m=>[m.uuid,m.id]),source.payload.messages.map(m=>[m.uuid,m.id]),'Cleanup/update changed original UUID/numeric mapping');
