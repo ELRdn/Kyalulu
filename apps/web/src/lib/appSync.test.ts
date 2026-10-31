@@ -39,7 +39,7 @@ vi.mock('./appStore',async importOriginal=>({
 }));
 
 import { acknowledgeEntity, receiveSyncPage, runtimeConsent, syncNow, syncState, reconfirmDeletion, hydrateConversation, setSyncConsent } from './appSync';
-import { offlineStub, trimOfflineCache } from './appStore';
+import { offlineStub, trimOfflineCache,writeEntity } from './appStore';
 import { cloudFetch } from './transport';
 import { importMobile } from '../pages/Migration';
 import { initialData, newConversation } from '../mobile/store';
@@ -284,6 +284,36 @@ it('hydrates all historical revisions and can compile settings from an earlier b
   expect(result.status).toBe(200);const copy=get((await result.json()).session_id);
   const compiled=await deviceFetch('/api/chat/settings',{method:'PUT',body:JSON.stringify(copy.payload.settings)});
   expect(compiled.status,await compiled.text()).toBe(200);expect(copy.payload.settings.system_prompt).toBe('OLD SYSTEM');
+});
+
+it.each([false,true])('branches a %s segmented source above all owner IDs while preserving source, outbox and receipts',async segmented=>{
+  const source={...local('chat'),opened:0,payload:structuredClone(sharedHistory.payload)};
+  put(source);
+  if(segmented)await (await import('./appStore')).appTransaction<void>(['entities','meta','parts'],'readwrite',(tx,done)=>writeEntity(tx,source,'put',done));
+  const unrelated=local('unrelated');unrelated.payload.messages[0].id=900;put(unrelated);
+  const foreign=local('foreign','owner-b');foreign.payload.messages[0].id=9000;put(foreign);
+  fixture.meta.set('message-sequence:owner-a',3);
+  fixture.meta.set('sync:owner-a:outbox',{request_id:'fixed',changes:[{id:'chat',payload:{draft:'Unsent'}}]});
+  fixture.meta.set('generation:owner-a:old',{status:'completed',reply:'Saved'});
+  const beforeSource=structuredClone(get('chat')),beforeHeader=structuredClone(fixture.entities.get(JSON.stringify(['owner-a','chat'])));
+  const beforeParts=structuredClone([...fixture.parts]),outbox=structuredClone(fixture.meta.get('sync:owner-a:outbox'));
+  const response=await deviceFetch('/api/chat/sessions/chat/branch',{method:'POST',body:JSON.stringify({message_id:source.payload.messages[1].id})});
+  expect(response.status,await response.clone().text()).toBe(200);const id=(await response.json()).session_id,copy=get(id);
+  expect(copy.payload.messages.map((m:any)=>m.id)).toEqual([901,902]);expect(fixture.meta.get('message-sequence:owner-a')).toBe(902);
+  expect(copy.payload.messages.map((m:any)=>m.uuid)).toEqual(source.payload.messages.slice(0,2).map((m:any)=>m.uuid));
+  expect(copy.payload.state.session_id).toBe(id);expect(copy.payload.settings.system_prompt).toBe('OLD SYSTEM');
+  expect(copy.payload.branch_of).toBe('chat');expect(copy.payload.fork_revision).toBe(source.revision);
+  expect(get('chat')).toEqual(beforeSource);expect(fixture.entities.get(JSON.stringify(['owner-a','chat']))).toEqual(beforeHeader);
+  for(const [key,value] of beforeParts)expect(fixture.parts.get(key)).toEqual(value);
+  expect(fixture.meta.get('sync:owner-a:outbox')).toEqual(outbox);expect(fixture.meta.get('generation:owner-a:old')).toEqual({status:'completed',reply:'Saved'});
+  expect(get('unrelated')).toEqual(unrelated);expect(get('foreign','owner-b')).toEqual(foreign);
+});
+
+it.each([-1,'invalid',Number.MAX_SAFE_INTEGER])('rolls back branch allocation when owner sequence %s is invalid or exhausted',async sequence=>{
+  put({...local('chat'),payload:structuredClone(sharedHistory.payload)});fixture.meta.set('message-sequence:owner-a',sequence);
+  const beforeEntities=structuredClone([...fixture.entities]),beforeMeta=structuredClone([...fixture.meta]),beforeParts=structuredClone([...fixture.parts]);
+  const response=await deviceFetch('/api/chat/sessions/chat/branch',{method:'POST',body:JSON.stringify({message_id:1})});
+  expect(response.ok).toBe(false);expect([...fixture.entities]).toEqual(beforeEntities);expect([...fixture.meta]).toEqual(beforeMeta);expect([...fixture.parts]).toEqual(beforeParts);
 });
 it('rolls back the entire page when a historical fixed library revision is missing',async()=>{
   const payload:any=structuredClone(sharedHistory.payload);delete payload.library_snapshots['character@1'];
