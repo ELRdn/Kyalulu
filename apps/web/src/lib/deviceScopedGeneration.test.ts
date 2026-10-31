@@ -26,6 +26,7 @@ import { memoryIdentity } from './deviceMemoryScopes';
 import { readDeviceMemoryDomain } from './deviceMemoryStore';
 import { receiveConversation } from './appSyncData';
 import { conservativeTokens,mergeTurns } from '../mobile/context';
+import { readGenerationReceipt } from './deviceGenerationStore';
 import { CONTEXT_TOKENS,OUTPUT_TOKENS } from '../mobile/types';
 import catalog from '../mobile/app-catalog.generated.json';
 
@@ -53,6 +54,10 @@ async function seed(record:AppEntity){
 async function turn(id:string,generation:string,extra:Record<string,any>={}){
   const response=await deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify({session_id:id,generation_id:generation,model_id:'fixture',messages:[{role:'user',content:'鮭のお寿司が好きです'}],...extra})});
   return {status:response.status,text:await response.text()};
+}
+async function diagnostic(id:string){
+  const saved=(await entity(id))!,result=await readGenerationReceipt(fixture.owner,{kind:'conversation',id},saved.payload.last_generation.generation_id);
+  expect(result.state).toBe('inline');if(result.state!=='inline')throw Error('Fixture diagnostics exceed inline representation');return result.value;
 }
 
 it('creates the first default world conversation with its receipt and domain in one lifecycle',async()=>{
@@ -82,7 +87,7 @@ it('recalls a peer fact without copying foreign source IDs into the conversation
   await seed(source('a',31));await seed(source('b',71));fixture.meta.set('message-sequence:'+fixture.owner,100);
   expect((await turn('b','shared')).text).toContain('event: done');
   expect(JSON.stringify(fixture.inputs)).toContain('鮭のお寿司が好きです');
-  const a=(await entity('a'))!,b=(await entity('b'))!,trace=b.payload.last_generation.memory;
+  const a=(await entity('a'))!,b=(await entity('b'))!,trace=(await diagnostic('b')).memory;
   expect(trace.scope).toMatch(/^work:.*\|device:local$/);expect(trace.injected).toContain('memory-a');
   expect(a.payload.memories[0].access_count).toBe(1);
   for(const snapshot of [b.payload,...b.payload.messages.flatMap((message:any)=>[message.before,message.after]).filter(Boolean)]){
@@ -98,7 +103,7 @@ it.each(['policy','world','branch'])('keeps shared recall out of a different %s 
   if(boundary==='branch')other.payload.branch_of='origin';
   await seed(other);fixture.meta.set('message-sequence:'+fixture.owner,100);
   expect((await turn('b','isolated')).text).toContain('event: done');
-  expect((await entity('b'))!.payload.last_generation.memory.injected).not.toContain('memory-a');
+  expect((await diagnostic('b')).memory.injected).not.toContain('memory-a');
 });
 
 it('keeps the accepted reply on failed regeneration and retains later manual facts on success',async()=>{
@@ -140,11 +145,11 @@ it('keeps each conversation source when an independently repeated fact matches a
   expect((await turn('b','independent')).text).toContain('event: done');
   const before=(await entity('b'))!,own=before.payload.memories.find((memory:any)=>memory.source_generation_id==='independent');
   expect(own).toMatchObject({source_session_id:'b',source_message_ids:[101]});
-  expect(before.payload.last_generation.memory.injected).toContain('memory-a');
+  expect((await diagnostic('b')).memory.injected).toContain('memory-a');
   expect((await deviceFetch('/api/chat/sessions/a/data',{method:'DELETE'})).status).toBe(200);
   expect((await entity('b'))!.payload.memories.some((memory:any)=>memory.id===own.id)).toBe(true);
   expect((await turn('b','repeat')).text).toContain('event: done');
-  expect((await entity('b'))!.payload.last_generation.memory.decisions[0]).toMatchObject({action:'skip',reason:'duplicate'});
+  expect((await diagnostic('b')).memory.decisions[0]).toMatchObject({action:'skip',reason:'duplicate'});
 });
 
 it.each(['clear','delete','edit'])('keeps generation and sync usable after history %s while retaining manual facts',async operation=>{

@@ -8,13 +8,14 @@ import { compilePortable } from './devicePrompt';
 import { computeDeviceMetrics, memoryMetrics, memoryProbe, metricRound } from './deviceMetrics';
 import { SSEDecoder } from './sse';
 import { deviceExecutionLockName } from './deviceExecution';
-import { readResearchExperiment,writeResearchExperiment,listResearchExperiments,type ResearchExperiment as Experiment,type ResearchExperimentSummary } from './deviceResearchStore';
-import { jsonChunks } from './appTransfers';
+import { readResearchExperiment,writeResearchExperiment,listResearchExperiments,compactResearchTurn,type ResearchExperiment as Experiment,type ResearchExperimentSummary } from './deviceResearchStore';
+import { jsonChunks,SYNC_INLINE_BYTES } from './appTransfers';
+import { generationReceiptChunks,readGenerationReceipt,readGenerationHeader,readGenerationSnapshot,isGenerationHeader } from './deviceGenerationStore';
 export { deviceExecutionLockName } from './deviceExecution';
 
 type Value=Record<string,any>;
 type Prompt=ReturnType<typeof compilePortable>;
-export type ResearchTurn={session:AppEntity;prompt:Prompt;requested?:Value;memoryOptions:Value;save:(session:AppEntity)=>Promise<AppEntity>};
+export type ResearchTurn={session:AppEntity;prompt:Prompt;requested?:Value;memoryOptions:Value;save:(session:AppEntity,receipt?:Value,input?:readonly unknown[])=>Promise<AppEntity>};
 type Generate=(body:Value,signal:AbortSignal|undefined,scope:ResearchTurn)=>Promise<Response>;
 type Compile=(settings:Value,history:{role:string;content:string}[],owner:string)=>Promise<Prompt>;
 const official:Record<string,string>={mocha_daily_001:'mocha_sfw',senior_daily_001:'senior_cool',butler_daily_001:'butler'};
@@ -27,20 +28,20 @@ const ownerCheck=(owner:string)=>{if(owner!==deviceOwner())throw fail('Account c
 const identifier=(id:unknown)=>{if(typeof id!=='string'||! /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id))throw fail('Invalid research ID');return id;};
 const integer=(value:unknown,fallback:number,min:number,max:number)=>{const n=value??fallback;if(!Number.isSafeInteger(n)||(n as number)<min||(n as number)>max)throw fail('Invalid research number');return n as number;};
 const json=(value:unknown,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
-// shortcut: saved research trees are still decoded whole; canonical receipt storage is required for large-read acceptance.
-function exportJson(value:unknown,owner:string,filename:string,signal?:AbortSignal) {
+function exportJson(value:unknown,owner:string,filename:string,signal?:AbortSignal,chunks:Iterator<Uint8Array>|AsyncGenerator<Uint8Array>=jsonChunks(value)) {
   ownerCheck(owner);signal?.throwIfAborted();
-  const chunks=jsonChunks(value);let closed=false,abort:()=>void=()=>{};
-  const finish=()=>{closed=true;signal?.removeEventListener('abort',abort);chunks.return(undefined);};
+  let closed=false,abort:()=>void=()=>{},cleanup:Promise<void>|undefined;
+  const finish=()=>{closed=true;signal?.removeEventListener('abort',abort);return cleanup??=Promise.resolve().then(()=>chunks.return?.(undefined)).then(()=>{}).catch(()=>{});};
   const body=new ReadableStream<Uint8Array>({
     start(controller){abort=()=>{if(!closed){finish();controller.error(signal!.reason);}};signal?.addEventListener('abort',abort,{once:true});},
-    pull(controller){
+    async pull(controller){
       try{
-        ownerCheck(owner);signal?.throwIfAborted();const chunk=chunks.next();
+        ownerCheck(owner);signal?.throwIfAborted();const chunk=await chunks.next();ownerCheck(owner);signal?.throwIfAborted();
+        if(closed)return;
         if(chunk.done){finish();controller.close();}else controller.enqueue(chunk.value);
-      }catch(error){finish();controller.error(error);}
+      }catch(error){if(!closed){finish();controller.error(error);}}
     },
-    cancel(){finish();},
+    cancel(){return finish();},
   },{highWaterMark:0});
   return new Response(body,{headers:{'Content-Type':'application/json','Cache-Control':'no-store','Content-Disposition':`attachment; filename="${filename}"`}});
 }
@@ -79,9 +80,60 @@ async function read(owner:string,id:string) {
   identifier(id);const record=await readResearchExperiment(owner,id);ownerCheck(owner);
   if(!record)throw fail('Experiment not found',404);return record;
 }
-async function detail(owner:string,id:string) {
+const canonicalTurn=(turn:Value)=>turn.device_diagnostics!==undefined;
+const diagnosticsUrl=(id:string,turn:Value)=>`/api/experiments/${encodeURIComponent(id)}/turns/${turn.turn}/diagnostics`;
+const publicCompact=(turn:Value,diagnostics:Value)=>compactResearchTurn(turn,{device_diagnostics:diagnostics});
+const bytes=(value:unknown)=>{let size=0;for(const chunk of jsonChunks(value))size+=chunk.length;return size;};
+async function detail(owner:string,id:string,expand=true,signal?:AbortSignal) {
   const record=await read(owner,id),ratings=await getMeta<Value>(key(owner,'ratings',id));ownerCheck(owner);
-  return {meta:record.meta,turns:record.turns,raw_prompt:record.raw_prompt,ratings:ratings??{},metrics:record.meta.metrics};
+  const base={meta:record.meta,turns:record.turns,raw_prompt:record.raw_prompt,ratings:ratings??{},metrics:record.meta.metrics};
+  if(!expand)return base;
+  const compact:Value[]=[],expanded:Value[]=[];let size=bytes({...base,turns:[]}),inline=size<=SYNC_INLINE_BYTES;
+  for(const turn of record.turns){
+    signal?.throwIfAborted();ownerCheck(owner);
+    const separator=compact.length?1:0;
+    if(!canonicalTurn(turn)){
+      compact.push(turn);size+=bytes(turn)+separator;
+      if(size>SYNC_INLINE_BYTES){inline=false;expanded.length=0;}else if(inline)expanded.push(turn);
+      continue;
+    }
+    const descriptor:Value={state:'unavailable',export_url:diagnosticsUrl(id,turn)};let full:Value|undefined;
+    try{
+      const header=await readGenerationHeader(owner,{kind:'research',id},turn.generation_id);
+      if(isGenerationHeader(header)){
+        const receipt=await readGenerationReceipt(owner,{kind:'research',id},turn.generation_id,signal);
+        const latest=await readGenerationHeader(owner,{kind:'research',id},turn.generation_id);
+        if(!isGenerationHeader(latest)||latest.catalog_sha256!==header.catalog_sha256)throw Error('Research diagnostics changed during read');
+        Object.assign(descriptor,{state:header.diagnostics_state??'stored',bytes:receipt.bytes,sha256:receipt.sha256});
+        if(receipt.state==='inline'&&!header.diagnostics_state)full=receipt.value;
+      }else if(header?.status==='deleted')descriptor.state='erased';
+      else if(header!==undefined)descriptor.state='corrupt';
+    }catch{ownerCheck(owner);signal?.throwIfAborted();descriptor.state='corrupt';}
+    const row=publicCompact(turn,descriptor);compact.push(row);
+    size+=bytes(full??row)+separator;
+    if(!full||size>SYNC_INLINE_BYTES){inline=false;expanded.length=0;}else if(inline)expanded.push(full);
+  }
+  return {...base,turns:inline?expanded:compact};
+}
+async function* turnChunks(owner:string,id:string,turn:Value,signal?:AbortSignal):AsyncGenerator<Uint8Array> {
+  if(canonicalTurn(turn)){
+    if(!isGenerationHeader(await readGenerationHeader(owner,{kind:'research',id},turn.generation_id)))throw Error('Saved research diagnostics unavailable');
+    yield* generationReceiptChunks(owner,{kind:'research',id},turn.generation_id,signal);return;
+  }
+  yield* jsonChunks(turn);
+}
+async function* experimentChunks(owner:string,id:string,value:Awaited<ReturnType<typeof detail>>,signal?:AbortSignal):AsyncGenerator<Uint8Array> {
+  const encode=(text:string)=>new TextEncoder().encode(text);
+  yield encode('{');let first=true;
+  for(const [name,field] of Object.entries(value)){
+    if(field===undefined)continue;
+    yield encode((first?'':',')+JSON.stringify(name)+':');first=false;
+    if(name!=='turns'){yield* jsonChunks(field);continue;}
+    yield encode('[');let index=0;
+    for(const turn of value.turns){if(index++)yield encode(',');yield* turnChunks(owner,id,turn,signal);}
+    yield encode(']');
+  }
+  yield encode('}');
 }
 async function interrupt(owner:string,entry:ResearchExperimentSummary):Promise<ResearchExperimentSummary> {
   const record=await read(owner,entry.meta.experiment_id);
@@ -129,7 +181,12 @@ async function runOne(owner:string,req:Value,number:number,signal:AbortSignal,ge
   const model=MODELS.find(m=>m.id===req.model_id)!;
   if(source&&modelIdentity(model)!==modelIdentity(source.meta.model_config_snapshot))throw fail('The recorded model files changed; replay is unavailable',409);
   const id=crypto.randomUUID(),settings={session_id:'exp:'+id,character_id:scenario.character,persona_id:scenario.persona,world_id:scenario.world,system_prompt:req.extra_system_prompt,temperature:req.temperature??model.temperature};
-  const savedPrompt=source?.turns.find(t=>t.compiled)?.compiled.sections.portable_snapshot;
+  const first=source?.turns[0];
+  let savedPrompt=first?.compiled?.sections?.portable_snapshot;
+  if(source&&first&&canonicalTurn(first)){
+    try{savedPrompt=await readGenerationSnapshot(owner,{kind:'research',id:source.meta.experiment_id},first.generation_id,signal);}
+    catch{ownerCheck(owner);signal.throwIfAborted();throw fail('Saved generation diagnostics are unavailable for replay',409);}
+  }else if(source)savedPrompt=source.turns.find(t=>t.compiled)?.compiled.sections.portable_snapshot;
   if(source&&!savedPrompt)throw fail('A saved prompt is required for replay',409);
   const initial=source?compilePortable(savedPrompt):await compile(settings,[],owner);
   if((initial.sections.portable_snapshot.document as Value)?.nsfw)throw fail('Adult verification required',403);
@@ -157,9 +214,9 @@ async function runOne(owner:string,req:Value,number:number,signal:AbortSignal,ge
       const stored=structuredClone(record.session.payload.memories),history=[...record.session.payload.messages,{role:'user',content:turn.user}];
       const prompt=compilePortable(initial.sections.portable_snapshot,history);
       const generationId=crypto.randomUUID();
-      const scope:ResearchTurn={session:record.session,prompt,requested,memoryOptions,save:async value=>{
+      const scope:ResearchTurn={session:record.session,prompt,requested,memoryOptions,save:async(value,receipt,input)=>{
         const session={...value,revision:record.session.revision+1},next={...record,session,meta:{...record.meta},turns:[...record.turns]};
-        const done=value.payload.pending_generation===null?value.payload.last_generation:null;
+        const done=value.payload.pending_generation===null?(receipt?.status==='completed'?receipt:value.payload.last_generation):null;
         if(done?.generation_id===generationId&&!next.turns.some(t=>t.generation_id===generationId)){
           check();
           const result:Value={...done,turn:turn.turn,type:turn.type,user:turn.user,assistant:done.reply,status:'completed',new_session:turn.new_session,elapsed_ms:performance.now()-started};
@@ -168,7 +225,7 @@ async function runOne(owner:string,req:Value,number:number,signal:AbortSignal,ge
           if(next.turns.length===scenario.turns.length)next.meta.status='completed';
           metrics(next);
         }
-        next.revision=await write(owner,'experiment',id,next);record=next;return session;
+        next.revision=await writeResearchExperiment(owner,id,next,receipt?{receipt,input}:undefined);record=next;return session;
       }};
       const response=await generate({session_id:settings.session_id,generation_id:generationId,model_id:model.id,messages:[{role:'user',content:turn.user}],
         temperature:settings.temperature,...(req.seed==null?{}:{seed:req.seed})},signal,scope);
@@ -332,7 +389,7 @@ export async function deviceResearchRoute(path:string,method:string,body:Value,u
   const cancel=path.match(/^\/api\/experiments\/requests\/([^/]+)\/cancel$/);
   if(cancel){if(method!=='POST')throw fail('Cancel requires POST',405);identifier(cancel[1]);if(active?.owner!==owner||active.request!==cancel[1])throw fail('Research request is not running',409);active.controller.abort();return json({ok:true});}
   if(path==='/api/ratings'){
-    if(method==='GET'){const id=url.searchParams.get('experiment_id')??'';const d=await detail(owner,id);return json({ratings:Object.entries(d.ratings).map(([turn,rating])=>({turn:Number(turn),...rating as Value}))});}
+    if(method==='GET'){const id=url.searchParams.get('experiment_id')??'';const d=await detail(owner,id,false);return json({ratings:Object.entries(d.ratings).map(([turn,rating])=>({turn:Number(turn),...rating as Value}))});}
     if(method!=='POST')throw fail('Ratings require POST',405);
     const record=await read(owner,body.experiment_id),turn=integer(body.turn,0,1,100),score=integer(body.score,0,1,5);
     if(!record.turns.some(t=>t.turn===turn))throw fail('Experiment turn not found',404);
@@ -340,6 +397,13 @@ export async function deviceResearchRoute(path:string,method:string,body:Value,u
     await appTransaction<void>(['meta'],'readwrite',(tx,finish)=>{const store=tx.objectStore('meta'),r=store.get(key(owner,'ratings',body.experiment_id));r.onsuccess=()=>{
       if(owner!==deviceOwner()){tx.abort();return;}store.put({...r.result,[turn]:{score,comment:body.comment,rater:body.rater,updated_at:new Date().toISOString()}},key(owner,'ratings',body.experiment_id));finish();
     };});return json({ok:true});
+  }
+  const diagnostics=path.match(/^\/api\/experiments\/([^/]+)\/turns\/([^/]+)\/diagnostics$/);
+  if(diagnostics){
+    if(method!=='GET')throw fail('Diagnostics require GET',405);
+    const record=await read(owner,diagnostics[1]),number=integer(Number(diagnostics[2]),0,1,100),turn=record.turns.find(turn=>turn.turn===number);
+    if(!turn)throw fail('Experiment turn not found',404);
+    return exportJson(undefined,owner,'diagnostics.json',signal,turnChunks(owner,record.meta.experiment_id,turn,signal));
   }
   const experiment=path.match(/^\/api\/experiments\/([^/]+)(?:\/(export|rerun))?$/);
   if(experiment){
@@ -350,8 +414,9 @@ export async function deviceResearchRoute(path:string,method:string,body:Value,u
         extra_system_prompt:source.meta.extra_system_prompt,request_id:body.request_id},signal,generate,compile,source);
     }
     if(method!=='GET')throw fail('Experiment requires GET',405);
-    await recover(owner);const value=await detail(owner,experiment[1]);
-    return experiment[2]==='export'?exportJson(value,owner,'experiment.json',signal):json(value);
+    await recover(owner);const value=await detail(owner,experiment[1],experiment[2]!=='export',signal);
+    ownerCheck(owner);signal?.throwIfAborted();
+    return experiment[2]==='export'?exportJson(undefined,owner,'experiment.json',signal,experimentChunks(owner,experiment[1],value,signal)):json(value);
   }
   if(method!=='GET')throw fail('Research listing requires GET',405);
   await recover(owner);const experiments=await listResearchExperiments(owner);

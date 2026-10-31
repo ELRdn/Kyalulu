@@ -21,6 +21,12 @@ const seed=async(value=body())=>{
   return structuredClone(fixture.meta.get(key)) as StoredOutbox;
 };
 beforeEach(()=>{fixture.owner='owner';fixture.busy=false;fixture.entities.clear();fixture.meta.clear();fixture.parts.clear();});
+it('rejects a frozen segmented local diagnostic reference without rewriting or transmitting its bytes',async()=>{
+  const value:any=body(1);value.changes[0].payload.last_generation={device_diagnostics:{generation_id:'private',holder:{kind:'conversation',id:'chat'}}};
+  const batch=await seed(value),before=structuredClone({meta:[...fixture.meta],parts:[...fixture.parts]}),call=vi.fn();
+  await expect(uploadSync(outboxSyncSource('owner',batch),call,async()=>{})).rejects.toThrow('Local diagnostic reference');
+  expect(call).not.toHaveBeenCalled();expect({meta:[...fixture.meta],parts:[...fixture.parts]}).toEqual(before);
+});
 it('compares immutable inline outbox trees without serializing a batch or changing canonical JSON equality',()=>{
   const original={...body(),revisions:{chat:2}},copy=structuredClone(original);
   const stringify=vi.spyOn(JSON,'stringify').mockImplementation(value=>{if(value&&typeof value==='object')throw Error('Whole tree serialization');return String(value);});

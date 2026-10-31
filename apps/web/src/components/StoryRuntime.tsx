@@ -19,7 +19,7 @@ export default function StoryRuntime({ sessionId, refreshKey, visible=true }: { 
       if (!active) return;
       const candidate = value.state.rpg;
       setState(candidate && typeof candidate === 'object' && !Array.isArray(candidate) ? candidate as Record<string, unknown> : null);
-      const story = value.compiled.sections.story ?? (value.compiled.sections.portable_snapshot as Record<string, unknown> | undefined)?.world;
+      const story = value.compiled?.sections.story ?? value.story ?? (value.compiled?.sections.portable_snapshot as Record<string, unknown> | undefined)?.world;
       const raw = story && typeof story === 'object' && 'cast' in story ? story.cast : [];
       setCast(Array.isArray(raw) ? raw.flatMap(member => { const result = CastMemberSchema.safeParse(member); return result.success ? [result.data] : []; }) : []);
       setError('');

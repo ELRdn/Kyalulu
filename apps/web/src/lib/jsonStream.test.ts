@@ -8,6 +8,41 @@ import cases from '../../../../tests/fixtures/json-stream.json';
 function parse(raw:Uint8Array,width:number){const parser=new JsonStream();for(let index=0;index<raw.length;index+=width)parser.feed(raw.subarray(index,index+width));return parser.finish();}
 function windowed(text:string,window:MessageWindow|{ids:readonly number[]},width:number){const parser=new JsonStream(window),raw=new TextEncoder().encode(text);for(let i=0;i<raw.length;i+=width)parser.feed(raw.subarray(i,i+width));return {value:parser.finish(),total:parser.totalMessages};}
 
+it('validates complete diagnostic sections without retaining scalar pieces or containers',()=>{
+  const bytes=new TextEncoder().encode(JSON.stringify({prompt:'茶🙂\\"\n'.repeat(10000),nested:[{a:null,b:true,c:1.25e-10}],__proto__:{ignored:true}}));
+  for(const width of [7,4096]){
+    const parser=new JsonStream({validateOnly:true});
+    for(let i=0;i<bytes.length;i+=width){parser.feed(bytes.subarray(i,i+width));expect((parser as any).pieces).toEqual([]);
+      for(const frame of (parser as any).stack)expect(Object.keys(frame.value)).toEqual([]);
+    }
+    expect(parser.finish()).toBeUndefined();
+  }
+  for(const raw of ['{"x":"bad\\q"}','{"x":1e}','{"x":[true,]}','{"x":true} trailing','{"x":"unterminated']){
+    const parser=new JsonStream({validateOnly:true});expect(()=>{parser.feed(new TextEncoder().encode(raw));parser.finish();}).toThrow();
+  }
+});
+it('retains only the saved compiler portable snapshot and validates omitted diagnostics',()=>{
+  const snapshot={document:{name:'Original 茶🙂',data:{description:'retained'}},version:7};
+  for(const width of [7,4096]){
+    const parser=new JsonStream({portableSnapshot:true}),bytes=new TextEncoder().encode(JSON.stringify({system_prompt:'x'.repeat(20000),ordered_messages:[{content:'y'.repeat(20000)}],
+      sections:{portable_snapshot:snapshot,ignored:{portable_snapshot:{wrong:true},content:'z'.repeat(20000)}},after:'tail'}));
+    for(let index=0;index<bytes.length;index+=width)parser.feed(bytes.subarray(index,index+width));
+    expect(parser.finish()).toEqual({sections:{portable_snapshot:snapshot}});
+  }
+  const parser=new JsonStream({portableSnapshot:true});
+  expect(()=>{parser.feed(new TextEncoder().encode('{"sections":{"portable_snapshot":{}},"ignored":"bad\\q"}'));parser.finish();}).toThrow();
+});
+it('rejects exact local diagnostic properties inside fixed payloads, including escaped keys',()=>{
+  for(const name of ['device_diagnostics','device_\\u0064iagnostics'])for(const width of [1,7,1024]){
+    const parser=new JsonStream({omitChangePayloads:true,rejectLocalDiagnostics:true});
+    const bytes=new TextEncoder().encode('{"changes":[{"payload":{"messages":[{"content":"authored"}],"last_generation":{"'+name+'":{"private":true}}}}]}');
+    expect(()=>{for(let index=0;index<bytes.length;index+=width)parser.feed(bytes.subarray(index,index+width));parser.finish();}).toThrow('Local diagnostic reference');
+  }
+  const parser=new JsonStream({omitChangePayloads:true,rejectLocalDiagnostics:true});
+  parser.feed(new TextEncoder().encode('{"changes":[{"payload":{"messages":[{"device_diagnostics":"authored extension"}],"last_generation":{"status":"completed"}}}]}'));
+  expect(parser.finish()).toEqual({changes:[{payload:{}}]});
+});
+
 it('streams only the selected saved-outbox payload messages and keeps all controls at every byte boundary',()=>{
   const messages='[null,true,false,-0,1.25e-2,1e400,"茶🙂",[],{},[{"messages":[2]}],{"__proto__":{"keep":true},"snapshot":{"payload":{"messages":[3]}},"messages":[4],"messages":[5]}]';
   for(const payloadFirst of [false,true])for(const width of [1,2,7,1024]){

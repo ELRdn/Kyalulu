@@ -15,6 +15,7 @@ const {refreshSummaries,retrieveMemories,renderMemoryBlock,deviceResponseGrammar
 const {assemblePortable}=await import('/src/lib/devicePrompt.ts');
 const {SSEDecoder}=await import('/src/lib/sse.ts');
 const {canonical}=await import('/src/lib/appSyncData.ts');
+const diagnostics=await import('/src/lib/deviceGenerationStore.ts');
 const check=(value,label)=>{if(!value)throw Error(label);};
 const same=(left,right)=>canonical(left)===canonical(right);
 const hashBytes=async bytes=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(byte=>byte.toString(16).padStart(2,'0')).join('');
@@ -115,7 +116,12 @@ async function snapshot(){
   const observing=active;active=false;
   try{
     const actor=await store.entity('actor',caseId),peer=await store.entity('peer',caseId),header=await rawHeader();
-    return {actor,peer,receipt:await store.getMeta(receiptKey())??null,header,historical:await historicalBytes(header,actor),
+    const receipt_header=await store.getMeta(receiptKey())??null;let receipt=receipt_header;
+    if(diagnostics.isGenerationHeader(receipt_header)){
+      const parts=[];for await(const bytes of diagnostics.generationReceiptChunks(caseId,{kind:'conversation',id:'actor'},'turn'))parts.push(bytes);
+      receipt=JSON.parse(await new Blob(parts).text());
+    }
+    return {actor,peer,receipt,receipt_header,header,historical:await historicalBytes(header,actor),
       domain:await memory.readDeviceMemoryDomain(caseId,actor.payload.storage_policy),outbox:await store.getMeta('sync:'+caseId+':outbox'),
       outbox_parts:await store.appTransaction(['parts'],'readonly',(tx,done)=>{
         const read=tx.objectStore('parts').getAll(IDBKeyRange.bound([caseId,'outbox','fixed'],[caseId,'outbox','fixed','\uffff']));
@@ -262,7 +268,9 @@ async function run(options){
     check(after.actor.payload.messages.length===(options.regenerate?80:82),'Success append or replacement count');
     const reply=after.actor.payload.messages.at(-1);check(reply.role==='assistant'&&reply.content==='新しい架空の返信です'&&reply.id===(options.regenerate?1001:1002),'Explicit saved assistant ID/content');
     check(after.receipt.assistant_id===reply.id&&after.receipt.user_id===(options.regenerate?79:1001),'Receipt source IDs');
-    check(same(after.actor.payload.last_generation,after.receipt),'Saved last_generation equals atomic receipt');
+    check(same(after.actor.payload.last_generation,diagnostics.generationSummary(after.receipt_header)),'Saved last_generation equals canonical receipt summary');
+    check(['raw_prompt','compiled','memory','telemetry','attempts'].every(key=>!Object.hasOwn(after.actor.payload.last_generation,key)),'Conversation metadata does not duplicate diagnostics');
+    check(after.header.memoryReferences===null,'Canonical receipt never manufactures an empty memory-reference index');
     check(after.actor.payload.state.turn===41&&after.actor.payload.state.location==='library'&&after.actor.payload.state.last_summary==='Authored story summary','Explicit state update and authored summary preservation');
     check(same(reply.before.state,options.regenerate?before.actor.payload.messages.at(-1).before.state:before.actor.payload.state)&&same(reply.after.state,after.actor.payload.state),'Before/after state snapshots use latest regeneration origin');
     check(after.receipt.raw_prompt===JSON.stringify(workerInput.messages),'Saved raw_prompt equals actual Worker input byte for byte');
@@ -272,7 +280,8 @@ async function run(options){
     check(same(completed,JSON.parse(JSON.stringify(expected))),'Complete public completion equals saved receipt minus Runtime diagnostic fields');
     check(['attempts','compiled','raw_prompt'].every(key=>!Object.hasOwn(completed,key)),'Diagnostic fields are absent from public completion');
     observation.public_completions.push({full_payload_equal:true,diagnostics_absent:true,saved_diagnostics_preserved:true,
-      event_json_bytes:new TextEncoder().encode(completions[0].data).length,saved_receipt_json_bytes:new TextEncoder().encode(JSON.stringify(after.receipt)).length});
+      event_json_bytes:new TextEncoder().encode(completions[0].data).length,saved_receipt_json_bytes:new TextEncoder().encode(JSON.stringify(after.receipt)).length,
+      canonical_header_json_bytes:new TextEncoder().encode(JSON.stringify(after.receipt_header)).length});
     observation.worker_inputs.at(-1).raw_prompt_equal=true;
     check(same(reply.after.memories,after.actor.payload.memories),'After own memory snapshot');
     check(same(after.actor.payload.summaries[0],before.actor.payload.summaries[0]),'Authored chapter summary remains exact');

@@ -125,9 +125,9 @@ export async function commitDeviceGeneration(source:MemorySource,change:Generati
           if(header&&(header.owner!==owner||header.id!==id||header.kind!=='conversation'||header.deleted)
             ||(header?.revision??0)!==source.revision||(header?.payloadParts?.token??null)!==source.bodyToken)throw Error('Generation source changed');
           const current=header??{...newEntity('conversation',id,{...source.metadata,messages:[]}),owner};
-          writeConversationGeneration(tx,current,change,bodyToken=>{
-            meta.put(change.receipt,key);for(const [name,value] of Object.entries(extra))meta.put(value,name);
-            done({...source,revision:source.revision+1,bodyToken,metadata:{...change.metadata,...(change.receipt.status==='completed'?{last_generation:change.receipt}:{})}});
+          writeConversationGeneration(tx,current,change,(bodyToken,projection)=>{
+            if(!projection)meta.put(change.receipt,key);for(const [name,value] of Object.entries(extra))meta.put(value,name);
+            done({...source,revision:source.revision+1,bodyToken,metadata:{...change.metadata,...(change.receipt.status==='completed'?{last_generation:projection??change.receipt}:{})}});
           });
         });
       });
@@ -222,7 +222,7 @@ export async function commitDeviceMemoryDomain(owner:string,policy:MemoryPolicy,
         ||!['completed','failed'].includes(generations[pending.generation_id]?.status))){tx.abort();return;}
       if(domain.pending&&(!changed.some(e=>e.id===domain.pending!.session_id&&e.payload.pending_generation===domain.pending!.generation_id)
         ||generations[domain.pending.generation_id]?.status!=='pending')){tx.abort();return;}
-      let index=0;const saved:AppEntity[]=[],sources:MemorySource[]=[],headers=new Map<string,StoredEntity>();
+      let index=0;const saved:AppEntity[]=[],sources:MemorySource[]=[],headers=new Map<string,StoredEntity>(),canonicalGenerations=new Set<string>();
       const verify=()=>{
         const next=expected[index++];if(!next){index=0;verifyReceipt();return;}
         const read=tx.objectStore('entities').get([owner,next.id]);read.onsuccess=()=>storageStep(tx,()=>{
@@ -273,8 +273,9 @@ export async function commitDeviceMemoryDomain(owner:string,policy:MemoryPolicy,
         const {source,memories,history,generation}=update;
         if(generation){
           const change={...generation,metadata:{...generation.metadata,memories}};
-          writeConversationGeneration(tx,headers.get(source.id)!,change,bodyToken=>{
-            sources.push({...source,revision:source.revision+1,bodyToken,metadata:{...change.metadata,...(change.receipt.status==='completed'?{last_generation:change.receipt}:{})}});writeMemories();
+          writeConversationGeneration(tx,headers.get(source.id)!,change,(bodyToken,projection)=>{
+            if(projection)canonicalGenerations.add(change.receipt.generation_id);
+            sources.push({...source,revision:source.revision+1,bodyToken,metadata:{...change.metadata,...(change.receipt.status==='completed'?{last_generation:projection??change.receipt}:{})}});writeMemories();
           });return;
         }
         writeConversationMemories(tx,headers.get(source.id)!,memories,bodyToken=>{
@@ -285,7 +286,7 @@ export async function commitDeviceMemoryDomain(owner:string,policy:MemoryPolicy,
         const next=structuredClone(domain);for(const record of [...saved,...sources]){const binding=memoryBinding(next,record.id);if(binding)binding.entity_revision=record.revision;}
         writeMemoryDomainTx(tx,next,updated=>{
         const meta=tx.objectStore('meta');
-        for(const [id,value] of Object.entries(generations))meta.put(value,'generation:'+owner+':'+id);
+        for(const [id,value] of Object.entries(generations))if(!canonicalGenerations.has(id))meta.put(value,'generation:'+owner+':'+id);
         done({domain:updated,sessions:saved,sources});
         });
       };

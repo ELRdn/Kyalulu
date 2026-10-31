@@ -6,6 +6,7 @@ import { readDeviceMemoryDomain,commitDeviceMemoryDomain } from './deviceMemoryS
 import { canonical } from './appSyncData';
 import { deviceFetch } from './deviceApi';
 import { deviceExecutionLockName } from './deviceExecution';
+import { readGenerationReceipt } from './deviceGenerationStore';
 import { createElement } from 'react';
 import { createRoot,type Root } from 'react-dom/client';
 import MemoryPanel from '../components/MemoryPanel';
@@ -158,18 +159,23 @@ export async function runAdapter(){
   check(legacy.payload.memory_scope_mode==='world'&&legacy.payload.memories[0].source_session_id==='adapter-legacy','UI migration committed own projection');
   const model='kyalulu-iq3m',response=await deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify({session_id:'adapter-b',generation_id:'adapter-generation',model_id:model,messages:[{role:'user',content:'鮭のお寿司が好き'}]})});
   check(response.ok&&(await response.text()).includes('event: done'),'Normal Device generation with scoped retrieval');
-  const b=(await entity('adapter-b',adapterOwner))!,trace=b.payload.last_generation.memory;
+  const b=(await entity('adapter-b',adapterOwner))!,diagnostic=await readGenerationReceipt(adapterOwner,{kind:'conversation',id:b.id},b.payload.last_generation.generation_id);
+  check(diagnostic.state==='inline','Fixture diagnostics retain complete inline compatibility');
+  if(diagnostic.state!=='inline')throw Error('Fixture diagnostics exceed inline representation');
+  const trace=diagnostic.value.memory;
   check(trace.injected.includes(a.payload.memories[0].id),'Real generator recalled peer fact');
   check(b.payload.memories.length===1&&b.payload.memories.every((row:any)=>row.source_session_id==='adapter-b')
     &&b.payload.messages.every((message:any)=>[message.before,message.after].every(snapshot=>!snapshot||snapshot.memories.every((row:any)=>row.source_session_id==='adapter-b'))),
     'Independent own fact retained without foreign canonical or snapshot rows');
-  check(b.payload.last_generation.raw_prompt.includes('鮭のお寿司が好き'),'Actual frozen prompt includes selected shared evidence');
+  check(diagnostic.value.raw_prompt.includes('鮭のお寿司が好き'),'Actual frozen prompt includes selected shared evidence');
   const beforeReply=b.payload.messages.at(-1).content;
   check((await adapterApi('/api/chat/sessions/adapter-a/data','DELETE')).status===200,'Attributed source erasure');
   const after=(await entity('adapter-b',adapterOwner))!;
   check(after.payload.memories.length===1&&after.payload.memories[0].source_session_id==='adapter-b','Equal independent fact survives source A erasure');
-  check(after.payload.messages.at(-1).content===beforeReply&&after.payload.last_generation.raw_prompt===undefined
-    &&after.payload.last_generation.compiled===undefined&&!after.payload.last_generation.memory.candidates.some((row:any)=>row.source_session_id==='adapter-a'),
+  const pruned=await readGenerationReceipt(adapterOwner,{kind:'conversation',id:after.id},after.payload.last_generation.generation_id);
+  check(pruned.state==='inline','Erased fixture diagnostic is still readable');if(pruned.state!=='inline')throw Error('Missing erased fixture diagnostic');
+  check(after.payload.messages.at(-1).content===beforeReply&&pruned.value.raw_prompt===undefined
+    &&pruned.value.compiled===undefined&&!pruned.value.memory.candidates.some((row:any)=>row.source_session_id==='adapter-a'),
     'Foreign debug evidence scrubbed while authored input/reply retained');
   const userId=after.payload.messages.find((message:any)=>message.role==='user').id;
   check((await adapterApi('/api/chat/history/'+userId,'DELETE')).status===200,'Delete a memory source message');

@@ -363,7 +363,8 @@ export async function compilePrompt(p: { character_id?: string | null; persona_i
   return j;
 }
 
-export async function fetchChatDebug(sessionId: string): Promise<{ session_id: string; settings: SessionSettings; compiled: CompiledPrompt; prompt_source?:'saved_generation'|'current_settings'|'unavailable'; history_count: number; approx_turn: number; relationship: string; state: Record<string, unknown>; generation: GenerationResult | null; memory: MemoryTrace | null; memory_session: { enabled: boolean; scope: string } }> {
+export type DeviceDiagnostics={state:'stored'|'erased'|'unavailable'|'corrupt';bytes?:number;sha256?:string;export_url?:string};
+export async function fetchChatDebug(sessionId: string): Promise<{ session_id: string; settings: SessionSettings; compiled: CompiledPrompt|null; prompt_source?:'saved_generation'|'current_settings'|'unavailable'|'stored'|'erased'|'corrupt'; device_diagnostics?:DeviceDiagnostics; story?:Record<string,unknown>; history_count: number; approx_turn: number; relationship: string; state: Record<string, unknown>; generation: GenerationResult | null; memory: MemoryTrace | null; memory_session: { enabled: boolean; scope: string } }> {
   const identity = cloudEpoch();
   const r = await fetch(`/api/chat/debug?session_id=${encodeURIComponent(sessionId)}`, { cache: "no-store" });
   const j = await checkedJson(r);
@@ -445,7 +446,7 @@ export async function fetchScenarios(include_nsfw = false): Promise<{ id: string
 }
 export type ExperimentDetail = {
   meta: ExperimentMeta & { metrics?: ExperimentMetrics };
-  turns: { turn: number; type: string; user: string; assistant: string; elapsed_ms: number; state: Record<string, unknown>; status?: string; token_budget?: Record<string, unknown>; telemetry?: Record<string, unknown>; compiled?: CompiledPrompt; generation_config?: GenerationResult["generation_config"]; validation?: GenerationResult["validation"]; raw_prompt?: string; state_before?: Record<string, unknown>; attempts?: unknown[] }[];
+  turns: { turn: number; type: string; user: string; assistant: string; elapsed_ms: number; state?: Record<string, unknown>; status?: string; token_budget?: Record<string, unknown>; telemetry?: Record<string, unknown>; compiled?: CompiledPrompt; generation_config?: GenerationResult["generation_config"]; validation?: GenerationResult["validation"]; raw_prompt?: string; state_before?: Record<string, unknown>; attempts?: unknown[]; device_diagnostics?:DeviceDiagnostics }[];
   raw_prompt: string;
   ratings: Record<string, { score: number; comment: string; rater?: string; updated_at?: string }>;
   metrics?: ExperimentMetrics | null;
@@ -695,7 +696,7 @@ export type GenerationResult = {
   state: Record<string, unknown>; telemetry: Record<string, unknown>;
   generation_config: GenerationRecord['generation_config'];
   validation: GenerationRecord['validation'];
-  raw_prompt?: string; attempts?: { number: number; raw: string; errors: string[]; messages: ChatMessage[] }[];
+  raw_prompt?: string; attempts?: { number: number; raw: string; errors: string[]; messages: ChatMessage[] }[]; device_diagnostics?:DeviceDiagnostics;
   snapshot_valid?: boolean; token_budget?: Record<string, unknown>;
 };
 export async function replayExperiment(id: string, allow_nsfw = false, options?:{request_id:string;signal:AbortSignal}): Promise<{ experiment_id: string }[]> {

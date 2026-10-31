@@ -7,6 +7,12 @@ import { encodeBytes, decodeBytes } from './remoteRpc';
 const chunkBytes=1024*1024,transfer='11111111-1111-4111-8111-111111111111';
 const hash=(raw:Uint8Array)=>new Sha256().update(raw).digest();
 
+it('refuses a frozen inline diagnostic reference before making any network request',async()=>{
+  const body={request_id:'fixed',changes:[{payload:{last_generation:{device_diagnostics:{holder:'private'}}}}]},before=structuredClone(body),call=vi.fn();
+  await expect(uploadSync(body,call,async()=>{})).rejects.toThrow('Local diagnostic reference');
+  expect(call).not.toHaveBeenCalled();expect(body).toEqual(before);
+});
+
 // Independent oracle frozen from e21f63b; do not coalesce its fragments.
 function* legacyJsonText(value:any,ancestors=new Set<object>()):Generator<string> {
   if(typeof value==='string'){

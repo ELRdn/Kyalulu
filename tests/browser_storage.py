@@ -1,7 +1,7 @@
 """Test-only logical reader for built bundles; snapshot all stores before decoding."""
 READ_ENTITIES_JS = r"""async (kinds=null)=>{
   const raw=await new Promise((resolve,reject)=>{
-    const request=indexedDB.open('kyalulu-app-v1',3);request.onerror=()=>reject(request.error);
+    const request=indexedDB.open('kyalulu-app-v1');request.onerror=()=>reject(request.error);
     request.onsuccess=()=>{
       const db=request.result;db.onversionchange=()=>db.close();
       const tx=db.transaction(['entities','parts'],'readonly'),entities=tx.objectStore('entities').getAll();

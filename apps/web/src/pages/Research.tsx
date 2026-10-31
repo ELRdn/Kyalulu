@@ -14,6 +14,7 @@ import {
 } from "../lib/api";
 import MarkdownView from "../components/MarkdownView";
 import { RuntimeDownload } from "../components/RuntimeMedia";
+import { SavedDiagnostics } from "../components/SavedDiagnostics";
 import "./research.css";
 import { useDocumentTitle } from "../lib/title";
 import { Link } from "react-router-dom";
@@ -68,6 +69,7 @@ const INSPECTOR_TABS: { id: InspectorTab; en: string; ja: string }[] = [
 function TurnInspector({ turn }: { turn: ExperimentDetail["turns"][number] }) {
   const en = useLanguage() === "en";
   const [tab, setTab] = useState<InspectorTab>("prompt");
+  const diagnostics=turn.device_diagnostics;
   return (
     <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
       <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
@@ -91,6 +93,7 @@ function TurnInspector({ turn }: { turn: ExperimentDetail["turns"][number] }) {
         ))}
       </div>
       <div style={{ fontSize: 10, color: "var(--text-dim)" }}>
+        {diagnostics ? <SavedDiagnostics info={diagnostics}/> : <>
         {tab === "prompt" && (
           <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 10, lineHeight: 1.6, background: "var(--bg-subtle)", padding: 8, borderRadius: 6, margin: 0, maxHeight: 200, overflow: "auto", border: "1px solid var(--border)" }}>
             {turn.raw_prompt || (en ? "(none)" : "(なし)")}
@@ -101,6 +104,7 @@ function TurnInspector({ turn }: { turn: ExperimentDetail["turns"][number] }) {
         {tab === "settings" && <><div>{en ? "requested: requested values / applied: effective values / unsupported: unsupported settings" : "requested: 要求 / applied: 適用 / unsupported: 未対応"}</div><JsonBlock value={turn.generation_config} /></>}
         {tab === "telemetry" && <JsonBlock value={turn.telemetry} />}
         {tab === "validation" && <JsonBlock value={{validation: turn.validation, attempts: turn.attempts}} />}
+        </>}
       </div>
     </div>
   );

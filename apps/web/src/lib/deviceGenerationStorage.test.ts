@@ -6,6 +6,8 @@ vi.mock('./appStore',async original=>({...await original<typeof import('./appSto
   let writes=0;return harness(fixture.records,fixture.meta,fixture.parts,JSON.stringify,mode,action,{write:()=>{
     if(fixture.failAt&&++writes===fixture.failAt)throw Error('Quota');
   }});
+},getMeta:async(key:string)=>structuredClone(fixture.meta.get(key)),readConversationSummary:async(id:string,owner:string)=>{
+  const record=decoded(fixture.records.get(JSON.stringify([owner,id])),fixture.parts);return record&&{count:record.payload.messages.length};
 }}));
 import { appTransaction,newEntity,writeEntity,writeOutbox } from './appStore';
 import { readMemorySource,readDeviceGenerationSource,commitDeviceGeneration } from './deviceMemoryStore';
@@ -13,6 +15,10 @@ import { deviceExecutionLockName } from './deviceExecution';
 import { Sha256 } from '../mobile/sha256';
 import { JsonStream } from './jsonStream';
 import type { GenerationChange } from './deviceGenerationChange';
+import { deviceFetch } from './deviceApi';
+import { scrubGenerationRecords } from './appStore';
+import { readGenerationReceipt } from './deviceGenerationStore';
+import * as generationStore from './deviceGenerationStore';
 
 const user={id:100,uuid:'new-user',role:'user',content:'New input 茶🙂'};
 const reply={id:101,uuid:'new-reply',role:'assistant',content:'New reply'};
@@ -97,4 +103,71 @@ it('rejects a corrupt final actor history part without publishing a partial cont
   const bytes=fixture.parts.get(key).slice();bytes[bytes.length-1]^=1;fixture.parts.set(key,bytes);
   const before=snapshot();await expect(readDeviceGenerationSource('chat','owner')).rejects.toThrow();expect(snapshot()).toEqual(before);
   await expect(readDeviceGenerationSource('chat','foreign')).rejects.toThrow();expect(snapshot()).toEqual(before);
+});
+it('commits a canonical receipt and conversation together, exposing explicit large diagnostics and preserved story data',async()=>{
+  let source=await seed('local');source=await commitDeviceGeneration(source,change(source,'pending'));
+  const completed=change(source,'completed'),trace={candidates:[{id:'memory-source',source_session_id:'source-other',content:'Private memory'}],injected:['memory-source']};
+  const compiled={system_prompt:'Original compiler',sections:{portable_snapshot:{world:{cast:[{id:'saved-cast',display_name:'Original cast'}]}}}};
+  completed.input=[{role:'system',content:'x'.repeat(2*1024*1024)},{role:'user',content:user.content}];
+  completed.receipt={...completed.receipt,compiled,memory:trace,telemetry:{memory:trace},state:{turn:1},validation:{ok:true,errors:[]}};
+  completed.metadata.state={turn:1,relationship_state:{stage:'friend'}};
+  const outbox=structuredClone(fixture.meta.get('sync:owner:outbox'));
+  source=await commitDeviceGeneration(source,completed);
+  const header=fixture.meta.get('generation:owner:gen');expect(header.format).toBe('device-generation@1');
+  expect(header.sections.telemetryMemory).toBeUndefined();expect(body().memoryReferences).toBeNull();
+  expect(body().payload.last_generation).toEqual(source.metadata.last_generation);
+  for(const name of ['raw_prompt','compiled','memory','telemetry'])expect(source.metadata.last_generation[name]).toBeUndefined();
+  expect(body().payload.messages.at(-1)).toEqual(reply);expect(body().payload.draft).toBe('Unsent draft');expect(fixture.meta.get('sync:owner:outbox')).toEqual(outbox);
+  const status=await (await deviceFetch('/api/chat/generations/gen?session_id=chat')).json();
+  expect(status).toMatchObject({status:'completed',device_diagnostics:{state:'stored',bytes:expect.any(Number)}});expect(status.sections).toBeUndefined();
+  const debug=await (await deviceFetch('/api/chat/debug?session_id=chat')).json();
+  expect(debug).toMatchObject({history_count:22,prompt_source:'stored',compiled:null,device_diagnostics:{state:'stored'},story:compiled.sections.portable_snapshot.world});
+  const full=await (await deviceFetch(status.device_diagnostics.export_url)).json();
+  expect(full).toEqual({...completed.receipt,raw_prompt:JSON.stringify(completed.input)});
+  const sourceBefore=JSON.stringify(body().payload),oldPrompt=header.sections.prompt.token;
+  await appTransaction<void>(['entities','meta','parts'],'readwrite',(tx,done)=>{scrubGenerationRecords(tx,'owner','source-other');done();});
+  expect(JSON.stringify(body().payload)).toBe(sourceBefore);expect([...fixture.parts.keys()].some(key=>key.includes(oldPrompt))).toBe(false);
+  const erased=await (await deviceFetch('/api/chat/debug?session_id=chat')).json();expect(erased.prompt_source).toBe('erased');expect(erased.generation.reply).toBe(reply.content);
+  expect(erased.generation.memory.candidates).toEqual([]);expect(erased.generation.raw_prompt).toBeUndefined();
+});
+it.each(['inline-erased','inline-deleted','large-erased','large-deleted'])('discards diagnostics replaced before the debug response (%s)',async mode=>{
+  let source=await seed('local');source=await commitDeviceGeneration(source,change(source,'pending'));
+  const completed=change(source,'completed'),canary='PRIVATE DIAGNOSTIC BEFORE ERASURE';
+  completed.input=[{role:'system',content:canary+(mode.startsWith('large')?'x'.repeat(2*1024*1024):'')}];
+  completed.receipt={...completed.receipt,compiled:{system_prompt:canary,sections:{portable_snapshot:{world:{cast:[{display_name:canary}]}}}},
+    memory:{candidates:[{id:'source-memory',source_session_id:'source-other',content:canary}],injected:['source-memory']}};
+  completed.metadata.state={turn:1,relationship_state:{stage:'friend'}};
+  await commitDeviceGeneration(source,completed);
+  const read=generationStore.readGenerationHeader;let reads=0;
+  const observed=vi.spyOn(generationStore,'readGenerationHeader').mockImplementation(async(...args)=>{
+    if(++reads===2)await appTransaction<void>(['entities','meta','parts'],'readwrite',(tx,done)=>{
+      scrubGenerationRecords(tx,'owner',mode.endsWith('deleted')?'chat':'source-other');done();
+    });
+    return read(...args);
+  });
+  try{
+    const response=await deviceFetch('/api/chat/debug?session_id=chat');expect(response.status).toBe(200);
+    const debug=await response.json();expect(reads).toBe(2);
+    expect(debug.prompt_source).toBe('corrupt');expect(debug.compiled).toBeNull();expect(debug.memory).toBeNull();expect(debug.story).toBeUndefined();
+    expect(debug.generation).toEqual({generation_id:'gen',status:'completed'});
+    expect(JSON.stringify(debug).includes(canary)).toBe(false);
+  }finally{observed.mockRestore();}
+});
+it.each(['missing','conflict'])('retains legacy inline evidence before a new canonical completion (%s)',async mode=>{
+  await seed('local');const original=body(),old={...receipt('completed'),generation_id:'old',user_id:1,assistant_id:2,raw_prompt:'Original legacy prompt',compiled:{original:true},extension:{keep:'legacy'}};
+  const legacy={...original,payload:{...original.payload,last_generation:old}};
+  await appTransaction<void>(['entities','meta','parts'],'readwrite',(tx,done)=>writeEntity(tx,legacy,'put',done));
+  let source=(await readMemorySource('chat','owner'))!;source=await commitDeviceGeneration(source,change(source,'pending'));
+  const before=snapshot(),completed=change(source,'completed');completed.input=[{role:'user',content:user.content}];
+  if(mode==='conflict')fixture.meta.set('generation:owner:old',{...old,raw_prompt:'Conflicting retained evidence'});
+  if(mode==='missing'){
+    await commitDeviceGeneration(source,completed);
+    const retained=await readGenerationReceipt('owner',{kind:'conversation',id:'chat'},'old');expect(retained.state).toBe('inline');
+    if(retained.state==='inline')expect(retained.value).toEqual(old);
+    expect(body().payload.last_generation.generation_id).toBe('gen');
+  }else{
+    const conflictBefore=snapshot();await expect(commitDeviceGeneration(source,completed)).rejects.toThrow();expect(snapshot()).toEqual(conflictBefore);
+    expect(body().payload.last_generation).toEqual(old);expect(fixture.meta.get('generation:owner:gen').status).toBe('pending');
+  }
+  expect(before.records.length).toBe(1);
 });

@@ -4,7 +4,7 @@ import type { AppEntity } from './appStore';
 function removeLocalGenerationDiagnostics(payload:AppEntity['payload']) {
   const generation=payload.last_generation;
   if(generation){
-    for(const key of ['raw_prompt','compiled','attempts','memory','execution_lock'])delete generation[key];
+    for(const key of ['raw_prompt','compiled','attempts','memory','execution_lock','device_diagnostics','reply_sha256'])delete generation[key];
     if(generation.validation)generation.validation.errors=[];
     if(generation.telemetry)delete generation.telemetry.memory;
   }
@@ -25,6 +25,7 @@ export function conversationBinder(payload:AppEntity['payload'],id:string) {
 }
 export function rebindConversation(payload: AppEntity['payload'], id: string) {
   const result=structuredClone(payload),bind=conversationBinder(result,id);
+  if(result.last_generation?.device_diagnostics)removeLocalGenerationDiagnostics(result);
   bind(result);
   for(const message of result.messages??[]){bind(message.before);bind(message.after);}
   return result;

@@ -121,6 +121,16 @@ it('keeps local retrieval diagnostics and worker leases out of the synchronized 
   let id=100;expect(JSON.stringify(receiveConversation(payload,undefined,()=>++id))).not.toContain('FOREIGN SECRET');
   expect(payload.last_generation.raw_prompt).toBe('FOREIGN SECRET');
 });
+it('never carries an owner/holder diagnostic reference through sync or independent rebinding',()=>{
+  const payload:any=wire();payload.last_generation={...payload.last_generation,status:'completed',reply_sha256:'private hash',
+    device_diagnostics:{format:'device-generation@1',generation_id:'private-generation',holder:{kind:'conversation',id:'chat'},state:'stored'}};
+  const before=structuredClone(payload);let id=100;
+  for(const next of [withLibrarySnapshots(payload,[]),receiveConversation(payload,undefined,()=>++id),rebindConversation(payload,'independent')]){
+    expect(next.last_generation.device_diagnostics).toBeUndefined();expect(next.last_generation.reply_sha256).toBeUndefined();
+    expect(JSON.stringify(next)).not.toContain('private-generation');
+  }
+  expect(payload).toEqual(before);
+});
 it('remaps memory objects shared by current and historical snapshots only once',()=>{
   const payload=wire();payload.messages[1].after!.memories=payload.memories;
   let n=40;const received=receiveConversation(payload,undefined,()=>++n);
