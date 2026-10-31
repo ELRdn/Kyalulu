@@ -271,7 +271,7 @@ function ExperimentColumn({
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           <RuntimeDownload
             href={`/api/experiments/${encodeURIComponent(detail.meta.experiment_id as string)}/export`}
-            download
+            download="experiment.json"
             style={{ fontSize: 10, color: "var(--accent)", textDecoration: "underline" }}
           >
             {en ? "Export" : "書き出し"}

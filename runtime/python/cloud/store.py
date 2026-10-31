@@ -206,8 +206,9 @@ class CloudStore:
             db.execute("INSERT INTO funds VALUES('private-test-budget',?,253402300799,'private') "
                        "ON CONFLICT(id) DO UPDATE SET remaining=excluded.remaining", (available,))
             return
-        key = "subsidy:" + period()
-        end = datetime.now(timezone(timedelta(hours=9)))
+        now = time.time()
+        key = "subsidy:" + period(now)
+        end = datetime.fromtimestamp(now, timezone(timedelta(hours=9)))
         end = (end.replace(day=28) + timedelta(days=4)).replace(
             day=1, hour=0, minute=0, second=0, microsecond=0
         )

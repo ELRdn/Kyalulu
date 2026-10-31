@@ -16,6 +16,59 @@ def history():
     return json.loads((Path(__file__).parent/'fixtures/unified-history.json').read_text(encoding='utf-8'))
 
 
+def test_confirmed_manual_correction_before_regenerated_reply_preserves_original_source_turn():
+    incoming=json.loads((Path(__file__).parent/'fixtures/unified-regeneration-memory.json').read_text(encoding='utf-8'))
+    value=entity_bridge.validate(incoming['payload'])
+    before=value.messages[1].before
+    assert before.state.turn==0
+    memory=before.memories[0]
+    assert memory.origin=='model_edited' and memory.source_turn==1 and memory.source_message_ids==[1]
+    assert memory.source_quote=='Corrected tea' and memory.model_extra['source_revision']=='manual:4'
+
+
+@pytest.mark.parametrize('fault',['origin','kind','confirmation','unsafe-version','far-future','after','future-id'])
+def test_unconfirmed_or_misplaced_future_correction_still_rejected(fault):
+    from python.cloud.store import CloudError
+    incoming=json.loads((Path(__file__).parent/'fixtures/unified-regeneration-memory.json').read_text(encoding='utf-8'))
+    payload=incoming['payload'];memory=payload['messages'][1]['before']['memories'][0]
+    if fault=='origin':memory['origin']='model'
+    if fault=='kind':memory['source_kind']='story_event'
+    if fault=='confirmation':memory['confirmation']='unverified'
+    if fault=='unsafe-version':memory['version']=2**53
+    if fault=='far-future':memory['source_turn']=2
+    if fault=='after':payload['messages'][1]['after']['memories'][0]['source_turn']=2
+    if fault=='future-id':memory['source_message_ids']=[2]
+    with pytest.raises(CloudError):entity_bridge.validate(payload)
+
+
+def test_confirmed_correction_is_preserved_in_native_snapshot_storage(bridge):
+    service,owner,path=bridge;accept(service,owner)
+    incoming=json.loads((Path(__file__).parent/'fixtures/unified-regeneration-memory.json').read_text(encoding='utf-8'))
+    sid=service.push(owner,'corrected-history',[incoming],runtime_path=path)['changes'][0]['runtime_session_id']
+    with sqlite3.connect(path) as db:
+        snapshot=json.loads(db.execute('SELECT result_json FROM generations WHERE session_id=?',(sid,)).fetchone()[0])['sync_snapshots']
+        db.row_factory=sqlite3.Row
+        mapping=json.loads(db.execute('SELECT mapping FROM unified_runtime_links WHERE session_id=?',(sid,)).fetchone()[0])
+        db.execute('ATTACH DATABASE ? AS runtime',(str(path),))
+        returned=entity_bridge.export_session(db,sid,incoming['id'],mapping)
+    before=snapshot['before'];memory=before['memories'][0]
+    assert before['state']['turn']==0 and memory['source_turn']==1
+    assert memory['origin']=='model_edited' and json.loads(memory['source_revision'])['original_source_revision']=='manual:4'
+    assert memory['content']==memory['source_quote']=='Corrected tea'
+    entity_bridge.validate(returned)
+    assert returned['memories'][0]['source_revision']=='manual:4'
+    assert returned['messages'][1]['before']['memories'][0]['source_revision']=='manual:4'
+
+
+def test_legacy_native_provenance_remains_opaque_on_confirmed_correction():
+    incoming=json.loads((Path(__file__).parent/'fixtures/unified-regeneration-memory.json').read_text(encoding='utf-8'))
+    memory=incoming['payload']['messages'][1]['before']['memories'][0]
+    revision=json.dumps({'entity_id':'device-conversation','memory_id':memory['id'],'memory_uuid':memory['uuid'],'source_session_id':memory['source_session_id']})
+    memory['source_revision']=revision
+    value=entity_bridge.validate(incoming['payload'])
+    assert value.messages[1].before.memories[0].model_extra['source_revision']==revision
+
+
 @pytest.mark.asyncio
 async def test_synced_snapshots_branch_from_historical_memory_and_regenerate_with_exact_prior_state(bridge):
     service,owner,path=bridge;accept(service,owner)

@@ -256,7 +256,10 @@ class Hub:
                             raise ValueError()
                         connection = uuid.UUID(control["connection_id"])
                     client = self.sessions.get(connection)
-                    if not client or client.device["host"] != peer.device["id"]:
+                    # A response can arrive after detach; discard it without closing other clients.
+                    if client is None:
+                        continue
+                    if client.device["host"] != peer.device["id"]:
                         raise ValueError()
                     if raw is None:
                         client.stop(1000)

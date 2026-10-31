@@ -1,0 +1,251 @@
+<!doctype html><meta charset="utf-8"><title>Disposable receive projection acceptance</title>
+<p>Fictional Chromium IndexedDB and virtual fetch only.</p>
+<script type="module">
+import history from './unified-history.json';
+import {receiveConversation,rebindConversation,receiveLibrarySnapshot,receiveCreatorSnapshot,conversationSettings} from './sync-staging-oracle.ts';
+import {oldMemoryEvents} from './sync-branch-ack-oracle.ts';
+import {appTransaction,writeEntity,entity,getMeta,memoryEventsKey} from '/src/lib/appStore.ts';
+import {rememberOwner,setGenerationBusy} from '/src/lib/appContext.ts';
+import {receiveSyncPage,syncNow,syncState} from '/src/lib/appSync.ts';
+import {JsonStream} from '/src/lib/jsonStream.ts';
+
+const params=new URL(location.href).searchParams,scenario=params.get('scenario'),resumed=params.has('resume');
+const owner='fictional-projection-owner',foreign='fictional-projection-foreign',id='source',prefix='sync:'+owner+':';
+const creator='created_'+'a'.repeat(32),historicCreator='created_'+'b'.repeat(32),maximum=50000,foreignMaximum=9000000;
+const recoveryID='483d7137-2804-46df-bec1-5260522ec299',fixedNow=1793458800000;
+const check=(v,m)=>{if(!v)throw Error(m);};
+const canonical=v=>JSON.stringify(v,(_,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.keys(x).sort().map(k=>[k,x[k]])):x);
+const same=(a,b,m)=>check(canonical(a)===canonical(b),m);
+const sha=async b=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',b))).map(x=>x.toString(16).padStart(2,'0')).join('');
+const encode=v=>new TextEncoder().encode(JSON.stringify(v));
+const row=(id,payload,extra={})=>({owner,id,kind:'conversation',revision:7,serverRevision:3,dirty:false,deleted:false,pinned:true,opened:123,payload,...extra});
+const basic=(session,n=1)=>({storage_policy:'sync',settings:{session_id:session,library_binding:null},state:{session_id:session},messages:[{id:n,uuid:session+'-uuid',role:'user',content:'FICTIONAL'}],memories:[],summaries:[]});
+const allMemories=p=>[...(p.memories??[]),...(p.messages??[]).flatMap(m=>[...(m?.before?.memories??[]),...(m?.after?.memories??[])])];
+function payload(local=false){
+  const p=rebindConversation(history.payload,id);
+  p.source={remote:{source:'fixture',source_id:'fictional-origin',sha256:'a'.repeat(64),document_index:9},unknown:{keep:['日本語','🧪']}};
+  p.draft={text:'未送信',selection:[1,3]};p.extension={['__proto__']:{safe:true},nested:{'10':'ten','2':'two'}};
+  p.messages.forEach((m,i)=>{m.content=(local?'LOCAL ':'REMOTE ')+('日本語🌌🧪 é \\"\n').repeat(local?28000:300)+i;m.extension={keep:i};});
+  const memory=(identifier,uuid)=>({...structuredClone(p.memories[0]),id:identifier,uuid,scope:id,source_session_id:id,source_message_ids:[1],source_turn:1});
+  p.memories=[memory(local?'local-memory-id':'remote-memory-id','stable-root')];
+  p.messages[1].after.memories=[memory('historic-memory','stable-historic')];
+  p.messages[3].before.memories=[memory('historic-before','stable-before')];
+  p.messages[3].after.memories=[memory('historic-last','stable-last')];
+  p.summaries[0].method='extractive';p.summaries[0].text='[1: user] [2: assistant] [999: unrelated]';
+  p.last_generation={user_id:3,assistant_id:4,raw_prompt:'private',compiled:'private',memory:{candidates:[]},validation:{errors:['private']}};
+  // These references exist only in history, with a distinct required Library/creator record.
+  p.messages[1].before.settings.library_binding.character={id:'historical-character',revision:1};
+  p.messages[1].before.state.world_id=historicCreator+'@1';
+  p.library_snapshots['historical-character@1']=structuredClone(p.library_snapshots['character@1']);
+  p.creator_snapshots[historicCreator+'@1']=structuredClone(p.creator_snapshots[creator+'@1']);
+  if(local){
+    const ids=new Map(p.messages.map((m,i)=>[m.id,41+i]));
+    for(const m of allMemories(p))m.source_message_ids=m.source_message_ids.map(n=>ids.get(n));
+    for(const s of p.summaries)s.source_message_ids=s.source_message_ids.map(n=>ids.get(n));
+    p.messages.forEach((m,i)=>m.id=41+i);p.messages[3].uuid='local-only-uuid';
+    p.last_generation.user_id=43;p.last_generation.assistant_id=44;
+    p.summaries[0].text='[41: user] [42: assistant] [999: unrelated]';
+  }
+  return scenario==='messages-first'?{messages:p.messages,...Object.fromEntries(Object.entries(p).filter(([k])=>k!=='messages'))}:p;
+}
+const events=[{id:1,scope:id,memory_id:'local-memory-id',kind:'edited',detail:{candidates:[{id:'local-memory-id',score:.9},{id:'missing',score:0}]}},
+  {id:2,scope:id,memory_id:'historic-memory',source_memory_id:'older-memory',kind:'accepted',detail:{keep:'whole'}}];
+const stats={parts:[],roots:[],previous:[],foreignRows:0,getAll:0,outputParts:0,faults:0,api:[],downloads:0};
+let measuring=false,source,records,changes,before,header,expected,expectedEvents=events,sequence=maximum;
+const originals={get:IDBObjectStore.prototype.get,openCursor:IDBObjectStore.prototype.openCursor,getAll:IDBObjectStore.prototype.getAll,
+  add:IDBObjectStore.prototype.add,finish:JsonStream.prototype.finish,map:Array.prototype.map,uuid:crypto.randomUUID,now:Date.now};
+function install(){
+  Date.now=()=>fixedNow;
+  if(['delete-recovery','delete-after-skip'].includes(scenario)){
+    let first=true;crypto.randomUUID=()=>{if(first){first=false;return recoveryID;}return originals.uuid.call(crypto);};
+  }
+  IDBObjectStore.prototype.get=function(key){
+    const request=originals.get.call(this,key);
+    if(measuring&&this.name==='parts'){
+      stats.parts.push(key);
+      request.addEventListener('success',()=>{
+        if(['owner-body','busy-body'].includes(scenario)&&key[2]===id&&key[4]===header.payloadParts.chunks-1&&stats.faults===0){stats.faults++;if(scenario==='owner-body')rememberOwner(foreign);else setGenerationBusy(true);}
+      });
+    }
+    if(measuring&&this.name==='entities'&&Array.isArray(key)&&key[1]===id&&scenario.endsWith('-header')&&stats.faults===0){
+      request.addEventListener('success',()=>{stats.faults++;if(scenario==='owner-header')rememberOwner(foreign);else setGenerationBusy(true);});
+    }
+    return request;
+  };
+  IDBObjectStore.prototype.openCursor=function(...args){
+    const r=originals.openCursor.apply(this,args);
+    if(measuring&&this.name==='entities')r.addEventListener('success',()=>{if(r.result&&r.result.value.owner!==owner)stats.foreignRows++;});
+    return r;
+  };
+  IDBObjectStore.prototype.getAll=function(...args){if(measuring&&this.name==='entities'){stats.getAll++;throw Error('Whole entities.getAll forbidden');}return originals.getAll.apply(this,args);};
+  IDBObjectStore.prototype.add=function(value,key){
+    if(measuring&&this.name==='parts'&&scenario==='quota'&&stats.outputParts>0){stats.faults++;throw new DOMException('Fictional quota','QuotaExceededError');}
+    const r=originals.add.call(this,value,key);
+    if(measuring&&this.name==='parts')r.addEventListener('success',()=>{stats.outputParts++;});return r;
+  };
+  JsonStream.prototype.finish=function(){
+    const value=originals.finish.call(this);
+    if(measuring&&value&&typeof value==='object'&&!Array.isArray(value)&&Array.isArray(value.messages))stats.roots.push({callback:typeof this.onMessage==='function',messages:value.messages.length,content:value.messages.some(m=>m&&Object.hasOwn(m,'content'))});
+    return value;
+  };
+  Array.prototype.map=function(fn,...rest){
+    // Observe the exact previous-message UUID -> numeric map consumed by both receivers.
+    if(measuring&&/m\.uuid\s*,\s*m\.id/.test(String(fn)))stats.previous.push({count:this.length,content:this.some(m=>m&&Object.hasOwn(m,'content')),keys:[...new Set(this.flatMap(m=>m?Object.keys(m):[]))]});
+    return originals.map.call(this,fn,...rest);
+  };
+}
+function uninstall(){measuring=false;for(const k of ['get','getAll','openCursor','add'])IDBObjectStore.prototype[k]=originals[k];JsonStream.prototype.finish=originals.finish;Array.prototype.map=originals.map;crypto.randomUUID=originals.uuid;Date.now=originals.now;setGenerationBusy(false);rememberOwner(owner);}
+const raw=()=>appTransaction(['entities','meta','parts'],'readonly',(tx,done)=>{
+  const result={},names=['entities','meta','parts'];let i=0;
+  const next=()=>{const name=names[i++];if(!name){done(result);return;}const s=tx.objectStore(name),keys=s.getAllKeys(),values=s.getAll();values.onsuccess=()=>{result[name]=keys.result.map((k,j)=>[k,values.result[j]]);next();};};next();
+});
+async function physical(value){return {...value,parts:await Promise.all(value.parts.map(async([key,b])=>({key,size:b.length,sha256:await sha(b)})))};}
+const b64=b=>{let s='';for(let i=0;i<b.length;i+=8192)s+=String.fromCharCode(...b.subarray(i,i+8192));return btoa(s);};
+function evidence(value,identifier,target,eventRows,oldEvents){
+  const stored=value.entities.find(([k])=>k[0]===owner&&k[1]===identifier)[1];
+  return {header:stored,parts:value.parts.filter(([k])=>k[0]===owner&&k[1]==='entity'&&k[2]===identifier&&k[3]===stored.payloadParts?.token).map(([key,b])=>({key,data:b64(b)})),
+    inline_json:stored.payload?JSON.stringify(stored.payload):undefined,expected_json:JSON.stringify(target),actual_events_json:JSON.stringify(eventRows),expected_events_json:JSON.stringify(oldEvents),
+    retained_memory_ids:allMemories(source.payload).map(m=>m.id)};
+}
+async function seed(){
+  source=row(id,payload(true),{dirty:['dirty','delete-recovery','delete-after-skip'].includes(scenario)});
+  records=[source,row('unselected',basic('unselected',maximum)),row('foreign',basic('foreign',foreignMaximum),{owner:foreign}),
+    row('preset',{storage_policy:'sync',unknown:{keep:true}},{kind:'preset'})];
+  const remote={id,kind:'conversation',revision:4,deleted:false,payload:payload()};
+  changes=[remote];
+  if(scenario==='same-revision')remote.revision=3;
+  if(scenario==='inline')source.payload.messages.forEach(m=>m.content='small inline '+m.id);
+  if(scenario==='nonconversation')changes=[{id:'preset',kind:'preset',revision:4,deleted:false,payload:{storage_policy:'sync',unknown:{updated:['日本語','🧪']}}}];
+  if(scenario==='delete-recovery')changes=[{id,kind:'conversation',revision:4,deleted:true,payload:{}}];
+  if(scenario==='delete-after-skip')changes.push({id,kind:'conversation',revision:5,deleted:true,payload:{}});
+  if(scenario==='delete-after-update')changes.push({id,kind:'conversation',revision:5,deleted:true,payload:{}});
+  for(const [identifier,key] of [['character','character@1'],['historical-character','historical-character@1']]){
+    let fixed;for(const revision of [1,2])fixed=receiveLibrarySnapshot(fixed,owner,identifier,revision,history.payload.library_snapshots['character@'+revision]);
+    records.push(fixed);
+  }
+  for(const identifier of [creator,historicCreator]){
+    let fixed;for(const revision of [1,2])fixed=receiveCreatorSnapshot(fixed,owner,identifier+'@'+revision,'world',history.payload.creator_snapshots[creator+'@'+revision].document);records.push(fixed);
+  }
+  if(scenario==='required-snapshot')delete remote.payload.library_snapshots['historical-character@1'];
+  if(scenario==='missing-required'){delete remote.payload.library_snapshots['historical-character@1'];records=records.filter(r=>r.id!=='historical-character');}
+  if(scenario==='conflicting-required')remote.payload.library_snapshots['historical-character@1'].name='CONFLICT';
+  if(scenario==='two-sources'){
+    const second=rebindConversation(source.payload,'second-source');
+    for(const m of second.messages)m.id+=100;
+    for(const m of allMemories(second))m.source_message_ids=m.source_message_ids.map(n=>n+100);
+    for(const s of second.summaries)s.source_message_ids=s.source_message_ids.map(n=>n+100);
+    second.last_generation.user_id+=100;second.last_generation.assistant_id+=100;
+    records.push(row('second-source',second));changes.push({...remote,id:'second-source',payload:rebindConversation(remote.payload,'second-source')});
+  }
+  await appTransaction(['entities','meta','parts'],'readwrite',(tx,done)=>{
+    tx.objectStore('entities').clear();tx.objectStore('meta').clear();tx.objectStore('parts').clear();
+    for(const r of records)if(scenario==='inline'&&r.id===id)tx.objectStore('entities').put(r);else writeEntity(tx,r);
+    const meta=tx.objectStore('meta');meta.put(true,prefix+'consent');meta.put(11,prefix+'cursor');meta.put(7,'message-sequence:'+owner);
+    meta.put(events,memoryEventsKey(owner,id));meta.put({keep:'foreign'},'sync:'+foreign+':remote:foreign');done();
+  });
+  before=await raw();header=before.entities.find(([k])=>k[0]===owner&&k[1]===id)[1];
+  if(scenario!=='inline')check(header.payloadParts.size>2*1024*1024&&header.payloadParts.chunks>=3,'Local source must exceed 2MiB/multiple parts');
+  if(['corrupt-last','missing-last','bad-json','bad-utf8','skip-corrupt'].includes(scenario)){
+    const chunks=before.parts.filter(([k])=>k[0]===owner&&k[2]===id),last=chunks.at(-1),b=last[1].slice();
+    if(scenario==='corrupt-last'||scenario==='skip-corrupt'){
+      const position=b.findIndex((v,i)=>v===76&&b[i+1]===79&&b[i+2]===67&&b[i+3]===65&&b[i+4]===76);
+      check(position>=0,'SHA-only corruption marker absent');b[position]=77;
+    }else b[b.length-(scenario==='bad-utf8'?2:1)]=scenario==='bad-utf8'?255:33;
+    if(scenario==='bad-json'||scenario==='bad-utf8'){
+      const all=chunks.map(([k,v])=>k[4]===last[0][4]?b:v),joined=new Uint8Array(all.reduce((n,v)=>n+v.length,0));let offset=0;for(const v of all){joined.set(v,offset);offset+=v.length;}header.payloadParts.sha256=await sha(joined);
+    }
+    await appTransaction(['entities','parts'],'readwrite',(tx,done)=>{if(scenario==='missing-last')tx.objectStore('parts').delete(last[0]);else tx.objectStore('parts').put(b,last[0]);tx.objectStore('entities').put(header);done();});
+    before=await raw();
+  }
+}
+// Expected full outputs use checksum-frozen receive/bind/snapshot functions, never current product helpers.
+function oracle(){
+  const map=new Map(records.filter(r=>r.owner===owner).map(r=>[r.id,structuredClone(r)]));let n=maximum;
+  for(const remote of changes){
+    const local=map.get(remote.id);
+    if(remote.deleted){
+      if(local.dirty&&!local.deleted){const p=rebindConversation(receiveConversation(local.payload,undefined,()=>++n),recoveryID);p.storage_policy='local';p.recovery_from=local.id;p.last_generation=null;
+        const recovery={...local,id:recoveryID,payload:p,revision:1,serverRevision:0,dirty:false,deleted:false};expectedEvents=oldMemoryEvents(local,recovery,events);map.set('RECOVERY',recovery);}
+      map.set(remote.id,{...remote,owner,payload:{storage_policy:'sync',deleted_revision:remote.revision},revision:local.revision+1,serverRevision:remote.revision,dirty:false,pinned:false,opened:fixedNow});continue;
+    }
+    if(local?.dirty||local&&local.serverRevision>=remote.revision&&!local.payload.cache_evicted)continue;
+    let p=remote.payload;
+    if(remote.kind==='conversation'){
+      p=rebindConversation(receiveConversation(p,local?.payload,()=>++n),remote.id);
+      const libraries=new Set(),creators=new Set();
+      for(const settings of [...conversationSettings(p),...p.messages.flatMap(m=>[m.before?.state,m.after?.state].filter(Boolean))])for(const kind of ['persona','world']){
+        const ref=settings[kind+'_id'];if(typeof ref!=='string'||!ref.startsWith('created_')||creators.has(kind+ref))continue;creators.add(kind+ref);
+        const s=p.creator_snapshots[ref];map.set(ref.split('@')[0],receiveCreatorSnapshot(map.get(ref.split('@')[0]),owner,ref,kind,s.document));
+      }
+      for(const settings of conversationSettings(p))for(const [field,value] of Object.entries(settings.library_binding??{}))for(const ref of (field==='lorebooks'?value:[value])){
+        if(!ref||libraries.has(ref.id+'@'+ref.revision))continue;libraries.add(ref.id+'@'+ref.revision);const s=p.library_snapshots?.[ref.id+'@'+ref.revision];if(s)map.set(ref.id,receiveLibrarySnapshot(map.get(ref.id),owner,ref.id,ref.revision,s));
+      }
+    }
+    map.set(remote.id,{...remote,owner,payload:p,revision:(local?.revision??0)+1,serverRevision:remote.revision,dirty:false,pinned:local?.pinned??false,opened:local?.opened??0});
+  }
+  sequence=n;return map;
+}
+async function transport(){
+  const original=globalThis.fetch;
+  globalThis.fetch=async(input,init)=>{
+    const path=String(input);stats.api.push(path);
+    if(path==='/api/mobile/status')return Response.json({cloud_mode:true,authenticated:true,owner_scope:owner});
+    check(new Headers(init?.headers).get('X-Kyalulu-Owner')===owner,'Wrong virtual request owner');
+    if(path.startsWith('/api/cloud/app/sync?'))return Response.json({changes:[{id,kind:'conversation',revision:3,deleted:false,payload_ref:{intentionally:'not fetched'}},
+      {id:'preset',kind:'preset',revision:3,deleted:false,payload_ref:{intentionally:'not fetched'}}],cursor:12,has_more:false});
+    stats.downloads++;throw Error('Unexpected virtual download/upload '+path);
+  };
+  try{await syncNow(owner);}finally{globalThis.fetch=original;}
+}
+async function run(){
+  rememberOwner(owner);
+  if(resumed){const saved=await entity(id,owner),stored=JSON.parse(sessionStorage.getItem('projection-expected'));same(saved,stored,'Reload changed complete payload/UUID/numeric/memory IDs');check(await getMeta(prefix+'cursor')===12,'Reload cursor changed');return {ok:true,scenario,resumed:true,stats,reload_complete_payload:true};}
+  await seed();
+  const failing=['corrupt-last','missing-last','bad-json','bad-utf8','quota','owner-body','busy-body','missing-required','conflicting-required'].includes(scenario);
+  const skip=scenario.startsWith('skip-')||scenario.endsWith('-header');
+  if(!failing&&!skip)expected=oracle();
+  const physicalBefore=await physical(before);install();measuring=true;let rejected=false;
+  try{if(skip)await transport();else try{await receiveSyncPage(owner,changes,12);}catch{rejected=true;}}finally{uninstall();}
+  const after=await raw(),physicalAfter=await physical(after);
+  check(stats.foreignRows===0&&stats.getAll===0,'Foreign/bulk scan');
+  if(failing||scenario.endsWith('-header')){
+    if(skip)check(syncState().phase==='error','Header owner/busy guard did not reject');else check(rejected,'Invalid receive accepted');
+    same(physicalAfter,physicalBefore,'Atomic rollback changed physical source/parts/events/cursor/receipts');
+    if(scenario==='quota')check(stats.faults===1&&stats.outputParts>0,'Quota was not injected after a successful tentative write');
+    if(scenario.endsWith('-body')||scenario.endsWith('-header'))check(stats.faults===1,'Guard fault absent');
+    return {ok:true,scenario,stats,rejected:true,physical_before_json:JSON.stringify(physicalBefore),physical_after_json:JSON.stringify(physicalAfter)};
+  }
+  if(skip){check(stats.parts.length===0&&stats.roots.length===0&&stats.downloads===0,'Cached conversation/preset read a body or downloaded');same(physicalAfter.entities,physicalBefore.entities,'Header skip changed sources');same(physicalAfter.parts,physicalBefore.parts,'Header skip changed parts');check(syncState().phase==='saved','Header skip sync failed');check(await getMeta(prefix+'cursor')===12,'Header skip cursor');return {ok:true,scenario,stats,local_body_health_validated:false};}
+  check(!rejected&&await getMeta(prefix+'cursor')===12&&await getMeta('message-sequence:'+owner)===sequence,'Cursor/sequence mismatch');
+  const full=scenario.startsWith('delete-'),unchanged=scenario==='dirty'||scenario==='same-revision';
+  if(scenario!=='nonconversation'&&scenario!=='inline'){
+    check(stats.parts.some(k=>k[2]===id&&k[4]===header.payloadParts.chunks-1),'Last source part not scanned');
+    if(full)check(stats.roots.some(r=>!r.callback&&r.messages===4&&r.content),'Deletion did not use full original');
+    else{check(stats.roots.some(r=>r.callback&&r.messages===0&&!r.content),'Projection root retained messages');if(!unchanged){check(stats.previous.length>0&&stats.previous.every(r=>r.count===4&&!r.content&&r.keys.every(k=>k==='id'||k==='uuid')),'Receiver previous identities retained message content');}}
+    if(scenario==='two-sources')check(stats.previous.length===2&&stats.roots.filter(r=>r.callback&&r.messages===0).length===2,'Second required history was not projected');
+  }
+  const preservedIDs=records.filter(r=>r.owner!==owner||['unselected','preset'].includes(r.id)&&!changes.some(c=>c.id===r.id)).map(r=>r.owner+'|'+r.id);
+  same(physicalAfter.entities.filter(([k])=>preservedIDs.includes(k[0]+'|'+k[1])),physicalBefore.entities.filter(([k])=>preservedIDs.includes(k[0]+'|'+k[1])),'Unselected/required/foreign headers changed');
+  same(physicalAfter.parts.filter(p=>preservedIDs.includes(p.key[0]+'|'+p.key[2])),physicalBefore.parts.filter(p=>preservedIDs.includes(p.key[0]+'|'+p.key[2])),'Preserved source parts changed');
+  const originalParts=new Map(physicalBefore.parts.map(p=>[JSON.stringify(p.key),p]));
+  for(const part of physicalAfter.parts)if(originalParts.has(JSON.stringify(part.key)))same(part,originalParts.get(JSON.stringify(part.key)),'Original part bytes overwritten in place');
+  if(unchanged){same(physicalAfter.entities,physicalBefore.entities,'Skipped sources changed');same(physicalAfter.parts,physicalBefore.parts,'Skipped source parts changed');}
+  const outputs=[];
+  for(const [identifier,target] of expected){
+    let actualID=identifier,old=target,oldEvents=events;
+    if(identifier==='RECOVERY'){
+      const recovery=after.entities.find(([k,h])=>k[0]===owner&&!records.some(r=>r.id===h.id));check(recovery&&recovery[1].id===recoveryID,'Deterministic recovery identity differs');actualID=recoveryID;
+      oldEvents=expectedEvents;
+    }
+    const actual=await entity(actualID,owner);
+    const actualEvents=after.meta.find(([k])=>k===memoryEventsKey(owner,actualID))?.[1]??[];
+    if(identifier!=='RECOVERY')oldEvents=identifier===id&&!target.deleted?events:[];
+    outputs.push(evidence(after,actualID,old,actualEvents,oldEvents));
+    if(scenario==='reload'&&identifier===id)sessionStorage.setItem('projection-expected',JSON.stringify(actual));
+  }
+  same(after.meta.filter(([k])=>k===memoryEventsKey(owner,id)),full?[]:before.meta.filter(([k])=>k===memoryEventsKey(owner,id)),'Original memory events changed outside old deletion scrub semantics');
+  return {ok:true,scenario,stats,source_bytes:header.payloadParts?.size,source_chunks:header.payloadParts?.chunks,projection:!full&&scenario!=='inline'&&scenario!=='nonconversation',deletion_full_path:full,evidences:outputs,
+    physical_before_json:JSON.stringify(physicalBefore),physical_after_json:JSON.stringify(physicalAfter)};
+}
+run().then(r=>window.__SYNC_RECEIVE_PROJECTION__=r).catch(e=>{uninstall();window.__SYNC_RECEIVE_PROJECTION__={ok:false,scenario,error:String(e),stack:e.stack,stats};});
+</script>

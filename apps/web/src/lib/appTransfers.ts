@@ -6,6 +6,7 @@ export const SYNC_INLINE_BYTES=1_500_000;
 const CHUNK_BYTES=1024*1024;
 type Call=(path:string,init?:RequestInit)=>Promise<any>;
 type Active=()=>Promise<void>;
+export type SyncUploadSource={request_id:string;chunks:()=>AsyncIterable<Uint8Array>;inline:()=>Promise<RequestInit>};
 const hash=(raw:Uint8Array)=>new Sha256().update(raw).digest();
 const post=(body:unknown):RequestInit=>({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 
@@ -21,7 +22,7 @@ function* jsonText(value:any,ancestors=new Set<object>()):Generator<string> {
     yield '"';return;
   }
   if(value===null||typeof value!=='object') {const text=JSON.stringify(value);if(text===undefined)throw Error('Invalid sync transfer');yield text;return;}
-  if(ancestors.has(value)||ancestors.size>64||!Array.isArray(value)&&![Object.prototype,null].includes(Object.getPrototypeOf(value)))throw Error('Invalid sync transfer');
+  if(ancestors.has(value)||ancestors.size>=64||!Array.isArray(value)&&![Object.prototype,null].includes(Object.getPrototypeOf(value)))throw Error('Invalid sync transfer');
   ancestors.add(value);
   if(Array.isArray(value)){
     yield '[';
@@ -38,10 +39,15 @@ function* jsonText(value:any,ancestors=new Set<object>()):Generator<string> {
   ancestors.delete(value);
 }
 
-// shortcut: outboxes remain whole objects; segment their storage before 1 GB single-entity acceptance.
-function* jsonChunks(value:unknown):Generator<Uint8Array> {
+// shortcut: decoded trees and scalar strings stay whole; bound them before large-memory acceptance.
+export function* jsonChunks(value:unknown):Generator<Uint8Array> {
   const encoder=new TextEncoder();let buffer=new Uint8Array(CHUNK_BYTES),used=0;
-  for(const text of jsonText(value)){
+  const texts=jsonText(value);let step=texts.next();
+  while(!step.done){
+    let text=step.value;step=texts.next();
+    while(!step.done&&text.length+step.value.length<=16*1024){
+      text+=step.value;step=texts.next();
+    }
     const raw=encoder.encode(text);let offset=0;
     while(offset<raw.length){
       const length=Math.min(raw.length-offset,CHUNK_BYTES-used);
@@ -52,38 +58,42 @@ function* jsonChunks(value:unknown):Generator<Uint8Array> {
   if(used)yield buffer.subarray(0,used);
 }
 
-export async function uploadSync(body:{request_id:string;changes:unknown[]},call:Call,active:Active) {
+export async function uploadSync(body:{request_id:string;changes:unknown[]}|SyncUploadSource,call:Call,active:Active) {
   if(typeof body.request_id!=='string'||!body.request_id||body.request_id.length>100)throw Error('Invalid sync transfer');
+  const chunks='chunks' in body?body.chunks:()=>jsonChunks(body),inline='inline' in body?body.inline:async()=>post(body);
+  const sendInline=async()=>{const init=await inline();await active();return call('',init);};
+  const send=async(path:string,value:unknown)=>{const init=post(value);await active();return call(path,init);};
   let size=0;const digest=new Sha256();
-  for(const chunk of jsonChunks(body)){
+  for await(const chunk of chunks()){
     await active();size+=chunk.length;if(size>1_000_000_000)throw Error('Invalid sync transfer');digest.update(chunk);
   }
-  await active();
-  if(size<=SYNC_INLINE_BYTES)return call('',post(body));
-  const opened=await call('/transfers',post({request_id:body.request_id,size,sha256:digest.digest()}));
-  if(opened.inline_receipt_required===true){await active();return call('',post(body));}
+  const sha256=digest.digest();await active();
+  if(size<=SYNC_INLINE_BYTES)return sendInline();
+  const opened=await send('/transfers',{request_id:body.request_id,size,sha256});
+  if(opened.inline_receipt_required===true){await active();return sendInline();}
   if(opened.result)return opened.result;
   if(typeof opened.transfer_id!=='string'||!/^[0-9a-f-]{36}$/.test(opened.transfer_id)||opened.chunk_bytes!==CHUNK_BYTES
     ||!Number.isSafeInteger(opened.next)||opened.next<0||opened.next>Math.ceil(size/CHUNK_BYTES))throw Error('Invalid sync transfer');
-  let index=0;
-  for(const chunk of jsonChunks(body)){
+  let index=0,sentSize=0;const sentDigest=new Sha256();
+  for await(const chunk of chunks()){
     await active();
+    sentSize+=chunk.length;sentDigest.update(chunk);
     if(index++<opened.next)continue;
-    const received=await call(`/transfers/${opened.transfer_id}/parts/${index-1}`,post({data:encodeBytes(chunk),sha256:hash(chunk)}));
+    const received=await send(`/transfers/${opened.transfer_id}/parts/${index-1}`,{data:encodeBytes(chunk),sha256:hash(chunk)});
     if(received.next!==index)throw Error('Invalid transfer acknowledgment');
   }
+  if(sentSize!==size||sentDigest.digest()!==sha256)throw Error('Sync transfer changed during upload');
   await active();
-  return call(`/transfers/${opened.transfer_id}/commit`,post({}));
+  return send(`/transfers/${opened.transfer_id}/commit`,{});
 }
 
-export async function downloadEntity(entity:any,call:Call,active:Active) {
-  if(!entity?.payload_ref)return entity;
-  const ref=entity.payload_ref;
-  if(ref.id!==entity.id||ref.revision!==entity.revision||!Number.isSafeInteger(ref.size)||ref.size<1||ref.size>1_000_000_000
+// Callers must await normal completion before accepting chunks: the whole-manifest check runs after the last yield.
+export async function* downloadEntityChunks(entity:any,call:Call,active:Active):AsyncGenerator<Uint8Array> {
+  const ref=entity?.payload_ref;
+  if(!ref||ref.id!==entity.id||ref.revision!==entity.revision||!Number.isSafeInteger(ref.size)||ref.size<1||ref.size>1_000_000_000
     ||typeof ref.transfer_id!=='string'||!/^[0-9a-f-]{36}$/.test(ref.transfer_id)||ref.chunk_bytes!==CHUNK_BYTES
     ||ref.chunks!==Math.ceil(ref.size/CHUNK_BYTES)||typeof ref.sha256!=='string'||!/^[a-f0-9]{64}$/.test(ref.sha256))throw Error('Invalid transfer reference');
-  // shortcut: decoded entities and individual strings remain whole; segment storage before 1 GB acceptance.
-  const parser=new JsonStream(),digest=new Sha256();let offset=0;
+  const digest=new Sha256();let offset=0;
   for(let index=0;index<ref.chunks;index++){
     await active();
     const part=await call(`/transfers/${ref.transfer_id}/parts/${index}`);
@@ -91,9 +101,16 @@ export async function downloadEntity(entity:any,call:Call,active:Active) {
       ||!/^[A-Za-z0-9+/]*={0,2}$/.test(part.data))throw Error('Invalid transfer chunk');
     const chunk=decodeBytes(part.data);
     if(chunk.length!==Math.min(CHUNK_BYTES,ref.size-offset)||hash(chunk)!==part.sha256)throw Error('Transfer SHA-256 mismatch');
-    digest.update(chunk);offset+=chunk.length;parser.feed(chunk);
+    digest.update(chunk);offset+=chunk.length;yield chunk;
   }
   if(offset!==ref.size||digest.digest()!==ref.sha256)throw Error('Transfer size or SHA-256 mismatch');
+}
+
+export async function downloadEntity(entity:any,call:Call,active:Active) {
+  if(!entity?.payload_ref)return entity;
+  // shortcut: decoded entities and individual strings remain whole; segment storage before 1 GB acceptance.
+  const parser=new JsonStream();
+  for await(const chunk of downloadEntityChunks(entity,call,active))parser.feed(chunk);
   const payload=parser.finish();
   if(!payload||typeof payload!=='object'||Array.isArray(payload))throw Error('Invalid transfer payload');
   await active();

@@ -41,6 +41,8 @@ builder supports limits on this VPS:
 sha256sum -c kyalulu-cloud.tar.gz.sha256
 mkdir bundle
 tar -xzf kyalulu-cloud.tar.gz -C bundle
+# Only the new verified public build context; retain private enclosing directories.
+find bundle -type d -exec chmod 755 {} +
 cd bundle
 sha256sum --quiet -c SHA256SUMS
 DOCKER_BUILDKIT=0 docker build --memory 384m --memory-swap 512m \

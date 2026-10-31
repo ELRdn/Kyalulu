@@ -35,7 +35,7 @@ export const MEMORY_TYPE_LABEL: Record<'ja' | 'en', Record<MemoryType, string>> 
 const TYPES = Object.keys(MEMORY_TYPE_LABEL.ja) as MemoryType[];
 
 /** 会話パネルの「覚えていること」: 記憶の ON/OFF と、記憶の確認・訂正・削除・追加。 */
-export default function MemoryPanel({ sessionId, refreshKey, scopeOverride }: { sessionId: string; refreshKey: number; scopeOverride?: string }) {
+export default function MemoryPanel({ sessionId, refreshKey, scopeOverride,visible=true }: { sessionId: string; refreshKey: number; scopeOverride?: string;visible?:boolean }) {
   const language = useLanguage(), en = language === 'en', typeLabels = MEMORY_TYPE_LABEL[language];
   const { capabilities } = useCapabilities();
   const [confirmDialog, confirm] = useConfirm();
@@ -47,7 +47,7 @@ export default function MemoryPanel({ sessionId, refreshKey, scopeOverride }: { 
   const [draft, setDraft] = useState("");
   const [adding, setAdding] = useState(false);
   const [newType, setNewType] = useState<MemoryType>("semantic");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{cause:unknown} | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const sequence = useRef(0);
@@ -70,16 +70,17 @@ export default function MemoryPanel({ sessionId, refreshKey, scopeOverride }: { 
       setItems(loaded);
       setError(null);
     } catch (error) {
-      if (id === sequence.current && active()) setError(friendlyMessage(error));
+      if (id === sequence.current && active()) setError({cause:error});
     } finally {
       if (id === sequence.current && active()) setLoading(false);
     }
   }, [sessionId, scopeOverride]);
 
   useEffect(() => {
+    if(!visible)return;
     void load();
     return () => { sequence.current++; };
-  }, [load, refreshKey]);
+  }, [load, refreshKey,visible]);
 
   const run = async (fn: () => Promise<unknown>) => {
     if (busy || !active()) return;
@@ -89,7 +90,7 @@ export default function MemoryPanel({ sessionId, refreshKey, scopeOverride }: { 
       if (!active()) return;
       await load();
     } catch (error) {
-      if (active()) setError(friendlyMessage(error));
+      if (active()) setError({cause:error});
     } finally {
       if (active()) setBusy(false);
     }
@@ -102,7 +103,7 @@ export default function MemoryPanel({ sessionId, refreshKey, scopeOverride }: { 
       const text = draft.trim();
       if (!text || !scope) return;
       if (id) await updateMemory(id, { content: text });
-      else await createMemory(scope, newType, text);
+      else await createMemory(scope, newType, text,scopeOverride?undefined:sessionId);
       setEditing(null);
       setAdding(false);
       setDraft("");
@@ -119,7 +120,7 @@ export default function MemoryPanel({ sessionId, refreshKey, scopeOverride }: { 
         {enabled ? (scope?.startsWith("work:") ? (en ? 'Memories stay within the same character, persona, world and settings revision.' : '同じキャラ・人物像・世界・設定版の範囲で覚えます。') : scope?.startsWith("char:") ? (en ? 'Memories are shared across worlds for the same character and persona. Legacy conversation sharing scopes are preserved.' : '同じ相手・人物像で世界をまたいで共有する記憶です。旧会話の共有範囲も保持しています。') : (en ? 'Memories stay within this conversation.' : 'この会話の範囲で覚えます。')) : (en ? 'When off, memories are neither saved nor recalled.' : 'オフの間は覚えず、思い出しもしません。')}
       </div>
       <p className="k-context-note">{en ? 'Matching words do not prove a fact. Check the source and correct anything inaccurate.' : '語句の一致は事実の証明ではありません。出典を確認し、違っていたら訂正できます。'}</p>
-      {error && <div className="k-context-note k-memory__error" role="alert">{error}<Button size="sm" variant="ghost" onClick={() => void load()}>{en ? 'Reload' : '再読込'}</Button></div>}
+      {error && <div className="k-context-note k-memory__error" role="alert">{friendlyMessage(error.cause,language)}<Button size="sm" variant="ghost" onClick={() => void load()}>{en ? 'Reload' : '再読込'}</Button></div>}
       {loading && <p role="status">{en ? 'Loading memories…' : '記憶を読み込んでいます…'}</p>}
       {capabilities?.features.world_memory && !scopeOverride && <details>
         <summary>{en ? 'Change world separation and sharing scope' : '世界ごとの分離・共有範囲を変更'}</summary>

@@ -1,5 +1,6 @@
 """Disposable Core archives only; no production directory or real provider."""
 import json
+import hashlib
 import sqlite3
 import zipfile
 from contextlib import closing
@@ -197,28 +198,34 @@ async def test_core_deletion_records_from_both_databases_prevent_revival(account
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('failure', ['old_asset', 'new_asset', 'database', 'recovery_archive'])
+@pytest.mark.parametrize('failure', ['asset_validation', 'new_asset', 'database', 'recovery_archive'])
 async def test_failed_core_promotion_keeps_db_assets_input_and_independent_recovery(accounts, pc, tmp_path, monkeypatch, failure):
     import python.local_backup as core
     assets = pc.parent / 'library_assets'
     assets.mkdir()
-    asset = assets / ('a' * 64)
-    asset.write_bytes(b'older-fixture-media')
+    older = assets / hashlib.sha256(b'older-fixture-media').hexdigest()
+    older.write_bytes(b'older-fixture-media')
     sync, archive = await prepared(accounts, pc, tmp_path)
     with closing(sqlite3.connect(pc)) as db, db:
         db.execute("UPDATE chat_history SET content='KEEP-AFTER-FAILED-RESTORE' WHERE session_id='selected'")
     sync.stage()
+    # Different content has a different ID; the older asset is archive-only.
+    older.rename(tmp_path / 'retained-older-fixture-media')
+    asset = assets / hashlib.sha256(b'current-fixture-media').hexdigest()
     asset.write_bytes(b'current-fixture-media')
     sentinel = pc.parent / 'unrelated-fixture.txt'
     sentinel.write_text('keep')
     with closing(sqlite3.connect(pc)) as db:
         before = list(db.iterdump())
     input_bytes = archive.read_bytes()
-    if failure in {'old_asset', 'new_asset'}:
+    if failure == 'asset_validation':
+        def unreadable(*_):
+            raise OSError('fixture unreadable media')
+        monkeypatch.setattr(core.hashlib, 'file_digest', unreadable)
+    elif failure == 'new_asset':
         rename = Path.rename
         def reject_move(self, target):
-            if (self == assets and failure == 'old_asset'
-                    or self.name == 'library_assets' and self.parent.name == 'restored' and failure == 'new_asset'):
+            if self.parent.name == 'library_assets' and self.parent.parent.name == 'restored':
                 raise OSError('fixture media promotion failed')
             return rename(self, target)
         monkeypatch.setattr(Path, 'rename', reject_move)
@@ -302,10 +309,19 @@ async def test_encrypted_cloud_core_restore_requires_review_and_keeps_control_da
     with closing(sqlite3.connect(path)) as db, db:
         db.execute("INSERT INTO session_settings(session_id) VALUES('selected')")
         db.execute("INSERT INTO chat_history(session_id,role,content) VALUES('selected','user','CLOUD-BEFORE-BACKUP')")
+        db.execute("INSERT INTO session_settings(session_id) VALUES('erased-source')")
+        result = {'reply': 'retained cloud reply',
+                  'memory': {'candidates': [{'id': 'gone', 'source_session_id': 'erased-source', 'content': 'fixture cloud secret'}]},
+                  'validation': {'ok': False, 'retries': 1, 'errors': ['schema error: fixture cloud secret']}}
+        db.execute("INSERT INTO generations(generation_id,session_id,fingerprint,status,result_json) "
+                   "VALUES('retained','selected','','completed',?)", (json.dumps(result),))
     unified.configure_runtime(owner, 0, ['selected'], True, runtime_path=path)
     original = unified.pull(owner, runtime_path=path)['changes'][0]
     backups = Backups(store)
     archive = backups.create(owner, path, force=True)
+    async with client(cloud) as browser:
+        response = await browser.delete('/api/chat/sessions/erased-source/data')
+        assert response.status_code == 200, response.text
     with closing(sqlite3.connect(path)) as db, db:
         db.execute("UPDATE chat_history SET content='CLOUD-CURRENT' WHERE session_id='selected'")
     unified.pull(owner, runtime_path=path)
@@ -324,6 +340,11 @@ async def test_encrypted_cloud_core_restore_requires_review_and_keeps_control_da
         encoded = db.execute("SELECT mapping FROM unified_runtime_links WHERE session_id='selected'").fetchone()[0]
         assert json.loads(encoded)['restored_from_snapshot'] is True
         assert db.execute("SELECT content FROM chat_history WHERE session_id='selected'").fetchone()[0] == 'CLOUD-BEFORE-BACKUP'
+        redacted = json.loads(db.execute("SELECT result_json FROM generations WHERE generation_id='retained'").fetchone()[0])
+        assert redacted['reply'] == 'retained cloud reply'
+        assert redacted['validation'] == {'ok': False, 'retries': 1, 'errors': []}
+        assert 'fixture cloud secret' not in json.dumps(redacted)
+        assert not db.execute("SELECT 1 FROM session_settings WHERE session_id='erased-source'").fetchone()
         assert not db.execute('SELECT * FROM unified_local_links').fetchall()
     with pytest.raises(CloudError, match='sync_restored_session_confirmation_required'):
         unified.pull(owner, runtime_path=path)
@@ -333,6 +354,9 @@ async def test_encrypted_cloud_core_restore_requires_review_and_keeps_control_da
     result = unified.pull(owner, runtime_path=path)
     assert len(result['changes']) == 2 and len({c['id'] for c in result['changes']}) == 2
     assert next(c for c in result['changes'] if c['id'] == original['id'])['payload']['messages'][0]['content'] == 'CLOUD-CURRENT'
+    assert 'fixture cloud secret' not in json.dumps(result)
+    with closing(sqlite3.connect(path)) as db:
+        assert json.loads(db.execute("SELECT result_json FROM generations WHERE generation_id='retained'").fetchone()[0]) == redacted
     assert len(backups.list(owner)) == 2
 
 

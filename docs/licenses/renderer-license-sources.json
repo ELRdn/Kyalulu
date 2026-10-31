@@ -1,0 +1,145 @@
+[
+  {
+    "packages": [
+      "onnxruntime-node@1.30.0",
+      "onnxruntime-common@1.30.0"
+    ],
+    "license": "MIT",
+    "texts": [
+      {
+        "path": "docs/licenses/onnxruntime-MIT.txt",
+        "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c",
+        "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/f2c39fe2f838cf35ce7da92824f5a5e3ee6e88a7/LICENSE"
+      },
+      {
+        "path": "docs/licenses/onnxruntime-ThirdPartyNotices.txt",
+        "sha256": "143764b952fdb1a7c69ce653bfba74a7744d6a8a573bfb73e235fba356c83de3",
+        "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/f2c39fe2f838cf35ce7da92824f5a5e3ee6e88a7/ThirdPartyNotices.txt"
+      }
+    ]
+  },
+  {
+    "packages": [
+      "onnxruntime-web@1.31.0-dev.20260914-8d85527a0"
+    ],
+    "license": "MIT",
+    "texts": [
+      {
+        "path": "docs/licenses/onnxruntime-MIT.txt",
+        "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c",
+        "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/8d85527a010e294a26b274749f74294b2a32cec5/LICENSE"
+      },
+      {
+        "path": "docs/licenses/onnxruntime-ThirdPartyNotices.txt",
+        "sha256": "143764b952fdb1a7c69ce653bfba74a7744d6a8a573bfb73e235fba356c83de3",
+        "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/8d85527a010e294a26b274749f74294b2a32cec5/ThirdPartyNotices.txt"
+      }
+    ]
+  },
+  {
+    "packages": [
+      "onnxruntime-common@1.31.0-dev.20260911-2a43ec07e"
+    ],
+    "license": "MIT",
+    "texts": [
+      {
+        "path": "docs/licenses/onnxruntime-MIT.txt",
+        "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c",
+        "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/2a43ec07e67df9263c7c56c15da76cc7f74d7b32/LICENSE"
+      },
+      {
+        "path": "docs/licenses/onnxruntime-ThirdPartyNotices.txt",
+        "sha256": "143764b952fdb1a7c69ce653bfba74a7744d6a8a573bfb73e235fba356c83de3",
+        "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/2a43ec07e67df9263c7c56c15da76cc7f74d7b32/ThirdPartyNotices.txt"
+      }
+    ]
+  },
+  {
+    "packages": [
+      "@esbuild/aix-ppc64@0.25.12",
+      "@esbuild/android-arm64@0.25.12",
+      "@esbuild/android-arm@0.25.12",
+      "@esbuild/android-x64@0.25.12",
+      "@esbuild/darwin-arm64@0.25.12",
+      "@esbuild/darwin-x64@0.25.12",
+      "@esbuild/freebsd-arm64@0.25.12",
+      "@esbuild/freebsd-x64@0.25.12",
+      "@esbuild/linux-arm64@0.25.12",
+      "@esbuild/linux-arm@0.25.12",
+      "@esbuild/linux-ia32@0.25.12",
+      "@esbuild/linux-loong64@0.25.12",
+      "@esbuild/linux-mips64el@0.25.12",
+      "@esbuild/linux-ppc64@0.25.12",
+      "@esbuild/linux-riscv64@0.25.12",
+      "@esbuild/linux-s390x@0.25.12",
+      "@esbuild/linux-x64@0.25.12",
+      "@esbuild/netbsd-arm64@0.25.12",
+      "@esbuild/netbsd-x64@0.25.12",
+      "@esbuild/openbsd-arm64@0.25.12",
+      "@esbuild/openbsd-x64@0.25.12",
+      "@esbuild/openharmony-arm64@0.25.12",
+      "@esbuild/sunos-x64@0.25.12",
+      "@esbuild/win32-arm64@0.25.12",
+      "@esbuild/win32-ia32@0.25.12",
+      "@esbuild/win32-x64@0.25.12"
+    ],
+    "license": "MIT",
+    "texts": [
+      {
+        "path": "docs/licenses/esbuild-MIT.txt",
+        "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
+        "url": "https://raw.githubusercontent.com/evanw/esbuild/208f539945b145e7c9d6d844290f81c3fe5af320/LICENSE.md"
+      }
+    ]
+  },
+  {
+    "packages": [
+      "@rollup/rollup-android-arm-eabi@4.63.0",
+      "@rollup/rollup-android-arm64@4.63.0",
+      "@rollup/rollup-darwin-arm64@4.63.0",
+      "@rollup/rollup-darwin-x64@4.63.0",
+      "@rollup/rollup-freebsd-arm64@4.63.0",
+      "@rollup/rollup-freebsd-x64@4.63.0",
+      "@rollup/rollup-linux-arm-gnueabihf@4.63.0",
+      "@rollup/rollup-linux-arm-musleabihf@4.63.0",
+      "@rollup/rollup-linux-arm64-gnu@4.63.0",
+      "@rollup/rollup-linux-arm64-musl@4.63.0",
+      "@rollup/rollup-linux-loong64-gnu@4.63.0",
+      "@rollup/rollup-linux-loong64-musl@4.63.0",
+      "@rollup/rollup-linux-ppc64-gnu@4.63.0",
+      "@rollup/rollup-linux-ppc64-musl@4.63.0",
+      "@rollup/rollup-linux-riscv64-gnu@4.63.0",
+      "@rollup/rollup-linux-riscv64-musl@4.63.0",
+      "@rollup/rollup-linux-s390x-gnu@4.63.0",
+      "@rollup/rollup-linux-x64-gnu@4.63.0",
+      "@rollup/rollup-linux-x64-musl@4.63.0",
+      "@rollup/rollup-openbsd-x64@4.63.0",
+      "@rollup/rollup-openharmony-arm64@4.63.0",
+      "@rollup/rollup-win32-arm64-msvc@4.63.0",
+      "@rollup/rollup-win32-ia32-msvc@4.63.0",
+      "@rollup/rollup-win32-x64-gnu@4.63.0",
+      "@rollup/rollup-win32-x64-msvc@4.63.0"
+    ],
+    "license": "MIT",
+    "texts": [
+      {
+        "path": "docs/licenses/rollup-LICENSE.md",
+        "sha256": "fa1bd040c5bdeefe65b3821cebf474f2733ce65df13089bd151dda1778e62fe8",
+        "url": "https://raw.githubusercontent.com/rollup/rollup/34b8b924c815ec9413d7821f6fd54cc615584a51/LICENSE.md"
+      }
+    ]
+  },
+  {
+    "packages": [
+      "@wllama/wllama-compat@3.8.1"
+    ],
+    "license": "MIT",
+    "texts": [
+      {
+        "path": "docs/licenses/wllama-MIT.txt",
+        "sha256": "5866e3bd7e3cbd3f7c8bea6efd8a1e7fa7cc8de68c30f428aff7c6584a0fb720",
+        "url": "https://raw.githubusercontent.com/ngxson/wllama/b68fd6427063266176bb0054befe9ff70b3258f1/LICENCE"
+      }
+    ]
+  }
+]

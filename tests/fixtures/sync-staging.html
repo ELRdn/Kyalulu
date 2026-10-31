@@ -1,0 +1,270 @@
+<!doctype html><meta charset="utf-8"><title>Disposable initial sync staging proof</title>
+<p>Fictional data; browser networking is restricted to the owned fixture server.</p>
+<script type="module">
+import history from './unified-history.json';
+import {baselineChanges} from './sync-staging-oracle.ts';
+import {appTransaction,getMeta,writeEntity} from '/src/lib/appStore.ts';
+import {stageSyncBatch} from '/src/lib/appSyncStage.ts';
+import {syncNow,syncState} from '/src/lib/appSync.ts';
+import {rememberOwner,setGenerationBusy} from '/src/lib/appContext.ts';
+import {JsonStream} from '/src/lib/jsonStream.ts';
+
+const query=new URL(location.href).searchParams,scenario=query.get('scenario')??'initial',resumed=query.has('resume');
+const owner='fictional-staging-owner',foreign='fictional-staging-foreign',outboxKey='sync:'+owner+':outbox',consentKey='sync:'+owner+':consent';
+const primary='a-conversation',world='created_'+'a'.repeat(32),persona='created_'+'b'.repeat(32),historical='created_'+'c'.repeat(32);
+const encoder=new TextEncoder(),check=(ok,message)=>{if(!ok)throw Error(message);};
+const exact=(a,b,message)=>check(JSON.stringify(a)===JSON.stringify(b),message);
+const sha=async bytes=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
+const base64=bytes=>{let text='';for(let i=0;i<bytes.length;i+=8192)text+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(text);};
+const record=(id,payload,extra={})=>({owner,id,kind:'conversation',revision:7,serverRevision:3,dirty:true,deleted:false,pinned:true,opened:1,payload,...extra});
+const simple=id=>({storage_policy:'sync',settings:{session_id:id,library_binding:null},messages:[{id:1,uuid:id+'-uuid',role:'user',content:'FICTIONAL '+id}],state:{session_id:id},memories:[],summaries:[]});
+const probes={reads:{readonly:0,readwrite:0},lastReads:{readonly:0,readwrite:0},parsers:{readonly:0,readwrite:0},
+  rootMax:{readonly:0,readwrite:0},messageCallbacks:{readonly:0,readwrite:0},outboxAdds:0,outboxAddSuccess:0,outboxPuts:0,
+  allEntityReads:0,injected:0,referenceReads:[],network:[]};
+let measuring=false,phase='',header,lastIndex,between,betweenDone,mutation,originals,writerDb;
+const parserModes=new WeakMap();
+function observe(parser){
+  const mode=parserModes.get(parser)??phase;
+  if(!measuring||!['readonly','readwrite'].includes(mode))return;
+  const count=parser.root?.messages?.length;
+  if(count!==undefined){probes.rootMax[mode]=Math.max(probes.rootMax[mode],count);check(count===0,mode+' product parser retained root messages');}
+}
+function install(){
+  originals={get:IDBObjectStore.prototype.get,getAll:IDBObjectStore.prototype.getAll,add:IDBObjectStore.prototype.add,put:IDBObjectStore.prototype.put,
+    feed:JsonStream.prototype.feed,finish:JsonStream.prototype.finish,value:JsonStream.prototype.value,punctuation:JsonStream.prototype.punctuation};
+  JsonStream.prototype.value=function(...args){const value=originals.value.apply(this,args);observe(this);return value;};
+  JsonStream.prototype.punctuation=function(...args){const value=originals.punctuation.apply(this,args);observe(this);return value;};
+  JsonStream.prototype.feed=function(...args){
+    if(measuring&&phase&&!parserModes.has(this)){parserModes.set(this,phase);probes.parsers[phase]++;}
+    if(measuring&&this.onMessage&&!this.__stagingObserved){
+      const callback=this.onMessage,mode=phase;this.__stagingObserved=true;
+      this.onMessage=(...values)=>{probes.messageCallbacks[mode]++;return callback(...values);};
+    }
+    const value=originals.feed.apply(this,args);observe(this);return value;
+  };
+  JsonStream.prototype.finish=function(...args){const value=originals.finish.apply(this,args);observe(this);return value;};
+  IDBObjectStore.prototype.getAll=function(...args){if(measuring&&this.name==='entities'){probes.allEntityReads++;throw Error('entities.getAll forbidden');}return originals.getAll.apply(this,args);};
+  IDBObjectStore.prototype.put=function(value,key){
+    if(measuring&&this.name==='meta'&&key===outboxKey)probes.outboxPuts++;
+    const request=arguments.length===1?originals.put.call(this,value):originals.put.call(this,value,key);
+    if(measuring&&this.name==='meta'&&key===outboxKey&&scenario.endsWith('-after-stage')){
+      const tx=this.transaction;
+      request.addEventListener('success',()=>{
+        if(scenario==='consent-after-stage'){
+          const writer=writerDb.transaction('meta','readwrite');originals.put.call(writer.objectStore('meta'),false,consentKey);probes.injected++;
+        }else tx.addEventListener('complete',()=>{if(scenario==='owner-after-stage')rememberOwner(foreign);else setGenerationBusy(true);probes.injected++;});
+      });
+    }
+    return request;
+  };
+  IDBObjectStore.prototype.add=function(value,key){
+    if(measuring&&this.name==='parts'&&key?.[1]==='outbox'){
+      probes.outboxAdds++;
+      if(scenario==='quota'&&probes.outboxAddSuccess>0){probes.injected++;throw new DOMException('Fixture storage quota','QuotaExceededError');}
+      const request=originals.add.call(this,value,key);request.addEventListener('success',()=>probes.outboxAddSuccess++);return request;
+    }
+    return arguments.length===1?originals.add.call(this,value):originals.add.call(this,value,key);
+  };
+  IDBObjectStore.prototype.get=function(key){
+    const request=originals.get.call(this,key),tx=this.transaction;
+    if(measuring&&this.name==='entities'&&tx.mode==='readonly')probes.referenceReads.push(key[1]);
+    if(measuring&&this.name==='parts'&&key?.[1]==='entity'){
+      const mode=tx.mode;probes.reads[mode]++;
+      request.addEventListener('success',()=>{
+        phase=mode;
+        if(key[2]!==primary||key[4]!==lastIndex)return;
+        probes.lastReads[mode]++;
+        if(scenario==='second-pass-corrupt'&&mode==='readwrite'){
+          check(probes.outboxAddSuccess>0,'Second-pass corruption did not follow a tentative output part');
+          request.result[request.result.length-2]^=1;probes.injected++;
+        }
+        if(scenario===('owner-'+mode)){rememberOwner(foreign);probes.injected++;}
+        if(scenario===('busy-'+mode)){setGenerationBusy(true);probes.injected++;}
+      });
+      if(mode==='readonly'&&between&&!betweenDone){
+        betweenDone=true;
+        {
+          const writer=writerDb.transaction(['entities','meta'],'readwrite');
+          if(between==='consent')writer.objectStore('meta').put(false,consentKey);
+          else if(between==='winner')originals.put.call(writer.objectStore('meta'),winner(),outboxKey);
+          else {
+            const changed=structuredClone(header);
+            if(between==='revision')changed.revision++;
+            else changed.payloadParts.token='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+            writer.objectStore('entities').put(changed);mutation=changed;
+          }
+          probes.injected++;
+          // The queued writer runs after prepare's readonly snapshot and before staging's write transaction.
+        }
+      }
+    }
+    return request;
+  };
+}
+function uninstall(){
+  measuring=false;phase='';
+  for(const key of ['get','getAll','add','put'])IDBObjectStore.prototype[key]=originals[key];
+  for(const key of ['feed','finish','value','punctuation'])JsonStream.prototype[key]=originals[key];
+}
+function rows(){
+  const payload=structuredClone(history.payload);
+  payload.settings.session_id=primary;payload.state.session_id=primary;
+  payload.settings.persona_id=persona+'@2';
+  payload.library_snapshots['obsolete@9']={name:'must be dropped',data:{}};
+  payload.creator_snapshots['created_'+'d'.repeat(32)+'@9']={kind:'world',document:{display_name:'must be dropped',rules:'obsolete'}};
+  payload.source={remote:{source:'fixture',source_id:'fictional-origin',sha256:'1'.repeat(64),document_index:8},unknown:{'10':'ten','2':'two',nested:['日本語','🧪']}};
+  payload.unknown={integer:42,negative:-0,escaped:'"\\\n\t',nested:{z:1,a:2},['__proto__']:{own:true}};
+  payload.draft={text:'未送信草稿 🧪',selection:[2,7],unknown:'keep'};
+  payload.last_generation={raw_prompt:'private diagnostic',compiled:'diagnostic',attempts:[{secret:true}],memory:{secret:true},execution_lock:'private',
+    user_id:3,assistant_id:4,validation:{errors:['local diagnostic'],keep:3},telemetry:{memory:{secret:true},duration:12},unknown:'keep'};
+  const unicode=('日本語🌌🧪 é \\"\n').repeat(25000);
+  for(const [index,message] of payload.messages.entries()){
+    message.content=unicode+index;message.unknown={index,draft:'keep'};
+    for(const point of [message.before,message.after].filter(Boolean)){
+      point.settings.persona_id=persona+'@1';point.state.persona_id=persona+'@1';
+      point.state.world_id=historical+'@1';point.settings.unknown='historical setting retained';
+    }
+  }
+  // Historical state-only references must be resolved even when absent from current settings.
+  const library=(id,kind,versions)=>record(id,{storage_policy:'local',versions,document:versions[2]??versions[1]},{kind,dirty:false});
+  const character=library('character','character',{'1':{name:'Old character',data:{personality:'OLD ROLE'}},'2':{name:'New character',data:{personality:'NEW ROLE'}}});
+  const worldRow=library(world,'world',{'1':{display_name:'Old world',rules:'OLD RULE'},'2':{display_name:'New world',rules:'NEW RULE'}});
+  const personaRow=library(persona,'persona',{'1':{display_name:'Old persona',rules:'OLD SELF'},'2':{display_name:'New persona',rules:'NEW SELF'}});
+  const historicalRow=library(historical,'world',{'1':{display_name:'State-only historical world',rules:'OLD STATE'}});
+  const fallback=()=>{
+    for(const row of [personaRow,historicalRow])for(const [version,document] of Object.entries(row.payload.versions))
+      payload.creator_snapshots[row.id+'@'+version]={kind:row.kind,document};
+    return [record(primary,payload)];
+  };
+  let selected=scenario==='historical-fallback'?fallback():[record(primary,payload),character,worldRow,personaRow,historicalRow];
+  if(scenario==='missing-library'){delete payload.library_snapshots['character@1'];selected=selected.filter(row=>row.id!=='character');}
+  if(scenario==='missing-creator'){selected=selected.filter(row=>row.id!==historical);}
+  if(scenario==='selection50'||scenario.startsWith('deletion')){
+    selected.push(...Array.from({length:55},(_,i)=>record('b-chat-'+String(i).padStart(2,'0'),simple('b-chat-'+i))));
+    selected.find(row=>row.id==='b-chat-49').payload.settings.library_binding={character:{id:'unselected-missing-reference',revision:1}};
+    selected.push(record('00-device-local',{...simple('local'),storage_policy:'local'}),record('01-pending',{...simple('pending'),pending_generation:{id:'busy'}}),
+      record('00-foreign',simple('foreign'),{owner:foreign}));
+    if(scenario.startsWith('deletion'))selected.push(record('z-deletion',{storage_policy:'sync',delete_confirmation_revision:scenario==='deletion-confirmed'?7:6},{deleted:true}),
+      record('zz-second-deletion',{storage_policy:'sync',delete_confirmation_revision:7},{deleted:true}));
+  }
+  if(scenario==='mixed')selected.push(record('b-inline',simple('b-inline')),record('c-preset',{storage_policy:'sync',document:{name:'Fictional preset',source:{remote:{source:'fixture',source_id:'42',sha256:'2'.repeat(64),document_index:4}}},unknown:{keep:1}},{kind:'preset'}));
+  if(scenario==='nonconversation')selected=[record('preset-only',{storage_policy:'sync',unknown:{'3':'three','1':'one',z:'last'},document:{name:'Fictional'}},{kind:'preset'})];
+  return selected.reverse();
+}
+const winner=()=>({request_id:'existing-winner-request',withdrawn:0,revisions:{winner:5},changes:[{id:'winner',kind:'preset',base_revision:1,payload:{storage_policy:'sync',winner:true},deleted:false}]});
+async function raw(){
+  return appTransaction(['entities','meta','parts'],'readonly',(tx,done)=>{
+    const result={},names=['entities','meta','parts'];let i=0;
+    const next=()=>{const name=names[i++];if(!name){done(result);return;}
+      const store=tx.objectStore(name),keys=store.getAllKeys(),values=store.getAll();values.onsuccess=()=>{result[name]=keys.result.map((key,j)=>[key,values.result[j]]);next();};
+    };next();
+  });
+}
+async function sourceSnapshot(value){
+  const parts=[];
+  for(const [key,bytes] of value.parts)if(key[1]==='entity')parts.push([key,bytes.length,await sha(bytes)]);
+  return {entities:value.entities,parts};
+}
+async function seed(records){
+  rememberOwner(owner);
+  await appTransaction(['entities','meta','parts'],'readwrite',(tx,done)=>{
+    tx.objectStore('entities').clear();tx.objectStore('meta').clear();tx.objectStore('parts').clear();
+    tx.objectStore('meta').put(true,consentKey);tx.objectStore('meta').put(11,'sync:'+owner+':cursor');
+    for(const row of records){if(scenario==='legacy'||scenario==='mixed'&&row.id==='b-inline')tx.objectStore('entities').put(row);else writeEntity(tx,row);}
+    done();
+  });
+  if(scenario==='existing-outbox')await appTransaction(['meta'],'readwrite',(tx,done)=>{tx.objectStore('meta').put(winner(),outboxKey);done();});
+  let value=await raw();header=value.entities.find(([key])=>key[0]===owner&&key[1]===primary)?.[1];lastIndex=header?.payloadParts?.chunks-1;
+  if(['corrupt-last','missing-last','invalid-json','invalid-utf8'].includes(scenario)){
+    const key=[owner,'entity',primary,header.payloadParts.token,lastIndex],bytes=value.parts.find(([k])=>JSON.stringify(k)===JSON.stringify(key))[1].slice();
+    if(scenario==='invalid-json')bytes[bytes.length-1]=33;
+    else if(scenario==='invalid-utf8')bytes[bytes.length-2]=255;
+    else bytes[bytes.length-2]^=1;
+    if(scenario.startsWith('invalid'))header.payloadParts.sha256=await sha(concat(value.parts.filter(([k])=>k[1]==='entity'&&k[2]===primary).map(([k,b])=>k[4]===lastIndex?bytes:b)));
+    await appTransaction(['entities','parts'],'readwrite',(tx,done)=>{
+      if(scenario==='missing-last')tx.objectStore('parts').delete(key);else tx.objectStore('parts').put(bytes,key);
+      if(scenario.startsWith('invalid'))tx.objectStore('entities').put(header);done();
+    });
+  }
+}
+function concat(chunks){const bytes=new Uint8Array(chunks.reduce((n,b)=>n+b.length,0));let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}return bytes;}
+async function transport(){
+  const original=globalThis.fetch;
+  globalThis.fetch=async(input,init)=>{
+    const path=String(input);probes.network.push({path,method:init?.method??'GET',body:init?.body?JSON.parse(String(init.body)):undefined});
+    if(path==='/api/mobile/status')return Response.json({cloud_mode:true,authenticated:true,owner_scope:owner});
+    check(new Headers(init?.headers).get('X-Kyalulu-Owner')===owner,'Incorrect mocked network owner');
+    if(path.startsWith('/api/cloud/app/sync?'))return Response.json({changes:[],cursor:11,has_more:false});
+    check(path==='/api/cloud/app/sync/transfers'||path==='/api/cloud/app/sync','Unexpected mocked transport '+path);
+    return Response.json({error:'Deliberately retain fixed outbox for independent verification'},{status:409});
+  };
+  try{await syncNow(owner);}finally{globalThis.fetch=original;}
+}
+async function run(){
+  const records=rows();
+  if(!resumed)await seed(records);else rememberOwner(owner);
+  const before=await raw(),beforeSource=await sourceSnapshot(before),beforeOutbox=before.meta.find(([key])=>key===outboxKey)?.[1];
+  if(resumed){header=before.entities.find(([key])=>key[1]===primary)?.[1];lastIndex=header?.payloadParts?.chunks-1;}
+  const failing=['missing-library','missing-creator','corrupt-last','missing-last','invalid-json','invalid-utf8','second-pass-corrupt','quota',
+    'owner-readonly','owner-readwrite','busy-readonly','busy-readwrite','revision-change','token-change','consent-change'].includes(scenario);
+  if(scenario!=='existing-outbox')check(!beforeOutbox||resumed,'New initial sync fixture accidentally had an old outbox');
+  let expected;
+  if(!['missing-library','missing-creator'].includes(scenario))expected=baselineChanges(records,owner);
+  between={'revision-change':'revision','token-change':'token','consent-change':'consent','existing-winner':'winner'}[scenario];
+  if(between||scenario==='consent-after-stage')writerDb=await new Promise((resolve,reject)=>{const open=indexedDB.open('kyalulu-app-v1',3);open.onsuccess=()=>resolve(open.result);open.onerror=reject;});
+  install();measuring=true;let rejected=false;
+  try{
+    if(failing||scenario==='existing-winner')try{await stageSyncBatch(owner);}catch{rejected=true;}
+    else await transport();
+  }finally{uninstall();writerDb?.close();}
+  const after=await raw(),afterSource=await sourceSnapshot(after),batch=after.meta.find(([key])=>key===outboxKey)?.[1];
+  if(mutation){beforeSource.entities=beforeSource.entities.map(([key,value])=>[key,key[0]===owner&&key[1]===primary?mutation:value]);}
+  exact(afterSource,beforeSource,'Original entity headers/physical source parts changed');
+  check(probes.allEntityReads===0,'Whole entity collection read');
+  check(probes.rootMax.readonly===0&&probes.rootMax.readwrite===0,'Product parser retained messages');
+  if(failing){
+    check(rejected||scenario==='consent-change','Fault did not reject initial stage');check(!batch,'Failure published a fixed outbox');
+    exact(after.parts.filter(([key])=>key[1]==='outbox'),[],'Failure leaked tentative outbox parts');
+    if(['second-pass-corrupt','quota'].includes(scenario))check(probes.outboxAddSuccess>0,'Rollback did not include a successfully written tentative part');
+    if(scenario.startsWith('owner-')||scenario.startsWith('busy-')||['second-pass-corrupt','quota','revision-change','token-change','consent-change'].includes(scenario))check(probes.injected===1,'Requested fault was not injected exactly once');
+    return {rejected,sourcePreserved:true,probes};
+  }
+  if(scenario==='existing-outbox'||scenario==='existing-winner'){
+    exact(batch,winner(),'Existing old outbox was replaced');check(probes.outboxAdds===0&&probes.outboxPuts===0,'Initial staging wrote over winner');
+    check(scenario!=='existing-winner'||probes.injected===1,'Concurrent outbox winner not installed');
+    return {winnerPreserved:true,sourcePreserved:true,probes};
+  }
+  check(batch?.changesParts&&batch.count===expected.length,'Staged header/manifest missing');
+  const chunks=after.parts.filter(([key])=>key[0]===owner&&key[1]==='outbox'&&key[3]===batch.changesParts.token).sort((a,b)=>a[0][4]-b[0][4]);
+  check(chunks.length===batch.changesParts.chunks,'Output physical part count differs');
+  check(after.parts.filter(([key])=>key[1]==='outbox').length===chunks.length,'Successful initial stage leaked extra output parts');
+  const bytes=concat(chunks.map(([,bytes])=>bytes)),expectedText=JSON.stringify(expected);
+  const actualText=new TextDecoder('utf-8',{fatal:true}).decode(bytes),decoded=JSON.parse(actualText);
+  exact(decoded,expected,'Old prepare semantic/order payload mismatch');
+  check(actualText===expectedText,'Old JSON.stringify original bytes/order mismatch');
+  check(bytes.length===batch.changesParts.size&&await sha(bytes)===batch.changesParts.sha256,'Output manifest checksum/size differs');
+  exact(batch.changes,expected.map(change=>({...change,payload:{}})),'Compact fixed controls differ');
+  exact(batch.revisions,Object.fromEntries(expected.map(change=>[change.id,records.find(row=>row.owner===owner&&row.id===change.id).revision])),'Prepared source revisions differ');
+  if(!resumed&&!['legacy','nonconversation'].includes(scenario)&&!scenario.startsWith('deletion')){
+    check(probes.lastReads.readonly===1&&probes.lastReads.readwrite===1,'Both complete segmented source passes were not measured');
+    check(probes.messageCallbacks.readonly>=4&&probes.messageCallbacks.readwrite>=4,'Message streaming callbacks absent in either source pass');
+    check(encoder.encode(JSON.stringify(records.find(row=>row.id===primary).payload)).length>=2*1024*1024,'Unicode source below 2MiB');
+  }
+  if(scenario==='selection50'){check(expected.length===50,'50-record cap not exercised');check(!probes.referenceReads.includes('unselected-missing-reference'),'Read references beyond cap');}
+  if(scenario.startsWith('deletion'))check(expected.length===1&&expected[0].id==='z-deletion','Deletion beyond cap did not replace selection');
+  const fingerprint=await sha(encoder.encode(JSON.stringify(batch)));
+  if(resumed){check(fingerprint===sessionStorage.getItem('staging-fixed-hash'),'Reload replaced the fixed outbox');check(probes.outboxAdds===0&&probes.reads.readwrite===0,'Reload restaged source');}
+  else if(scenario==='reload')sessionStorage.setItem('staging-fixed-hash',fingerprint);
+  const upload=probes.network.find(call=>call.method==='POST');
+  if(scenario.endsWith('-after-stage')){check(probes.injected===1,'Post-stage authorization change not injected');check(!upload,'Upload escaped changed owner/busy/consent');}
+  else check(upload,'Staged result was not consumed by syncNow transport');
+  if(upload?.path.endsWith('/transfers')){
+    const wire=encoder.encode('{"request_id":'+JSON.stringify(batch.request_id)+',"changes":'+actualText+'}');
+    check(upload.body.size===wire.length&&upload.body.sha256===await sha(wire),'Upload wire bytes differ from independently decoded fixed parts');
+  }else if(upload)exact(upload.body,{request_id:batch.request_id,changes:expected},'Inline upload differs from frozen old payload');
+  return {sourcePreserved:true,exactBytes:true,changes:expected.length,bytes:bytes.length,sha256:batch.changesParts.sha256,
+    probes,evidence:{header:batch,parts:chunks.map(([key,bytes])=>({key,data:base64(bytes)})),expected:expectedText}};
+}
+try{window.__SYNC_STAGING__={ok:true,scenario,resumed,...await run()};}
+catch(error){window.__SYNC_STAGING__={ok:false,scenario,resumed,error:String(error),stack:error.stack,probes};}
+</script>

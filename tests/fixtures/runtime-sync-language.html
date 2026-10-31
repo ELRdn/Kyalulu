@@ -1,0 +1,33 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Disposable Runtime sync language fixture</title>
+<p>Fictional accounts only. Run through e2e_runtime_sync_language.py with APIs intercepted.</p><div id="root"></div>
+<script type="module">
+import RefreshRuntime from '/@react-refresh';
+RefreshRuntime.injectIntoGlobalHook(window);window.$RefreshReg$=()=>{};window.$RefreshSig$=()=>type=>type;window.__vite_plugin_react_preamble_installed__=true;
+const [{default:React},{default:ReactDOM},{default:RuntimeSyncSettings},context,store,snapshots]=await Promise.all([
+  import('/@id/react'),import('/@id/react-dom/client'),import('/src/components/RuntimeSyncSettings.tsx'),
+  import('/src/lib/appContext.ts'),import('/src/lib/appStore.ts'),import('./storage-fixture.ts'),
+]);
+const owner='fixture-runtime-sync-owner',foreign='fixture-runtime-sync-foreign',prefix='sync:'+owner+':';
+localStorage.setItem('kyalulu-execution-target','device');context.rememberOwner(owner);
+context.savePreferences({...context.preferences(),language:'ja'});
+const root=ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(RuntimeSyncSettings));
+window.__RUNTIME_SYNC_LANGUAGE__={
+  language(language){context.savePreferences({...context.preferences(),language});},
+  owner(foreignAccount){context.rememberOwner(foreignAccount?foreign:owner);},
+  async seedOutbox(){
+    const record={id:'chat-a',owner,kind:'conversation',revision:1,serverRevision:0,dirty:true,deleted:false,pinned:false,opened:1,
+      payload:{storage_policy:'sync',draft:'原文の未送信入力',settings:{session_id:'chat-a'},messages:[],memories:[],summaries:[]}};
+    const batch={request_id:'fixture-runtime-sync-request-42',withdrawn:0,revisions:{'chat-a':1},
+      changes:[{id:'chat-a',kind:'conversation',base_revision:0,payload:record.payload,deleted:false}]};
+    await store.appTransaction(['entities','meta','parts'],'readwrite',(tx,done)=>{
+      store.writeEntity(tx,record);store.writeOutbox(tx,owner,batch,done);
+    });
+  },
+  async snapshot(){
+    return {owner:context.deviceOwner(),consent:await store.getMeta(prefix+'consent'),
+      outbox:await snapshots.fixedOutbox(owner),storage:await snapshots.physicalSnapshot(),
+      selected:Array.from(document.querySelectorAll('#root .k-cloud__checkbox input'),input=>input.checked)};
+  },
+};
+</script>

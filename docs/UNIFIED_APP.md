@@ -1,15 +1,17 @@
 # Unified App Implementation Status
 
-2026-10-23 to 2026-10-26. **Partial implementation, not release acceptance.** No production
+2026-10-23 to 2026-10-29. **Partial implementation, not release acceptance.** No production
 deployment, provider application, purchase, contract or DNS change has been performed.
-Work is now committed incrementally on `codex/unified-app-integration`; merging is
-reserved for the owner. Pre-existing Mobile changes remain in place.
+PR #8 was merged as `fc590baf`; its post-merge Windows/Ubuntu CI passed. Follow-up
+work continues incrementally on `codex/unified-app-integration`. Unrelated local
+changes remain outside the integration commits.
 
 ## Local Build
 
 ```powershell
 pnpm --filter web typecheck
 pnpm --filter web test -- --pool threads --maxWorkers 1
+$env:VITE_RELAY_ORIGIN='https://relay.kyalulu.com'
 pnpm --filter web build:app
 .venv/Scripts/python.exe scripts/unified_preview.py
 ```
@@ -18,10 +20,68 @@ Preview: http://127.0.0.1:5187/. This loopback-only fixture server has no login,
 payment, advertisement, age-verification or inference connector. JP/US and age 18+
 in its onboarding are **test fixtures, not approved regional policies**. Do not
 publish this server. The built application is `.artifacts/unified-app`.
+For the packed PC Runtime, use `pnpm --filter web build:native` and
+`.artifacts/native-app`; a hosted App build is not a Native entry. Local first-use
+uses the Runtime's explicitly configured `KYALULU_REGION_POLICIES`; absent regional
+approval stays closed. No Cloud account or online policy lookup is required.
 Existing `build` and `build:mobile` entry points remain separate and supported.
 Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:app`.
 
 ## Delivered Behavior
+
+- Browser sync receive/ack transactions scan one record at a time, retaining only
+  target/referenced bodies plus owner-wide IDs and the numeric high-water mark.
+  Real IndexedDB cases preserve historical-only references, immutable current
+  versions, unsent originals, collision/owner-change rollback and cached receipts.
+  Outgoing batches now retain at most 50 dirty sync entities and only their
+  referenced documents in one readonly snapshot; final counts recheck consent.
+  List/individual-entity storage segmentation remains open. See
+  [selective sync validation](validation/2026-10-29-unified-sync-selection.md).
+
+- Same-path Cloud/PC target changes now force document reload, so previous Cloud
+  access state and drafts are not reused on a missing PC. Unregistered PC Runtime
+  calls are rejected before HTTP dispatch. Unit navigation cases and 24 actual
+  commercial UI cases pass. See
+  [runtime routing](validation/2026-10-29-unified-runtime-routing.md).
+
+- Fixed `b133ce0` Cloud/Windows/legacy-Mobile candidates now include those client
+  fixes. Clean-source tests/build, archive/precache/source comparisons and the
+  Windows packed CLI's isolated recovery checks passed. Gates remain false;
+  signing, real devices and production recovery are not accepted. See
+  [package validation](validation/2026-10-30-unified-native-mobile.md).
+
+- The fixed `bf83d03` Cloud candidate now builds as a distinct Linux image and
+  passes isolated read-only/network-none application and default-command checks.
+  Authorized production aggregates/digests matched before/after; running services
+  were retained. Public cutover, migrations and recovery remain separate. See
+  [isolated image validation](validation/2026-10-29-unified-container.md).
+
+- Native Chromium IndexedDB quota errors now have explicit acceptance coverage:
+  two owners each retain originals, revisions, durable outboxes and receipts
+  after new/update saves fail at a 128 KiB origin quota; identical saves succeed
+  after release and survive page reload. Physical disk/device acceptance remains
+  separate. See [quota validation](validation/2026-10-29-unified-device-quota.md).
+
+- Commercial UI now has actual-app JA/EN Chromium coverage at mobile/light and
+  desktop/dark widths: home/explore/chat banners, 15-second/150-credit disclosure,
+  insufficient-balance recovery, draft preservation, no automatic resend, and
+  delayed responses across account switches. All 24 fixture cases passed; real
+  advertising, payments and provider completion remain gated. See
+  [commercial UI validation](validation/2026-10-29-unified-commercial-ui.md).
+
+- Browser Runtime health/capability calls no longer load account entities, and
+  selected conversation/Library operations skip unrelated conversation bodies.
+  Lists and imports retain their required owner-wide reads. Captured-owner
+  fencing, bindings, immutable revisions and unsent input are covered by new
+  unit checks and existing real IndexedDB memory/export scenarios. See
+  [route-read validation](validation/2026-10-29-unified-device-reads.md).
+
+- Offline-cache selection walks one entity at a time and retains only selection
+  metadata; eviction waits for each body read/write in one atomic transaction.
+  Fresh IndexedDB checks cover protected records, concurrent changes, account
+  switches, rollback after a write error and page restart. Single-entity capacity
+  and real quota/device acceptance remain open. See
+  [offline-cache validation](validation/2026-10-29-unified-offline-cache.md).
 
 - Browser/Native downloads and Cloud transfer commit now parse UTF-8 and JSON
   incrementally without a whole encoded-document buffer. Verified syntax/hash
@@ -239,7 +299,7 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 | Surface | Cloud/Python | Own PC/Python | Browser Device | Acceptance Gap |
 |---|---|---|---|---|
 | Character chat/settings | Existing | Existing | Adapter implemented | Real-model device 20-turn test |
-| Memory/provenance | Existing | Existing | Retrieval/proposals/manual CRUD | Full identity/shared-scope parity |
+| Memory/provenance | Existing; attributed manual-source API | Existing; attributed manual-source API | Scoped CRUD/search/audit, explicit world/shared migration and normal shared recall; own-only snapshots, source CAS, policy/branch separation, regeneration/manual retention and erasure connected to common UI and real IDB | Clean CI, matching packages, full Python/Device lifecycle parity, real-model/device and large-domain acceptance remain |
 | Summaries | Existing | Existing | Extractive chapters/arcs/manual edits | Long-context/end-to-end fixtures |
 | World/cast/RPG | Existing + creator snapshot bridge | Existing | Creator revisions, cast contract, RPG and selected Lore | Historical snapshot interchange and physical real-model acceptance |
 | Branches | Saved state/memory/settings; recorded revision/message ancestry | Synced and pre-enrollment branch UUIDs retained; owner claims precede receipts; explicit upload selection | Saved snapshots and independent numeric IDs; user/assistant cut points | Legacy branches without saved proofs, restorable revision bodies and physical acceptance |
@@ -249,7 +309,7 @@ Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:a
 | Sync | Selected SQLite export, separate copies, confirmed erasure | Scoped entity enrollment/outbox/cancel receipts; legacy backup retained | Outbox, withdrawal receipts, version consent, library hydration, local recoveries | Complete lineage, large conversations and production migration |
 | Offline | Network generation required | Existing standalone | Recent ten, pinned, protected edits, hydration and stub identity | Real quota exhaustion, full PWA/browser/device restart acceptance |
 | Mobile migration | Not a Cloud upload | Not applicable | Verified file fallback and selected chunked model/data transfer | Deployed-domain popup/CSP, Android/iPhone and large-model acceptance |
-| Localization | Existing screens mainly JA | Same | New controls JA/EN | Complete existing screen translation |
+| Localization | Common entry/chat/creation/research/settings and reviewed snapshots JA/EN | Same shared UI, diagnostics/PC hosting/visual-novel controls JA/EN | Migration waiting/success/errors and model progress/errors follow language; memory errors retain the original cause | Complete screen inventory including remaining debug-drawer labels; real IME/device acceptance |
 | Adult publication | Closed | Existing local controls retained | Closed | Vendor acceptance and public APIs/media gates |
 
 When unified mode is enabled, the legacy Community routes also stay closed,
@@ -361,6 +421,16 @@ Indexed outbox guards, additive IndexedDB migration and five real Chromium
 fixture scenarios are recorded in
 [Outbox guards](validation/2026-10-25-unified-outbox-guards.md). Chunk checks no
 longer load the entire outbox; staging and projection still materialize JSON.
+
+Browser persistence now uses an additive IndexedDB v3 `parts` store for entity
+and immutable outbox payloads, with pieces up to 1 MiB. Existing inline records
+remain readable and are not eagerly rewritten at upgrade. See
+[segmented storage](validation/2026-10-30-unified-segmented-storage.md) for the
+transaction/owner/corruption checks and limits. A v2 client cannot reopen v3;
+recovery requires a v3-compatible bundle and must preserve all stores. Decoded
+trees and UI arrays remain whole. A separate opt-in Windows storage measurement
+passed a 250 MB save/browser-restart/restore; 1 GB restored bodies did not pass
+under the test's 4 GiB safety cap. Full chat/sync/phone capacity remains open.
 
 Research exports now use the same RuntimeDownload/apiFetch path as Library and
 Creator. Late bodies are rejected after account/target changes. Shared component

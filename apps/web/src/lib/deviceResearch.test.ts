@@ -31,6 +31,22 @@ vi.mock('./appStore',async original=>({...await original<typeof import('./appSto
     }));fixture.transactions=result.catch(()=>undefined);return result;
   },
 }));
+// Route tests retain their in-memory store; the new storage boundary is exercised in real IndexedDB.
+vi.mock('./deviceResearchStore',async()=>{
+  const {appTransaction}=await import('./appStore');
+  const start=(owner:string)=>'device-research:'+JSON.stringify(owner)+':experiment:';
+  return {
+    readResearchExperiment:async(owner:string,id:string)=>structuredClone(fixture.metadata.get(start(owner)+id)),
+    listResearchExperiments:async(owner:string)=>[...fixture.metadata].filter(([key])=>key.startsWith(start(owner))).map(([,value])=>({meta:structuredClone(value.meta),revision:value.revision,...(value.job_id?{job_id:value.job_id}:{})})),
+    writeResearchExperiment:(owner:string,id:string,value:any)=>appTransaction(['meta'],'readwrite',(tx,done)=>{
+      const store=tx.objectStore('meta'),read=store.get(start(owner)+id);
+      read.onsuccess=()=>{
+        if(owner!==fixture.owner||(read.result?.revision??0)!==value.revision){tx.abort();return;}
+        const revision=value.revision+1;store.put({...value,revision},start(owner)+id);done(revision);
+      };
+    }),
+  };
+});
 import { deviceFetch } from './deviceApi';
 import { saveEntity } from './appStore';
 import reference from '../../../../tests/fixtures/device-research.json';
@@ -56,15 +72,27 @@ it('executes the shared generator, isolates experiment memories, and keeps succe
   const data=await first.json();expect(data.results,JSON.stringify(records().map(r=>r.turns))).toHaveLength(2);
   expect(records()).toHaveLength(2);expect(records().map(r=>r.meta.status)).toEqual(['completed','completed']);
   expect(records()[0].session.payload.memories[0].scope).not.toBe(records()[1].session.payload.memories[0].scope);
-  expect(fixture.turns[0][0].content).toContain('Remember only these recorded memories: []');
-  expect(fixture.turns[8][0].content).toContain('Remember only these recorded memories: []');
+  expect(fixture.turns[0][0].content).not.toContain('\nRelevant memories;');
+  expect(fixture.turns[8][0].content).not.toContain('\nRelevant memories;');
   expect(fixture.turns[4].filter((m:any)=>m.role==='user')).toHaveLength(1);
-  expect(fixture.turns[4][0].content).not.toContain('Remember only these recorded memories: []');
+  expect(fixture.turns[4][0].content).toContain(records()[0].session.payload.memories[0].content);
+  expect(fixture.turns[4][0].content).toContain('source: user_statement');
+  expect(fixture.turns[4][0].content).toContain('Story events are fiction, not user facts');
   expect(records()[0].turns.map((t:any)=>t.user_id)).toEqual([1,3,5,7,9,11,13,15]);
   expect(records()[0].turns[4].state_before.session_id).not.toBe(records()[0].turns[0].state_before.session_id);
   expect(records()[0].session.payload.memories[4].source_message_ids).toEqual([9]);
   expect(records()[0].session.payload.memories[4].source_session_id).toBe(records()[0].turns[4].state_before.session_id);
   expect(records()[0].turns[0]).toMatchObject({user:expect.any(String),assistant:'記憶の試験応答',compiled:expect.any(Object),generation_config:{requested:{seed:42}}});
+  const experiment=records()[0],firstTurn=experiment.turns[0],latest=experiment.session.payload.last_generation;
+  expect(firstTurn.raw_prompt).toBe(JSON.stringify(fixture.turns[0]));
+  expect(firstTurn.compiled.ordered_messages.filter((m:any)=>!m.slot)).toEqual(fixture.turns[0].slice(1,-1));
+  expect(firstTurn.compiled.system_prompt).toBe(fixture.turns[0].slice(1,-1).filter((m:any)=>m.role==='system').map((m:any)=>m.content).join('\n\n'));
+  expect(experiment.session.payload.pending_generation).toBeNull();
+  expect(latest).toMatchObject({status:'completed',compiled:expect.any(Object),raw_prompt:JSON.stringify(fixture.turns[7])});
+  expect(experiment.turns.at(-1)).toMatchObject(latest);
+  const detailResponse=await deviceFetch('/api/experiments/'+experiment.meta.experiment_id);expect(detailResponse.status).toBe(200);
+  const detail=await detailResponse.json();expect(detail.turns).toEqual(experiment.turns);
+  expect(detail.raw_prompt).toBe(firstTurn.compiled.system_prompt);
   const count=fixture.calls;expect(await (await post('/api/experiments/run',request({runs:2}))).json()).toEqual(data);expect(fixture.calls).toBe(count);
   expect((await post('/api/experiments/run',request({runs:3}))).status).toBe(409);
   expect(saveEntity).not.toHaveBeenCalled();expect(fixture.busy).toBe(0);
@@ -78,6 +106,44 @@ it('scopes ratings and exports by owner, without syncing sessions',async()=>{
   expect((await (await deviceFetch('/api/experiments')).json()).experiments).toEqual([]);
   expect((await post('/api/ratings',{experiment_id:experiment,turn:1,score:5,comment:'wrong owner',rater:'local'})).status).toBe(404);
   expect(saveEntity).not.toHaveBeenCalled();
+});
+it('streams the exact experiment export without serializing its whole diagnostic tree',async()=>{
+  const result=await (await post('/api/experiments/run',request())).json(),id=result.results[0].experiment_id;
+  const record=records()[0];record.turns[0].raw_prompt='日本語🙂\\\"\n'.repeat(240000);
+  const expected={meta:record.meta,turns:record.turns,raw_prompt:record.raw_prompt,ratings:{},metrics:record.meta.metrics};
+  const raw=new TextEncoder().encode(JSON.stringify(expected)),stringify=JSON.stringify;
+  const spy=vi.spyOn(JSON,'stringify').mockImplementation(((value:any,...args:any[])=>{
+    if(value?.turns===expected.turns||value?.turns?.[0]?.raw_prompt===record.turns[0].raw_prompt)throw Error('Aggregate diagnostic serialization');
+    return stringify(value,...args);
+  }) as typeof JSON.stringify);
+  try{
+    const response=await deviceFetch('/api/experiments/'+id+'/export');expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Disposition')).toContain('experiment.json');
+    const reader=response.body!.getReader();let offset=0,count=0;
+    while(true){const part=await reader.read();if(part.done)break;
+      expect(part.value.byteLength).toBeLessThanOrEqual(1024*1024);
+      expect(part.value.every((byte,index)=>byte===raw[offset+index])).toBe(true);offset+=part.value.length;count++;
+    }
+    expect(offset).toBe(raw.length);expect(count).toBeGreaterThan(2);
+    expect(records()[0]).toBe(record);expect(record.turns[0].raw_prompt).toBe(expected.turns[0].raw_prompt);
+  }finally{spy.mockRestore();}
+});
+it.each(['owner','abort'])('refuses to finish a private experiment export after %s changes',async changed=>{
+  const result=await (await post('/api/experiments/run',request())).json(),id=result.results[0].experiment_id;
+  records()[0].turns[0].raw_prompt='x'.repeat(3*1024*1024);
+  const controller=new AbortController(),response=await deviceFetch('/api/experiments/'+id+'/export',{signal:controller.signal});
+  const reader=response.body!.getReader();expect((await reader.read()).done).toBe(false);
+  if(changed==='owner')fixture.owner='research-b';else controller.abort();
+  await expect((async()=>{while(!(await reader.read()).done){/* Drain any already offered part. */}})()).rejects.toThrow();
+});
+it('reports a late serialization failure as a failed stream and keeps the saved evidence',async()=>{
+  const result=await (await post('/api/experiments/run',request())).json(),id=result.results[0].experiment_id;
+  const record=records()[0];record.turns[0].raw_prompt='x'.repeat(3*1024*1024);record.turns.at(-1).extension=1n;
+  const response=await deviceFetch('/api/experiments/'+id+'/export'),reader=response.body!.getReader();
+  expect(response.status).toBe(200);expect((await reader.read()).value?.length).toBe(1024*1024);
+  await expect((async()=>{while(!(await reader.read()).done){/* Require a verified EOF, never just a prefix. */}})()).rejects.toThrow();
+  expect(records()[0]).toBe(record);expect(record.turns.at(-1).extension).toBe(1n);
+  reader.releaseLock();
 });
 it('keeps failure diagnostics and partial turns out of the official leaderboard',async()=>{
   fixture.failAt=2;const data=await (await post('/api/experiments/run',request())).json();

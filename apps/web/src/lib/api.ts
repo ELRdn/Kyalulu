@@ -1,5 +1,7 @@
 import { apiFetch as fetch } from './transport';
 import type { Language } from './appContext';
+import { executionTarget, deviceOwner } from './appContext';
+import type { ConversationPageCursor } from './appStore';
 import { SSEDecoder } from "./sse";
 import { cloudJson, isCloud } from './cloud';
 import type { GenerationRecord } from "../../../../packages/schemas/src";
@@ -150,9 +152,9 @@ export async function listMemories(scope: string): Promise<MemoryItem[]> {
   return j.memories;
 }
 
-export async function createMemory(scope: string, type: MemoryType, content: string): Promise<MemoryItem> {
+export async function createMemory(scope: string, type: MemoryType, content: string, sourceSessionId?:string): Promise<MemoryItem> {
   return memoryJson(await fetch("/api/memory", {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scope, type, content })
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scope, type, content,source_session_id:sourceSessionId })
   }));
 }
 
@@ -225,6 +227,28 @@ export async function fetchHistory(sessionId?: string, signal?: AbortSignal): Pr
   const r = await fetch(url, { signal, cache: "no-store", headers: { "Cache-Control": "no-cache" } });
   const j = await checkedJson(r);
   return j.history ?? [];
+}
+export type HistoryPage={session_id:string;history:(ChatMessage&{id?:number;created_at?:string;session_id?:string})[];
+  revision:number;body_token:string|null;total:number;start:number;end:number;previous?:ConversationPageCursor;next?:ConversationPageCursor};
+export async function fetchHistoryPage(sessionId:string,cursor?:ConversationPageCursor,signal?:AbortSignal):Promise<HistoryPage> {
+  const owner=deviceOwner();
+  if(executionTarget()!=='device')throw Error('History pages require on-device execution');
+  const integer=(value:unknown)=>Number.isSafeInteger(value)&&Number(value)>=0;
+  if(cursor!==undefined&&(!cursor||cursor.owner!==owner||cursor.id!==sessionId||!integer(cursor.revision)||!integer(cursor.start)||!integer(cursor.end)
+    ||cursor.start>cursor.end||cursor.end-cursor.start>50||cursor.bodyToken!==null&&typeof cursor.bodyToken!=='string'))throw Error('Invalid history cursor');
+  const requested=cursor&&{...cursor};
+  const query=new URLSearchParams({session_id:sessionId,limit:'50'});if(requested)query.set('cursor',JSON.stringify(requested));
+  const j=await checkedJson(await fetch('/api/chat/history/page?'+query,{signal,cache:'no-store'}));
+  signal?.throwIfAborted();
+  if(executionTarget()!=='device'||deviceOwner()!==owner)throw Error('Connection changed');
+  if(!j||j.session_id!==sessionId||!integer(j.revision)||!integer(j.total)||!integer(j.start)||!integer(j.end)||j.start>j.end||j.end>j.total
+    ||j.body_token!==null&&typeof j.body_token!=='string'||!Array.isArray(j.history)||j.history.length!==j.end-j.start||j.history.length>50
+    ||j.history.some((m:any)=>!m||!['system','user','assistant'].includes(m.role)||typeof m.content!=='string'||m.id!==undefined&&(!integer(m.id)||m.id===0)))throw Error('Invalid history page');
+  if(requested?(j.start!==requested.start||j.end!==requested.end||j.revision!==requested.revision||j.body_token!==requested.bodyToken):j.end!==j.total||j.start!==Math.max(0,j.total-50))throw Error('History page changed');
+  const position=(p:any,start:number,end:number)=>p&&p.owner===owner&&p.id===sessionId&&p.revision===j.revision&&p.bodyToken===j.body_token&&p.start===start&&p.end===end;
+  if(j.start>0?!position(j.previous,Math.max(0,j.start-50),j.start):j.previous!==undefined)throw Error('Invalid previous history page');
+  if(j.end<j.total?!position(j.next,j.end,Math.min(j.total,j.end+50)):j.next!==undefined)throw Error('Invalid next history page');
+  return j;
 }
 
 export async function updateHistoryMessage(id: number, content: string): Promise<void> {
@@ -339,7 +363,7 @@ export async function compilePrompt(p: { character_id?: string | null; persona_i
   return j;
 }
 
-export async function fetchChatDebug(sessionId: string): Promise<{ session_id: string; settings: SessionSettings; compiled: CompiledPrompt; history_count: number; approx_turn: number; relationship: string; state: Record<string, unknown>; generation: GenerationResult | null }> {
+export async function fetchChatDebug(sessionId: string): Promise<{ session_id: string; settings: SessionSettings; compiled: CompiledPrompt; prompt_source?:'saved_generation'|'current_settings'|'unavailable'; history_count: number; approx_turn: number; relationship: string; state: Record<string, unknown>; generation: GenerationResult | null; memory: MemoryTrace | null; memory_session: { enabled: boolean; scope: string } }> {
   const identity = cloudEpoch();
   const r = await fetch(`/api/chat/debug?session_id=${encodeURIComponent(sessionId)}`, { cache: "no-store" });
   const j = await checkedJson(r);
@@ -502,10 +526,28 @@ export async function fetchGeneration(generationId: string, sessionId: string): 
   return response.json();
 }
 
+export async function fetchRecoveryHistory(sessionId:string,status:import('./chatRecovery').GenerationStatus,signal?:AbortSignal):Promise<(ChatMessage&{id?:number})[]> {
+  if(executionTarget()!=='device')return fetchHistory(sessionId,signal);
+  const owner=deviceOwner(),expected={...status};
+  if(expected.session_id!==sessionId||!expected.generation_id)throw Error('Invalid generation history request');
+  const query=new URLSearchParams({session_id:sessionId,generation_id:expected.generation_id});
+  const proof=await checkedJson(await fetch('/api/chat/history/proof?'+query,{signal,cache:'no-store'}));
+  signal?.throwIfAborted();
+  if(executionTarget()!=='device'||owner!==deviceOwner())throw Error('Connection changed');
+  if(!proof||!Number.isSafeInteger(proof.revision)||proof.revision<0||proof.body_token!==null&&typeof proof.body_token!=='string'
+    ||!proof.status||(['generation_id','session_id','status','assistant_id','user_id'] as const).some(key=>proof.status[key]!==expected[key])
+    ||!Array.isArray(proof.history)||proof.history.length>2||proof.history.some((m:any)=>!m||!Number.isSafeInteger(m.id)||m.id<=0||!['user','assistant'].includes(m.role)||typeof m.content!=='string'
+      ||m.id!==(m.role==='assistant'?expected.assistant_id:expected.user_id))
+    ||new Set(proof.history.map((m:any)=>m.id)).size!==proof.history.length
+    ||expected.assistant_id!==null&&!proof.history.some((m:any)=>m.id===expected.assistant_id&&m.role==='assistant'))throw Error('Invalid generation history proof');
+  return proof.history;
+}
+
 /** Explicit user Stop only; never called by resume or reconnect. */
-export async function cancelGeneration(generationId: string, sessionId: string): Promise<void> {
+export async function cancelGeneration(generationId: string, sessionId: string, legacyRevision?:number): Promise<void> {
   const response = await fetch(`/api/chat/generations/${encodeURIComponent(generationId)}/cancel?session_id=${encodeURIComponent(sessionId)}`, {
     method: "POST", cache: "no-store", signal: AbortSignal.timeout(15000),
+    ...(legacyRevision===undefined?{}:{headers:{'Content-Type':'application/json'},body:JSON.stringify({legacy_recovery_confirmed:true,expected_revision:legacyRevision})}),
   });
   if (!response.ok) await checkedJson(response);
 }

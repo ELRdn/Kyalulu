@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 task_root="$(cd "$(dirname "$0")/../.." && pwd)"
-task_work="$task_root/.artifacts/mobile-wasm"
+task_work="$(cd "${1:-$task_root/.artifacts/mobile-wasm}" && pwd)"
+task_tools="$(cd "${2:-$task_work}" && pwd)"
 cd "$task_work"
-chmod +x "$task_work/ninja/ninja"
-source "$task_work/emsdk/emsdk_env.sh"
-export PATH="$task_work/cmake-3.31.6-linux-x86_64/bin:$task_work/ninja:$PATH"
+if [[ ! -x "$task_tools/ninja/ninja" ]]; then chmod +x "$task_tools/ninja/ninja"; fi
+export EMSDK_QUIET=1
+source "$task_tools/emsdk/emsdk_env.sh"
+export PATH="$task_tools/cmake-3.31.6-linux-x86_64/bin:$task_tools/ninja:$PATH"
 task_source="$task_work/wllama"
-task_dawn="$task_work/emdawn/emdawnwebgpu_pkg"
+task_dawn="$task_tools/emdawn/emdawnwebgpu_pkg"
 for task_variant in standard compat; do
   task_build="$task_work/build-$task_variant"
   task_flags=()
@@ -20,6 +22,6 @@ for task_variant in standard compat; do
     -DCMAKE_BUILD_TYPE=Release -DGGML_WEBGPU=ON -DEMDAWNWEBGPU_DIR="$task_dawn" \
     -DWLLAMA_TEST_BACKEND=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_SERVER=OFF \
     "${task_flags[@]}"
-  cmake --build "$task_build" --target wllama --parallel 6
+  cmake --build "$task_build" --target wllama --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-6}"
 done
 printf 'Built standard and Safari-compatible PLE row-streaming binaries.\n'

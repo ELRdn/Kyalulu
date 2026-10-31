@@ -1,18 +1,49 @@
 import { RPGOptionsSchema, type RPGOptions } from '../../../../packages/schemas/src/story';
 import { casefold } from './devicePrompt';
-import { MemoryOptionsSchema } from '../../../../packages/schemas/src';
+import { MemoryOptionsSchema,DeviceGenerationOutputSchema,StateUpdateSchema,RelationshipStateSchema,RelationshipSchema } from '../../../../packages/schemas/src';
+
+const proposalShape=DeviceGenerationOutputSchema.shape.memory_proposals.removeDefault().element.shape;
+const grammarLiteral=(value:string)=>JSON.stringify(JSON.stringify(value));
+const grammarObject=(fields:[string,string][])=>`"{" ws ${fields.map(([key,rule])=>`${grammarLiteral(key)} ws ":" ws ${rule}`).join(' "," ws ')} "}" ws`;
+// A root grammar excludes the optional reasoning prefix admitted by native chat JSON-schema parsing.
+export const deviceResponseGrammar=[
+  'root ::= '+grammarObject([['reply','nonempty'],['state_update','state'],['memory_proposals','memories']]),
+  'state ::= '+grammarObject(Object.keys(StateUpdateSchema.shape).map(key=>[key,key==='relationship_state'?'relationship':'string'])),
+  'relationship ::= '+grammarObject(Object.keys(RelationshipStateSchema.shape).map(key=>[key,key==='stage'?'stage':key==='unresolved_conflict'?'boolean':'string'])),
+  'memory ::= '+grammarObject([['type','memorytype'],['content','content'],['source_kind','sourcekind']]),
+  'stage ::= ('+RelationshipSchema.options.map(grammarLiteral).join(' | ')+') ws',
+  'memorytype ::= ('+proposalShape.type.options.map(grammarLiteral).join(' | ')+') ws',
+  'sourcekind ::= ('+proposalShape.source_kind.removeDefault().options.map(grammarLiteral).join(' | ')+') ws',
+  String.raw`memories ::= "[" ws (memory ("," ws memory ("," ws memory)?)?)? "]" ws
+boolean ::= ("true" | "false") ws
+string ::= "\"" char* "\"" ws
+nonempty ::= "\"" char+ "\"" ws
+content ::= "\"" char{1,200} "\"" ws
+char ::= [^"\\\x00-\x1f] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4})
+ws ::= [ \t\n\r]{0,16}`
+].join('\n');
 
 export const normalizeMemory = (text:string) => text.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,'');
 export function memoryBigrams(text:string) {
   const chars=Array.from(normalizeMemory(text));
   return new Set(chars.length<2?chars:chars.slice(1).map((c,i)=>chars[i]+c));
 }
+export function evidenced(memoryContent:string,reply:string) {
+  const grams=memoryBigrams(memoryContent),evidence=memoryBigrams(reply);
+  return grams.size>=2&&[...grams].filter(g=>evidence.has(g)).length/grams.size>=.3;
+}
 export function estimateTokens(text:string) {
-  const chars=Array.from(text),cjk=chars.filter(c=>c.codePointAt(0)!>0x2e80).length;
-  return Math.max(1,Math.ceil(cjk/1.5+(chars.length-cjk)/4));
+  let count=0,cjk=0;
+  for(const char of text){count++;if(char.codePointAt(0)!>0x2e80)cjk++;}
+  return Math.max(1,Math.ceil(cjk/1.5+(count-cjk)/4));
 }
 export type DeviceMemory={id:string;type:'semantic'|'episodic'|'relationship';content:string;
-  origin:string;supported:boolean|null;status:string;[key:string]:any};
+  origin:string;supported:boolean|null;status:string;source_kind?:string;[key:string]:any};
+export function renderMemoryBlock(memories:DeviceMemory[],compact=false) {
+  return memories.length?(compact?'\nRelevant memories; do not recite or invent. Story events are fiction, not user facts:\n'
+    :'\nRelevant memory (remembered from earlier conversation; use it naturally when it fits, do not recite it, and never invent memories that are not listed):\n')
+    +memories.map(m=>`- [${m.type}] ${m.content}`+(m.source_kind?` (source: ${m.source_kind}${compact?'':'; story events are fictional, not user biography'})`:'' )).join('\n'):'';
+}
 export function retrieveMemories(memories:DeviceMemory[],query:string,options:unknown={}) {
   const {top_k,budget_tokens,min_score,fill_recent}=MemoryOptionsSchema.parse(options);
   const q=memoryBigrams(query);
@@ -63,31 +94,60 @@ export function prepareRpg(raw:unknown, state:Record<string,any>, input:string, 
 type Proposal={type:DeviceMemory['type'];content:string;source_kind:string};
 export function validateProposals(proposals:Proposal[],existing:DeviceMemory[],evidenceText:string) {
   const overlap=(a:Set<string>,b:Set<string>)=>b.size?[...b].filter(g=>a.has(g)).length/b.size:0;
-  const seen=existing.filter(m=>m.supported!==false||m.confirmation==='user_confirmed').map(m=>({grams:memoryBigrams(m.content),kind:m.source_kind??'user_statement'}));
+  const seen=existing.filter(m=>m.status!=='deleted'&&(m.supported!==false||m.confirmation==='user_confirmed')).map(m=>({grams:memoryBigrams(m.content),kind:m.source_kind??'user_statement'}));
   const evidence=memoryBigrams(evidenceText);
   return proposals.slice(0,3).map(p=>{
     const content=p.content.trim().replace(/\s+/gu,' '),grams=memoryBigrams(content),item={...p,content};
-    if(Array.from(normalizeMemory(content)).length<2)return {...item,action:'skip',reason:'too_short'};
-    if(seen.some(s=>s.kind===p.source_kind&&overlap(s.grams,grams)>=.8&&overlap(grams,s.grams)>=.8))return {...item,action:'skip',reason:'duplicate'};
-    seen.push({grams,kind:p.source_kind});return {...item,action:'store',supported:overlap(evidence,grams)>=.3};
+    if(Array.from(normalizeMemory(content)).length<2)return {...item,action:'skip' as const,reason:'too_short'};
+    if(seen.some(s=>s.kind===p.source_kind&&overlap(s.grams,grams)>=.8&&overlap(grams,s.grams)>=.8))return {...item,action:'skip' as const,reason:'duplicate'};
+    seen.push({grams,kind:p.source_kind});return {...item,action:'store' as const,supported:overlap(evidence,grams)>=.3};
+  });
+}
+export function memoryDecisions(proposals:Proposal[],existing:DeviceMemory[],userText:string,reply:string,sourceRevision:string|null) {
+  return validateProposals(proposals,existing,userText).map(d=>{
+    if(d.action!=='store')return d;
+    const quote=d.source_kind==='story_event'?reply:userText;
+    const supported=d.source_kind==='work_setting'?false:d.source_kind==='story_event'?evidenced(d.content,reply):d.supported;
+    return {...d,supported,confirmation:'unverified',source_quote:Array.from(quote).slice(0,2000).join(''),source_revision:sourceRevision};
   });
 }
 type Message={id:number;role:string;content:string};
 export type DeviceSummary={id:string;kind:'chapter'|'arc';ordinal:number;text:string;revision:number;source_message_ids:number[];method:string};
+function summaryPrefix(value:string,limit:number) {
+  let text='',count=0;
+  for(const char of value){if(count++===limit)return {text,clipped:true};text+=char;}
+  return {text,clipped:false};
+}
 export function extractSummary(messages:{id:number|string;role:string;content:string}[]) {
   if(!messages.length)return '';
   const quota=Math.max(1,Math.floor((4000-messages.length*24)/messages.length));
-  return Array.from(messages.map(m=>{const chars=Array.from(m.content);return `[${m.id}:${m.role}] ${chars.length<=quota?m.content:chars.slice(0,quota).join('')+'… [excerpt]'}`;}).join('\n')).slice(0,4000).join('');
+  return summaryPrefix(messages.map(m=>{const prefix=summaryPrefix(m.content,quota);return `[${m.id}:${m.role}] ${prefix.text}${prefix.clipped?'… [excerpt]':''}`;}).join('\n'),4000).text;
 }
-export function refreshSummaries(messages:Message[],existing:DeviceSummary[],sessionId:string) {
-  const summaries:DeviceSummary[]=[];
+export function summaryRefresh(existing:DeviceSummary[],sessionId:string):{push(message:Message):void;finish():DeviceSummary[]} {
+  const chapters:DeviceSummary[]=[];
+  let chapter:Message[]=[];
   const put=(kind:DeviceSummary['kind'],ordinal:number,ids:number[],text:string)=>{
     const old=existing.find(s=>s.kind===kind&&s.ordinal===ordinal),unchanged=old&&JSON.stringify(old.source_message_ids)===JSON.stringify(ids);
     const preserve=unchanged&&(kind==='chapter'||old.method!=='extractive'||old.text===text);
-    summaries.push(preserve?old:{id:old?.id??`${sessionId}:${kind}:${ordinal}`,kind,ordinal,text,source_message_ids:ids,method:'extractive',revision:(old?.revision??0)+1});
+    return preserve?old:{id:old?.id??`${sessionId}:${kind}:${ordinal}`,kind,ordinal,text,source_message_ids:ids,method:'extractive',revision:(old?.revision??0)+1};
   };
-  for(let i=0;i<Math.floor(messages.length/20);i++){const source=messages.slice(i*20,(i+1)*20);put('chapter',i,source.map(m=>m.id),extractSummary(source));}
-  const chapters=[...summaries];
-  for(let i=0;i<Math.floor(chapters.length/10);i++){const source=chapters.slice(i*10,(i+1)*10);put('arc',i,source.flatMap(s=>s.source_message_ids),extractSummary(source.map(s=>({id:s.id,role:'chapter',content:s.text}))));}
-  return summaries;
+  return {
+    push(message) {
+      chapter.push(message);
+      if(chapter.length===20) {
+        chapters.push(put('chapter',chapters.length,chapter.map(m=>m.id),extractSummary(chapter)));
+        chapter=[];
+      }
+    },
+    finish() {
+      const summaries=[...chapters];
+      for(let i=0;i<Math.floor(chapters.length/10);i++){const source=chapters.slice(i*10,(i+1)*10);summaries.push(put('arc',i,source.flatMap(s=>s.source_message_ids),extractSummary(source.map(s=>({id:s.id,role:'chapter',content:s.text})))));}
+      return summaries;
+    }
+  };
+}
+export function refreshSummaries(messages:Message[],existing:DeviceSummary[],sessionId:string) {
+  const refresh=summaryRefresh(existing,sessionId);
+  for(const message of messages)refresh.push(message);
+  return refresh.finish();
 }

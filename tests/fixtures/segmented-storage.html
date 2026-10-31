@@ -1,0 +1,639 @@
+<!doctype html><meta charset="utf-8"><title>Disposable segmented persistence acceptance</title>
+<p>Fictional accounts, fresh contexts and loopback modules only. Bounded fixtures; no capacity claim.</p>
+<script type="module">
+import history from './unified-history.json';
+import {appTransaction,entity,allEntities,newEntity,saveEntity,openEntity,conversationInfo,conversationSummary,readConversationSummary,conversationPage,generationHistory,writeEntity,writeOutbox,restoreOutbox,getMeta,setMeta} from '/src/lib/appStore.ts';
+import {deviceExecutionLockName} from '/src/lib/deviceExecution.ts';
+import {rememberOwner,setGenerationBusy} from '/src/lib/appContext.ts';
+import {Sha256} from '/src/mobile/sha256.ts';
+import {JsonStream} from '/src/lib/jsonStream.ts';
+import {receiveSyncPage,syncNow,syncState,setSyncConsent,reconfirmDeletion} from '/src/lib/appSync.ts';
+import {canonical} from '/src/lib/appSyncData.ts';
+import {fixedOutbox} from './storage-fixture.ts';
+const scenario=new URL(location.href).searchParams.get('scenario'),owner='segmented-fiction-a',foreign='segmented-fiction-b',dbName='kyalulu-app-v1';
+const check=(value,message)=>{if(!value)throw Error(message);},same=(a,b,message)=>check(canonical(a)===canonical(b),message);
+const probes=[],metrics={};rememberOwner(owner);
+const seed=()=>({...newEntity('conversation','history',structuredClone(history.payload),owner),revision:7,serverRevision:4,dirty:true,opened:1,unknown_header:{keep:'茶🙂'}});
+const huge=()=>{const value=seed();value.payload.unknown={text:'茶🙂é\\"\n'.repeat(270000),nested:JSON.parse('{"__proto__":{"retain":true},"extension":[null,true,0]}')};return value;};
+const open=(version)=>new Promise((resolve,reject)=>{const request=indexedDB.open(dbName,version);request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});
+const save=value=>appTransaction(['entities'],'readwrite',(tx,done)=>writeEntity(tx,value,'put',done));
+const physical=()=>appTransaction(['entities','meta','parts'],'readonly',(tx,done)=>{
+  const result={},entities=tx.objectStore('entities').getAll(),meta=tx.objectStore('meta'),keys=meta.getAllKeys(),values=meta.getAll();
+  values.onsuccess=()=>{result.entities=entities.result;result.meta=keys.result.map((key,index)=>[key,values.result[index]]);
+    const pieces=[],request=tx.objectStore('parts').openCursor();request.onsuccess=()=>{const cursor=request.result;
+      if(!cursor){result.parts=pieces;done(result);return;}
+      pieces.push([cursor.key,cursor.value.length,new Sha256().update(cursor.value).digest()]);cursor.continue();};
+  };
+});
+const header=()=>appTransaction(['entities'],'readonly',(tx,done)=>{const read=tx.objectStore('entities').get([owner,'history']);read.onsuccess=()=>done(read.result);});
+async function rejected(action,message){let failed=false;try{await action();}catch{failed=true;}check(failed,message);}
+async function run(){
+  if(scenario.startsWith('memory-verify-')){
+    const {readDeviceMemoryDomain,commitDeviceMemoryDomain}=await import('/src/lib/deviceMemoryStore.ts');
+    const value=huge();value.payload.storage_policy='local';value.payload.messages=Array.from({length:120},(_,i)=>({id:i+1,uuid:'source-'+i,role:i%2?'assistant':'user',
+      content:'検証🙂'.repeat(4000)+i,before:{state:{turn:i}},after:{state:{turn:i+1}},unknown:{keep:i}}));
+    await save(value);await setMeta('sync:'+owner+':outbox',{request_id:'fixed',payload:'Unsent independent snapshot'});
+    const domain=await readDeviceMemoryDomain(owner,'local'),stored=await header(),commit=()=>commitDeviceMemoryDomain(owner,'local',domain,[{id:value.id,revision:7}]);
+    if(scenario==='memory-verify-stream'){
+      const before=await physical(),finish=JsonStream.prototype.finish,feed=JsonStream.prototype.feed;let retained=[],verified=false;
+      JsonStream.prototype.finish=function(){const root=finish.call(this);if(Array.isArray(root.messages)){retained.push(root.messages.length);check(this.totalMessages===120,'Source verification count changed');}return root;};
+      JsonStream.prototype.feed=function(bytes){const result=feed.call(this,bytes);if(this.window?.limit===0&&Array.isArray(this.root?.messages)){verified=true;check(this.root.messages.length===0,'Source verification retained decoded history');}return result;};
+      let result;try{result=await commit();}finally{JsonStream.prototype.finish=finish;JsonStream.prototype.feed=feed;}
+      same(retained,[0],'Source verification restored history');check(verified&&result.domain.revision===1&&result.sessions.length===0,'Metadata-only verification failed');
+      const after=await physical();same(after.entities,before.entities,'Verification rewrote canonical source');
+      same(after.parts.filter(([key])=>key[1]==='entity'),before.parts,'Verification changed source parts');
+      same(await getMeta('sync:'+owner+':outbox'),before.meta.find(([key])=>key==='sync:'+owner+':outbox')[1],'Verification changed fixed outbox');
+      same((await entity(value.id,owner)).payload,value.payload,'Verification changed source history/metadata');
+      probes.push('zero-retained-message-bodies','all-source-parts-validated','canonical-and-fixed-outbox-unchanged');return;
+    }
+    if(scenario==='memory-verify-corrupt'){
+      await appTransaction(['parts'],'readwrite',(tx,done)=>{tx.objectStore('parts').delete([owner,'entity',value.id,stored.payloadParts.token,stored.payloadParts.chunks-1]);done();});
+      const before=await physical();await rejected(commit,'Missing final source part accepted');same(await physical(),before,'Corrupt source committed domain');
+      const raw=new TextEncoder().encode('{"messages":[{"content":"bad'+String.fromCharCode(92)+'q"}],"storage_policy":"local"}'),ref={token:crypto.randomUUID(),size:raw.length,chunks:1,sha256:new Sha256().update(raw).digest()};
+      await appTransaction(['entities','parts'],'readwrite',(tx,done)=>{tx.objectStore('parts').put(raw,[owner,'entity',value.id,ref.token,0]);tx.objectStore('entities').put({...stored,payloadParts:ref});done();});
+      const malformed=await physical();await rejected(commit,'Malformed discarded message string accepted');same(await physical(),malformed,'Malformed source committed domain');
+      probes.push('final-source-part-required','discarded-message-json-validated','domain-and-original-rollback');return;
+    }
+    if(scenario==='memory-verify-policy'){
+      value.payload.storage_policy='sync';await save(value);const next=await header();
+      await appTransaction(['entities'],'readwrite',(tx,done)=>{tx.objectStore('entities').put({...next,selection:{...next.selection,storage_policy:'local'}});done();});
+      const before=await physical();await rejected(commit,'Forged header storage policy trusted');same(await physical(),before,'Policy mismatch changed source/domain');
+      probes.push('policy-checked-from-verified-body');return;
+    }
+    if(scenario==='memory-verify-owner'){
+      const before=await physical(),get=IDBObjectStore.prototype.get;let changed=false;
+      IDBObjectStore.prototype.get=function(key){const request=get.call(this,key);if(this.name==='parts'&&!changed)request.addEventListener('success',()=>{changed=true;rememberOwner(foreign);},{once:true});return request;};
+      try{await rejected(commit,'Owner-switched source committed');}finally{IDBObjectStore.prototype.get=get;rememberOwner(owner);}
+      check(changed,'Owner source read not reached');same(await physical(),before,'Owner switch changed source/domain');probes.push('source-read-owner-fence');return;
+    }
+    if(scenario==='memory-verify-quota'){
+      const before=await physical(),add=IDBObjectStore.prototype.add;let writes=0;
+      IDBObjectStore.prototype.add=function(...args){if(this.name==='parts'&&++writes===1)throw new DOMException('Fictional domain quota','QuotaExceededError');return add.apply(this,args);};
+      try{await rejected(commit,'Domain quota fault committed');}finally{IDBObjectStore.prototype.add=add;}
+      check(writes===1,'Domain quota not reached');same(await physical(),before,'Domain quota changed source/outbox');probes.push('domain-write-failure-retains-source');return;
+    }
+    throw Error('Unknown source verification scenario');
+  }
+  if(scenario.startsWith('metadata-')){
+    const value=huge();value.payload.settings={session_id:value.id,system_prompt:'KEEP',temperature:.8};
+    value.payload.messages=Array.from({length:120},(_,i)=>({id:300-i*2,uuid:'metadata-'+i,role:i%2?'assistant':'user',content:'保管🙂'.repeat(4000)+i,
+      unknown:{keep:i},before:{state:{turn:i},memories:[]},after:{state:{turn:i+1},memories:[]}}));
+    value.payload.summaries=[{id:'manual',text:'Original summary',revision:3,unknown:{keep:true}}];value.payload.pending_generation='keep-pending';
+    const {deviceFetch}=await import('/src/lib/deviceApi.ts'),request=(path,body)=>deviceFetch(path,{method:'PUT',body:JSON.stringify(body)});
+    const settings={session_id:value.id,system_prompt:'Updated 茶🙂',temperature:.5},path='/api/chat/settings';
+    const now=Date.now;Date.now=()=>123456;await save(value);
+    await setMeta('sync:'+owner+':outbox',{request_id:'independent',payload:'Fixed unsent snapshot'});
+    check((await deviceFetch(path+'?session_id='+value.id)).ok,'Warm metadata read failed');
+    const before=await physical(),stored=await header();
+    if(scenario==='metadata-stream'){
+      const finish=JsonStream.prototype.finish;let windows=0,rewrites=0;
+      JsonStream.prototype.finish=function(){const p=finish.call(this);if(this.onMessage){rewrites++;check(p.messages.length===0&&this.totalMessages===120,'Metadata rewrite retained history');}
+        else {windows++;check(p.messages.length<=50,'Metadata read retained full history');}return p;};
+      let response,summary;
+      try{
+        response=await request(path,settings);check(response.ok,'Settings update failed: '+await response.text());
+        const context=await deviceFetch('/api/chat/context/'+value.id),body=await context.json();check(context.ok&&body.history_revision==='8','Context read failed');
+        same(body.summaries,value.payload.summaries,'Context summaries changed');
+        summary=await request('/api/chat/context/'+value.id+'/summaries/manual',{expected_revision:3,text:'Updated summary'});
+        check(summary.ok,'Summary update failed');summary=await summary.json();
+      }finally{JsonStream.prototype.finish=finish;Date.now=now;}
+      check(windows===3&&rewrites===2,'Metadata operations did not use bounded reads/rewrites');
+      const record=await entity(value.id,owner),next=await header(),raw=await physical();
+      same(record.payload,{...value.payload,settings:{...settings,character_id:null,persona_id:null,world_id:null,intro:'',
+        library_binding:{character:null,profile:null,lorebooks:[],expression_asset_id:null}},summaries:[{...value.payload.summaries[0],text:'Updated summary',revision:4,method:'manual'}]},'Metadata update lost canonical payload');
+      check(summary.unknown.keep&&record.revision===9&&record.dirty&&record.serverRevision===4,'Metadata lost revision/unknown/dirty fields');
+      check(next.selection.pending_generation&&next.selection.maximumMessageId===300&&next.selection.messageIdsValid&&next.selection.summary.count===120
+        &&next.selection.summary.token===next.payloadParts.token&&next.unknown_header.keep==='茶🙂','Metadata header was not refreshed');
+      check(raw.parts.every(([key])=>key[3]===next.payloadParts.token),'Metadata leaked old parts');same(raw.meta,before.meta,'Metadata changed fixed outbox');
+      probes.push('bounded-settings-and-summary','all-history-snapshots-unknowns-preserved','pending-and-fixed-outbox-retained','atomic-header-parts');return;
+    }
+    if(scenario==='metadata-legacy'){
+      await appTransaction(['entities','parts'],'readwrite',(tx,done)=>{tx.objectStore('entities').put(value);for(let i=0;i<stored.payloadParts.chunks;i++)tx.objectStore('parts').delete([owner,'entity',value.id,stored.payloadParts.token,i]);done();});
+      check((await request(path,settings)).ok,'Legacy settings update failed');Date.now=now;
+      const record=await entity(value.id,owner);same(record.payload.messages,value.payload.messages,'Legacy metadata lost history');check(record.payload.pending_generation==='keep-pending'&&record.revision===8,'Legacy update changed pending/revision');
+      const missing=await request(path,{...settings,session_id:'new-conversation'});check(missing.ok,'Missing settings creation failed');
+      const created=await entity('new-conversation',owner);check(created.revision===1&&created.payload.messages.length===0&&created.payload.settings.system_prompt===settings.system_prompt,'Missing settings created partial entity');
+      probes.push('inline-legacy-compatible','new-conversation-complete');return;
+    }
+    if(scenario==='metadata-domain'){
+      for(const policy of ['local','sync']){
+        const key='device-memory-domain:'+JSON.stringify([owner,policy]);await setMeta(key,{pending:{session_id:'another',generation_id:'active'}});
+        const guarded=await physical();check(!(await request(path,settings)).ok,'Pending memory-domain edit accepted');same(await physical(),guarded,'Domain guard changed canonical data');
+        await appTransaction(['meta'],'readwrite',(tx,done)=>{tx.objectStore('meta').delete(key);done();});
+      }
+      Date.now=now;probes.push('both-memory-policies-blocked-during-generation');return;
+    }
+    if(scenario==='metadata-quota'||scenario==='metadata-owner'){
+      const add=IDBObjectStore.prototype.add;let writes=0;
+      IDBObjectStore.prototype.add=function(...args){if(this.name==='parts'&&++writes===3){
+        if(scenario==='metadata-quota')throw new DOMException('Fictional metadata quota','QuotaExceededError');
+        const request=add.apply(this,args);request.addEventListener('success',()=>rememberOwner(foreign),{once:true});return request;
+      }return add.apply(this,args);};
+      try{check(!(await request(path,settings)).ok,'Metadata fault committed');}finally{IDBObjectStore.prototype.add=add;rememberOwner(owner);Date.now=now;}
+      check(writes===3,'Metadata fault did not reach tentative output');same(await physical(),before,'Metadata fault lost original/outbox');
+      probes.push('tentative-parts-'+scenario+'-rollback');return;
+    }
+    if(scenario==='metadata-corrupt'){
+      const get=IDBObjectStore.prototype.get;let injected=false;
+      IDBObjectStore.prototype.get=function(key){if(this.name==='meta'&&String(key).startsWith('device-memory-domain:')&&!injected){injected=true;
+        this.transaction.objectStore('parts').delete([owner,'entity',value.id,stored.payloadParts.token,stored.payloadParts.chunks-1]);
+      }return get.call(this,key);};
+      try{check(!(await request(path,settings)).ok,'Missing final source part accepted');}finally{IDBObjectStore.prototype.get=get;Date.now=now;}
+      check(injected,'Source fault not reached');same(await physical(),before,'Source corruption adopted tentative output');probes.push('whole-source-verified-before-adoption');return;
+    }
+    if(scenario==='metadata-conflict'){
+      const put=IDBObjectStore.prototype.put;let changed=false;
+      IDBObjectStore.prototype.put=function(record,...args){if(this.name==='entities'&&record.id===value.id&&!changed){changed=true;record={...record,revision:record.revision+1};}return put.call(this,record,...args);};
+      try{check(!(await request(path,settings)).ok,'Stale metadata update accepted');}finally{IDBObjectStore.prototype.put=put;Date.now=now;}
+      const raw=await physical(),next=await header();check(changed&&next.revision===8&&next.payloadParts.token===stored.payloadParts.token,'Conflict changed newer header');
+      same(raw.parts,before.parts,'Conflict replaced source parts');same(raw.meta,before.meta,'Conflict changed outbox');same((await entity(value.id,owner)).payload,value.payload,'Conflict changed newer payload');
+      probes.push('inspected-revision-rechecked-before-writing');return;
+    }
+    Date.now=now;throw Error('Unknown metadata scenario');
+  }
+  if(scenario.startsWith('pending-')){
+    const value=huge(),generation='stream-orphan',key='generation:'+owner+':'+generation;
+    value.payload.pending_generation=generation;value.payload.messages=Array.from({length:40},(_,i)=>({id:300-i*2,uuid:'pending-'+i,role:i%2?'assistant':'user',
+      content:'保管🙂'.repeat(4000)+i,unknown:{keep:i},before:{state:{turn:i},memories:[]},after:{state:{turn:i+1},memories:[]}}));
+    const legacy=scenario==='pending-legacy',receipt={generation_id:generation,session_id:value.id,status:'pending',assistant_id:null,user_id:300,
+      ...(legacy?{}:{execution_lock:deviceExecutionLockName(owner)})};
+    await save(value);await setMeta(key,receipt);await setMeta('sync:'+owner+':outbox',{request_id:'must-not-replace',payload:'Independent fixed snapshot'});
+    const before=await physical(),stored=await header(),{deviceFetch}=await import('/src/lib/deviceApi.ts');
+    const path='/api/chat/generations/'+generation,query='?session_id='+value.id;
+    if(scenario==='pending-stream'){
+      const feed=JsonStream.prototype.feed,finish=JsonStream.prototype.finish;let observed=false;
+      JsonStream.prototype.feed=function(bytes){const result=feed.call(this,bytes);if(this.onMessage){observed=true;check(this.root.messages.length===0,'Rewrite retained full history');}return result;};
+      JsonStream.prototype.finish=function(){const result=finish.call(this);if(this.onMessage)check(result.messages.length===0&&this.totalMessages===40,'Rewrite retained finished history');return result;};
+      try{const response=await deviceFetch(path+query);check(response.ok&&(await response.json()).status==='failed','Streaming orphan recovery failed');}
+      finally{JsonStream.prototype.feed=feed;JsonStream.prototype.finish=finish;}
+      check(observed,'Streaming parser not used');const recovered=await entity(value.id,owner),raw=await physical(),next=await header();
+      same(recovered.payload,{...value.payload,pending_generation:null},'Recovery changed canonical payload');
+      check(recovered.revision===8&&recovered.dirty===true&&recovered.serverRevision===4,'Recovery lost unsent/revision fields');
+      check(next.unknown_header.keep==='茶🙂'&&next.payloadParts.token!==stored.payloadParts.token&&!next.selection.pending_generation,'Recovery header not refreshed');
+      check(next.selection.maximumMessageId===300&&next.selection.messageIdsValid&&next.selection.summary.count===40&&next.selection.summary.token===next.payloadParts.token,'Recovery selection changed message IDs/count');
+      check(raw.parts.every(([k])=>k[3]===next.payloadParts.token)&&raw.parts.every(([,size])=>size<=1048576),'Recovery leaked old/oversized parts');
+      same(await getMeta('sync:'+owner+':outbox'),before.meta.find(([k])=>k==='sync:'+owner+':outbox')[1],'Recovery changed fixed outbox');
+      const after=await physical();check((await deviceFetch(path+query)).ok,'Repeated terminal read failed');same(await physical(),after,'Recovery applied twice');
+      probes.push('streamed-history-preserved','bounded-callback','header-and-parts-atomic','dirty-and-fixed-outbox-preserved','idempotent');return;
+    }
+    if(scenario==='pending-legacy'){
+      const inspection=await deviceFetch(path+query);check(inspection.ok&&(await inspection.json()).legacy_recovery_revision===7,'Legacy inspection missing revision');same(await physical(),before,'Legacy inspection wrote data');
+      const edited={...value,revision:8,payload:{...value.payload,title:'Later canonical edit'}};await save(edited);const changed=await physical();
+      const stale=await deviceFetch(path+'/cancel'+query,{method:'POST',body:JSON.stringify({legacy_recovery_confirmed:true,expected_revision:7})});
+      check(stale.status===409,'Stale recovery confirmation accepted');same(await physical(),changed,'Stale confirmation rewrote data');
+      const accepted=await deviceFetch(path+'/cancel'+query,{method:'POST',body:JSON.stringify({legacy_recovery_confirmed:true,expected_revision:8})});
+      check(accepted.ok,'Exact legacy confirmation rejected');same((await entity(value.id,owner)).payload,{...edited.payload,pending_generation:null},'Legacy recovery lost newer data');
+      probes.push('readonly-legacy-inspection','exact-revision-confirmation','newer-canonical-data-preserved');return;
+    }
+    if(scenario==='pending-quota'){
+      const add=IDBObjectStore.prototype.add;let writes=0;
+      IDBObjectStore.prototype.add=function(...args){if(this.name==='parts'&&++writes===3)throw new DOMException('Fictional recovery quota','QuotaExceededError');return add.apply(this,args);};
+      try{check(!(await deviceFetch(path+query)).ok,'Quota recovery committed');}finally{IDBObjectStore.prototype.add=add;}
+      check(writes===3,'Quota fault did not reach tentative output');same(await physical(),before,'Quota recovery lost original/receipt/outbox');
+      probes.push('tentative-part-quota-rollback');return;
+    }
+    if(scenario==='pending-corrupt'){
+      await appTransaction(['parts'],'readwrite',(tx,done)=>{tx.objectStore('parts').delete([owner,'entity',value.id,stored.payloadParts.token,stored.payloadParts.chunks-1]);done();});
+      const damaged=await physical();check(!(await deviceFetch(path+query)).ok,'Corrupt final part accepted');same(await physical(),damaged,'Corrupt read adopted tentative output');
+      probes.push('final-part-failure-rollback');return;
+    }
+    if(scenario==='pending-owner'){
+      const get=IDBObjectStore.prototype.get;let changed=false;
+      IDBObjectStore.prototype.get=function(key){const request=get.call(this,key);if(this.name==='parts'&&!changed)request.addEventListener('success',()=>{changed=true;rememberOwner(foreign);},{once:true});return request;};
+      try{check(!(await deviceFetch(path+query)).ok,'Owner change accepted');}finally{IDBObjectStore.prototype.get=get;rememberOwner(owner);}
+      check(changed,'Owner fault not reached');same(await physical(),before,'Owner fault changed original');probes.push('rewrite-owner-rollback');return;
+    }
+    if(scenario==='pending-json'){
+      const raw=new TextEncoder().encode('{"messages":[{"id":1,"content":"keep"}],"messages":[],"pending_generation":"'+generation+'"}');
+      const ref={token:crypto.randomUUID(),chunks:1,size:raw.length,sha256:new Sha256().update(raw).digest()};
+      await appTransaction(['entities','parts'],'readwrite',(tx,done)=>{for(let i=0;i<stored.payloadParts.chunks;i++)tx.objectStore('parts').delete([owner,'entity',value.id,stored.payloadParts.token,i]);tx.objectStore('parts').add(raw,[owner,'entity',value.id,ref.token,0]);tx.objectStore('entities').put({...stored,payloadParts:ref});done();});
+      const duplicate=await physical();check(!(await deviceFetch(path+query)).ok,'Streaming rewrite accepted duplicate messages keys');same(await physical(),duplicate,'Duplicate-key failure changed original');
+      probes.push('duplicate-root-array-fails-closed');return;
+    }
+    throw Error('Unknown pending scenario');
+  }
+  if(scenario.startsWith('proof-')){
+    const value=seed(),messages=Array.from({length:120},(_,i)=>({id:1000-i*3,role:i%2?'assistant':'user',content:'茶🙂'.repeat(2000)+i}));
+    const user=messages[8],assistant=messages[9],generation='proof-generation',key='generation:'+owner+':'+generation;
+    const receipt={generation_id:generation,session_id:value.id,status:'completed',user_id:user.id,assistant_id:assistant.id,reply:assistant.content,
+      user_content_sha256:new Sha256().update(new TextEncoder().encode(user.content)).digest()};
+    value.payload={messages,settings:{session_id:value.id},storage_policy:'local',draft:'Unsent draft',last_generation:receipt};
+    await save(value);await setMeta(key,receipt);const raw=await physical(),stored=await header();
+    if(scenario==='proof-read'){
+      const finish=JsonStream.prototype.finish,retained=[];
+      JsonStream.prototype.finish=function(){const result=finish.call(this);retained.push(result.messages.length);return result;};
+      try{
+        const proof=await generationHistory(value.id,generation,owner);
+        same(proof,{status:{generation_id:generation,session_id:value.id,status:'completed',user_id:user.id,assistant_id:assistant.id},revision:7,
+          body_token:stored.payloadParts.token,history:[user,assistant]},'Old nonmonotonic IDs outside latest page not proven');
+        const {deviceFetch}=await import('/src/lib/deviceApi.ts');
+        const response=await deviceFetch('/api/chat/history/proof?session_id='+value.id+'&generation_id='+generation);
+        check(response.ok,'Device proof route failed');same(await response.json(),proof,'Proof route changed selected values');
+        check((await deviceFetch('/api/chat/history/proof?session_id='+value.id+'&generation_id='+generation,{method:'POST'})).status===405,'Proof route accepted mutation');
+      }finally{JsonStream.prototype.finish=finish;}
+      same(retained,[2,2],'Proof decoded complete history');same(await physical(),raw,'Proof read changed data');
+      const legacy={...receipt,user_id:null};delete legacy.user_content_sha256;await setMeta(key,legacy);
+      same((await generationHistory(value.id,generation,owner)).history,[assistant],'Legacy regeneration receipt no longer supported');
+      await setMeta(key,{...receipt,status:'failed',assistant_id:null});
+      same((await generationHistory(value.id,generation,owner)).history,[user],'Failed generation did not verify saved conversation');
+      probes.push('same-snapshot-receipt','old-unsorted-message-ids','bounded-proof-route','readonly-proof','legacy-and-failed');return;
+    }
+    if(scenario==='proof-invalid'){
+      for(const mutate of [p=>{p.messages[9].content='Edited reply';},p=>{p.messages[8].content='Edited input';},
+        p=>{p.messages.splice(9,1);},p=>{p.messages.push({...assistant});},p=>{p.messages[9].role='user';},p=>{p.cache_evicted=true;}]){
+        const changed=structuredClone(value);mutate(changed.payload);await save(changed);const before=await physical();
+        await rejected(()=>generationHistory(value.id,generation,owner),'Changed saved proof accepted');same(await physical(),before,'Rejected proof rewrote data');
+      }
+      await save(value);
+      for(const change of [{status:'pending'},{session_id:'other'},{assistant_id:user.id},{assistant_id:null},{user_id:-1}]){
+        await setMeta(key,{...receipt,...change});await rejected(()=>generationHistory(value.id,generation,owner),'Invalid receipt accepted');
+      }
+      await setMeta(key,receipt);const current=await header();
+      await appTransaction(['parts'],'readwrite',(tx,done)=>{tx.objectStore('parts').delete([owner,'entity',value.id,current.payloadParts.token,current.payloadParts.chunks-1]);done();});
+      const damaged=await physical();await rejected(()=>generationHistory(value.id,generation,owner),'Discarded missing part accepted');same(await physical(),damaged,'Corrupt proof modified original');
+      probes.push('edited-input-and-reply','deleted-and-duplicate-assistant','role-and-evicted','invalid-receipt','full-part-integrity');return;
+    }
+    if(scenario==='proof-owner'){
+      await rejected(()=>generationHistory(value.id,generation,foreign),'Foreign owner proof accepted');
+      const get=IDBObjectStore.prototype.get;let changed=false;
+      IDBObjectStore.prototype.get=function(key){const request=get.call(this,key);if(this.name==='parts'&&!changed)request.addEventListener('success',()=>{changed=true;rememberOwner(foreign);},{once:true});return request;};
+      try{await rejected(()=>generationHistory(value.id,generation,owner),'Owner switch during proof accepted');}finally{IDBObjectStore.prototype.get=get;rememberOwner(owner);}
+      check(changed,'Owner-switch proof fault not reached');
+      const transaction=IDBDatabase.prototype.transaction;
+      IDBDatabase.prototype.transaction=function(...args){const tx=transaction.apply(this,args);tx.addEventListener('complete',()=>rememberOwner(foreign),{once:true});return tx;};
+      try{await rejected(()=>generationHistory(value.id,generation,owner),'Owner switch on proof completion accepted');}finally{IDBDatabase.prototype.transaction=transaction;rememberOwner(owner);}
+      same(await physical(),raw,'Owner proof changed original');probes.push('proof-owner-and-completion-fences');return;
+    }
+    throw Error('Unknown proof scenario');
+  }
+  if(scenario.startsWith('summary-')){
+    const value=seed();value.payload={messages:Array.from({length:63},(_,i)=>({id:i+1,role:'user',content:'茶🙂'.repeat(100)+i,created_at:'2026-10-30T00:00:00Z'})),
+      settings:{session_id:value.id,system_prompt:'KEEP',character_id:'missing-character',world_id:'world@2'},title:'Summary fixture',storage_policy:'local',recovery_from:'source'};
+    await save(value);const raw=await physical(),stored=await header(),expected=conversationSummary(value.payload);
+    same(stored.selection.summary,{...expected,token:stored.payloadParts.token},'Saved summary does not match body token');
+    if(scenario==='summary-read'){
+      const get=IDBObjectStore.prototype.get,reads=[];
+      IDBObjectStore.prototype.get=function(key){if(this.name==='parts')reads.push(key);return get.call(this,key);};
+      try{
+        same(await conversationInfo(value.id,owner),{id:value.id,owner,revision:7,pinned:false,opened:1,deleted:false,selection:stored.selection},'Info changed header fields');
+        check(reads.length===0,'Conversation info read body parts');
+        const finish=JsonStream.prototype.finish,windows=[];
+        JsonStream.prototype.finish=function(){const result=finish.call(this);windows.push(result.messages.length);return result;};
+        try{same(await readConversationSummary(value.id,owner),expected,'Summary lost total count or final preview');}
+        finally{JsonStream.prototype.finish=finish;}
+        same(windows,[1],'Summary retained more than the final message');check(reads.length===stored.payloadParts.chunks,'Summary did not validate every part');
+        const {deviceFetch}=await import('/src/lib/deviceApi.ts');reads.length=0;
+        const cached=await deviceFetch('/api/chat/sessions'),cachedBody=await cached.json();check(cached.ok,'Cached sessions request failed');
+        same(cachedBody.sessions,[{session_id:value.id,count:63,last_at:expected.last_at,last_preview:expected.last_preview,character_id:'missing-character',
+          character_name:value.payload.title,world_id:'world@2',nsfw:false,sync_recovery:true,offline_available:true}],'Cached sessions fields changed');
+        check(reads.length===0,'Token-matched sessions read a body');
+        await appTransaction(['entities'],'readwrite',(tx,done)=>{tx.objectStore('entities').put({...stored,selection:{...stored.selection,summary:{...stored.selection.summary,token:'stale',count:999,last_preview:'STALE'}}});done();});
+        const before=await physical();reads.length=0;
+        const fallback=await deviceFetch('/api/chat/sessions');check(fallback.ok,'Stale summary fallback failed');same(await fallback.json(),cachedBody,'Stale summary was trusted');
+        check(reads.length===stored.payloadParts.chunks,'Stale summary did not read verified body');same(await physical(),before,'Summary fallback changed storage');
+        const stub={...value,id:'legacy-stub',opened:2,payload:{messages:[],settings:{session_id:'legacy-stub'},title:'Old stub',cache_evicted:true,
+          cache_preview:{count:103,last_at:'2026-10-31T00:00:00Z',last_preview:'Remote preview'}}};
+        await appTransaction(['entities'],'readwrite',(tx,done)=>{tx.objectStore('entities').put(stub);done();});
+        await save({...stub,id:'segmented-stub'});
+        await appTransaction(['entities'],'readwrite',(tx,done)=>{const read=tx.objectStore('entities').get([owner,'segmented-stub']);read.onsuccess=()=>{const row=read.result;delete row.selection.summary;tx.objectStore('entities').put(row);done();};});
+        const stubsBefore=await physical(),stubs=await deviceFetch('/api/chat/sessions');check(stubs.ok,'Old evicted stubs failed to list');
+        const sessions=(await stubs.json()).sessions;
+        for(const id of ['legacy-stub','segmented-stub'])same(sessions.find(s=>s.session_id===id),{session_id:id,count:103,last_at:stub.payload.cache_preview.last_at,
+          last_preview:'Remote preview',character_id:null,character_name:'Old stub',world_id:null,nsfw:false,sync_recovery:false,offline_available:false},'Evicted preview changed');
+        same(await readConversationSummary('legacy-stub',owner),conversationSummary(stub.payload),'Inline evicted count lost');
+        same(await readConversationSummary('segmented-stub',owner),conversationSummary(stub.payload),'Segmented evicted count lost');
+        same(await physical(),stubsBefore,'Listing hydrated an evicted stub or changed opened');
+      }finally{IDBObjectStore.prototype.get=get;}
+      probes.push('header-only-info','token-matched-summary','stale-summary-fallback','bounded-last-message','inline-and-segmented-evicted-readonly');return;
+    }
+    if(scenario==='summary-corrupt'){
+      await appTransaction(['parts'],'readwrite',(tx,done)=>{tx.objectStore('parts').delete([owner,'entity',value.id,stored.payloadParts.token,0]);done();});
+      const before=await physical();check((await conversationInfo(value.id,owner)).revision===7,'Header info required body');
+      await rejected(()=>readConversationSummary(value.id,owner),'Summary accepted missing body');
+      const {deviceFetch}=await import('/src/lib/deviceApi.ts');check((await deviceFetch('/api/chat/sessions')).ok,'Valid cached summary required body');
+      await appTransaction(['entities'],'readwrite',(tx,done)=>{tx.objectStore('entities').put({...stored,selection:{...stored.selection,summary:{...stored.selection.summary,token:'stale'}}});done();});
+      const stale=await physical(),response=await deviceFetch('/api/chat/sessions');check(!response.ok,'Stale cached summary concealed missing body');
+      same(await physical(),stale,'Corrupt summary read rewrote data');
+      await appTransaction(['entities'],'readwrite',(tx,done)=>{tx.objectStore('entities').put(stored);done();});same(await physical(),before,'Header restore changed body');
+      await appTransaction(['entities'],'readwrite',(tx,done)=>{tx.objectStore('entities').put({...value,id:'invalid-inline',payload:{messages:{invalid:true}}});done();});
+      const invalid=await physical();check(!(await deviceFetch('/api/chat/sessions')).ok,'Invalid inline summary did not reject');
+      same(await physical(),invalid,'Invalid inline summary rewrote data');
+      probes.push('info-independent-of-body','summary-integrity','stale-cache-fails-closed');return;
+    }
+    if(scenario==='summary-owner'){
+      for(const operation of [conversationInfo,readConversationSummary]){
+        await rejected(()=>operation(value.id,foreign),'Foreign owner accepted');
+        const get=IDBObjectStore.prototype.get;let changed=false;
+        IDBObjectStore.prototype.get=function(key){const request=get.call(this,key);if(this.name===(operation===conversationInfo?'entities':'parts')&&!changed)request.addEventListener('success',()=>{changed=true;rememberOwner(foreign);},{once:true});return request;};
+        try{await rejected(()=>operation(value.id,owner),'Owner change during read accepted');}finally{IDBObjectStore.prototype.get=get;rememberOwner(owner);}
+        check(changed,'Owner fault did not reach read');
+        const transaction=IDBDatabase.prototype.transaction;
+        IDBDatabase.prototype.transaction=function(...args){const tx=transaction.apply(this,args);tx.addEventListener('complete',()=>rememberOwner(foreign),{once:true});return tx;};
+        try{await rejected(()=>operation(value.id,owner),'Owner change at completion accepted');}finally{IDBDatabase.prototype.transaction=transaction;rememberOwner(owner);}
+      }
+      same(await physical(),raw,'Owner guard changed storage');probes.push('info-and-summary-owner-fences','read-and-completion-fences');return;
+    }
+    throw Error('Unknown summary scenario');
+  }
+  if(scenario.startsWith('page-')){
+    const value=seed(),messages=Array.from({length:25},(_,i)=>({id:100-i*3,uuid:'page-'+i,role:i%2?'assistant':'user',content:'茶🙂'.repeat(20000)+i,unknown:{keep:i}}));
+    value.payload={messages,title:'Page fixture',storage_policy:'local',unknown:JSON.parse('{"__proto__":{"keep":true}}')};await save(value);
+    let raw=await physical(),ref=raw.entities[0].payloadParts;const stamp={owner,id:value.id,revision:value.revision,bodyToken:ref.token,start:15,end:25};
+    if(scenario==='page-read'){
+      const {messages:_,...metadata}=value.payload,latest=await conversationPage(value.id,owner,10);
+      same(latest.messages,messages.slice(15),'Latest window changed');same(latest.metadata,metadata,'Metadata changed');
+      check(latest.total===25&&latest.start===15&&!latest.next,'Latest position changed');
+      const middle=await conversationPage(value.id,owner,10,latest.previous),first=await conversationPage(value.id,owner,10,middle.previous);
+      same([...first.messages,...middle.messages,...latest.messages],messages,'Backwards pages overlap or lose history');
+      check(!first.previous&&first.start===0&&first.messages.length===5,'First page boundary changed');
+      same((await conversationPage(value.id,owner,10,first.next)).messages,middle.messages,'Forward page changed');
+      const forward=await conversationPage(value.id,owner,10,{...stamp,start:0,end:10}),forwardNext=await conversationPage(value.id,owner,10,forward.next),forwardLast=await conversationPage(value.id,owner,10,forwardNext.next);
+      same([...forward.messages,...forwardNext.messages,...forwardLast.messages],messages,'Short final page overlaps or loses messages');check(forwardLast.start===20&&forwardLast.end===25,'Final range changed');
+      const legacy={...value,id:'legacy-page'};
+      await appTransaction(['entities'],'readwrite',(tx,done)=>{tx.objectStore('entities').put(legacy);done();});
+      const inline=await conversationPage(legacy.id,owner,10);same(inline.messages,latest.messages,'Inline page differs');same(inline.metadata,metadata,'Inline metadata differs');check(inline.bodyToken===null,'Inline token changed');
+      await appTransaction(['entities'],'readwrite',(tx,done)=>{const read=tx.objectStore('entities').get([owner,value.id]);read.onsuccess=()=>{tx.objectStore('entities').put({...read.result,pinned:true,opened:99});done();};});
+      same((await conversationPage(value.id,owner,10,latest.previous)).messages,middle.messages,'Metadata-only update invalidated cursor');
+      const before=await physical();await conversationPage(value.id,owner,10);same(await physical(),before,'Page read modified storage');
+      check(await conversationPage('missing',owner)===undefined,'Missing page created history');
+      for(const bad of [{...stamp,owner:foreign},{...stamp,id:'wrong'},{...stamp,start:-1},{...stamp,start:0},{...stamp,end:26},{...stamp,end:14},{...stamp,revision:6},{...stamp,bodyToken:'wrong'}])await rejected(()=>conversationPage(value.id,owner,10,bad),'Invalid cursor accepted');
+      await rejected(()=>conversationPage(value.id,foreign,10),'Foreign owner read accepted');
+      for(const limit of [0,101,1.5])await rejected(()=>conversationPage(value.id,owner,limit),'Invalid page size accepted');
+      same(await entity(value.id,owner),{...value,pinned:true,opened:99},'Full read contract changed');
+      for(const [id,fields] of [['deleted-page',{deleted:true}],['wrong-kind',{kind:'character'}],['evicted-page',{payload:{...legacy.payload,cache_evicted:true}}],['missing-messages',{payload:{title:'Invalid'}}]]){
+        await appTransaction(['entities'],'readwrite',(tx,done)=>{tx.objectStore('entities').put({...legacy,id,...fields});done();});
+        await rejected(()=>conversationPage(id,owner,10),'Unavailable history became an empty page');
+      }
+      probes.push('latest-and-bidirectional-pages','legacy-inline','metadata-and-unknown-fields','read-only','cursor-fence','full-read-retained');return;
+    }
+    if(scenario==='page-cursor'){
+      const before=await conversationPage(value.id,owner,10);
+      await save(value);await rejected(()=>conversationPage(value.id,owner,10,before.previous),'Old token accepted');
+      const fresh=await conversationPage(value.id,owner,10);
+      await appTransaction(['entities'],'readwrite',(tx,done)=>{const read=tx.objectStore('entities').get([owner,value.id]);read.onsuccess=()=>{tx.objectStore('entities').put({...read.result,revision:8});done();};});
+      await rejected(()=>conversationPage(value.id,owner,10,fresh.previous),'Old revision accepted');
+      probes.push('token-and-revision-fence');return;
+    }
+    if(scenario==='page-owner'){
+      const get=IDBObjectStore.prototype.get;let changed=false;
+      IDBObjectStore.prototype.get=function(key){const request=get.call(this,key);if(this.name==='parts'&&!changed)request.addEventListener('success',()=>{changed=true;rememberOwner(foreign);},{once:true});return request;};
+      try{await rejected(()=>conversationPage(value.id,owner,10),'Owner change during parts accepted');}finally{IDBObjectStore.prototype.get=get;rememberOwner(owner);}
+      check(changed,'Parts owner fault not reached');
+      const transaction=IDBDatabase.prototype.transaction;
+      IDBDatabase.prototype.transaction=function(...args){const tx=transaction.apply(this,args);tx.addEventListener('complete',()=>rememberOwner(foreign),{once:true});return tx;};
+      try{await rejected(()=>conversationPage(value.id,owner,10),'Owner change on transaction completion accepted');}finally{IDBDatabase.prototype.transaction=transaction;rememberOwner(owner);}
+      same(await physical(),raw,'Account fault changed stored data');probes.push('part-and-complete-owner-fence');return;
+    }
+    if(scenario==='page-corrupt-json'){
+      const encoder=new TextEncoder();
+      const invalid=[encoder.encode('{"messages":[{"content":"\\q"},{"content":"ok"}]}'),encoder.encode('{"messages":[{"content":"ok"},{"content":"ok"}]} trailing')];
+      const utf8=encoder.encode('{"messages":[{"content":"X"},{"content":"ok"}]}');utf8[utf8.indexOf(88)]=255;invalid.push(utf8);
+      for(const bytes of invalid){
+        const parts={token:crypto.randomUUID(),chunks:1,size:bytes.length,sha256:new Sha256().update(bytes).digest()};
+        await appTransaction(['entities','parts'],'readwrite',(tx,done)=>{tx.objectStore('entities').put({...value,payload:undefined,payloadParts:parts});tx.objectStore('parts').put(bytes,[owner,'entity',value.id,parts.token,0]);done();});
+        const before=await physical();await rejected(()=>conversationPage(value.id,owner,1,{...stamp,bodyToken:parts.token,start:1,end:2}),'Valid hash bypassed syntax/UTF-8 validation');same(await physical(),before,'Syntax failure changed data');
+      }
+      probes.push('discarded-syntax-and-utf8','trailing-json','valid-hash-not-sufficient');return;
+    }
+    if(scenario==='page-corrupt-first'||scenario==='page-corrupt-last'){
+      const index=scenario==='page-corrupt-first'?0:ref.chunks-1;
+      await appTransaction(['parts'],'readwrite',(tx,done)=>{const key=[owner,'entity',value.id,ref.token,index],read=tx.objectStore('parts').get(key);read.onsuccess=()=>{const bytes=read.result;bytes[Math.min(100,bytes.length-1)]^=1;tx.objectStore('parts').put(bytes,key);done();};});
+      const before=await physical();await rejected(()=>conversationPage(value.id,owner,1),'Corruption outside/inside page accepted');same(await physical(),before,'Hash failure changed data');
+      probes.push('all-parts-checksum-before-result');return;
+    }
+    throw Error('Unknown page scenario');
+  }
+  if(scenario==='kind-selection'||scenario==='kind-selection-owner'){
+    const conversation=huge(),character=newEntity('character','saved-character',{document:{name:'Saved character'}},owner);
+    await save(conversation);await save(character);await save({...character,owner:foreign,payload:{document:{name:'FOREIGN'}}});
+    if(scenario==='kind-selection-owner'){
+      const openCursor=IDBObjectStore.prototype.openCursor;let changed=false;
+      IDBObjectStore.prototype.openCursor=function(...args){const request=openCursor.apply(this,args);if(this.name==='entities')request.addEventListener('success',()=>{changed=true;rememberOwner(foreign);},{once:true});return request;};
+      try{await rejected(()=>allEntities(owner,['preset']),'Owner changed during excluded header scan');}
+      finally{IDBObjectStore.prototype.openCursor=openCursor;rememberOwner(owner);}
+      check(changed,'Owner fault not reached');probes.push('excluded-header-owner-fence');return;
+    }
+    const removeFirst=async id=>{
+      const raw=await physical(),header=raw.entities.find(e=>e.owner===owner&&e.id===id);
+      await appTransaction(['parts'],'readwrite',(tx,done)=>{tx.objectStore('parts').delete([owner,'entity',id,header.payloadParts.token,0]);done();});
+    };
+    await removeFirst(conversation.id);const before=await physical(),get=IDBObjectStore.prototype.get,reads=[];
+    IDBObjectStore.prototype.get=function(key){if(this.name==='parts')reads.push(key);return get.call(this,key);};
+    try{
+      same(await allEntities(owner,['character']),[character],'Selected kind or owner changed');
+      check(reads.length>0&&reads.every(key=>key[0]===owner&&key[2]===character.id),'Unrelated or foreign body read');
+      reads.length=0;same(await allEntities(owner,[]),[],'Empty kind selection returned data');check(!reads.length,'Empty selection read a body');
+      await rejected(()=>allEntities(owner),'Unfiltered read ignored corrupt body');
+    }finally{IDBObjectStore.prototype.get=get;}
+    same(await physical(),before,'Filtered read modified stored data');
+    await removeFirst(character.id);const corrupt=await physical();
+    await rejected(()=>allEntities(owner,['character']),'Selected kind ignored corrupt body');
+    same(await physical(),corrupt,'Rejected read modified stored data');
+    probes.push('kind-filter-before-body','owner-isolation','unfiltered-and-selected-corruption-reject','readonly-preservation');return;
+  }
+  if(scenario.startsWith('upgrade-')||scenario==='blocked'){
+    const version=scenario==='upgrade-v2'?2:1;
+    const request=indexedDB.open(dbName,version);request.onupgradeneeded=()=>{const db=request.result;db.createObjectStore('entities',{keyPath:['owner','id']});const meta=db.createObjectStore('meta');if(version===2)meta.createIndex('sync-outbox-state',['request_id','withdrawn']);};
+    const old=await new Promise((resolve,reject)=>{request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});
+    const value=seed(),batch={request_id:'legacy-fixed',revisions:{history:7},changes:[{id:value.id,kind:value.kind,base_revision:4,payload:value.payload,deleted:false}]};
+    await new Promise((resolve,reject)=>{const tx=old.transaction(['entities','meta'],'readwrite');tx.objectStore('entities').put(value);tx.objectStore('meta').put(batch,'sync:'+owner+':outbox');tx.oncomplete=resolve;tx.onabort=reject;});
+    if(scenario==='blocked'){
+      await rejected(()=>entity(value.id,owner),'Blocked upgrade did not reject');old.close();
+    }else old.close();
+    same(await entity(value.id,owner),value,'Legacy data changed at upgrade');
+    const raw=await physical();check(!raw.parts.length&&raw.entities[0].payload&&!raw.entities[0].payloadParts,'Upgrade eagerly rewrote inline body');
+    same(await getMeta('sync:'+owner+':outbox'),batch,'Upgrade rewrote old outbox');
+    const mixed=huge();mixed.id='segmented';await save(mixed);
+    same(await entity('segmented',owner),mixed,'Mixed segmented body lost');same(await entity(value.id,owner),value,'Mixed inline body lost');
+    const db=await open();check(db.version===3&&db.objectStoreNames.contains('parts'),'v3 missing');db.close();
+    await rejected(()=>open(2),'v2 client reopened v3');probes.push('lazy-upgrade','mixed-inline-parts','v2-reopen-fails');return;
+  }
+  if(scenario==='late-success'){
+    const original=indexedDB.open.bind(indexedDB);let late;
+    indexedDB.open=(...args)=>{const request=original(...args);request.addEventListener('success',()=>{late=request.result;request.onblocked?.(new Event('blocked'));});return request;};
+    try{await rejected(()=>entity('history',owner),'Late success resolved rejected open');}finally{indexedDB.open=original;}
+    await new Promise(resolve=>setTimeout(resolve,0));
+    let closed=false;try{late.transaction('entities');}catch{closed=true;}check(closed,'Late connection leaked');
+    await entity('history',owner);probes.push('late-success-closed','retry');return;
+  }
+  if(scenario==='depth-boundary'){
+    const value=seed();let payload='original';for(let i=0;i<64;i++)payload={extension:payload};value.payload=payload;
+    await save(value);same(await entity(value.id,owner),value,'64-level payload failed to restore');
+    const before=await physical(),deeper={...value,revision:8,payload:{extension:payload}};
+    await rejected(()=>save(deeper),'65-level replacement was saved');same(await physical(),before,'Rejected depth replacement changed original');
+    await rejected(()=>save({...deeper,id:'too-deep'}),'65-level new record was saved');same(await physical(),before,'Rejected depth insert left parts');
+    same(await allEntities(owner),[value],'Library unreadable after rejected depth');probes.push('64-level-roundtrip','65-level-rollback','library-readable');return;
+  }
+  const value=huge();await save(value);same(await entity(value.id,owner),value,'Unicode/history/huge scalar roundtrip changed');
+  let raw=await physical();metrics.payloadBytes=raw.entities[0].payloadParts.size;metrics.maximumPartBytes=Math.max(...raw.parts.map(part=>part[1]));check(raw.parts.length>=3&&raw.parts.every(part=>part[1]<=1024*1024),'Parts exceed 1 MiB or fixture too small');
+  check(!raw.entities[0].payload&&raw.entities[0].payloadParts,'Body still inline');
+  if(['receive-quota','receive-generation','ack-quota','deletion-controls','migration','pin-ui','device-branch','outbox-corrupt'].includes(scenario)){
+    const prefix='sync:'+owner+':';await setMeta(prefix+'consent',true);await setMeta(prefix+'cursor',10);await setMeta('message-sequence:'+owner,50);
+    const inject=async(action,generation=false,opensSource=false)=>{
+      const before=await physical(),add=IDBObjectStore.prototype.add;let writes=0;
+      IDBObjectStore.prototype.add=function(value,key){
+        if(this.name==='parts'&&++writes===3&&!generation)throw new DOMException('After two successful parts','QuotaExceededError');
+        const request=add.call(this,value,key);
+        if(this.name==='parts'&&writes===2&&generation)request.addEventListener('success',()=>setGenerationBusy(true));
+        return request;
+      };
+      try{await action();}finally{IDBObjectStore.prototype.add=add;if(generation)setGenerationBusy(false);}
+      check(writes>=2,'Fault did not reach multiple part writes');const after=await physical();
+      if(opensSource)before.entities.find(row=>row.id===value.id).opened=after.entities.find(row=>row.id===value.id).opened;
+      same(after,before,'Connected operation left partial parts/body/control commit');
+    };
+    if(scenario.startsWith('receive-')){
+      await setMeta('generation:'+owner+':old',{generation_id:'old',session_id:value.id,status:'completed',reply:'PRIVATE'});
+      const tombstone={id:value.id,kind:'conversation',revision:5,deleted:true,payload:{}};
+      await inject(()=>rejected(()=>receiveSyncPage(owner,[tombstone],11),'Receive fault committed'),scenario==='receive-generation');
+      await receiveSyncPage(owner,[tombstone],11);const rows=await allEntities(owner),recovery=rows.find(row=>row.payload.recovery_from===value.id);
+      check(recovery?.payload.unknown.text===value.payload.unknown.text&&(await entity(value.id,owner)).deleted,'Recovery lost original/history');
+      check(await getMeta(prefix+'cursor')===11&&(await getMeta('generation:'+owner+':old')).status==='deleted','Receive receipt/cursor/scrub missing');
+      probes.push('receive-recovery-atomic-rollback','retry-preserves-historical-source');return;
+    }
+    if(scenario==='ack-quota'){
+      const batch={request_id:'fixed-ack',withdrawn:0,revisions:{history:7},changes:[{id:value.id,kind:value.kind,base_revision:4,payload:value.payload,deleted:false}],
+        receipt:{changes:[{id:'fork',source_id:value.id,revision:6,deleted:false,branched:true}]}};
+      await appTransaction(['meta','parts'],'readwrite',(tx,done)=>writeOutbox(tx,owner,batch,done));
+      const fetch=globalThis.fetch;globalThis.fetch=async(path,init)=>{check(!init?.method,'Cached ACK resent payload');return Response.json(String(path)==='/api/mobile/status'?{cloud_mode:true,authenticated:true,owner_scope:owner}:{changes:[],cursor:10,has_more:false});};
+      try{
+        await inject(async()=>{await syncNow(owner);check(syncState().phase==='error','ACK fault reported saved');});
+        await syncNow(owner);check(syncState().phase==='saved'&&!await getMeta(prefix+'outbox'),'ACK retry not settled');
+        check((await entity('fork',owner)).payload.unknown.text===value.payload.unknown.text,'ACK branch lost unknown field');
+        check(!(await physical()).parts.some(part=>part[0][1]==='outbox'),'ACK parts leaked');
+      }finally{globalThis.fetch=fetch;}
+      probes.push('ack-branch-parts-receipt-sequence-rollback','cached-ack-retry-cleanup');return;
+    }
+    if(scenario==='deletion-controls'){
+      const deleted=await saveEntity({...value,deleted:true},7);
+      const fetch=globalThis.fetch;globalThis.fetch=async(path,init)=>{
+        if(String(path)==='/api/mobile/status')return Response.json({cloud_mode:true,authenticated:true,owner_scope:owner});
+        if(String(path).includes('/cancel/'))return Response.json({state:'canceled'});
+        return init?.method==='POST'?Response.json({error:'confirmation required'},{status:409}):Response.json({changes:[],cursor:10,has_more:false});
+      };
+      try{
+        await syncNow(owner);const first=await fixedOutbox(owner);check(!first.changes[0].delete_confirmed,'Unconfirmed deletion escalated');
+        check((await entity(value.id,owner)).payload.unknown.text===value.payload.unknown.text,'Unconfirmed deletion lost body');
+        await setMeta(prefix+'remote:'+value.id,{revision:6,deleted:false,count:4});
+        await inject(()=>rejected(()=>reconfirmDeletion(owner,value.id,deleted.revision,6),'Reconfirmation fault committed'));
+        await reconfirmDeletion(owner,value.id,deleted.revision,6);const fixed=await getMeta(prefix+'outbox');
+        check(fixed.request_id!==first.request_id&&(await fixedOutbox(owner)).changes[0].delete_confirmed,'Exact revision confirmation missing');
+        await setSyncConsent(owner,false);same((await getMeta(prefix+'outbox')).changesParts,fixed.changesParts,'Withdrawal rewrote fixed bytes');
+        const get=IDBObjectStore.prototype.get;let bodyReads=0;
+        IDBObjectStore.prototype.get=function(key){if(this.name==='parts')bodyReads++;return get.call(this,key);};
+        try{await syncNow(owner);}finally{IDBObjectStore.prototype.get=get;}check(bodyReads===0,'Cancellation reconstructed or read fixed body');
+        check(!await getMeta(prefix+'outbox')&&!(await physical()).parts.some(part=>part[0][1]==='outbox'),'Cancel left parts');
+        check((await entity(value.id,owner)).payload.unknown.text===value.payload.unknown.text,'Cancel discarded unconfirmed body');
+      }finally{globalThis.fetch=fetch;}
+      probes.push('unconfirmed-body-retained','exact-reconfirmation-atomic','withdrawal-manifest','cancel-owned-parts');return;
+    }
+    if(scenario==='outbox-corrupt'){
+      const batch={request_id:'corrupt-fixed',changes:[{id:value.id,kind:value.kind,base_revision:4,payload:value.payload,deleted:false}]};
+      await appTransaction(['meta','parts'],'readwrite',(tx,done)=>writeOutbox(tx,owner,batch,done));
+      const ref=(await getMeta(prefix+'outbox')).changesParts;
+      await appTransaction(['parts'],'readwrite',(tx,done)=>{tx.objectStore('parts').delete([owner,'outbox','fixed',ref.token,1]);done();});
+      const before=await physical();await rejected(()=>fixedOutbox(owner),'Corrupt outbox read succeeded');
+      await rejected(()=>appTransaction(['meta','parts'],'readwrite',(tx,done)=>writeOutbox(tx,owner,batch,done)),'Corrupt outbox replaced');
+      same(await physical(),before,'Corrupt fixed source changed');probes.push('fixed-outbox-fail-closed','replacement-rollback');return;
+    }
+    const refresh=await import('/@react-refresh');refresh.default.injectIntoGlobalHook(window);window.$RefreshReg$=()=>{};window.$RefreshSig$=()=>type=>type;window.__vite_plugin_react_preamble_installed__=true;
+    if(scenario==='migration'){
+      const {importMobile}=await import('/src/pages/Migration.tsx'),{initialData,newConversation}=await import('/src/mobile/store.ts');
+      const data=initialData();data.conversations=[newConversation(data.characters[0],'fictional-model')];data.conversations[0].draft='KEEP draft';
+      data.conversations[0].messages=[{id:'legacy',role:'user',content:value.payload.unknown.text,state:'complete'}];
+      await inject(()=>rejected(()=>importMobile(data,'fixture-migration',owner),'Migration quota committed'));
+      const first=await importMobile(data,'fixture-migration',owner),again=await importMobile(data,'fixture-migration',owner);
+      check(again.repeated&&again.sessions[0].id===first.sessions[0].id,'Migration replay duplicated');
+      const saved=await entity(first.sessions[0].id,owner);check(saved.payload.messages[0].id>50&&saved.payload.messages[0].legacy_id==='legacy'&&saved.payload.migrated_draft==='KEEP draft','Migration identity/draft/sequence lost');
+      const before=await physical(),random=crypto.randomUUID;crypto.randomUUID=()=>value.id;
+      try{await rejected(()=>importMobile(data,'collision-migration',owner),'Migration add collision succeeded');}finally{crypto.randomUUID=random;}
+      same(await physical(),before,'Migration collision changed original/receipt');probes.push('migration-parts-receipt-sequence-rollback','migration-replay','migration-add-collision');return;
+    }
+    if(scenario==='device-branch'){
+      const {deviceFetch}=await import('/src/lib/deviceApi.ts');localStorage.setItem('kyalulu-execution-target','device');
+      const request=()=>deviceFetch('/api/chat/sessions/'+value.id+'/branch',{method:'POST',body:JSON.stringify({message_id:2})});
+      await inject(async()=>check(!(await request()).ok,'Branch quota succeeded'),false,true);
+      const response=await request(),result=await response.json();check(response.ok,'Branch failed');const copy=await entity(result.session_id,owner);
+      check(copy.payload.messages.length===2&&copy.payload.unknown.text===value.payload.unknown.text&&copy.payload.settings.session_id===copy.id,'Historical branch lost state/unknown fields');
+      const before=await physical(),random=crypto.randomUUID;crypto.randomUUID=()=>value.id;
+      try{check(!(await request()).ok,'Branch add collision succeeded');}finally{crypto.randomUUID=random;}
+      const after=await physical();before.entities.find(row=>row.id===value.id).opened=after.entities.find(row=>row.id===value.id).opened;
+      same(after,before,'Branch collision changed source');
+      const local={...value,payload:{...value.payload,storage_policy:'local'}};await save(local);
+      const removal=await deviceFetch('/api/chat/sessions/'+value.id+'/data',{method:'DELETE'});check(removal.ok,'Local permanent deletion failed');
+      check((await entity(value.id,owner)).deleted&&!(await entity(value.id,owner)).payload.unknown,'Local body not erased after explicit permanent deletion');
+      check((await physical()).parts.filter(part=>part[0][1]==='entity'&&part[0][2]===value.id).length===1,'Local old parts leaked');
+      probes.push('device-branch-atomic-rollback','historical-branch','branch-add-collision','explicit-local-body-removal');return;
+    }
+    localStorage.setItem('kyalulu-execution-target','device');
+    const {mountSessionPolicy}=await import('./session-policy.tsx');
+    const node=document.createElement('div');document.body.append(node);const root=mountSessionPolicy(node,value.id);
+    const wait=async(test)=>{for(let index=0;index<200;index++){if(await test())return;await new Promise(resolve=>setTimeout(resolve,10));}throw Error('Pin UI did not settle');};
+    await wait(()=>node.querySelector('input[type=checkbox]'));await wait(async()=>!(node.querySelector('input').disabled));
+    const before=await header();node.querySelector('input').click();await wait(async()=>(await header()).pinned);
+    same((await header()).payloadParts,before.payloadParts,'Production pin UI changed manifest');same((await entity(value.id,owner)).payload,value.payload,'Pin UI lost history');root.unmount();
+    probes.push('production-session-policy-pin','manifest-preserved');return;
+  }
+  if(scenario==='roundtrip'){
+    let status;try{await appTransaction(['meta'],'readwrite',()=>{throw Object.assign(Error('Fictional conflict'),{status:409});});}catch(error){status=error.status;}
+    check(status===409,'Transaction lost original error status');
+    const before=await header(),opened=await openEntity(value.id,owner);same(opened.payload,value.payload,'Open changed historical body');
+    await appTransaction(['entities'],'readwrite',(tx,done)=>{const store=tx.objectStore('entities'),read=store.get([owner,value.id]);read.onsuccess=()=>{store.put({...read.result,pinned:true});done();};});
+    same((await header()).payloadParts,before.payloadParts,'Metadata update changed manifest');
+    const batch={request_id:'fixed-independent',withdrawn:0,revisions:{history:7},changes:[{id:value.id,kind:value.kind,base_revision:4,payload:value.payload,deleted:false}]};
+    await appTransaction(['meta','parts'],'readwrite',(tx,done)=>writeOutbox(tx,owner,batch,done));
+    const fixed=await getMeta('sync:'+owner+':outbox');check(fixed.changesParts.token!==before.payloadParts.token&&fixed.changes[0].payload&&Object.keys(fixed.changes[0].payload).length===0,'Outbox shares live payload or retains inline body');
+    const shortened={...value,payload:{storage_policy:'sync',messages:[{id:9,uuid:'retain',content:'short'}]}};
+    await save(shortened);same(await entity(value.id,owner),shortened,'Shortened write failed');same(await fixedOutbox(owner),batch,'Fixed outbox bytes changed with live entity');
+    raw=await physical();check(raw.parts.filter(part=>part[0][1]==='entity').length===1,'Surplus entity parts leaked');
+    await appTransaction(['meta','parts'],'readwrite',(tx,done)=>writeOutbox(tx,owner,null,done));
+    check(!(await physical()).parts.some(part=>part[0][1]==='outbox'),'Outbox parts leaked');
+    same(await entity(value.id,owner),shortened,'Removal changed live body');probes.push('unicode-huge-scalar-historical','metadata-manifest','independent-outbox','shorten-cleanup','remove-cleanup','reopen');return;
+  }
+  if(scenario.startsWith('corrupt-')){
+    const ref=(await header()).payloadParts,key=[owner,'entity',value.id,ref.token,1];
+    await appTransaction(['parts'],'readwrite',(tx,done)=>{const store=tx.objectStore('parts'),read=store.get(key);read.onsuccess=()=>{
+      if(scenario==='corrupt-missing')store.delete(key);
+      else if(scenario==='corrupt-size')store.put(read.result.subarray(1),key);
+      else {read.result[0]^=1;store.put(read.result,key);}done();};});
+    const before=await physical();await rejected(()=>entity(value.id,owner),'Corruption became empty/successful history');
+    await rejected(()=>save({...value,payload:{messages:[]}}),'Replacement erased corrupt original');same(await physical(),before,'Corrupt originals changed');probes.push('read-fail-closed','replacement-rollback');return;
+  }
+  if(scenario==='owner-fence'){
+    const other={...value,owner:foreign,payload:{messages:[{id:900000,content:'FOREIGN'}]}};await save(other);
+    check((await allEntities(owner)).length===1&&(await allEntities(foreign)).length===1,'Owner list leaked');
+    const before=await physical(),get=IDBObjectStore.prototype.get;let changed=false;
+    IDBObjectStore.prototype.get=function(key){const request=get.call(this,key);if(this.name==='parts'&&!changed)request.addEventListener('success',()=>{changed=true;rememberOwner(foreign);});return request;};
+    try{await rejected(()=>saveEntity({...value,payload:{...value.payload,title:'EDIT'}},7,{'receipt':true}),'Owner change committed');}finally{IDBObjectStore.prototype.get=get;rememberOwner(owner);}
+    check(changed,'Owner fault not reached');same(await physical(),before,'Owner switch leaked a write');probes.push('owner-isolation','part-callback-owner-fence');return;
+  }
+  if(scenario==='quota'){
+    const before=await physical(),add=IDBObjectStore.prototype.add;let writes=0;
+    IDBObjectStore.prototype.add=function(value,key){if(this.name==='parts'&&++writes===3)throw new DOMException('Fixture after two successful parts','QuotaExceededError');return add.call(this,value,key);};
+    try{await rejected(()=>saveEntity({...value,payload:{...value.payload,title:'EDIT'}},7,{'receipt':true,['message-sequence:'+owner]:999}),'Quota write succeeded');}finally{IDBObjectStore.prototype.add=add;}
+    check(writes===3,'Did not fail after two successful part writes');same(await physical(),before,'Quota changed body/parts/receipt/sequence');
+    await saveEntity({...value,payload:{...value.payload,title:'EDIT'}},7,{'receipt':true});
+    check((await entity(value.id,owner)).revision===8&&await getMeta('receipt')===true,'Reopen/retry did not persist');probes.push('quota-after-two-parts','atomic-rollback','reopen-retry');return;
+  }
+  if(scenario==='collisions'){
+    const before=await physical();await rejected(()=>appTransaction(['entities','meta'],'readwrite',(tx,done)=>{writeEntity(tx,{...value,payload:{messages:[]}},'add');tx.objectStore('meta').put(true,'receipt');done();}),'Add collision overwrote');
+    same(await physical(),before,'Add collision changed records');
+    const random=crypto.randomUUID,token=(await header()).payloadParts.token;crypto.randomUUID=()=>token;
+    try{await rejected(()=>save(value),'Part identity collision overwrote');}finally{crypto.randomUUID=random;}
+    same(await physical(),before,'Part collision changed records');probes.push('entity-add-collision','part-add-collision');return;
+  }
+  if(scenario==='versionchange'){
+    let upgrade,connection,seen=false;
+    const reading=appTransaction(['entities'],'readonly',(tx,done)=>{
+      connection=tx.db;const handler=connection.onversionchange;connection.onversionchange=event=>{seen=true;handler.call(connection,event);};
+      const next=()=>{const read=tx.objectStore('entities').get([owner,value.id]);read.onsuccess=()=>seen?done(read.result):next();};
+      next();upgrade=open(4);
+    });
+    await reading;const db=await upgrade;db.close();check(seen,'Connection did not observe versionchange');
+    let closed=false;try{connection.transaction('entities');}catch{closed=true;}check(closed,'Old connection still open');
+    await rejected(()=>entity(value.id,owner),'Old app opened newer DB');probes.push('versionchange-close','no-downgrade');return;
+  }
+  throw Error('Unknown scenario');
+}
+run().then(()=>window.__SEGMENTED__={ok:true,scenario,probes,...metrics}).catch(error=>window.__SEGMENTED__={ok:false,scenario,error:String(error),stack:error.stack});
+</script>

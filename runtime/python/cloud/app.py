@@ -79,6 +79,10 @@ def create_app(config=None, *, transport=None, ad_provider=None):
     async def cloud_error(request, exc):
         return JSONResponse({"error": exc.code, "code": exc.code}, status_code=exc.status)
 
+    @app.exception_handler(generations.Conflict)
+    async def generation_conflict(request, exc):
+        return JSONResponse({"error": str(exc)}, status_code=409)
+
     @app.exception_handler(ValueError)
     async def bad_input(request, exc):
         return JSONResponse({"error": "invalid_input"}, status_code=400)

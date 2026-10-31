@@ -4,13 +4,14 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import sqlite3
 import struct
 import sys
 import tarfile
 import tempfile
 from contextlib import closing
+from itertools import chain
 from decimal import Decimal, ROUND_CEILING
 import re
 import time
@@ -155,46 +156,50 @@ def disaster_backup(store, destination):
         tempfile.TemporaryDirectory(dir=destination.parent) as tmp,
     ):
         tmp = Path(tmp)
-        control = sqlite3.connect(store.path)
-        copied = sqlite3.connect(tmp / "control.db")
-        try:
-            control.backup(copied)
-        finally:
-            control.close()
-            copied.close()
+        databases = []
+        for name in ("control.db", "community.db"):
+            path = store.path if name == "control.db" else store.config.root / name
+            if name == "community.db" and not path.exists() and not path.is_symlink():
+                continue
+            if path.is_symlink() or not path.is_file():
+                raise ValueError("Invalid disaster database path")
+            with (
+                closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)) as original,
+                closing(sqlite3.connect(tmp / name)) as copied,
+            ):
+                original.backup(copied)
+            databases.append(name)
         with tarfile.open(tmp / "snapshot.tar", "w") as archive:
-            archive.add(tmp / "control.db", arcname="control.db")
-            tenants = store.config.root / "tenants"
-            if tenants.exists():
-                for directory in tenants.iterdir():
-                    if directory.is_symlink():
-                        raise ValueError("Invalid tenant directory")
-                    UUID(directory.name)
-                    archive.add(
-                        directory,
-                        arcname="tenants/" + directory.name,
-                        filter=lambda i: None if i.issym() or i.islnk() else i,
-                    )
-            # Retained user restore points must survive a Runtime disaster too.
-            if store.config.backup_root and store.config.backup_root.exists():
-                import re
-
-                for directory in store.config.backup_root.iterdir():
-                    # The current backup's own staging directory lives here when
-                    # the destination is inside the configured backup root.
-                    if directory == tmp:
+            for name in databases:
+                archive.add(tmp / name, arcname=name)
+            for name in ("tenants", "transfers", "entity-transfers"):
+                directory_root = store.config.root / name
+                if directory_root.is_symlink():
+                    raise ValueError("Invalid disaster directory")
+                if directory_root.exists():
+                    for directory in directory_root.iterdir():
+                        if directory.is_symlink() or not directory.is_dir():
+                            raise ValueError("Invalid disaster owner directory")
+                        UUID(directory.name)
+                        archive.add(
+                            directory,
+                            arcname=name + "/" + directory.name,
+                            filter=lambda i: None if i.issym() or i.islnk() else i,
+                        )
+            # Historical disaster archives and audit files are durable too.
+            backup_root = store.config.backup_root
+            if backup_root and (backup_root.exists() or backup_root.is_symlink()):
+                if backup_root.is_symlink() or not backup_root.is_dir():
+                    raise ValueError("Invalid disaster backup directory")
+                for path in chain((backup_root,), backup_root.rglob("*")):
+                    if path == tmp or tmp in path.parents or path == destination:
                         continue
-                    if not directory.is_dir() or directory.is_symlink():
-                        continue
-                    UUID(directory.name)
-                    for file in directory.glob("*.kybackup"):
-                        if not file.is_symlink() and re.fullmatch(
-                            r"[0-9a-f]{32}\.kybackup", file.name
-                        ):
-                            archive.add(
-                                file,
-                                arcname="backups/" + directory.name + "/" + file.name,
-                            )
+                    relative = path.relative_to(backup_root).as_posix()
+                    if (path.is_symlink() or not (path.is_file() or path.is_dir())
+                            or "\\" in relative or ":" in relative):
+                        raise ValueError("Invalid retained backup path")
+                    archive.add(path, arcname="backups" + ("/" + relative if relative != "." else ""),
+                                recursive=False)
         with (
             (tmp / "snapshot.tar").open("rb") as source,
             destination.open("xb") as output,
@@ -213,13 +218,17 @@ def disaster_backup(store, destination):
 
 
 def disaster_restore(store, source):
-    if (store.config.root / "tenants").exists():
+    if any((store.config.root / name).exists() or (store.config.root / name).is_symlink()
+           for name in ("tenants", "community.db", "transfers", "entity-transfers")):
         raise ValueError(
             "Restore only into a new empty destination; preserve the original"
         )
     with store.transaction() as db:
-        if db.execute("SELECT 1 FROM accounts LIMIT 1").fetchone():
-            raise ValueError("Destination control plane is not empty")
+        # Shared funding/review rows can exist before the first account.
+        for (table,) in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT GLOB 'sqlite_*'"):
+            quoted = '"' + table.replace('"', '""') + '"'
+            if db.execute('SELECT 1 FROM ' + quoted + ' LIMIT 1').fetchone():
+                raise ValueError("Destination control plane is not empty")
     if (
         store.config.backup_root
         and store.config.backup_root.exists()
@@ -255,19 +264,24 @@ def disaster_restore(store, source):
                 output.write(raw[8:])
                 index += 1
         with tarfile.open(tmp / "snapshot.tar") as archive:
+            seen = set()
             for member in archive:
-                parts = Path(member.name).parts
-                if member.name != "control.db":
-                    if len(parts) < 2 or parts[0] not in {"tenants", "backups"}:
-                        raise ValueError("Invalid backup member")
-                    UUID(parts[1])
-                if (
-                    member.issym()
-                    or member.islnk()
-                    or member.name.startswith("/")
-                    or ".." in parts
-                ):
+                path = PurePosixPath(member.name)
+                parts = path.parts
+                if (not parts or path.is_absolute() or ".." in parts
+                        or "\\" in member.name or ":" in member.name
+                        or path.as_posix() != member.name or member.name in seen
+                        or not (member.isfile() or member.isdir())):
                     raise ValueError("Unsafe backup member")
+                seen.add(member.name)
+                if member.name not in {"control.db", "community.db"}:
+                    if parts[0] == "backups":
+                        if len(parts) == 1 and not member.isdir():
+                            raise ValueError("Invalid backup member")
+                    elif len(parts) < 2 or parts[0] not in {"tenants", "transfers", "entity-transfers"}:
+                        raise ValueError("Invalid backup member")
+                    else:
+                        UUID(parts[1])
             archive.extractall(tmp / "restored", filter="data")
         for database in (tmp / "restored").rglob("*.db"):
             with closing(sqlite3.connect(database)) as con:

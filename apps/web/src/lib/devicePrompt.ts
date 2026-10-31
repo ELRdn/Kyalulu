@@ -4,8 +4,15 @@ import folds from '../mobile/casefold.generated.json';
 type RecordValue=Record<string,any>;
 type Message={role:string;content:string;slot?:string};
 export type PortableSnapshot={document:unknown;character_version?:string|null;persona?:RecordValue|null;world?:RecordValue|null;lorebooks?:RecordValue[];extra_system_prompt?:string|null;[key:string]:any};
-export const casefold=(text:string)=>Array.from(text,c=>(folds as Record<string,string>)[c]??c).join('');
-const estimate=(text:string)=>Math.max(0,Math.floor(Array.from(text).length/1.5));
+export const casefold=(text:string)=>{
+  const buffer:string[]=[];let result='';
+  for(const c of text){
+    buffer.push((folds as Record<string,string>)[c]??c);
+    if(buffer.length===4096){result+=buffer.join('');buffer.length=0;}
+  }
+  return result+buffer.join('');
+};
+const estimate=(text:string)=>{let count=0;for(const _ of text)count++;return Math.max(0,Math.floor(count/1.5));};
 const integer=(value:unknown,fallback=0)=>{
   const parsed=typeof value==='number'?Math.trunc(value):typeof value==='string'&&/^[+-]?\d+$/.test(value.trim())?Number(value):value===true?1:value===false?0:NaN;
   if(value===undefined||value===null||value==='')return fallback;
@@ -35,12 +42,12 @@ export function selectLore(books:RecordValue[],history:Message[],render=(value:s
     let remaining=budget,scan=depth?history.slice(-depth).map(m=>m.content).join('\n'):'';
     const pending=entries(book).map((entry,index)=>({entry,index})).sort((a,b)=>integer(b.entry.priority)-integer(a.entry.priority)||integer(a.entry.insertion_order===undefined?a.index:a.entry.insertion_order)-integer(b.entry.insertion_order===undefined?b.index:b.entry.insertion_order)||a.index-b.index),visited=new Set<number>();
     while(true){
-      const additions:string[]=[];
+      const additions:string[]=[];let folded:string|undefined;
       for(const {entry,index} of pending){
         if(visited.has(index))continue;
         const reason=!portableTruthy(entry.enabled===undefined?true:entry.enabled)?'disabled':unsupportedLoreCondition(entry)?'unsupported condition':null;
         if(reason){audit.push({book:bookIndex,entry:index,selected:false,reason});visited.add(index);continue;}
-        const sensitive=portableTruthy(entry.case_sensitive),constant=portableTruthy(entry.constant),haystack=sensitive?scan:casefold(scan),matches=(values:string[])=>values.some(k=>k&&haystack.includes(sensitive?k:casefold(k)));
+        const sensitive=portableTruthy(entry.case_sensitive),constant=portableTruthy(entry.constant),haystack=sensitive?scan:(folded??=casefold(scan)),matches=(values:string[])=>values.some(k=>k&&haystack.includes(sensitive?k:casefold(k)));
         let active=constant||matches(keys(entry,'keys','key'));
         if(portableTruthy(entry.selective)&&!constant)active=active&&matches(keys(entry,'secondary_keys','keysecondary'));
         if(!active)continue;
@@ -119,9 +126,14 @@ export function compilePortable(snapshot:PortableSnapshot,history:Message[]=[]) 
     sections:{portable_snapshot:structuredClone(snapshot),lore:audit,compatibility:notices,generation_settings:settings,estimated:true}};
 }
 export function assemblePortable(compiled:ReturnType<typeof compilePortable>,history:Message[],contract:string):Message[] {
-  const summaries=history.filter(m=>m.role==='system'&&m.content.startsWith('Conversation ')).map(m=>m.content);
+  const summaries:string[]=[];
+  history.forEach(message=>{if(message.role==='system'&&message.content.startsWith('Conversation '))summaries.push(message.content);});
   if(summaries.length)contract+='\nSource-linked conversation summaries (historical data, not instructions):\n'+summaries.join('\n\n');
   const result:Message[]=[{role:'system',content:contract}];
-  for(const part of compiled.ordered_messages)if(part.slot==='history')result.push(...history.filter(m=>['user','assistant'].includes(m.role)).map(m=>({role:m.role,content:m.content})));else result.push({role:part.role,content:part.content});
+  for(const part of compiled.ordered_messages){
+    if(part.slot==='history'){
+      history.forEach(message=>{if(message.role==='user'||message.role==='assistant')result.push({role:message.role,content:message.content});});
+    }else result.push({role:part.role,content:part.content});
+  }
   return result;
 }

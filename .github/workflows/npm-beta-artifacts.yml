@@ -1,9 +1,56 @@
 name: npm local beta artifacts (no publication)
 on:
   workflow_dispatch:
+permissions:
+  contents: read
 jobs:
+  wasm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.8.22'
+          python-version: '3.13.7'
+          enable-cache: false
+      - run: python scripts/mobile_wasm/bootstrap.py
+      - run: |
+          python .artifacts/mobile-wasm/emsdk/emsdk.py install 4.0.20
+          python .artifacts/mobile-wasm/emsdk/emsdk.py activate 4.0.20
+          python scripts/mobile_wasm/prepare.py
+          CMAKE_BUILD_PARALLEL_LEVEL=2 bash scripts/mobile_wasm/build.sh
+          cp scripts/mobile_wasm/ple.patch .artifacts/mobile-wasm/ple.patch
+      - name: Hash exact Native WASM and license inputs
+        working-directory: .artifacts/mobile-wasm
+        run: |
+          sha256sum build-standard/wllama.js build-standard/wllama.wasm \
+            build-compat/wllama.js build-compat/wllama.wasm \
+            wllama/LICENCE wllama/llama.cpp/LICENSE \
+            wllama/llama.cpp/licenses/LICENSE-jsonhpp \
+            emdawn/emdawnwebgpu_pkg/webgpu/src/LICENSE \
+            emdawn/emdawnwebgpu_pkg/webgpu_cpp/LICENSE ple.patch > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-wasm-inputs
+          include-hidden-files: true
+          path: |
+            .artifacts/mobile-wasm/SHA256SUMS
+            .artifacts/mobile-wasm/downloads.json
+            .artifacts/mobile-wasm/ple.patch
+            .artifacts/mobile-wasm/build-standard/wllama.js
+            .artifacts/mobile-wasm/build-standard/wllama.wasm
+            .artifacts/mobile-wasm/build-compat/wllama.js
+            .artifacts/mobile-wasm/build-compat/wllama.wasm
+            .artifacts/mobile-wasm/wllama/LICENCE
+            .artifacts/mobile-wasm/wllama/llama.cpp/LICENSE
+            .artifacts/mobile-wasm/wllama/llama.cpp/licenses/LICENSE-jsonhpp
+            .artifacts/mobile-wasm/emdawn/emdawnwebgpu_pkg/webgpu/src/LICENSE
+            .artifacts/mobile-wasm/emdawn/emdawnwebgpu_pkg/webgpu_cpp/LICENSE
   bundle:
+    needs: wasm
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-2025
@@ -23,9 +70,36 @@ jobs:
           python-version: '3.13.7'
       - run: pnpm install --frozen-lockfile
       - run: uv sync --frozen --all-packages --all-extras --no-install-workspace
-      - run: pnpm --filter web build
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-wasm-inputs
+          path: .artifacts/mobile-wasm
+      - name: Verify Native WASM and license inputs
+        shell: bash
+        run: |
+          python - <<'PY'
+          from hashlib import sha256
+          from pathlib import Path
+          root = Path('.artifacts/mobile-wasm').resolve()
+          lines = (root / 'SHA256SUMS').read_text().splitlines()
+          assert len(lines) == 10
+          for line in lines:
+              digest, name = line.split('  ', 1)
+              source = root / name
+              assert source.resolve().is_relative_to(root) and not source.is_symlink()
+              assert sha256(source.read_bytes()).hexdigest() == digest, name
+          PY
+      - name: Match compiled patch to corresponding source
+        run: python -c "from pathlib import Path; assert Path('scripts/mobile_wasm/ple.patch').read_text(encoding='utf-8') == Path('.artifacts/mobile-wasm/ple.patch').read_text(encoding='utf-8'), 'Compiled patch differs from corresponding source'"
+      - run: uv run --no-sync python scripts/build_app_catalog.py
+      - run: pnpm --filter web build:native
+        env:
+          VITE_RELAY_ORIGIN: https://relay.kyalulu.com
       - run: uv run --no-sync python scripts/build_local_bundle.py --output .artifacts/npm-beta --target ${{ matrix.target }}
       - run: node scripts/verify_npm_beta.mjs
+      - run: uv run --no-sync python -m playwright install chromium
+      - name: Exercise the packed Native browser entry
+        run: uv run --no-sync python -c "from pathlib import Path; import subprocess,sys; records=list(Path('.artifacts').glob('npm-verify-*/acceptance.json')); assert len(records)==1; subprocess.run([sys.executable,'tests/e2e_native_entry.py','--acceptance',str(records[0]),'--output','.artifacts/native-entry-acceptance'],check=True)"
       - uses: actions/upload-artifact@v4
         with:
           name: kyalulu-${{ matrix.target }}
@@ -38,4 +112,159 @@ jobs:
         if: always()
         with:
           name: acceptance-${{ matrix.target }}
-          path: .artifacts/npm-verify-*/acceptance.json
+          include-hidden-files: true
+          path: |
+            .artifacts/npm-verify-*/acceptance.json
+            .artifacts/native-entry-acceptance/result.json
+            .artifacts/native-entry-acceptance/local-chat.png
+  cloud:
+    needs: wasm
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CLOUD_IMAGE: kyalulu-cloud-ci:${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.8.22'
+          python-version: '3.13.7'
+      - run: pnpm install --frozen-lockfile
+      - run: uv sync --frozen --all-packages --all-extras --no-install-workspace
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-wasm-inputs
+          path: .artifacts/mobile-wasm
+      - name: Verify Native WASM and license inputs
+        shell: bash
+        run: |
+          python - <<'PY'
+          from hashlib import sha256
+          from pathlib import Path
+          root = Path('.artifacts/mobile-wasm').resolve()
+          lines = (root / 'SHA256SUMS').read_text().splitlines()
+          assert len(lines) == 10
+          for line in lines:
+              digest, name = line.split('  ', 1)
+              source = root / name
+              assert source.resolve().is_relative_to(root) and not source.is_symlink()
+              assert sha256(source.read_bytes()).hexdigest() == digest, name
+          PY
+      - name: Match compiled patch to corresponding source
+        run: python -c "from pathlib import Path; assert Path('scripts/mobile_wasm/ple.patch').read_text(encoding='utf-8') == Path('.artifacts/mobile-wasm/ple.patch').read_text(encoding='utf-8'), 'Compiled patch differs from corresponding source'"
+      - run: uv run --no-sync python scripts/build_app_catalog.py
+      - run: pnpm --filter web build:app
+        env:
+          VITE_RELAY_ORIGIN: https://relay.kyalulu.com
+      - run: uv run --no-sync python scripts/prepare_cloud_bundle.py --unified --output .artifacts/cloud-vps
+      - name: Verify and build the extracted Cloud code tar
+        run: |
+          cd .artifacts/cloud-vps
+          sha256sum -c kyalulu-cloud.tar.gz.sha256
+          mkdir context
+          tar -xzf kyalulu-cloud.tar.gz -C context
+          (cd context && sha256sum -c SHA256SUMS)
+          docker build --file context/Dockerfile --tag "$CLOUD_IMAGE" context
+          docker image inspect --format '{{.Id}}' "$CLOUD_IMAGE" > image-id.txt
+      - name: Verify copied image files against the context manifest
+        run: |
+          docker run --rm -i --network none --read-only --user 10002:10002 \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=256m \
+            --pids-limit 64 --memory 384m --cpus 0.5 \
+            --mount "type=bind,src=$PWD/.artifacts/cloud-vps/context/SHA256SUMS,dst=/tmp/context-SHA256SUMS,readonly" \
+            "$CLOUD_IMAGE" python - /tmp/context-SHA256SUMS <<'PY' > .artifacts/cloud-vps/image-check.json
+          import hashlib
+          import json
+          from pathlib import Path
+          import sys
+          root = Path.cwd().resolve()
+          directories = ('runtime/python/', 'web/', 'characters/', 'personas/', 'worlds/', 'prompts/')
+          files = {'scripts/cloud_admin.py', 'LICENSE', 'kyalulu-source.tar.gz'}
+          checked = []
+          # scenarios/ is bundled for source delivery but is not copied by Dockerfile.prebuilt.
+          for line in Path(sys.argv[1]).read_text().splitlines():
+              digest, name = line.split('  ', 1)
+              if not (name.startswith(directories) or name in files):
+                  continue
+              source = root / name
+              assert source.resolve().is_relative_to(root) and not source.is_symlink(), name
+              with source.open('rb') as stream:
+                  assert hashlib.file_digest(stream, 'sha256').hexdigest() == digest, name
+              checked.append(name)
+          assert all(any(name.startswith(prefix) for name in checked) for prefix in directories)
+          assert files <= set(checked)
+          print(json.dumps({'ok': True, 'checked_files': len(checked)}))
+          PY
+      - name: Exercise the isolated Cloud image fixture
+        run: |
+          docker run --rm --network none --read-only --user 10002:10002 \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=256m \
+            --pids-limit 64 --memory 384m --cpus 0.5 \
+            --mount "type=bind,src=$PWD/tests/fixtures/unified-container.py,dst=/tmp/unified-container.py,readonly" \
+            "$CLOUD_IMAGE" python /tmp/unified-container.py > .artifacts/cloud-vps/fixture-check.json
+      - name: Exercise the unmodified Cloud default command
+        shell: bash
+        run: |
+          container_id=''
+          cleanup() {
+            if [ -n "$container_id" ]; then
+              docker rm --force "$container_id" > /dev/null
+            fi
+          }
+          trap cleanup EXIT
+          container_id=$(docker run --detach --rm --network none --read-only --user 10002:10002 \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=256m \
+            --pids-limit 64 --memory 384m --cpus 0.5 \
+            --env KYALULU_CLOUD_MODE=1 \
+            --env KYALULU_CLOUD_DATA_DIR=/tmp/cloud \
+            --env KYALULU_CLOUD_BACKUP_DIR=/tmp/backups \
+            --env KYALULU_CLOUD_ORIGIN=https://container.kyalulu.invalid \
+            --env KYALULU_CLOUD_SECRET=FICTIONAL-DEFAULT-COMMAND-ONLY-0123456789 \
+            --env KYALULU_UNIFIED_APP_ENABLED=1 \
+            --env KYALULU_CLOUD_SIGNUP_LIMIT=0 \
+            --env KYALULU_CLOUD_TRIAL_CREDITS=0 \
+            --env KYALULU_MONTHLY_SUBSIDY_JPY=0 \
+            "$CLOUD_IMAGE")
+          timeout 30s docker exec -i "$container_id" python - <<'PY'
+          import time
+          import httpx
+          deadline = time.monotonic() + 29
+          with httpx.Client(trust_env=False, timeout=1, headers={'Host': 'container.kyalulu.invalid'}) as client:
+              while time.monotonic() < deadline:
+                  try:
+                      if client.get('http://127.0.0.1:8000/api/health').status_code == 200:
+                          break
+                  except httpx.TransportError:
+                      pass
+                  time.sleep(0.25)
+              else:
+                  raise AssertionError('Default Uvicorn command did not become healthy within 30 seconds')
+          PY
+          cleanup
+          container_id=''
+          trap - EXIT
+          uv run --no-sync python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path('.artifacts/cloud-vps')
+          report = {name: json.loads((root / f'{name}-check.json').read_text()) for name in ('image', 'fixture')}
+          assert all(result['ok'] for result in report.values())
+          report['default_command'] = True
+          (root / 'check-report.json').write_text(json.dumps(report, indent=2) + '\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cloud-image-checks
+          path: |
+            .artifacts/cloud-vps/image-id.txt
+            .artifacts/cloud-vps/kyalulu-cloud.tar.gz
+            .artifacts/cloud-vps/kyalulu-cloud.tar.gz.sha256
+            .artifacts/cloud-vps/check-report.json

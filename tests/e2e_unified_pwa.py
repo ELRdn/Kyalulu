@@ -1,4 +1,5 @@
 """Built unified shell + Native static server in Chromium; no model or real API."""
+from browser_storage import READ_ENTITIES_JS
 import argparse
 import asyncio
 from contextlib import asynccontextmanager
@@ -27,12 +28,7 @@ async def language_in_place(page, language):
 
 
 async def entities(page, kinds):
-    return await page.evaluate('''kinds=>new Promise((resolve,reject)=>{
-        const open=indexedDB.open('kyalulu-app-v1',2);open.onerror=reject;open.onsuccess=()=>{
-            const db=open.result,tx=db.transaction('entities'),read=tx.objectStore('entities').getAll();
-            tx.oncomplete=()=>{db.close();resolve(read.result.filter(row=>kinds.includes(row.kind)));};tx.onerror=reject;
-        };
-    })''', kinds)
+    return await page.evaluate(READ_ENTITIES_JS, kinds)
 
 
 async def conversations(page):

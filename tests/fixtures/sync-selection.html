@@ -1,0 +1,395 @@
+<!doctype html><meta charset="utf-8"><title>Disposable sync selection acceptance</title>
+<p>Fictional accounts only. External requests and real APIs are forbidden.</p>
+<script type="module">
+import {logicalSnapshot,physicalSnapshot,fixedOutbox} from './storage-fixture.ts';
+import history from './unified-history.json';
+import {appTransaction,entity,getMeta,writeEntity,writeOutbox} from '/src/lib/appStore.ts';
+import {rememberOwner,deviceOwner,setGenerationBusy} from '/src/lib/appContext.ts';
+import {receiveSyncPage,syncNow,syncState} from '/src/lib/appSync.ts';
+import {JsonStream} from '/src/lib/jsonStream.ts';
+import {receiveLibrarySnapshot,receiveCreatorSnapshot,rebindConversation,canonical} from '/src/lib/appSyncData.ts';
+
+const scenario=new URL(location.href).searchParams.get('scenario');
+const owner='fixture-selection-owner',foreign='fixture-selection-foreign',prefix='sync:'+owner+':';
+const creator='created_'+'a'.repeat(32),count=160,maximum=50000,foreignMaximum=9000000;
+const check=(value,message)=>{if(!value)throw Error(message);};
+const same=(a,b,message)=>check(canonical(a)===canonical(b),message);
+const record=(id,payload,extra={})=>({id,owner,kind:'conversation',revision:1,serverRevision:1,
+  dirty:false,deleted:false,pinned:true,opened:1,payload,...extra});
+const basic=(id,number=1)=>({storage_policy:'sync',settings:{session_id:id,library_binding:null},
+  state:{session_id:id},messages:[{id:number,uuid:id+'-message',role:'user',content:'FICTIONAL '+id}],memories:[],summaries:[]});
+const remote=(id='received')=>({id,kind:'conversation',revision:2,deleted:false,payload:rebindConversation(history.payload,id)});
+const stats={getAllAttempts:0,foreignCursorRows:0,receiveRows:0,ackRows:0,selectionRows:0,maintenanceRows:0,countRows:0,
+  readonlyScans:0,referenceReads:[],referenceSnapshot:true,cursors:0,switches:0};
+const probes=[];
+let measuring=false,switchDuring='',switched=false,interrupt='owner',concurrentUpdate,writerDone;
+const ackTransactions=new WeakSet(),selectionTransactions=new WeakSet();
+const originals={get:IDBObjectStore.prototype.get,getAll:IDBObjectStore.prototype.getAll,openCursor:IDBObjectStore.prototype.openCursor};
+const guarded=store=>measuring&&store.transaction.objectStoreNames.contains('entities');
+function interruptContext(tx){
+  switched=true;stats.switches++;
+  if(interrupt==='generation')setGenerationBusy(true);
+  else if(interrupt==='consent')tx.db.transaction('meta','readwrite').objectStore('meta').put(false,prefix+'consent');
+  else rememberOwner(foreign);
+}
+IDBObjectStore.prototype.get=function(key){
+  if(guarded(this)&&this.name==='meta'&&key===prefix+'outbox')ackTransactions.add(this.transaction);
+  const request=originals.get.call(this,key);
+  if(guarded(this)&&this.name==='entities'&&this.transaction.mode==='readonly'){
+    stats.referenceReads.push(key[1]);stats.referenceSnapshot&&=selectionTransactions.has(this.transaction);
+    const tx=this.transaction;
+    request.addEventListener('success',()=>{
+      if(switchDuring==='reference'&&!switched)interruptContext(tx);
+    });
+    if(concurrentUpdate){
+      const writer=tx.db.transaction('entities','readwrite');writer.objectStore('entities').put(concurrentUpdate);concurrentUpdate=undefined;
+      writerDone=new Promise((resolve,reject)=>{writer.oncomplete=resolve;writer.onabort=()=>reject(Error('Concurrent fixture write failed'));});
+    }
+  }
+  return request;
+};
+IDBObjectStore.prototype.getAll=function(...args){
+  if(guarded(this)&&this.name==='entities'){
+    stats.getAllAttempts++;this.transaction.abort();throw Error('entities.getAll forbidden during sync selection/count/writes');
+  }
+  return originals.getAll.apply(this,args);
+};
+IDBObjectStore.prototype.openCursor=function(...args){
+  const request=originals.openCursor.apply(this,args);
+  if(guarded(this)&&this.name==='entities'){
+    stats.cursors++;
+    const phase=this.transaction.mode==='readonly'?['selection','maintenance','count'][stats.readonlyScans++]:ackTransactions.has(this.transaction)?'ack':'receive';let rows=0;
+    if(phase==='selection')selectionTransactions.add(this.transaction);
+    const tx=this.transaction;
+    request.addEventListener('success',()=>{
+      const cursor=request.result;if(!cursor)return;
+      stats[phase+'Rows']++;rows++;
+      if(cursor.value.owner!==owner)stats.foreignCursorRows++;
+      // Switch before the production success handler consumes this cursor row.
+      if(switchDuring===phase&&!switched&&rows===23)interruptContext(tx);
+    });
+  }
+  return request;
+};
+
+async function seed(records=[],batch){
+  measuring=false;switchDuring='';switched=false;interrupt='owner';stats.readonlyScans=0;stats.referenceReads=[];concurrentUpdate=undefined;writerDone=undefined;rememberOwner(owner);
+  await appTransaction(['entities','meta'],'readwrite',(tx,done)=>{
+    const entities=tx.objectStore('entities'),meta=tx.objectStore('meta');entities.clear();meta.clear();tx.objectStore('parts').clear();
+    for(let index=0;index<count;index++){const row=record('unrelated-'+String(index).padStart(3,'0'),basic('unrelated-'+index,maximum-count+1+index));if(index%2)writeEntity(tx,row);else entities.put(row);}
+    entities.put(record('foreign-chat',basic('foreign-chat',foreignMaximum),{owner:foreign}));
+    for(const [index,item] of records.entries())if(index%2)writeEntity(tx,item);else entities.put(item);
+    meta.put(true,prefix+'consent');meta.put(11,prefix+'cursor');meta.put(batch?maximum:7,'message-sequence:'+owner);
+    meta.put({keep:'foreign receipt'},'sync:'+foreign+':remote:foreign-chat');
+    if(batch)writeOutbox(tx,owner,batch);done();
+  });
+}
+
+async function snapshot(){const logical=await logicalSnapshot();return {...logical,physical:await physicalSnapshot()};}
+
+async function rejected(changes,label){
+  const before=await snapshot();let failed=false;measuring=true;
+  try{await receiveSyncPage(owner,changes,12);}catch{failed=true;}finally{measuring=false;}
+  check(failed,label+' accepted');same(await snapshot(),before,label+' changed body, sequence, cursor or receipts');
+  check(stats.getAllAttempts===0,label+' failed because of forbidden getAll');probes.push(label);
+}
+
+function fixedRecords(){
+  let library,setting;
+  for(const version of [1,2]){
+    library=receiveLibrarySnapshot(library,owner,'character',version,history.payload.library_snapshots['character@'+version]);
+    setting=receiveCreatorSnapshot(setting,owner,creator+'@'+version,'world',history.payload.creator_snapshots[creator+'@'+version].document);
+  }
+  return [library,setting];
+}
+
+async function receive(){
+  const fixed=fixedRecords();
+  // Keep newer local revisions too; importing history must not replace the current document.
+  fixed[0]={...fixed[0],payload:{...fixed[0].payload,snapshot_only:false,current_revision:3,
+    document:{...fixed[0].payload.document,name:'LOCAL CURRENT'},versions:{...fixed[0].payload.versions,3:{...fixed[0].payload.document,name:'LOCAL CURRENT'}}}};
+  fixed[1]={...fixed[1],payload:{...fixed[1].payload,snapshot_only:false,current_revision:3,
+    creator:{...fixed[1].payload.creator,rules:'LOCAL CURRENT'},versions:{...fixed[1].payload.versions,3:{...fixed[1].payload.creator,rules:'LOCAL CURRENT'}}}};
+  const historicalLibrary='historical-character',historicalCreator='created_'+'b'.repeat(32);
+  fixed.push({...structuredClone(fixed[0]),id:historicalLibrary},{...structuredClone(fixed[1]),id:historicalCreator});
+  const historicalRemote=id=>{
+    const value=remote(id),payload=value.payload;
+    for(const point of [payload.messages[1].before,payload.messages[1].after]){
+      point.settings.library_binding.character.id=historicalLibrary;
+      point.state.world_id=historicalCreator+'@1';
+    }
+    payload.library_snapshots[historicalLibrary+'@1']=structuredClone(payload.library_snapshots['character@1']);
+    payload.creator_snapshots[historicalCreator+'@1']=structuredClone(payload.creator_snapshots[creator+'@1']);
+    return value;
+  };
+  const existing=record('received',basic('received',42));
+  existing.payload.messages[0].uuid=history.payload.messages[0].uuid;
+  await seed([...fixed,existing]);const before=await snapshot();
+  measuring=true;try{await receiveSyncPage(owner,[historicalRemote('received'),historicalRemote('second')],12);}finally{measuring=false;}
+  const saved=await entity('received',owner),second=await entity('second',owner),ids=saved.payload.messages.map(m=>m.id);
+  check(ids[0]===42,'Existing message UUID lost its device ID');
+  const allocated=[...ids.slice(1),...second.payload.messages.map(m=>m.id)];
+  check(new Set(allocated).size===7&&allocated.every(id=>id>maximum&&id<foreignMaximum),'Numeric allocation ignored unrelated maximum or included foreign owner');
+  check(await getMeta('message-sequence:'+owner)===maximum+7&&await getMeta(prefix+'cursor')===12,'Sequence/cursor not committed');
+  same(saved.payload.memories[0].source_message_ids,[ids[2]],'Memory sources not rebound');
+  same(saved.payload.summaries[0].source_message_ids,ids.slice(0,2),'Summary sources not rebound');
+  same(saved.payload.messages[1].after.memories[0].source_message_ids,[ids[0]],'Historical memory source not rebound');
+  check(saved.payload.settings.library_binding.character.revision===2&&saved.payload.messages[1].before.settings.library_binding.character.revision===1,'Historical Library binding changed');
+  check(saved.payload.messages[1].before.settings.library_binding.character.id===historicalLibrary,'Historical-only Library ID changed');
+  check(saved.payload.state.world_id===creator+'@2'&&saved.payload.messages[1].before.state.world_id===historicalCreator+'@1','Historical state-only creator binding changed');
+  for(const item of fixed)same(await entity(item.id,owner),item,'Local fixed/current versions changed');
+  const after=await snapshot();
+  same(after.entities.filter(e=>e.id.startsWith('unrelated-')||e.owner===foreign),before.entities.filter(e=>e.id.startsWith('unrelated-')||e.owner===foreign),'Unrelated record changed');
+  check((await getMeta(prefix+'remote:received')).revision===2&&(await getMeta(prefix+'remote:second')).revision===2,'Remote receipts missing');
+  check(stats.receiveRows>=count,'No real cursor scan observed');
+  probes.push('receive-two-conversations','historical-fixed-versions','historical-only-reference-IDs','owner-scoped-numeric-allocation');
+  return {allocated,retainedID:ids[0]};
+}
+
+async function invalid(){
+  for(const kind of ['library','creator']){
+    const fixed=scenario==='mismatch'?fixedRecords():[];await seed(fixed);
+    const broken=remote('broken');
+    if(scenario==='missing'){
+      if(kind==='library')delete broken.payload.library_snapshots['character@1'];
+      else delete broken.payload.creator_snapshots[creator+'@1'];
+    }else{
+      if(kind==='library')broken.payload.library_snapshots['character@1'].name='CONFLICT';
+      else broken.payload.creator_snapshots[creator+'@1'].document.rules='CONFLICT';
+    }
+    await rejected([{...remote('valid-first'),payload:basic('valid-first')},broken],scenario+'-'+kind+'-whole-page-rollback');
+  }
+}
+
+function pending(source,destination){
+  return {request_id:'fixture-selection-request',withdrawn:0,revisions:{[source.id]:source.revision},
+    changes:[{id:source.id,kind:'conversation',base_revision:source.serverRevision,payload:source.payload,deleted:false}],
+    receipt:{changes:[{id:destination,source_id:source.id,revision:3,deleted:false,branched:true}]}};
+}
+
+async function settle(){
+  const fetch=globalThis.fetch,api=[];
+  globalThis.fetch=async(input,init)=>{
+    const path=String(input);api.push(path);
+    check(!init?.method||init.method==='GET','Cached acknowledgment resent a body');
+    if(path==='/api/mobile/status')return Response.json({cloud_mode:true,authenticated:true,owner_scope:owner});
+    check(path.startsWith('/api/cloud/app/sync?cursor='),'Unexpected fictional API '+path);
+    check(new Headers(init?.headers).get('X-Kyalulu-Owner')===owner,'Wrong API owner');
+    return Response.json({changes:[],cursor:11,has_more:false});
+  };
+  measuring=true;try{await syncNow(owner);}finally{measuring=false;globalThis.fetch=fetch;}
+  check(api.length>=2,'Cached acknowledgment path not exercised');
+}
+
+async function protections(){
+  const dirty=record('dirty',basic('dirty',88),{dirty:true,revision:4});await seed([dirty]);
+  const incoming={...remote('dirty'),payload:basic('dirty')};
+  measuring=true;try{await receiveSyncPage(owner,[incoming],12);}finally{measuring=false;}
+  same(await entity('dirty',owner),dirty,'Unsent original overwritten');probes.push('dirty-original-preserved');
+  await seed([record('local',basic('local'),{payload:{...basic('local'),storage_policy:'local'}})]);
+  await rejected([remote('valid-first'),{...remote('local'),payload:basic('local')}],'device-only-original-protected');
+  await seed([dirty]);const randomUUID=crypto.randomUUID;
+  crypto.randomUUID=()=> 'unrelated-159';
+  try{await rejected([remote('valid-first'),{id:'dirty',kind:'conversation',revision:3,deleted:true,payload:{}}],'unrelated-recovery-ID-collision');}
+  finally{crypto.randomUUID=randomUUID;}
+  const batch=pending(dirty,'unrelated-159');await seed([dirty],batch);const before=await snapshot();
+  await settle();check(syncState().phase==='error','Unrelated branch ID collision accepted');
+  same(await snapshot(),before,'Branch collision changed source, outbox or metadata');probes.push('unrelated-branch-ID-collision');
+}
+
+async function ack(){
+  const source=record('source',basic('source',88),{dirty:true,revision:4});
+  const batch=pending(source,'branched-copy');await seed([source],batch);const before=await snapshot();
+  await settle();check(syncState().phase==='saved','Cached acknowledgment failed');
+  const saved=await entity('branched-copy',owner),original=await entity('source',owner);
+  check(saved.payload.messages[0].id===maximum+1&&saved.serverRevision===3&&!saved.dirty,'Ack branch numeric allocation/receipt wrong');
+  check(saved.payload.settings.session_id==='branched-copy'&&saved.payload.state.session_id==='branched-copy','Ack branch not rebound');
+  same(original,{...source,dirty:false},'Ack discarded original');
+  check(!await getMeta(prefix+'outbox')&&await getMeta('message-sequence:'+owner)===maximum+1,'Ack did not settle atomically');
+  const after=await snapshot();same(after.entities.filter(e=>e.id.startsWith('unrelated-')||e.owner===foreign),before.entities.filter(e=>e.id.startsWith('unrelated-')||e.owner===foreign),'Ack changed unrelated records');
+  check(stats.ackRows>=count,'No acknowledgment cursor scan observed');probes.push('cached-ack-branch-committed');
+}
+
+async function ownerSwitch(){
+  await seed();switchDuring='receive';const before=await snapshot();
+  await rejected([remote()],'cursor-owner-switch-receive');
+  check(switched&&deviceOwner()===foreign,'Receive owner switch was not injected');same(await snapshot(),before,'Receive leaked across owners');
+  const source=record('source',basic('source',88),{dirty:true,revision:4}),batch=pending(source,'branched-copy');
+  await seed([source],batch);const ackBefore=await snapshot();switchDuring='ack';await settle();
+  check(switched&&deviceOwner()===foreign,'Ack owner switch was not injected');
+  same(await snapshot(),ackBefore,'Ack owner change committed body, cursor, sequence or receipt removal');probes.push('cursor-owner-switch-ack');
+}
+
+async function normalAck(){
+  const source=record('source',basic('source',88),{dirty:true,revision:4});
+  source.payload.messages=Array.from({length:80},(_,index)=>({id:index+1,uuid:'ack-message-'+index,role:index%2?'assistant':'user',content:'茶🙂'.repeat(9000)}));
+  source.payload.draft='Keep unsent draft';source.payload.extension={keep:'original'};
+  const lineage={root_id:'source',fork_revision:2,source:{keep:'receipt provenance'}},withLineage=['ack-lineage','ack-quota'].includes(scenario);
+  const batch=pending(source,'source');batch.revisions.source=3;
+  batch.receipt={changes:[{id:'source',revision:5,deleted:false,...(withLineage?{lineage}:{})}]};
+  await seed([source],batch);
+  await appTransaction(['entities'],'readwrite',(tx,done)=>writeEntity(tx,source,'put',done));
+  const header=await appTransaction(['entities'],'readonly',(tx,done)=>{const r=tx.objectStore('entities').get([owner,source.id]);r.onsuccess=()=>done(r.result);});
+  check(header.payloadParts.chunks>=4,'ACK source must span multiple parts');
+  const location=[owner,'entity',source.id,header.payloadParts.token],last=[...location,header.payloadParts.chunks-1];
+  let originalLast;
+  if(scenario==='ack-corrupt'){
+    originalLast=await appTransaction(['parts'],'readonly',(tx,done)=>{const r=tx.objectStore('parts').get(last);r.onsuccess=()=>done(r.result);});
+    const changed=originalLast.slice();changed[changed.length-1]^=1;
+    await appTransaction(['parts'],'readwrite',(tx,done)=>{tx.objectStore('parts').put(changed,last);done();});
+  }
+  const before=await physicalSnapshot(),feed=JsonStream.prototype.feed,add=IDBObjectStore.prototype.add,put=IDBObjectStore.prototype.put,get=IDBObjectStore.prototype.get;
+  let maximumRootMessages=0,parserFeeds=0,newParts=0,faults=0;
+  JsonStream.prototype.feed=function(bytes){const result=feed.call(this,bytes),root=this.root;
+    if(measuring&&Array.isArray(root?.messages)){parserFeeds++;maximumRootMessages=Math.max(maximumRootMessages,root.messages.length);}return result;};
+  IDBObjectStore.prototype.add=function(value,key){
+    if(measuring&&this.name==='parts'&&key[1]==='entity'&&key[2]===source.id&&scenario==='ack-quota'&&++newParts===2){faults++;throw new DOMException('Fictional ACK quota','QuotaExceededError');}
+    return add.call(this,value,key);
+  };
+  IDBObjectStore.prototype.get=function(key){
+    const request=get.call(this,key);
+    if(measuring&&this.name==='parts'&&scenario==='ack-body-owner'&&canonical(key)===canonical(last))
+      request.addEventListener('success',()=>{faults++;rememberOwner(foreign);},{once:true});
+    return request;
+  };
+  try{await settle();}finally{JsonStream.prototype.feed=feed;IDBObjectStore.prototype.add=add;IDBObjectStore.prototype.put=put;IDBObjectStore.prototype.get=get;}
+  check(parserFeeds>0&&maximumRootMessages===0,'ACK restored source message arrays');
+  if(['ack-corrupt','ack-quota','ack-body-owner'].includes(scenario)){
+    check(syncState().phase!=='saved','Faulty ACK reported saved');same(await physicalSnapshot(),before,'ACK fault changed source, parts, sequence or outbox');
+    if(scenario!=='ack-corrupt')check(faults===1,'ACK fault did not fire exactly once');
+    rememberOwner(owner);
+    if(originalLast)await appTransaction(['parts'],'readwrite',(tx,done)=>{tx.objectStore('parts').put(originalLast,last);done();});
+    same(await entity(source.id,owner),source,'ACK fault lost original source');same(await fixedOutbox(owner),batch,'ACK fault lost fixed outbox');
+  }else{
+    check(syncState().phase==='saved','Non-branch ACK failed: '+syncState().error);
+    same(await entity(source.id,owner),{...source,serverRevision:5,dirty:true,payload:{...source.payload,...(withLineage?{lineage}:{})}},'ACK changed payload, IDs, draft or unsent edits');
+    check(!await getMeta(prefix+'outbox'),'ACK did not atomically consume receipt');
+    const after=await appTransaction(['entities'],'readonly',(tx,done)=>{const r=tx.objectStore('entities').get([owner,source.id]);r.onsuccess=()=>done(r.result);});
+    if(!withLineage)same(after.payloadParts,header.payloadParts,'Header-only ACK rewrote source parts');
+    check(await getMeta('message-sequence:'+owner)===maximum,'ACK changed numeric sequence');
+  }
+  probes.push({scenario,sourceBytes:header.payloadParts.size,sourceParts:header.payloadParts.chunks,parserFeeds,maximumRootMessages,faults});
+}
+
+async function outgoingSync(reject=false){
+  const fetch=globalThis.fetch,sent=[];
+  globalThis.fetch=async(input,init)=>{
+    const path=String(input);
+    if(path==='/api/mobile/status')return Response.json({cloud_mode:true,authenticated:true,owner_scope:owner});
+    check(new Headers(init?.headers).get('X-Kyalulu-Owner')===owner,'Wrong outgoing owner');
+    if(init?.method==='POST'){
+      check(path==='/api/cloud/app/sync','Unexpected outgoing API '+path);
+      const batch=JSON.parse(String(init.body));sent.push(batch);
+      return reject?Response.json({error:'fixture rejection'},{status:409}):Response.json({changes:batch.changes.map(e=>({id:e.id,revision:2,deleted:e.deleted}))});
+    }
+    check(path.startsWith('/api/cloud/app/sync?cursor='),'Unexpected outgoing download '+path);
+    return Response.json({changes:[],cursor:11,has_more:false});
+  };
+  measuring=true;try{await syncNow(owner);}finally{measuring=false;globalThis.fetch=fetch;}
+  return sent;
+}
+
+const outgoingRecords=()=>Array.from({length:55},(_,index)=>record('chat-'+String(index).padStart(2,'0'),basic('chat-'+index),{dirty:true}));
+async function outgoing(){
+  const records=outgoingRecords(),local=record('device-only',{...basic('device-only'),storage_policy:'local'},{dirty:true});
+  // The first unselected conversation must never resolve its missing reference.
+  records[50].payload.settings.library_binding={character:{id:'unselected-missing',revision:1}};
+  const other=record('foreign-dirty',basic('foreign-dirty'),{owner:foreign,dirty:true});
+  await seed([...records.reverse(),local,other]);const before=await snapshot();
+  const sent=await outgoingSync();check(sent.length===1,'Auto-sent a second batch or skipped outgoing');
+  same(sent[0].changes.map(e=>e.id),Array.from({length:50},(_,i)=>'chat-'+String(i).padStart(2,'0')),'Cap/order changed');
+  check(syncState().phase==='saved'&&syncState().pending===6,'Dirty count omitted device-only or included foreign records');
+  check(stats.selectionRows>=count&&stats.countRows>=count&&stats.referenceReads.length===0,'Selection/count cursor or reference bound failed');
+  for(const id of ['chat-50','chat-54','device-only'])same(await entity(id,owner),before.entities.find(e=>e.owner===owner&&e.id===id),'Unselected body changed');
+  same(await entity(other.id,foreign),other,'Foreign dirty record changed');
+  probes.push('outgoing-cap50-key-order','no-automatic-second-batch','device-only-pending-count','unselected-references-not-read');
+}
+
+async function outgoingDelete(){
+  for(const confirmed of [true,false]){
+    const first=record('z-delete-first',{...basic('z-delete-first'),delete_confirmation_revision:confirmed?4:3},{dirty:true,deleted:true,revision:4,serverRevision:3});
+    const second=record('z-delete-second',basic('z-delete-second'),{dirty:true,deleted:true});
+    const local=record('a-local-delete',{...basic('a-local-delete'),storage_policy:'local'},{dirty:true,deleted:true});
+    await seed([...outgoingRecords(),first,second,local]);const before=await snapshot();
+    const sent=await outgoingSync(true);check(sent.length===1,'Deletion batch not sent');
+    same(sent[0].changes,[{id:first.id,kind:'conversation',base_revision:3,payload:{},deleted:true,delete_confirmed:confirmed}],'First deletion/confirmation changed');
+    same((await fixedOutbox(owner)).revisions,{[first.id]:4},'Deletion local revision changed');
+    same((await snapshot()).entities,before.entities,'Rejected deletion destroyed local data');
+    check(!stats.referenceReads.length,'Deletion resolved unused references');
+  }
+  probes.push('first-deletion-beyond-cap','exact-deletion-confirmation','rejected-deletion-preserves-bodies');
+}
+
+function outgoingHistory(){
+  const payload=remote('chat').payload,library='historical-character',setting='created_'+'b'.repeat(32);
+  payload.messages[1].before.settings.library_binding.character.id=library;
+  payload.messages[1].before.state.world_id=setting+'@1';
+  payload.library_snapshots[library+'@1']=structuredClone(payload.library_snapshots['character@1']);
+  payload.creator_snapshots[setting+'@1']=structuredClone(payload.creator_snapshots[creator+'@1']);
+  const fixed=fixedRecords();
+  fixed.push({...structuredClone(fixed[0]),id:library},{...structuredClone(fixed[1]),id:setting});
+  return {chat:record('chat',payload,{dirty:true}),fixed,library,setting};
+}
+
+async function outgoingReferences(){
+  for(const source of ['stored','embedded','invalid']){
+    const {chat,fixed,library,setting}=outgoingHistory(),payload=chat.payload;
+    const expectedLibrary=structuredClone(payload.library_snapshots),expectedCreator=structuredClone(payload.creator_snapshots);
+    if(source==='stored'){payload.library_snapshots={};payload.creator_snapshots={};}
+    if(source==='invalid')payload.settings.library_binding.character.revision=0;
+    await seed([chat,...(source==='embedded'?fixed.map(e=>({...e,deleted:true})):fixed)]);
+    if(source==='stored'){
+      concurrentUpdate=structuredClone(fixed[2]);concurrentUpdate.payload.versions['1'].name='CONCURRENT WRITER';
+    }
+    const sent=await outgoingSync(true);if(writerDone)await writerDone;
+    same([...stats.referenceReads].sort(),['character',creator,library,setting].sort(),'Read unrelated/missing references or skipped history');
+    check(stats.referenceSnapshot,'Reference reads escaped selection readonly snapshot');
+    if(source==='invalid'){
+      check(!sent.length&&!await getMeta(prefix+'outbox'),'Invalid reference revision was staged/sent');continue;
+    }
+    check(sent.length===1,'Referenced batch not sent');const outgoing=sent[0].changes[0].payload;
+    same(Object.keys(outgoing.library_snapshots).sort(),Object.keys(expectedLibrary).sort(),'Historical Library reference lost');
+    same(Object.keys(outgoing.creator_snapshots).sort(),Object.keys(expectedCreator).sort(),'Historical creator reference lost');
+    for(const [id,document] of Object.entries(expectedLibrary))same(outgoing.library_snapshots[id].name,document.name,'Fixed Library revision lost');
+    for(const [id,snapshot] of Object.entries(expectedCreator))same(outgoing.creator_snapshots[id].document.rules,snapshot.document.rules,'Fixed creator revision lost');
+    same(await entity(chat.id,owner),chat,'Outgoing reference resolution mutated conversation');
+    if(source==='stored')check((await entity(library,owner)).payload.versions['1'].name==='CONCURRENT WRITER','Concurrent writer did not exercise snapshot');
+  }
+  probes.push('outgoing-current-historical-references','embedded-deleted-reference-fallback','reference-revision-validation','single-readonly-snapshot-with-concurrent-writer');
+}
+
+async function outgoingFences(){
+  for(const [phase,change] of [['selection','owner'],['reference','owner'],['count','owner'],['selection','generation'],['reference','generation'],['count','generation'],['selection','consent'],['reference','consent'],['count','consent']]){
+    const {chat,fixed}=outgoingHistory();if(phase==='count')chat.dirty=false;
+    await seed([chat,...fixed]);const before=await snapshot();switchDuring=phase;interrupt=change;
+    let sent;try{sent=await outgoingSync();}finally{if(change==='generation')setGenerationBusy(false);}
+    check(switched,'No injected '+change+' change at '+phase);check(!sent.length,'Sent body after '+change+' at '+phase);
+    check(!await getMeta(prefix+'outbox'),'Staged stale outgoing batch');
+    same((await snapshot()).entities,before.entities,'Fence changed entity bodies');
+    check(syncState().phase!=='saved','Reported saved after context changed');probes.push('outgoing-'+phase+'-'+change+'-fence');
+  }
+}
+
+async function run(){
+  check(localStorage.length===0&&(await indexedDB.databases()).length===0,'Context was not empty');
+  let details={};
+  if(scenario==='receive')details=await receive();
+  else if(scenario==='missing'||scenario==='mismatch')await invalid();
+  else if(scenario==='protections')await protections();
+  else if(scenario==='ack')await ack();
+  else if(scenario.startsWith('ack-'))await normalAck();
+  else if(scenario==='owner-switch')await ownerSwitch();
+  else if(scenario==='outgoing')await outgoing();
+  else if(scenario==='outgoing-delete')await outgoingDelete();
+  else if(scenario==='outgoing-references')await outgoingReferences();
+  else if(scenario==='outgoing-fences')await outgoingFences();
+  else throw Error('Unknown scenario');
+  check(stats.getAllAttempts===0&&stats.foreignCursorRows===0,'Bulk/foreign record reads detected');
+  const request=indexedDB.open('kyalulu-app-v1');
+  const db=await new Promise((resolve,reject)=>{request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});
+  check(db.version===3,'DB version changed');db.close();
+  return {ok:true,scenario,probes,unrelatedConversations:count,maximum,foreignMaximum,stats,...details};
+}
+run().then(result=>window.__SYNC_SELECTION__=result).catch(error=>window.__SYNC_SELECTION__={ok:false,scenario,error:String(error),stack:error.stack,probes,stats})
+  .finally(()=>{Object.assign(IDBObjectStore.prototype,originals);});
+</script>

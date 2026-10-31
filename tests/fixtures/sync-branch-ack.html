@@ -1,0 +1,304 @@
+<!doctype html><meta charset="utf-8"><title>Disposable branch acknowledgment acceptance</title>
+<p>Fictional IndexedDB only; the transport is synthetic. No provider, model or download.</p>
+<script type="module">
+import history from './unified-history.json';
+import {oldBranch} from './sync-branch-ack-oracle.ts';
+import {rebindConversation} from './sync-staging-oracle.ts';
+import {appTransaction,entity,getMeta,writeEntity,writeOutbox,memoryEventsKey} from '/src/lib/appStore.ts';
+import {rememberOwner,setGenerationBusy} from '/src/lib/appContext.ts';
+import {syncNow,syncState} from '/src/lib/appSync.ts';
+import {JsonStream} from '/src/lib/jsonStream.ts';
+import {emptyMemoryDomain,memoryIdentity,bindMemoryScope} from '/src/lib/deviceMemoryScopes.ts';
+import {writeMemoryDomainTx} from '/src/lib/deviceMemoryDomainIO.ts';
+
+const params=new URL(location.href).searchParams,scenario=params.get('scenario'),resumed=params.has('resume');
+const inlineSource=['legacy','legacy-source','legacy-deleted','legacy-deleted-source'].includes(scenario);
+const inlineOutbox=['legacy','legacy-outbox','legacy-deleted','legacy-deleted-outbox','early-outbox-revision'].includes(scenario);
+const owner='fictional-branch-owner',foreign='fictional-branch-foreign',sourceID='source',targetID='branch-target';
+const prefix='sync:'+owner+':',outboxKey=prefix+'outbox',seqKey='message-sequence:'+owner;
+const check=(v,m)=>{if(!v)throw Error(m);};
+const canonical=v=>JSON.stringify(v,(_,x)=>x&&typeof x==='object'&&!Array.isArray(x)&&!(x instanceof Uint8Array)?Object.fromEntries(Object.keys(x).sort().map(k=>[k,x[k]])):x);
+const same=(a,b,m)=>check(canonical(a)===canonical(b),m);
+const encoder=new TextEncoder(),sha=async b=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',b))).map(x=>x.toString(16).padStart(2,'0')).join('');
+const bytes=v=>encoder.encode(JSON.stringify(v));
+const basic=id=>({storage_policy:'sync',settings:{session_id:id,library_binding:null},state:{session_id:id},messages:[],memories:[],summaries:[]});
+const row=(id,payload,extra={})=>({owner,id,kind:'conversation',revision:7,serverRevision:3,dirty:true,deleted:false,pinned:true,opened:123,payload,...extra});
+const body=version=>{
+  const p=rebindConversation(history.payload,sourceID);
+  p.source={remote:{source:'fixture',source_id:'fictional-origin',sha256:'a'.repeat(64),document_index:9},unknown:{preserve:['日本語','🧪']}};
+  p.branch_of='ancestor';p.recovery_from='recovery';p.pending_generation=null;
+  p.extension={['__proto__']:{safe:true},nested:{'10':'ten','2':'two',z:'last'}};
+  p.draft={text:version+' 未送信',selection:[1,3]};p.title=version;
+  const unicode=('日本語🌌🧪 é \\"\n').repeat(26000);
+  p.messages.forEach((m,i)=>{m.content=version+' '+unicode+i;m.extension={keep:i};});
+  const memory=(id,uuid)=>({...structuredClone(p.memories[0]),id,uuid,scope:sourceID,source_session_id:sourceID,source_message_ids:[1],source_turn:1});
+  p.memories=[memory('overlap','root-stable'),memory('root-only','shared-stable')];
+  p.messages[1].after.memories=[memory('overlap','historic-first'),memory('historic-shared','shared-stable')];
+  p.messages[1].after.memories[0].source_session_id='ancestor';
+  p.messages[3].before.memories=[memory('overlap','historic-middle')];
+  p.messages[3].before.memories[0].source_session_id='recovery';
+  p.messages[3].after.memories=[memory('overlap','historic-last'),memory('foreign-memory','foreign-stable')];
+  p.messages[3].after.memories[1].source_session_id='foreign-session';
+  p.messages[3].after.memories[1].original_source_session_id='older-foreign-session';
+  p.summaries[0].method='extractive';p.summaries[0].text='[1: user] [2: assistant] [999: unrelated]';
+  p.last_generation={user_id:3,assistant_id:4,raw_prompt:'private',compiled:'private',memory:{candidates:[]},validation:{errors:['private']}};
+  // Vary payload order independently of metadata discovery; no field-order contract.
+  return ['payload-first','deleted-messages-first'].includes(scenario)?{messages:p.messages,...Object.fromEntries(Object.entries(p).filter(([k])=>k!=='messages'))}:
+    {...Object.fromEntries(Object.entries(p).filter(([k])=>k!=='messages')),messages:p.messages};
+};
+const events=[
+  {id:1,scope:sourceID,memory_id:'overlap',kind:'edited',detail:{keep:'whole',candidates:[{id:'overlap',score:.9},{id:'root-only',source_id:'original-root',score:.5},{id:'absent',score:0}]}},
+  {id:2,scope:sourceID,memory_id:'historic-shared',source_memory_id:'older-memory',source_scope:'older-scope',kind:'accepted',detail:{nested:['keep']}},
+  {id:3,scope:sourceID,memory_id:'absent',kind:'forgotten',detail:null},
+];
+const ack={id:targetID,source_id:sourceID,revision:11,deleted:false,branched:true,lineage:{root_id:'ancestor',fork_revision:3,unknown:{keep:'lineage'}}};
+const stats={feeds:0,currentParsers:0,selectedParsers:0,maxCurrentMessages:0,maxSelectedMessages:0,maxOtherPayloadKeys:0,selectedFinish:0,
+  sourceReads:0,outboxReads:0,outputParts:0,firstBranchParts:0,faults:0,api:[],forbiddenTransport:[]};
+let measuring=false,source,batch,sourceHeader,outboxHeader,before,originalFetch=globalThis.fetch;
+const raw=()=>appTransaction(['entities','meta','parts'],'readonly',(tx,done)=>{
+  const result={};let index=0;
+  const next=()=>{const name=['entities','meta','parts'][index++];if(!name){done(result);return;}
+    const s=tx.objectStore(name),keys=s.getAllKeys(),values=s.getAll();values.onsuccess=()=>{result[name]=keys.result.map((key,i)=>[key,values.result[i]]);next();};};next();
+});
+function exact(a,b,label){
+  for(const name of ['entities','meta','parts']){
+    check(a[name].length===b[name].length,label+' '+name+' row count');
+    a[name].forEach(([k,v],i)=>{same(k,b[name][i][0],label+' key');const actual=b[name][i][1];
+      if(v instanceof Uint8Array)check(actual instanceof Uint8Array&&v.length===actual.length&&v.every((x,j)=>x===actual[j]),label+' physical bytes');
+      else same(v,actual,label+' physical header');});
+  }
+}
+async function physical(value){
+  return {...value,parts:await Promise.all(value.parts.map(async([key,v])=>({key,size:v.length,sha256:await sha(v)})))};
+}
+const memories=p=>[...(p.memories??[]),...(p.messages??[]).flatMap(m=>[...(m.before?.memories??[]),...(m.after?.memories??[])])];
+function normalized(target,history){
+  const t=structuredClone(target),mapping=new Map(),stable=new Map();
+  for(const m of memories(t.payload)){
+    check(typeof m.uuid==='string'&&!!m.uuid,'Memory stable UUID absent');
+    check(/^[a-f0-9-]{36}$/.test(m.id),'Allocated memory ID is not a UUID');
+    check(!mapping.has(m.id)||mapping.get(m.id)===m.uuid,'Allocated memory ID aliases distinct stable UUIDs');
+    check(!stable.has(m.uuid)||stable.get(m.uuid)===m.id,'Stable memory UUID has inconsistent allocated IDs');
+    mapping.set(m.id,m.uuid);stable.set(m.uuid,m.id);
+  }
+  for(const m of memories(t.payload))m.id='allocated:'+mapping.get(m.id);
+  const e=structuredClone(history);for(const item of e){if(item.memory_id)item.memory_id='allocated:'+mapping.get(item.memory_id);
+    for(const c of item.detail?.candidates??[])if(c.id)c.id='allocated:'+mapping.get(c.id);}
+  return {target:t,events:e};
+}
+async function seed(){
+  const sent=body('SENT'),current=body(scenario==='live-edited'?'LATEST':'SENT');
+  source=row(sourceID,current,{revision:scenario==='live-edited'?9:7});
+  if(['deleted','deleted-retained','deleted-messages-first','late-outbox-corrupt'].includes(scenario)||scenario.startsWith('outbox-')||scenario.startsWith('legacy-deleted')){
+    source.deleted=true;source.revision=12;
+    source.payload=scenario==='deleted'?{storage_policy:'sync',delete_confirmation_revision:12,deleted_revision:12}:
+      {...body('CURRENT-DELETED'),delete_confirmation_revision:12,deleted_revision:12};
+    if(scenario==='deleted-retained'){
+      source.payload.messages[3].after.memories[0].uuid='current-only-last-stable';
+      source.payload.memories[1].id='current-root-id';events[1].memory_id='current-root-id';
+    }
+  }
+  const other=row('other',{storage_policy:'sync',document:{name:'unrelated'},hugeOther:'別🌏'.repeat(380000)},{kind:'preset',dirty:true});
+  batch={request_id:'branch-stable-request',withdrawn:0,revisions:{other:7,[sourceID]:7},changes:[
+    {id:'other',kind:'preset',deleted:false,base_revision:3,payload:other.payload},
+    // Put payload before identity/control keys to prevent key-order-dependent selection.
+    {payload:sent,base_revision:3,deleted:false,kind:'conversation',id:sourceID}],
+    receipt:{changes:[{id:'other',revision:4,deleted:false},ack]}};
+  if(scenario==='atomic-two-ack'){
+    other.kind='conversation';other.payload=body('FIRST');other.payload.settings.session_id='other';other.payload.state.session_id='other';
+    batch.changes[0]={id:'other',kind:'conversation',deleted:false,base_revision:3,payload:other.payload};
+    batch.receipt.changes[0]={id:'first-branch',source_id:'other',revision:4,deleted:false,branched:true};
+  }
+  if(scenario==='invalid-profile-branch'){
+    other.kind='profile';batch.changes[0].kind='profile';
+    batch.receipt.changes[0]={id:'invalid-profile-target',source_id:'other',revision:4,deleted:false,branched:true};
+  }
+  if(scenario==='transport')delete batch.receipt;
+  if(scenario.startsWith('withdrawn'))batch.withdrawn=true;
+  rememberOwner(owner);
+  await appTransaction(['entities','meta','parts'],'readwrite',(tx,done)=>{
+    const entities=tx.objectStore('entities'),meta=tx.objectStore('meta');entities.clear();meta.clear();tx.objectStore('parts').clear();
+    const rows=[source,other,row('owner-floor',basic('owner-floor'),{dirty:false}),row('foreign-floor',basic('foreign-floor'),{owner:foreign,dirty:false})];
+    rows[2].payload.messages=[{id:50000,uuid:'owner-floor-message',role:'user',content:'own floor'}];
+    rows[3].payload.messages=[{id:9000000,uuid:'foreign-floor-message',role:'user',content:'foreign maximum ignored'}];
+    if(scenario==='collision')rows.push(row(targetID,basic(targetID),{dirty:false}));
+    for(const item of rows)if(scenario==='legacy'||inlineSource&&item.id===sourceID||scenario==='mixed'&&item.id==='owner-floor')entities.put(item);else writeEntity(tx,item);
+    meta.put(scenario!=='withdrawn',prefix+'consent');meta.put(11,prefix+'cursor');meta.put(scenario==='seq-floor'?60000:scenario==='header-floor'?4:50000,seqKey);
+    meta.put(events,memoryEventsKey(owner,sourceID));meta.put({untouched:true},'foreign-unrelated-meta');
+    if(inlineOutbox)meta.put(batch,outboxKey);else writeOutbox(tx,owner,batch);done();
+  });
+  let state=await raw();sourceHeader=state.entities.find(([k])=>k[0]===owner&&k[1]===sourceID)[1];outboxHeader=state.meta.find(([k])=>k===outboxKey)[1];
+  if(scenario.startsWith('source-')||scenario.startsWith('outbox-'))await corrupt(scenario.split('-')[0],scenario.split('-').slice(1).join('-'));
+  if(scenario==='pending-local'||scenario==='pending-sync'){
+    const policy=scenario.slice(8),domain={...emptyMemoryDomain(),owner,policy,pending:{session_id:sourceID,generation_id:'fictional-pending'}};
+    bindMemoryScope(domain,row(sourceID,basic(sourceID)),memoryIdentity({},{character_id:null,persona_id:null,world_id:null}));
+    await appTransaction(['meta','parts'],'readwrite',(tx,done)=>writeMemoryDomainTx(tx,domain,done));
+  }
+  if(scenario==='invalid-events')await appTransaction(['meta'],'readwrite',(tx,done)=>{tx.objectStore('meta').put([{...events[0],id:2}],memoryEventsKey(owner,sourceID));done();});
+}
+async function corrupt(which,kind){
+  const header=which==='source'?sourceHeader:outboxHeader,ref=header[which==='source'?'payloadParts':'changesParts'];
+  const location=which==='source'?[owner,'entity',sourceID]:[owner,'outbox','fixed'];
+  const value=await raw(),parts=value.parts.filter(([k])=>k.slice(0,4).join('|')===[...location,ref.token].join('|')).sort((a,b)=>a[0][4]-b[0][4]);
+  if(kind==='corrupt'||kind==='missing'){
+    const [key,original]=parts.at(-1),changed=original.slice();changed[changed.length-1]^=1;
+    await appTransaction(['parts'],'readwrite',(tx,done)=>{if(kind==='missing')tx.objectStore('parts').delete(key);else tx.objectStore('parts').put(changed,key);done();});return;
+  }
+  const size=parts.reduce((s,[,v])=>s+v.length,0),rawBytes=new Uint8Array(size);let at=0;for(const [,v] of parts){rawBytes.set(v,at);at+=v.length;}
+  let changed;
+  if(kind==='json'){changed=rawBytes.slice();changed[changed.length-1]=33;}
+  else if(kind==='utf8'){changed=rawBytes.slice();changed[changed.length-4]=255;}
+  else if(kind==='depth'){
+    const text=new TextDecoder().decode(rawBytes),offset=which==='source'?text.lastIndexOf('}'):text.lastIndexOf('}');
+    changed=encoder.encode(text.slice(0,offset)+',"deep":'+'['.repeat(70)+'0'+']'.repeat(70)+text.slice(offset));
+  }else throw Error('Unknown corruption '+kind);
+  const updated={...ref,size:changed.length,chunks:Math.ceil(changed.length/1048576),sha256:await sha(changed)};
+  await appTransaction(['entities','meta','parts'],'readwrite',(tx,done)=>{
+    for(const [key] of parts)tx.objectStore('parts').delete(key);
+    for(let i=0;i<updated.chunks;i++)tx.objectStore('parts').put(changed.slice(i*1048576,(i+1)*1048576),[...location,ref.token,i]);
+    if(which==='source')tx.objectStore('entities').put({...header,payloadParts:updated});else tx.objectStore('meta').put({...header,changesParts:updated},outboxKey);done();
+  });
+}
+const originals={feed:JsonStream.prototype.feed,finish:JsonStream.prototype.finish,punctuation:JsonStream.prototype.punctuation,
+  get:IDBObjectStore.prototype.get,add:IDBObjectStore.prototype.add};
+const parsers=new WeakSet(),currentParsers=new WeakSet();
+function inspect(parser){
+  if(!measuring)return;
+  const root=parser.root;
+  if(root&&!Array.isArray(root)&&Array.isArray(root.messages)){
+    if(!currentParsers.has(parser)){currentParsers.add(parser);stats.currentParsers++;}
+    stats.maxCurrentMessages=Math.max(stats.maxCurrentMessages,root.messages.length);
+  }
+  if(Array.isArray(root)&&parser.outboxIndex!==undefined){
+    if(!parsers.has(parser)){parsers.add(parser);stats.selectedParsers++;}
+    root.forEach((change,i)=>{const p=change?.payload;if(i===parser.outboxIndex){if(p?.messages)stats.maxSelectedMessages=Math.max(stats.maxSelectedMessages,p.messages.length);}
+      else stats.maxOtherPayloadKeys=Math.max(stats.maxOtherPayloadKeys,Object.keys(p??{}).length);});
+  }
+}
+JsonStream.prototype.punctuation=function(char){const v=originals.punctuation.call(this,char);inspect(this);return v;};
+JsonStream.prototype.feed=function(value){if(measuring)stats.feeds++;const v=originals.feed.call(this,value);inspect(this);return v;};
+JsonStream.prototype.finish=function(){const v=originals.finish.call(this);inspect(this);if(measuring&&parsers.has(this))stats.selectedFinish++;return v;};
+function interrupt(tx){
+  stats.faults++;
+  if(scenario.startsWith('owner'))rememberOwner(foreign);
+  else if(scenario.startsWith('busy'))setGenerationBusy(true);
+  else tx.objectStore('meta').put(false,prefix+'consent');
+}
+IDBObjectStore.prototype.get=function(key){
+  const request=originals.get.call(this,key);
+  if(measuring&&scenario==='early-outbox-revision'&&this.name==='meta'&&key===outboxKey&&this.transaction.mode==='readwrite'){
+    request.addEventListener('success',()=>{
+      if(stats.faults)return;
+      check(request.result.request_id==='branch-stable-request','Early control hook changed request identity');
+      stats.faults++;request.result.revisions[sourceID]++;
+    },{once:true});
+  }
+  if(measuring&&this.name==='parts'&&Array.isArray(key)){
+    const which=key[1]==='entity'&&key[2]===sourceID?'source':key[1]==='outbox'?'outbox':null;
+    if(which){
+      const header=which==='source'?sourceHeader:outboxHeader,ref=header[which==='source'?'payloadParts':'changesParts'];
+      if(ref&&key[4]===ref.chunks-1){
+        stats[which+'Reads']++;
+        request.addEventListener('success',()=>{
+          if(stats.faults)return;
+          if(scenario==='late-'+which+'-corrupt'&&stats[which+'Reads']>=(which==='source'?2:3)){
+            stats.faults++;request.result[request.result.length-1]^=1;
+          }else if(which==='source'&&['owner-body','busy-body','consent-body'].includes(scenario))interrupt(this.transaction);
+        },{once:true});
+      }
+    }
+  }
+  return request;
+};
+IDBObjectStore.prototype.add=function(value,key){
+  if(measuring&&this.name==='parts'&&Array.isArray(key)&&key[1]==='entity'){
+    if(key[2]==='first-branch')stats.firstBranchParts++;
+    if(key[2]===targetID){
+      stats.outputParts++;
+      if(!stats.faults&&stats.outputParts===2){
+        if(['quota','atomic-two-ack'].includes(scenario)||scenario==='reload'&&!resumed){stats.faults++;throw new DOMException('Fictional later branch output quota','QuotaExceededError');}
+        if(['owner-output','busy-output','consent-output'].includes(scenario))interrupt(this.transaction);
+      }
+    }
+  }
+  return originals.add.call(this,value,key);
+};
+globalThis.fetch=async(input,init)=>{
+  const path=String(input),method=init?.method??'GET';stats.api.push({path,method});
+  if(path==='/api/mobile/status')return Response.json({cloud_mode:true,authenticated:true,owner_scope:owner});
+  check(new Headers(init?.headers).get('X-Kyalulu-Owner')===owner,'Synthetic transport owner mismatch');
+  if(path.startsWith('/api/cloud/app/sync?cursor='))return Response.json({changes:[],cursor:Number(new URL(path,location.origin).searchParams.get('cursor')),has_more:false});
+  if(scenario==='transport'&&path==='/api/cloud/app/sync/transfers'){
+    const control=JSON.parse(init.body);check(control.request_id==='branch-stable-request','Existing outbox request ID changed');
+    same(Object.keys(control).sort(),['request_id','sha256','size'],'Cache query sent payload');
+    check(control.size>2*1024*1024,'Cache query did not describe frozen large saved outbox');
+    const expected=bytes({request_id:batch.request_id,changes:batch.changes});
+    check(control.size===expected.length&&control.sha256===await sha(expected),'Cache query digest does not match exact frozen saved request');
+    return Response.json({result:{changes:[{id:'other',revision:4,deleted:false},ack]}});
+  }
+  stats.forbiddenTransport.push({path,method});throw Error('Forbidden synthetic transport '+path+' '+method);
+};
+async function evidence(target,expected,actualEvents,expectedEvents){
+  const after=await raw(),header=after.entities.find(([key])=>key[0]===owner&&key[1]===target.id)[1];
+  const b64=b=>{let s='';for(let i=0;i<b.length;i+=32768)s+=String.fromCharCode(...b.subarray(i,i+32768));return btoa(s);};
+  return {header,parts:after.parts.filter(([k])=>k[0]===owner&&k[1]==='entity'&&k[2]===target.id&&k[3]===header.payloadParts?.token).map(([key,b])=>({key,data:b64(b)})),
+    inline_json:JSON.stringify(header.payload),expected_json:JSON.stringify(expected),actual_events_json:JSON.stringify(actualEvents),expected_events_json:JSON.stringify(expectedEvents)};
+}
+async function run(){
+  let result={ok:false,scenario,resumed,stats};
+  try{
+    if(!resumed)await seed();else{
+      rememberOwner(owner);source=await entity(sourceID,owner);
+      const state=await raw();sourceHeader=state.entities.find(([k])=>k[0]===owner&&k[1]===sourceID)[1];outboxHeader=state.meta.find(([k])=>k===outboxKey)[1];
+      batch={...outboxHeader,changes:[{id:'other',base_revision:3,payload:{}},{id:sourceID,base_revision:3,payload:body('SENT')}],revisions:{other:7,[sourceID]:7}};
+      check(outboxHeader.request_id==='branch-stable-request'&&!!outboxHeader.receipt,'Reload lost stable cached receipt');
+    }
+    check(bytes(body('SENT')).length>=2*1024*1024,'Unicode history below 2 MiB');
+    before=await raw();
+    measuring=true;try{await syncNow(owner);}finally{measuring=false;}
+    const state=syncState(),after=await raw();result.phase=state.phase;result.sync_error=state.error;
+    result.physical_before_json=JSON.stringify(await physical(before));result.physical_after_json=JSON.stringify(await physical(after));
+    const failure=/^(source-|outbox-|late-|owner-|busy-|consent-|pending-)/.test(scenario)||['quota','atomic-two-ack','collision','invalid-events','invalid-profile-branch','early-outbox-revision','withdrawn'].includes(scenario)||scenario==='reload'&&!resumed;
+    if(failure){
+      check(state.phase!=='saved','Guarded branch ACK reported saved');exact(before,after,'Failed ACK changed original storage');
+      result.original_physical_preserved=true;
+      if(/^(late-|owner-|busy-|consent-)/.test(scenario)||['quota','atomic-two-ack'].includes(scenario)||scenario==='reload')check(stats.faults===1,'Requested injection did not fire');
+      if(scenario==='atomic-two-ack')check(stats.firstBranchParts>=2,'First ACK was not staged before second ACK failed');
+      if(scenario==='early-outbox-revision')check(stats.faults===1&&stats.sourceReads===0&&stats.outputParts===0,'Initial ACK guard did not reject same-request legacy revision change before body reads/writes');
+    }else{
+      check(state.phase==='saved','Branch ACK failed: '+state.error);
+      const target=await entity(targetID,owner),original=await entity(sourceID,owner);
+      let number=scenario==='seq-floor'?60000:50000;
+      const expected=oldBranch(source,ack,batch,()=>++number,events),actualEvents=await getMeta(memoryEventsKey(owner,targetID));
+      same(normalized(target,actualEvents),normalized(expected.target,expected.events),'Full branch/event result differs from frozen f9c8d2c oracle');
+      same(original,expected.source,'Original source differs from old branch behavior');
+      check(!await getMeta(outboxKey),'ACK did not remove fixed outbox');check(await getMeta(seqKey)===number,'Owner sequence/floor mismatch');
+      same(await getMeta(memoryEventsKey(owner,sourceID)),events,'Source memory events changed');
+      const afterSource=after.entities.find(([k])=>k[0]===owner&&k[1]===sourceID)[1];
+      same(afterSource,{...sourceHeader,...(!source.deleted?{dirty:false}:{})},'Source physical header rewritten');
+      const sourceParts=value=>value.parts.filter(([k])=>k[0]===owner&&k[1]==='entity'&&k[2]===sourceID);
+      exact({entities:[],meta:[],parts:sourceParts(before)},{entities:[],meta:[],parts:sourceParts(after)},'Source parts rewritten');
+      result.source_physical_preserved=true;result.full_old_oracle=true;result.numeric_ids=target.payload.messages.map(m=>m.id);
+      result.evidence=await evidence(target,expected.target,actualEvents,expected.events);
+      if(!inlineSource&&source.payload.messages?.length)check(stats.currentParsers>0&&stats.maxCurrentMessages===0,'Current root retained a full messages array');
+      if(!inlineOutbox&&source.deleted){
+        check(stats.selectedFinish===2,'Saved changes ARRAY selected payload must finish both validation/write scans');
+        check(stats.maxSelectedMessages===0&&stats.maxOtherPayloadKeys===0,'Selector retained messages or unrelated outbox payload');
+      }
+    }
+    if(scenario==='transport')check(stats.api.filter(x=>x.method==='POST').length===1,'Cached request resent payload or reopened transfer');
+    else check(!stats.api.some(x=>x.method!=='GET'),'Cached receipt caused network resend');
+    check(stats.maxCurrentMessages===0&&stats.maxSelectedMessages===0&&stats.maxOtherPayloadKeys===0,'Streaming parser retained complete message arrays/unselected payloads');
+    check(!stats.forbiddenTransport.length,'Unapproved fictional transport called');
+    result.ok=true;
+  }catch(error){result.error=String(error);result.stack=error.stack;}
+  finally{
+    measuring=false;globalThis.fetch=originalFetch;
+    JsonStream.prototype.feed=originals.feed;JsonStream.prototype.finish=originals.finish;JsonStream.prototype.punctuation=originals.punctuation;
+    IDBObjectStore.prototype.get=originals.get;IDBObjectStore.prototype.add=originals.add;
+    rememberOwner(owner);if(scenario.startsWith('busy')&&stats.faults)setGenerationBusy(false);
+  }
+  return result;
+}
+window.__SYNC_BRANCH_ACK__=await run();
+</script>

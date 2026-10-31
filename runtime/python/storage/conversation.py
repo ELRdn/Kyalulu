@@ -205,6 +205,8 @@ def erase_memory_references(result, memory_ids, *, source_session_ids=()):
     # Raw prompts/attempts may contain injected source quotes without a memory ID beside them.
     for key in ("compiled", "raw_prompt", "attempts"):
         result.pop(key, None)
+    if isinstance(result.get("validation"), dict):
+        result["validation"]["errors"] = []
     return result
 
 

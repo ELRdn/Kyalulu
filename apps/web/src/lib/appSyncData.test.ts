@@ -2,12 +2,21 @@ import { expect, it } from 'vitest';
 import { receiveConversation, receiveLibrarySnapshot, receiveCreatorSnapshot, rebindConversation, withLibrarySnapshots } from './appSyncData';
 import { offlineStub, type AppEntity } from './appStore';
 import sharedHistory from '../../../../tests/fixtures/unified-history.json';
+import regeneratedHistory from '../../../../tests/fixtures/unified-regeneration-memory.json';
 
 const wire = () => ({storage_policy:'sync',rating:'general',settings:{session_id:'chat'},state:{session_id:'chat',turn:1},
   messages:[{id:1,uuid:'user',role:'user',content:'tea'},{id:2,uuid:'assistant',role:'assistant',content:'yes',
     before:{state:{session_id:'chat',turn:0},memories:[]},after:{state:{session_id:'chat',turn:1},memories:[{id:'memory',source_message_ids:[1]}]}}],
   memories:[{id:'memory',scope:'chat',type:'semantic',content:'tea',source_message_ids:[1]}],
   summaries:[{id:'summary',method:'extractive',text:'[1:user] tea [2:assistant] yes',source_message_ids:[1,2]}],last_generation:{user_id:1,assistant_id:2}});
+
+it('does not carry a foreign worker pending flag into an independent sync/branch copy',()=>{
+  const payload={...wire(),pending_generation:'other-document-worker',draft:'retain independent draft'};
+  let number=100;const received=receiveConversation(payload,undefined,()=>++number);
+  expect(received.pending_generation).toBeNull();expect(received.draft).toBe(payload.draft);
+  expect(received.messages.map((m:any)=>m.content)).toEqual(payload.messages.map(m=>m.content));
+  expect(payload.pending_generation).toBe('other-document-worker');
+});
 
 it('imports the same historical fixture as Python without mixing memory revisions',()=>{
   let number=500;const value=receiveConversation(sharedHistory.payload,undefined,()=>++number);
@@ -16,6 +25,29 @@ it('imports the same historical fixture as Python without mixing memory revision
   expect(value.messages[1].after.memories[0].id).toBe(value.memories[0].id);
   expect(value.messages[1].after.settings.system_prompt).toBe('OLD SYSTEM');
   expect(value.messages[1].after.settings.library_binding.character.revision).toBe(1);
+});
+it('retains a confirmed manual correction at the original source turn before a regenerated reply',()=>{
+  let sequence=500;const value=receiveConversation(regeneratedHistory.payload,undefined,()=>++sequence);
+  expect(value.messages[1].before.state.turn).toBe(0);
+  expect(value.messages[1].before.memories[0]).toMatchObject({origin:'model_edited',source_turn:1,source_message_ids:[501],
+    content:'Corrected tea',source_quote:'Corrected tea',source_revision:'manual:4',source_generation_id:'original-turn'});
+});
+
+it.each(['origin','kind','confirmation','unsafe-version','far-future','after','future-id'])('rejects an unconfirmed or misplaced future manual source (%s)',fault=>{
+  const payload:any=structuredClone(regeneratedHistory.payload),memory=payload.messages[1].before.memories[0];
+  if(fault==='origin')memory.origin='model';if(fault==='kind')memory.source_kind='story_event';
+  if(fault==='confirmation')memory.confirmation='unverified';
+  if(fault==='unsafe-version')memory.version=Number.MAX_SAFE_INTEGER+1;
+  if(fault==='far-future')memory.source_turn=2;if(fault==='after')payload.messages[1].after.memories[0].source_turn=2;
+  if(fault==='future-id')memory.source_message_ids=[2];
+  let sequence=0;expect(()=>receiveConversation(payload,undefined,()=>++sequence)).toThrow('Future historical memory source');
+});
+
+it('keeps opaque legacy Native provenance on a confirmed correction',()=>{
+  const payload:any=structuredClone(regeneratedHistory.payload),memory=payload.messages[1].before.memories[0];
+  memory.source_revision=JSON.stringify({entity_id:'device-conversation',memory_id:memory.id,memory_uuid:memory.uuid,source_session_id:memory.source_session_id});
+  let sequence=0;const copy=receiveConversation(payload,undefined,()=>++sequence);
+  expect(copy.messages[1].before.memories[0].source_revision).toBe(memory.source_revision);
 });
 it('uploads only the current and historical setting revisions referenced by the chat',()=>{
   const payload:any=structuredClone(sharedHistory.payload);payload.library_snapshots['unrelated@1']={name:'PRIVATE UNRELATED'};
@@ -70,6 +102,24 @@ it('gives a branch independent numeric and memory IDs while retaining source UUI
   expect(branch.memories[0].id).not.toBe(first.memories[0].id);expect(branch.memories[0].uuid).toBe(first.memories[0].uuid);
   const rebound=rebindConversation(branch,'fork');
   expect(rebound.state.session_id).toBe('fork');expect(rebound.messages[1].after.state.session_id).toBe('fork');expect(rebound.memories[0].scope).toBe('fork');
+});
+
+it('rebinds attributable memory ownership for an independent branch/recovery and retains original provenance',()=>{
+  const payload=wire();payload.memories[0]=Object.assign(payload.memories[0],{source_session_id:'chat',source_generation_id:'original-generation'});
+  payload.messages[1].after!.memories=structuredClone(payload.memories);
+  const copy=rebindConversation(payload,'recovery');
+  for(const memory of [copy.memories[0],copy.messages[1].after.memories[0]])expect(memory).toMatchObject({source_session_id:'recovery',original_source_session_id:'chat',source_generation_id:'original-generation'});
+  expect((payload.memories[0] as any).source_session_id).toBe('chat');
+});
+
+it('keeps local retrieval diagnostics and worker leases out of the synchronized generation summary',()=>{
+  const payload:any=wire();payload.last_generation={...payload.last_generation,status:'completed',reply:'authored reply',
+    raw_prompt:'FOREIGN SECRET',compiled:{system_prompt:'FOREIGN SECRET'},attempts:['FOREIGN SECRET'],memory:{candidates:['FOREIGN SECRET']},
+    execution_lock:'owner lock',validation:{ok:true,retries:1,errors:['FOREIGN SECRET']},telemetry:{elapsed_ms:10,memory:{candidates:['FOREIGN SECRET']}}};
+  const outgoing=withLibrarySnapshots(payload,[]);
+  expect(JSON.stringify(outgoing)).not.toContain('FOREIGN SECRET');expect(outgoing.last_generation).toEqual({user_id:1,assistant_id:2,status:'completed',reply:'authored reply',validation:{ok:true,retries:1,errors:[]},telemetry:{elapsed_ms:10}});
+  let id=100;expect(JSON.stringify(receiveConversation(payload,undefined,()=>++id))).not.toContain('FOREIGN SECRET');
+  expect(payload.last_generation.raw_prompt).toBe('FOREIGN SECRET');
 });
 it('remaps memory objects shared by current and historical snapshots only once',()=>{
   const payload=wire();payload.messages[1].after!.memories=payload.memories;

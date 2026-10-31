@@ -152,19 +152,25 @@ class StripeBilling:
         owner = self.owner_for(sub["customer"])
         items = sub.get("items", {}).get("data", [])
         reverse = {price: sku for sku, price in self.config.stripe_prices if price}
-        sku = reverse.get(items[0].get("price", {}).get("id")) if len(items) == 1 else None
+        price = items[0].get("price", {}).get("id") if len(items) == 1 else None
+        sku = reverse.get(price)
         until = items[0].get("current_period_end", sub.get("current_period_end", 0)) if items else 0
-        active = (
-            sub.get("status") in {"active", "trialing"}
-            and sku in {"plus", "pro"}
-            and until > time.time()
-        )
+        active = sub.get("status") in {"active", "trialing"} and until > time.time()
         with self.store.transaction() as db:
+            pricing_key = sub.get("metadata", {}).get("pricing_key")
+            if active and pricing_key:
+                checkout = db.execute('SELECT sku,terms FROM checkout_terms WHERE id=? AND owner=?',
+                                      (pricing_key, owner)).fetchone()
+                terms = json.loads(checkout['terms']) if checkout else {}
+                if (not checkout or checkout['sku'] not in {'plus', 'pro'}
+                        or terms.get('sku') != checkout['sku'] or terms.get('stripe_price') != price):
+                    raise CloudError('checkout_price_conflict', 409)
+                sku = checkout['sku']
             funded = db.execute(
                 "SELECT 1 FROM receipts WHERE owner=? AND sku=? AND expires=? AND revoked=0",
                 (owner, sku, until),
             ).fetchone()
-            active = active and bool(funded)
+            active = active and sku in {'plus', 'pro'} and bool(funded)
             db.execute(
                 "INSERT OR IGNORE INTO billing_subscriptions VALUES(?,?)", (subscription_id, owner)
             )

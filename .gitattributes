@@ -1,0 +1,4 @@
+/scripts/mobile_wasm/build.sh text eol=lf
+/docs/licenses/** -text
+/docs/licenses/rollup-LICENSE.md -whitespace
+/docs/licenses/stackback-V8-notice.txt -whitespace

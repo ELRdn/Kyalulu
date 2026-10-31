@@ -65,6 +65,12 @@ def _resolve_model_cfg(model_id: str) -> dict:
 OFFICIAL_SCENARIOS = {"mocha_daily_001": "mocha_sfw", "senior_daily_001": "senior_cool", "butler_daily_001": "butler"}
 
 
+def is_official_scenario(scenario: ScenarioCard) -> bool:
+    return (not scenario.nsfw and scenario.id in OFFICIAL_SCENARIOS
+            and OFFICIAL_SCENARIOS[scenario.id] == scenario.character
+            and scenario == load_scenario(scenario.id))
+
+
 async def run_single(scenario: ScenarioCard, model_id: str, run_number: int = 1,
                      seed: int | None = None, temperature: float | None = None,
                      extra_system_prompt: str | None = None, replay_config: dict | None = None,
@@ -114,8 +120,7 @@ async def run_single(scenario: ScenarioCard, model_id: str, run_number: int = 1,
         nsfw=scenario.nsfw, nsfw_level=scenario.nsfw_level,
         model_config_snapshot=public_config(cfg), scenario_snapshot=scenario.model_dump(), extra_system_prompt=extra_system_prompt,
         official=(not scenario.nsfw and not extra_system_prompt and not memory and history_turn_limit is None
-                  and OFFICIAL_SCENARIOS.get(scenario.id) == scenario.character
-                  and scenario == load_scenario(scenario.id)),
+                  and is_official_scenario(scenario)),
         memory_enabled=memory, memory_options=memory_options, history_turn_limit=history_turn_limit)
     scope = f"exp:{meta.experiment_id}"
     has_probes = memory or any(t.expect_recall or t.forbid_recall for t in scenario.turns)

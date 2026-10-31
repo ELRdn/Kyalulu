@@ -1,4 +1,7 @@
 """Memory Lab API: inspect, edit and toggle memories (Phase 1)."""
+import json
+
+import aiosqlite
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
@@ -16,6 +19,7 @@ class MemoryIn(BaseModel):
     source_kind: SourceKind = "user_statement"
     source_quote: str = Field(default="", max_length=2000)
     source_revision: str | None = Field(default=None, max_length=128)
+    source_session_id: str | None = Field(default=None, min_length=1, max_length=300)
 
     @field_validator("content", "scope", mode="before")
     @classmethod
@@ -82,6 +86,45 @@ async def list_memories(scope: str, include_deleted: bool = False):
 
 @router.post("")
 async def create_memory(body: MemoryIn):
+    if body.source_session_id is not None:
+        from python.storage.generations import Conflict, transaction
+        await memories.init()
+        sid = body.source_session_id
+        try:
+            async with transaction() as db:
+                if await (await db.execute("SELECT 1 FROM session_deletions WHERE session_id=?", (sid,))).fetchone():
+                    raise Conflict("source session was deleted")
+                exists = await (await db.execute(
+                    "SELECT 1 FROM session_settings WHERE session_id=? UNION ALL "
+                    "SELECT 1 FROM chat_history WHERE session_id=? LIMIT 1", (sid, sid))).fetchone()
+                if not exists:
+                    return JSONResponse({"error": "source session not found"}, status_code=404)
+                row = await (await db.execute(
+                    "SELECT character_id,persona_id,world_id,library_binding FROM session_settings "
+                    "WHERE session_id IN (?, '__global__') ORDER BY CASE WHEN session_id=? THEN 0 ELSE 1 END LIMIT 1",
+                    (sid, sid))).fetchone()
+                settings = {"session_id": sid}
+                if row:
+                    settings.update(character_id=row[0], persona_id=row[1], world_id=row[2],
+                                    library_binding=json.loads(row[3]) if row[3] else None)
+                if await memories.session_scope(settings, db=db) != body.scope:
+                    raise Conflict("source session memory scope does not match request scope")
+                active = await (await db.execute(
+                    "SELECT 1 FROM generations g LEFT JOIN session_scopes s ON s.session_id=g.session_id "
+                    "WHERE g.status='pending' AND (g.session_id=? OR s.scope=?) LIMIT 1",
+                    (sid, body.scope))).fetchone()
+                if active:
+                    raise Conflict("stop generation before creating memories")
+                memory_id = await memories._create(
+                    db, body.scope, body.type, body.content, "user", None, sid, None, None,
+                    source_kind=body.source_kind, source_quote=body.source_quote or body.content,
+                    source_revision=body.source_revision or "manual:1", confirmation="user_confirmed")
+                cursor = await db.execute(f"SELECT {memories.COLUMNS} FROM memories WHERE id=?", (memory_id,))
+                cursor.row_factory = aiosqlite.Row
+                result = memories._row(await cursor.fetchone())
+            return result
+        except Conflict as exc:
+            return JSONResponse({"error": str(exc)}, status_code=409)
     return await memories.create(body.scope, body.type, " ".join(body.content.split()), origin="user",
                                  source_kind=body.source_kind, source_quote=body.source_quote,
                                  source_revision=body.source_revision)

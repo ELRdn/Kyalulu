@@ -9,6 +9,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
@@ -250,7 +251,8 @@ def test_mux_binary_roundtrip_and_close(env):
                     c2.receive_bytes()
 
 
-def test_cross_host_connection_injection_closes_attacker(env):
+@pytest.mark.parametrize('frame', ['binary', 'close'])
+def test_cross_host_connection_injection_closes_attacker(env, frame):
     store, client, _ = env
     a, b = host(store), host(store)
     phone = device(store, a)
@@ -260,12 +262,55 @@ def test_cross_host_connection_injection_closes_attacker(env):
     ):
         with socket(client, "client", phone["device_token"]) as c:
             opened = ha.receive_json()
-            hb.send_bytes(uuid.UUID(opened["connection_id"]).bytes + b"injected")
+            if frame == 'binary':
+                hb.send_bytes(uuid.UUID(opened["connection_id"]).bytes + b"injected")
+            else:
+                hb.send_json(dict(type='close', connection_id=opened['connection_id']))
             with pytest.raises(WebSocketDisconnect) as error:
                 hb.receive_bytes()
             assert error.value.code == 1008
             c.send_bytes(b"still-alive")
             assert ha.receive_bytes().endswith(b"still-alive")
+
+
+def test_late_frames_for_detached_client_preserve_host_other_client_and_reconnect(env):
+    store, client, hub = env
+    a = host(store)
+    phone, other = device(store, a), device(store, a)
+    with socket(client, 'host', a['host_token']) as h:
+        with socket(client, 'client', other['device_token']) as alive:
+            live = h.receive_json()['connection_id']
+            with socket(client, 'client', phone['device_token']):
+                old = h.receive_json()['connection_id']
+            assert h.receive_json() == dict(type='close', connection_id=old)
+            assert uuid.UUID(old) not in hub.sessions
+            h.send_bytes(uuid.UUID(old).bytes + b'late-opaque-result')
+            h.send_json(dict(type='close', connection_id=old))
+            h.send_bytes(uuid.UUID(live).bytes + b'other-client-retained')
+            assert alive.receive_bytes() == b'other-client-retained'
+            with socket(client, 'client', phone['device_token']) as reopened:
+                current = h.receive_json()['connection_id']
+                assert current != old
+                h.send_bytes(uuid.UUID(old).bytes + b'must-not-enter-new-connection')
+                h.send_bytes(uuid.UUID(current).bytes + b'new-connection-only')
+                assert reopened.receive_bytes() == b'new-connection-only'
+                reopened.send_bytes(b'new-request')
+                assert h.receive_bytes() == uuid.UUID(current).bytes + b'new-request'
+
+
+@pytest.mark.parametrize('frame', [b'bad', '{', '{"type":"open","connection_id":"bad"}',
+    '{"type":"close","connection_id":"bad"}', '{"type":"close","connection_id":"00000000-0000-0000-0000-000000000000","extra":true}'])
+def test_malformed_host_frames_still_close_host(env, frame):
+    store, client, _ = env
+    a = host(store)
+    with socket(client, 'host', a['host_token']) as h:
+        if isinstance(frame, bytes):
+            h.send_bytes(frame)
+        else:
+            h.send_text(frame)
+        with pytest.raises(WebSocketDisconnect) as error:
+            h.receive_bytes()
+        assert error.value.code == 1008
 
 
 def test_revocation_closes_live_socket_and_survives_restart(env):
@@ -391,7 +436,10 @@ def test_validation_never_echoes_secret_and_http_bounds(env):
     assert client.get("/v1/hosts?token=secret").status_code == 400
 
 
-def test_rate_limit_bounded_and_http_throttles(env):
+def test_rate_limit_bounded_and_http_throttles(env, monkeypatch):
+    clock = [119.999]
+    # Freeze only Relay's binding; async I/O must keep its real monotonic clock.
+    monkeypatch.setattr('runtime.python.relay.app.time', SimpleNamespace(monotonic=lambda: clock[0]))
     _, client, _ = env
     limiter = Limiter()
     assert all(limiter.allow("same-ip") for _ in range(120))
@@ -401,7 +449,12 @@ def test_rate_limit_bounded_and_http_throttles(env):
     assert len(limiter.ips) <= 2048
     assert not limiter.allow("fresh-ip")
     codes = [client.get("/healthz").status_code for _ in range(121)]
+    assert codes[:-1] == [200] * 120
     assert codes[-1] == 429
+    clock[0] = 120.0
+    assert client.get("/healthz").status_code == 200
+    assert limiter.allow("same-ip")
+    assert limiter.total == 1 and len(limiter.ips) == 1
 
 
 def test_slow_peer_queue_is_bounded_and_cascades(env):

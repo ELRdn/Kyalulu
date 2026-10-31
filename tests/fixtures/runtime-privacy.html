@@ -1,0 +1,65 @@
+<!doctype html><meta charset="utf-8"><title>Disposable Runtime privacy fixture</title><div id="root"></div>
+<script type="module">
+import RefreshRuntime from '/@react-refresh';
+RefreshRuntime.injectIntoGlobalHook(window);window.$RefreshReg$=()=>{};window.$RefreshSig$=()=>type=>type;window.__vite_plugin_react_preamble_installed__=true;
+const [transport,context,cloud,remotes,client,pairing]=await Promise.all([
+  import('/src/lib/transport.ts'),import('/src/lib/appContext.ts'),import('/src/lib/cloudMode.ts'),
+  import('/src/lib/remoteStore.ts'),import('/src/lib/remoteClient.ts'),import('/src/lib/remotePairing.ts'),
+]);
+const owner='runtime-privacy-owner',session='runtime-privacy-chat';
+async function api(path,method='GET',body){
+  const response=await transport.apiFetch(path,{method,...(body===undefined?{}:{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})});
+  return {status:response.status,data:await response.json()};
+}
+window.__RUNTIME_PRIVACY__={
+  async enroll(url){
+    const link=pairing.parsePairing(new URL(url).hash.slice(8));
+    const device=await client.enrollRemote(link,'Fictional privacy browser',code=>{window.__approval=code;});
+    localStorage.setItem('kyalulu-active-remote',device.id);
+    localStorage.setItem('kyalulu-execution-target','pc');await remotes.restoreRemote();
+    cloud.setCloud(true);cloud.setCloudOwner(owner);context.rememberOwner(owner);
+  },
+  async cloud(secret){
+    const response=await transport.apiFetch('/api/cloud/profile',{headers:{Authorization:'Bearer '+secret}});
+    return response.json();
+  },
+  async remote(secrets){
+    const headers={'Accept':'application/json','Content-Type':'application/json',Authorization:'Bearer '+secrets[0],
+      Cookie:'fixture-cloud-session='+secrets[1],'X-Kyalulu-Owner':secrets[2],'X-CSRF-Token':secrets[3]};
+    const result=await transport.apiFetch('/api/health',{headers,credentials:'include'});
+    if(!result.ok)throw Error('Remote health failed');
+    await result.json();
+    const history=await transport.apiFetch('/api/chat/sessions',{headers});
+    if(!history.ok)throw Error('Remote sessions failed');
+    return history.json();
+  },
+  async device(){
+    client.remoteConnection().close();
+    // Retain the selected Remote and browser Cloud cookie to challenge target isolation.
+    localStorage.setItem('kyalulu-execution-target','device');context.rememberOwner(owner);
+    const {mount}=await import('/src/pages/DeviceResearch.browser-fixture.tsx');
+    await mount(document.getElementById('root'),'en','light');context.rememberOwner(owner);
+  },
+  async runDevice(){
+    const store=await import('/src/lib/appStore.ts'),sync=await import('/src/lib/appSync.ts');
+    const settings=await api('/api/chat/settings?session_id='+session);
+    if(settings.status!==200)throw Error('Device settings failed');
+    const memory=await api('/api/memory','POST',{scope:session,type:'semantic',content:'Fictional private memory'});
+    if(memory.status!==200)throw Error('Device memory failed');
+    const response=await transport.apiFetch('/api/chat/stream',{method:'POST',body:JSON.stringify({session_id:session,
+      generation_id:'runtime-privacy-generation',model_id:'kyalulu-iq3m',messages:[{role:'user',content:'Fictional private turn'}]})});
+    const stream=await response.text();
+    if(!response.ok||!stream.includes('event: done')||stream.includes('event: error'))throw Error('Device generation failed: '+stream);
+    const externalModel=await api('/api/chat/stream','POST',{session_id:session,generation_id:'runtime-privacy-external-denied',
+      model_id:'fictional-external-ai',messages:[{role:'user',content:'Must stay on device'}]});
+    await sync.syncNow(owner);
+    const saved=await store.entity(session,owner),consent=await store.getMeta('sync:'+owner+':consent');
+    return {target:context.executionTarget(),selectedRemote:!!remotes.activeRemote(),cloud:cloud.isCloud(),
+      storagePolicy:saved.payload.storage_policy,messages:saved.payload.messages.length,
+      memory:saved.payload.memories.some(m=>m.content==='Fictional private memory'),
+      generation:saved.payload.last_generation.status,externalModelStatus:externalModel.status,consent:consent??false,
+      outbox:!!await store.getMeta('sync:'+owner+':outbox'),sync:sync.syncState().phase,
+      adFrames:document.querySelectorAll('iframe,.k-ad-slot').length};
+  },
+};
+</script>

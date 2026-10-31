@@ -94,11 +94,34 @@ export function friendlyError(raw: unknown, language: Language = typeof window =
     return { message: en ? 'Server conversation data was erased, but cleanup of the draft and reply history on this device could not be verified. ' + (knownEnglish[detail] ?? detail) : text };
   }
   if (en && knownEnglish[text]) return { message: knownEnglish[text] };
+  const capabilityFailure = text.match(/^機能情報の取得に失敗しました \(HTTP (\d{3})\)$/);
+  if (capabilityFailure) return { message: en ? `Could not retrieve feature information (HTTP ${capabilityFailure[1]})` : text };
   const generationCheck = text.match(/^送信結果の確認に失敗しました \(HTTP (\d{3})\)$/);
   if (generationCheck) return { message: en ? `Could not check the send result (HTTP ${generationCheck[1]}).` : text };
+  if (text === 'generation_id belongs to a different session') return { message: en ? 'This send ID belongs to another chat. Check its result in the original chat.' : 'この送信IDは別の会話に紐づいています。元の会話で結果を確認してください。' };
   if (text === 'Stop generation and confirm its saved result before switching.') return { message: en ? text : '生成を停止し、保存結果を確認してから切り替えてください。' };
   if (text === 'Already imported; select an existing item or explicitly copy') return { message: en ? text : '取り込み済みです。既存の項目を選ぶか、新しい項目として複製することを確認してください。' };
   if (text === 'Content rating must be selected before saving this URL import') return { message: en ? text : '保存前に取り込み内容を確認し、内容区分を選んでください。' };
+  if (text === 'Saved memory history is invalid') return { message: en ? text : '保存された記憶の履歴が不正です。' };
+  if (text === 'Memory identity is ambiguous; use a separate conversation copy') return { message: en ? text : '記憶の識別情報が曖昧です。会話を別のコピーにして利用してください。' };
+  if (text === 'Memory must have 1-200 characters') return { message: en ? text : '記憶は1〜200文字で入力してください。' };
+  if (text === 'Invalid memory type') return { message: en ? text : '記憶の種類が不正です。' };
+  if (text === 'Invalid memory source') return { message: en ? text : '記憶の出典が不正です。' };
+  if (text === 'Memory source does not match this conversation' || text === 'source session memory scope does not match request scope') return { message: en ? text : '記憶の保存範囲と出典の会話が一致しません。' };
+  if (text === 'Memory source session not found' || text === 'source session not found') return { message: en ? text : '出典の会話が見つかりません。' };
+  if (text === 'source session was deleted') return { message: en ? text : '出典の会話は完全消去されています。' };
+  if (text === 'stop generation before creating memories') return { message: en ? text : '記憶を追加する前に生成を停止してください。' };
+  if (text === 'Choose whether memory is enabled') return { message: en ? text : '記憶を有効にするか選んでください。' };
+  if (text === 'Stop generation before editing') return { message: en ? text : '編集する前に生成を停止してください。' };
+  if (text === 'Stop generation and confirm its saved result before receiving conversation deletions') return { message: en ? text : '生成を停止して保存結果を確認すると、削除の同期を続けられます。' };
+  if (text === 'Web Locks are required for on-device generation') return { message: en ? text : '安全に端末内で生成するため、Web Locksに対応したブラウザーで開いてください。' };
+  if (text === 'A generation is already running in another tab') return { message: en ? text : '別のタブで生成中です。完了するか、そのタブで停止してから送信してください。' };
+  if (text === 'Generation is running in another tab; stop it there') return { message: en ? text : '別のタブで生成中です。そのタブで停止してください。' };
+  if (text === 'Reconcile the pending generation before sending again') return { message: en ? text : '前の送信結果を確認してから、もう一度送信してください。' };
+  if (text === 'Pending generation changed; reload before recovery') return { message: en ? text : '未完了の生成記録が変わりました。再読込して保存結果を確認してください。' };
+  if (text === 'Close the original app tabs and confirm the saved result before recovering this older generation') return { message: en ? text : '元のタブで保存結果を確認し、旧アプリのタブをすべて閉じてから復旧を確認してください。' };
+  if (text === 'On-device memories remain isolated to their conversation') return { message: en ? text : '端末内の記憶は、その会話内だけで保持されます。' };
+  if (text === 'Device save/read failed; original data retained / 保存・読込に失敗しました。原本は保持されています') return { message: localTransferMessage(text,language) };
   const connectionCheck = text.match(/^接続を確認して再試行してください（HTTP (\d{3})）。$/);
   if (connectionCheck) return { message: en ? `Check the connection and try again (HTTP ${connectionCheck[1]}).` : text };
   const hubStatus = text.match(/^配布元のエラー（HTTP (\d{3})）$/);
@@ -172,4 +195,57 @@ export function friendlyError(raw: unknown, language: Language = typeof window =
 
 export function friendlyMessage(raw: unknown, language?: Language): string {
   return friendlyError(raw, language).message;
+}
+
+const localTransferMessages:Record<string,[string,string]>={
+  'Account changed':['アカウントが切り替わりました。','The account changed.'],
+  'Account changed / アカウントが切り替わりました':['アカウントが切り替わりました。','The account changed.'],
+  'Allow popups or use a file below.':['ポップアップを許可するか、下のファイル方式を利用してください。','Allow popups or use a file below.'],
+  'Reconnect to transfer models / モデル転送には再接続してください':['モデル転送には再接続してください。','Reconnect to transfer models.'],
+  'Close other app tabs and reload to upgrade device storage / 他のタブを閉じて再読み込みしてください':['端末の保存領域を更新するため、他のアプリのタブを閉じて再読み込みしてください。','Close other app tabs and reload to upgrade device storage.'],
+  'Cannot open device storage; use a v3-compatible client / v3対応のアプリで保存領域を開いてください':['端末の保存領域を開けません。v3対応のアプリを利用してください。','Cannot open device storage. Use a v3-compatible app.'],
+  'Device save/read failed; original data retained / 保存・読込に失敗しました。原本は保持されています':['保存・読込に失敗しました。原本は保持されています。','Device save/read failed. Original data is retained.'],
+  '40 MiB limit':['移行ファイルは40 MiB以下にしてください。','Choose a migration file up to 40 MiB.'],
+  'Migration exceeds 40 MiB':['移行ファイルは40 MiB以下にしてください。','Choose a migration file up to 40 MiB.'],
+  'Unsupported migration format':['未対応の移行ファイル形式です。','This migration file format is not supported.'],
+  'Migration size or SHA-256 mismatch':['移行データのサイズまたはSHA-256が一致しません。','The migration data size or SHA-256 does not match.'],
+  'Invalid migration manifest / 移行情報が不正です':['移行情報が不正です。','The migration manifest is invalid.'],
+  'Migration reply out of order':['移行の応答順序が一致しません。','Migration replies arrived out of order.'],
+  'Invalid migration reply':['移行の応答が不正です。','The migration reply is invalid.'],
+  'Migration cancelled / 移行を中止しました':['移行を中止しました。','Migration was canceled.'],
+  'Migration connection closed / 再接続してください':['移行の接続が終了しました。再接続してください。','The migration connection closed. Reconnect to continue.'],
+  'Migration connection closed':['移行の接続が終了しました。','The migration connection closed.'],
+  'Concurrent migration request':['別の移行要求を処理中です。','Another migration request is in progress.'],
+  'Migration timed out / 移行元を開いて再接続してください':['移行がタイムアウトしました。移行元を開いて再接続してください。','Migration timed out. Open the source and reconnect.'],
+  'Migration timed out / 移行元で転送を許可してください':['移行がタイムアウトしました。移行元で転送を許可してください。','Migration timed out. Allow transfer in the source window.'],
+  'Migration send failed':['移行要求を送信できませんでした。','The migration request could not be sent.'],
+  'Migration chunk size mismatch':['移行データの分割サイズが一致しません。','The migration chunk size does not match.'],
+  'Migration SHA-256 mismatch':['移行データのSHA-256が一致しません。','The migration SHA-256 does not match.'],
+  'Migration read failed / 元データを読み取れません。書き出し方式を利用してください。':['元データを読み取れません。書き出し方式を利用してください。','The source data could not be read. Export a migration file instead.'],
+  'バックアップは32MiB以下にしてください。':['バックアップは32MiB以下にしてください。','Choose a backup up to 32 MiB.'],
+  'Kyalulu Mobileのバックアップではありません。':['Kyalulu Mobileのバックアップではありません。','This is not a Kyalulu Mobile backup.'],
+  'キャラIDが重複しています。':['キャラIDが重複しています。','Character IDs are duplicated.'],
+  '会話データが不正です。':['会話データが不正です。','The conversation data is invalid.'],
+  'メッセージが不正です。':['メッセージが不正です。','The message data is invalid.'],
+  '不正なモデル登録':['不正なモデル登録','The model registration is invalid.'],
+  '不正なモデルファイル':['不正なモデルファイル','The model file registration is invalid.'],
+  'GGUFは2GiB未満の分割が必要です。':['GGUFは2GiB未満の分割が必要です。','GGUF shards must be smaller than 2 GiB.'],
+  'このブラウザはモデルを保存するOPFSに対応していません。最新版のChromeまたはSafariで開いてください。':['このブラウザはモデルを保存するOPFSに対応していません。最新版のChromeまたはSafariで開いてください。','This browser does not support OPFS model storage. Open the latest Chrome or Safari.'],
+  'Model files unavailable':['モデルファイルを利用できません。','Model files are unavailable.'],
+  'Storage full / 端末の保存容量が不足しています':['端末の保存容量が不足しています。','Device storage is full.'],
+  'Web Locks required / 対応ブラウザで開いてください':['Web Locksに対応したブラウザーで開いてください。','Open a browser that supports Web Locks.'],
+  'このモデルの分割配布はまだ準備中です。':['このモデルの分割配布はまだ準備中です。','Sharded downloads for this model are not available yet.'],
+  '端末の保存容量が不足しています。不要なモデルを削除してください。':['端末の保存容量が不足しています。不要なモデルを削除してください。','Device storage is full. Remove models you no longer need.'],
+  'モデルのサイズが登録内容と異なります。':['モデルのサイズが登録内容と異なります。','The model size does not match its registration.'],
+  'モデルのサイズまたはSHA-256が一致しません。再試行してください。':['モデルのサイズまたはSHA-256が一致しません。再試行してください。','The model size or SHA-256 does not match. Try again.'],
+};
+
+/** Translate only known local-transfer failures; preserve unknown diagnostics verbatim. */
+export function localTransferMessage(raw:string,language:Language):string {
+  const text=raw.replace(/^Error:\s*/, '');
+  if(Object.hasOwn(localTransferMessages,text))return localTransferMessages[text][language==='en'?1:0];
+  if(Object.hasOwn(knownEnglish,text))return language==='en'?knownEnglish[text]:text;
+  const download=text.match(/^モデルの取得に失敗しました（HTTP (\d{3})）。$/);
+  if(download)return language==='en'?`Could not download the model (HTTP ${download[1]}).`:text;
+  return raw;
 }

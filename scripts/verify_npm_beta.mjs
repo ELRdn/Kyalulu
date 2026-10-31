@@ -39,17 +39,18 @@ const env={...Object.fromEntries(Object.entries(process.env).filter(([key])=>/^(
   UV_PYTHON_INSTALL_DIR:'',KYALULU_OWNER_TOKEN:''};
 let cli;
 async function invoke(executable,args,options={}){
+  console.error('Native verification command:',path.basename(executable),JSON.stringify(args));
   return new Promise((resolve,reject)=>{
-    const p=spawn(executable,args,{env,windowsHide:true,...options});let out='';
-    const timer=setTimeout(()=>{p.kill();reject(Error('Verification command timed out'));},60000);
-    p.stdout.on('data',v=>out+=v);p.stderr.on('data',v=>out+=v);
+    const p=spawn(executable,args,{env,windowsHide:true,...options});let out='',err='';
+    const timer=setTimeout(()=>{p.kill();reject(Error('Verification command timed out: '+JSON.stringify(args)+'\nstdout: '+out.slice(-4096)+'\nstderr: '+err.slice(-4096)));},60000);
+    p.stdout.on('data',v=>out+=v);p.stderr.on('data',v=>err+=v);
     p.on('error',error=>{clearTimeout(timer);reject(error);});
-    p.on('exit',code=>{clearTimeout(timer);code===0?resolve(out):reject(Error(out));});
+    p.on('close',code=>{clearTimeout(timer);code===0?resolve(out):reject(Error(out+err));});
   });
 }
 let npmTarball=process.argv[4] && path.resolve(process.argv[4]);
 if(!npmTarball){
-  const npmCli=path.join(path.dirname(process.execPath),'node_modules/npm/bin/npm-cli.js');
+  const npmCli=path.join(path.dirname(process.execPath),process.platform==='win32'?'node_modules/npm/bin/npm-cli.js':'../lib/node_modules/npm/bin/npm-cli.js');
   const packed=await invoke(process.execPath,[npmCli,'pack','--ignore-scripts','--offline','--json','--cache',path.join(home,'npm-cache'),'--pack-destination',home],{cwd:path.join(root,'packages/launcher')});
   npmTarball=path.join(home,JSON.parse(packed)[0].filename);
 }
@@ -60,13 +61,21 @@ assert.equal(packageInfo.version,manifest.release);assert.equal(packageInfo.name
 assert.equal(Object.keys(JSON.parse(await readFile(path.join(home,'npm/package/runtime-manifest.json'),'utf8')).artifacts).length,0,'Acceptance uses the intentionally unpublished npm candidate');
 cli=path.join(home,'npm/package/bin/kyalulu.mjs');
 async function command(args){
-  return invoke(process.execPath,[cli,...args]);
+  const state=['stop','rollback','restore'].includes(args[0]) ?
+    await readFile(path.join(home,'process.json'),'utf8').catch(error=>{if(error.code==='ENOENT') return null;throw error;}) : null;
+  const output=await invoke(process.execPath,[cli,...args]);
+  if(state) {
+    assert.throws(()=>process.kill(JSON.parse(state).pid,0),error=>error.code==='ESRCH','Stopped runtime PID must actually be absent');
+    await assert.rejects(()=>stat(path.join(home,'process.json')),error=>error.code==='ENOENT');
+  }
+  return output;
 }
 const url=`http://127.0.0.1:${port}`;
 async function api(endpoint,method='GET',body){
   const response=await fetch(url+'/api/'+endpoint,{method,signal:AbortSignal.timeout(15000),headers:{Origin:url,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});
   const value=await response.json();assert.ok(response.ok,JSON.stringify(value));return value;
 }
+let result;
 try{
   await command(['start']);
   await assert.rejects(()=>command(['restore']),/Specify a ZIP/);
@@ -143,6 +152,7 @@ syncBuiltinESMExports();
       }
     }
     await command(['update']);
+    assert.throws(()=>process.kill(runningPid,0),error=>error.code==='ESRCH','Updated runtime PID must actually be absent');
     assert.deepEqual(JSON.parse(await readFile(path.join(home,'current.json'),'utf8')),current);
     assert.equal(await readFile(path.join(home,'previous.json'),'utf8'),originalCurrent);
     await assert.rejects(()=>stat(path.join(home,'process.json')),error=>error.code==='ENOENT');
@@ -167,13 +177,14 @@ syncBuiltinESMExports();
     await command(['stop']);
     assert.deepEqual(await (await fetch(url)).json(),{external:true});
   } finally {await new Promise(r=>external.close(r));}
-  const result={home,target,manifest:manifestFile,sha256:manifest.artifacts[target].sha256,npm_tarball:npmTarball,
+  result={home,target,manifest:manifestFile,sha256:manifest.artifacts[target].sha256,npm_tarball:npmTarball,
     npm_sha256:createHash('sha256').update(npmBytes).digest('hex'),packaged_cli:true,python_path_removed:true,node_only_path:true,
     environment:'development_host_isolated_data_and_PATH',clean_os_accepted:false,first_download_verified:false,
     start:true,restart_memory:true,backup_restore:true,rollback:true,invalid_restore_preserved_runtime:true,
     failed_update_preserved_data:true,failed_start_cleaned_up:true,external_process_preserved:true,real_inference_attempts:0,mock_generations:1};
   result.pointer_fault_checks=pointerFaultChecks;
   result.successful_update_committed_before_shutdown=true;
-  await writeFile(path.join(home,'acceptance.json'),JSON.stringify(result,null,2));
-  console.log(JSON.stringify(result,null,2));
+  result.actual_process_exit_verified=true;
 } finally {await command(['stop']);}
+await writeFile(path.join(home,'acceptance.json'),JSON.stringify(result,null,2));
+console.log(JSON.stringify(result,null,2));
