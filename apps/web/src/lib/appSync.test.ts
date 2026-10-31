@@ -39,7 +39,8 @@ vi.mock('./appStore',async importOriginal=>({
 }));
 
 import { acknowledgeEntity, receiveSyncPage, runtimeConsent, syncNow, syncState, reconfirmDeletion, hydrateConversation, setSyncConsent } from './appSync';
-import { offlineStub, trimOfflineCache,writeEntity } from './appStore';
+import { offlineStub, trimOfflineCache,writeEntity,appTransaction } from './appStore';
+import { JsonStream } from './jsonStream';
 import { cloudFetch } from './transport';
 import { importMobile } from '../pages/Migration';
 import { initialData, newConversation } from '../mobile/store';
@@ -420,6 +421,32 @@ it('acknowledges only the uploaded revision and retains edits made while the req
   const branch=acknowledgeEntity(current,{id:'fork',source_id:'chat',revision:1,deleted:false,branched:true,lineage},batch);
   expect(branch.payload.lineage).toEqual(lineage);
   expect(branch.dirty).toBe(true);expect(branch.payload.settings.session_id).toBe('fork');expect(current.id).toBe('chat');
+});
+it.each([false,true])('accepts a large non-branch receipt without retaining root messages (lineage=%s)',async withLineage=>{
+  const source={...local('chat'),dirty:true,revision:7};
+  // Two parts keep the unit focused; the actual browser matrix separately exercises five-part bodies.
+  source.payload.messages=Array.from({length:80},(_,i)=>({id:i+1,uuid:'message-'+i,role:i%2?'assistant':'user',content:'茶🙂'.repeat(2000)}));
+  source.payload.draft='Keep unsent draft';source.payload.extension={keep:'original'};
+  await appTransaction<void>(['entities'],'readwrite',(tx,done)=>writeEntity(tx,source,'put',done));
+  const before=structuredClone([...fixture.parts]),lineage={root_id:'chat',fork_revision:2,source:{keep:'receipt provenance'}};
+  fixture.meta.set('sync:owner-a:outbox',{request_id:'cached-large',withdrawn:0,revisions:{chat:6},changes:[{id:'chat',kind:'conversation',base_revision:2,payload:source.payload,deleted:false}],
+    receipt:{changes:[{id:'chat',revision:4,deleted:false,...(withLineage?{lineage}:{})}]}});
+  vi.mocked(cloudFetch).mockImplementation(async(path,init)=>{
+    expect(init?.method??'GET').toBe('GET');
+    return Response.json(path==='/api/mobile/status'?{cloud_mode:true,authenticated:true,owner_scope:'owner-a'}:{cursor:0,changes:[],has_more:false});
+  });
+  const feed=JsonStream.prototype.feed;let maximum=0,observed=0;
+  const spy=vi.spyOn(JsonStream.prototype,'feed').mockImplementation(function(this:JsonStream,bytes:Uint8Array){
+    const result=feed.call(this,bytes),root=(this as any).root;
+    if(Array.isArray(root?.messages)){observed++;maximum=Math.max(maximum,root.messages.length);}return result;
+  });
+  try{await syncNow('owner-a');}finally{spy.mockRestore();}
+  expect(syncState().phase,syncState().error).toBe('saved');expect(observed).toBeGreaterThan(0);expect(maximum).toBe(0);
+  const {memoryReferences,...saved}=get('chat');
+  expect(saved).toEqual({...source,serverRevision:4,dirty:true,payload:{...source.payload,...(withLineage?{lineage}:{})}});
+  expect(memoryReferences).toMatchObject({sources:[],memories:[]});
+  if(!withLineage)expect([...fixture.parts]).toEqual(before);
+  expect(fixture.meta.has('sync:owner-a:outbox')).toBe(false);
 });
 it('pins the expected authenticated account on consent writes and rejects late responses',async()=>{
   vi.mocked(cloudFetch).mockResolvedValue(new Response(JSON.stringify({revision:1,selected:['chat'],accepted:true})));

@@ -6,6 +6,7 @@ import history from './unified-history.json';
 import {appTransaction,entity,getMeta,writeEntity,writeOutbox} from '/src/lib/appStore.ts';
 import {rememberOwner,deviceOwner,setGenerationBusy} from '/src/lib/appContext.ts';
 import {receiveSyncPage,syncNow,syncState} from '/src/lib/appSync.ts';
+import {JsonStream} from '/src/lib/jsonStream.ts';
 import {receiveLibrarySnapshot,receiveCreatorSnapshot,rebindConversation,canonical} from '/src/lib/appSyncData.ts';
 
 const scenario=new URL(location.href).searchParams.get('scenario');
@@ -219,6 +220,57 @@ async function ownerSwitch(){
   same(await snapshot(),ackBefore,'Ack owner change committed body, cursor, sequence or receipt removal');probes.push('cursor-owner-switch-ack');
 }
 
+async function normalAck(){
+  const source=record('source',basic('source',88),{dirty:true,revision:4});
+  source.payload.messages=Array.from({length:80},(_,index)=>({id:index+1,uuid:'ack-message-'+index,role:index%2?'assistant':'user',content:'茶🙂'.repeat(9000)}));
+  source.payload.draft='Keep unsent draft';source.payload.extension={keep:'original'};
+  const lineage={root_id:'source',fork_revision:2,source:{keep:'receipt provenance'}},withLineage=['ack-lineage','ack-quota'].includes(scenario);
+  const batch=pending(source,'source');batch.revisions.source=3;
+  batch.receipt={changes:[{id:'source',revision:5,deleted:false,...(withLineage?{lineage}:{})}]};
+  await seed([source],batch);
+  await appTransaction(['entities'],'readwrite',(tx,done)=>writeEntity(tx,source,'put',done));
+  const header=await appTransaction(['entities'],'readonly',(tx,done)=>{const r=tx.objectStore('entities').get([owner,source.id]);r.onsuccess=()=>done(r.result);});
+  check(header.payloadParts.chunks>=4,'ACK source must span multiple parts');
+  const location=[owner,'entity',source.id,header.payloadParts.token],last=[...location,header.payloadParts.chunks-1];
+  let originalLast;
+  if(scenario==='ack-corrupt'){
+    originalLast=await appTransaction(['parts'],'readonly',(tx,done)=>{const r=tx.objectStore('parts').get(last);r.onsuccess=()=>done(r.result);});
+    const changed=originalLast.slice();changed[changed.length-1]^=1;
+    await appTransaction(['parts'],'readwrite',(tx,done)=>{tx.objectStore('parts').put(changed,last);done();});
+  }
+  const before=await physicalSnapshot(),feed=JsonStream.prototype.feed,add=IDBObjectStore.prototype.add,put=IDBObjectStore.prototype.put,get=IDBObjectStore.prototype.get;
+  let maximumRootMessages=0,parserFeeds=0,newParts=0,faults=0;
+  JsonStream.prototype.feed=function(bytes){const result=feed.call(this,bytes),root=this.root;
+    if(measuring&&Array.isArray(root?.messages)){parserFeeds++;maximumRootMessages=Math.max(maximumRootMessages,root.messages.length);}return result;};
+  IDBObjectStore.prototype.add=function(value,key){
+    if(measuring&&this.name==='parts'&&key[1]==='entity'&&key[2]===source.id&&scenario==='ack-quota'&&++newParts===2){faults++;throw new DOMException('Fictional ACK quota','QuotaExceededError');}
+    return add.call(this,value,key);
+  };
+  IDBObjectStore.prototype.get=function(key){
+    const request=get.call(this,key);
+    if(measuring&&this.name==='parts'&&scenario==='ack-body-owner'&&canonical(key)===canonical(last))
+      request.addEventListener('success',()=>{faults++;rememberOwner(foreign);},{once:true});
+    return request;
+  };
+  try{await settle();}finally{JsonStream.prototype.feed=feed;IDBObjectStore.prototype.add=add;IDBObjectStore.prototype.put=put;IDBObjectStore.prototype.get=get;}
+  check(parserFeeds>0&&maximumRootMessages===0,'ACK restored source message arrays');
+  if(['ack-corrupt','ack-quota','ack-body-owner'].includes(scenario)){
+    check(syncState().phase!=='saved','Faulty ACK reported saved');same(await physicalSnapshot(),before,'ACK fault changed source, parts, sequence or outbox');
+    if(scenario!=='ack-corrupt')check(faults===1,'ACK fault did not fire exactly once');
+    rememberOwner(owner);
+    if(originalLast)await appTransaction(['parts'],'readwrite',(tx,done)=>{tx.objectStore('parts').put(originalLast,last);done();});
+    same(await entity(source.id,owner),source,'ACK fault lost original source');same(await fixedOutbox(owner),batch,'ACK fault lost fixed outbox');
+  }else{
+    check(syncState().phase==='saved','Non-branch ACK failed: '+syncState().error);
+    same(await entity(source.id,owner),{...source,serverRevision:5,dirty:true,payload:{...source.payload,...(withLineage?{lineage}:{})}},'ACK changed payload, IDs, draft or unsent edits');
+    check(!await getMeta(prefix+'outbox'),'ACK did not atomically consume receipt');
+    const after=await appTransaction(['entities'],'readonly',(tx,done)=>{const r=tx.objectStore('entities').get([owner,source.id]);r.onsuccess=()=>done(r.result);});
+    if(!withLineage)same(after.payloadParts,header.payloadParts,'Header-only ACK rewrote source parts');
+    check(await getMeta('message-sequence:'+owner)===maximum,'ACK changed numeric sequence');
+  }
+  probes.push({scenario,sourceBytes:header.payloadParts.size,sourceParts:header.payloadParts.chunks,parserFeeds,maximumRootMessages,faults});
+}
+
 async function outgoingSync(reject=false){
   const fetch=globalThis.fetch,sent=[];
   globalThis.fetch=async(input,init)=>{
@@ -325,6 +377,7 @@ async function run(){
   else if(scenario==='missing'||scenario==='mismatch')await invalid();
   else if(scenario==='protections')await protections();
   else if(scenario==='ack')await ack();
+  else if(scenario.startsWith('ack-'))await normalAck();
   else if(scenario==='owner-switch')await ownerSwitch();
   else if(scenario==='outgoing')await outgoing();
   else if(scenario==='outgoing-delete')await outgoingDelete();
