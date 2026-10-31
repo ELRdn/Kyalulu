@@ -2,7 +2,6 @@
 import asyncio
 import hashlib
 import json
-import os
 from pathlib import Path
 import tempfile
 import time
@@ -30,8 +29,6 @@ def fingerprints():
 
 
 async def main():
-    if os.name == 'nt':
-        os.environ.setdefault('PLAYWRIGHT_BROWSERS_PATH', 'C:/Users/hiron/AppData/Local/ms-playwright')
     OUTPUT.mkdir(parents=True, exist_ok=True)
     report = {'ok': False, 'scenarios': [], 'product_sha256_before': fingerprints(),
               'network_denied': [], 'websockets_closed': [], 'page_errors': [],
@@ -110,6 +107,7 @@ async def main():
                     except Exception:
                         result['ok'] = False
                         result['error'] = traceback.format_exc()
+                        print(result['error'], flush=True)
                         if page and not page.is_closed():
                             try:
                                 result['progress'] = await page.evaluate('window.__PROJECTION_PROGRESS__ ?? null')
