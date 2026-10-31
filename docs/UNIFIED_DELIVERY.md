@@ -558,3 +558,9 @@ v4の保存versionで旧writerを拒否し、v3の既存header/outbox/物理断�
 分割保存54・初回同期30・生成84・日英研究/比較各2・OPFS16、追加受信26ケースを確認した。
 原本/活動中Research・Worker/ONNX・実容量/実機・最新配布物の受入れは残り、全体完了とは扱わない。
 親543c903のWindows PR CIはquotaケースの画面遷移がERR_NO_BUFFER_SPACEで失敗し、原因/解消は未確定。
+
+c41d5c8の両OS CIは数MBのtyped arrayをdeep matcherで照合する監査試験が5秒を超過した。
+[Diagnostics CI](validation/2026-11-01-unified-diagnostics-ci.md)に、全バイト比較をBuffer.compareへ置換し、
+metadata/part順序/keys/件数の完全照合を維持した修正を記録する。入力規模・assert・期限・並列数は維持。
+固定c41＋試験修正だけの1,188入力hash不変のexportで、既定並列の全Web1,683件が成功。
+同じ3ケースはローカル約3.1–3.7秒から0.11–0.34秒へ短縮。Hosted確認と前版のbrowser資源障害は別途残す。
