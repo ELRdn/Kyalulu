@@ -429,6 +429,9 @@ f9c8d2cのPR/push CIはWindows/Ubuntuとも成功した。旧21ba2faのpush Wind
 対象90件・全Web1,499件・型・統合buildと既存同期15件が成功。受信元remote・書込結果・削除退避等の全量保持は残る。
 独立Chromiumは25ケース/26実行に成功し、87完全出力を旧処理と照合。333入力hash不変、最後の断片破損・
 正しいSHAの不正JSON/UTF8・出力後のquota・owner/生成中変更でのatomic rollback、再読込とヘッダーskipを確認した。
+1a09d05のUbuntu PR/pushは成功し、Windows PRは分岐試験の日本語ログをcp1252へ出力する時に失敗した。
+[Browser JSONL CI](validation/2026-11-01-unified-browser-jsonl-ci.md)に再現と、JSON値を保ったASCII escapeへの
+変更を記録する。製品・fixture・assert・期限は維持し、公開Windows CIの再確認は別途必要とする。
 
 e76cc81のWindows CIはRelayの実時計依存試験で失敗したため、製品制限を維持して試験時計を限定した。
 [Relay rate clock](validation/2026-10-31-unified-relay-rate-clock.md) に旧試験の境界再現と関連51件成功を記録する。
