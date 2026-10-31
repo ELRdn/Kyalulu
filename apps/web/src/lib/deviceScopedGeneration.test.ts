@@ -15,6 +15,7 @@ vi.mock('./appStore',async original=>{
   const transaction=(_stores:any,mode:string,action:any)=>harness(fixture.records,fixture.meta,fixture.parts,JSON.stringify,mode,action);
   const read=async(id:string,owner=fixture.owner)=>decoded(fixture.records.get(JSON.stringify([owner,id])),fixture.parts);
   return {...module,appTransaction:transaction,entity:read,openEntity:read,
+    conversationInfo:async(id:string,owner=fixture.owner)=>{const row=fixture.records.get(JSON.stringify([owner,id]));return row&&{...row,selection:module.entitySelection(row)};},
     getMeta:async(key:string)=>structuredClone(fixture.meta.get(key)),allEntities:async()=>[...fixture.records.values()].map(row=>decoded(row,fixture.parts))};
 });
 import { RuntimeStateSchema } from '../../../../packages/schemas/src';
@@ -53,6 +54,29 @@ async function turn(id:string,generation:string,extra:Record<string,any>={}){
   const response=await deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify({session_id:id,generation_id:generation,model_id:'fixture',messages:[{role:'user',content:'鮭のお寿司が好きです'}],...extra})});
   return {status:response.status,text:await response.text()};
 }
+
+it('creates the first default world conversation with its receipt and domain in one lifecycle',async()=>{
+  const result=await turn('new-world','first-world');expect(result.status,result.text).toBe(200);expect(result.text).toContain('event: done');
+  const saved=(await entity('new-world'))!;expect(saved.payload.messages.map((message:any)=>message.role)).toEqual(['user','assistant']);
+  expect(saved.payload.pending_generation).toBeNull();expect(saved.payload.last_generation.status).toBe('completed');
+  expect(fixture.meta.get('generation:'+fixture.owner+':first-world').status).toBe('completed');
+  const domain=await readDeviceMemoryDomain(fixture.owner,'local');expect(domain.pending).toBeNull();
+  expect(Object.values(domain.bindings).some(binding=>binding.entity_revision===saved.revision)).toBe(true);
+});
+
+it('roundtrips and branches an actual manually corrected generated fact after regeneration',async()=>{
+  await seed(source('b',71));fixture.meta.set('message-sequence:'+fixture.owner,100);
+  fixture.proposals=[{type:'semantic',content:'鮭のお寿司が好きです',source_kind:'user_statement'}];
+  expect((await turn('b','original-correction')).text).toContain('event: done');
+  const original=(await entity('b'))!,assistant=original.payload.messages.at(-1),fact=original.payload.memories.find((memory:any)=>memory.source_generation_id==='original-correction');
+  const edited=await deviceFetch('/api/memory/'+fact.id,{method:'PATCH',body:JSON.stringify({content:'お寿司を手動で訂正しました'})});expect(edited.status).toBe(200);
+  fixture.proposals=[];expect((await turn('b','regenerated-correction',{regenerate_message_id:assistant.id})).text).toContain('event: done');
+  const saved=(await entity('b'))!,before=saved.payload.messages.at(-1).before;
+  expect(before.state.turn).toBe(0);expect(before.memories.find((memory:any)=>memory.id===fact.id)).toMatchObject({origin:'model_edited',source_turn:1,source_generation_id:'original-correction'});
+  let sequence=500;expect(()=>receiveConversation(saved.payload,undefined,()=>++sequence)).not.toThrow();
+  const branch=await deviceFetch('/api/chat/sessions/b/branch',{method:'POST',body:JSON.stringify({message_id:saved.payload.messages.at(-2).id})});
+  expect(branch.status,await branch.clone().text()).toBe(200);
+});
 
 it('recalls a peer fact without copying foreign source IDs into the conversation or snapshots',async()=>{
   await seed(source('a',31));await seed(source('b',71));fixture.meta.set('message-sequence:'+fixture.owner,100);

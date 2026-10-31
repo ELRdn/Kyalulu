@@ -376,6 +376,15 @@ metadata・identity map・snapshotは依然保持し、生成本体や同期の�
 分岐自体67.7秒、準備/照合を含む全体283秒。原本/固定outbox保持、6走査でroot発言保持0を確認。
 4 GiB/480秒等の既存制限は維持し、生成/同期/復元/実機の合格とは分ける。
 
+生成の開始・成功・失敗も、本文の差分とreceiptを同じtransactionで保存する経路へ接続した。
+[Generation commits](validation/2026-10-31-unified-generation-commits.md)の実Chromium84ケースで、
+local/sync・legacy/world/shared・通常/再生成・停止/不正JSON・quota・owner・revision/token競合・
+再読込を確認。書込source parser318件のroot発言保持0、293入力のhash不変。全Web1,440件・型・統合buildも成功。
+初回の既定world会話もdomain/発言/receiptを一括で確定し、手動修正後の再生成を分岐・同期できない不整合は
+[Confirmed corrections](validation/2026-10-31-unified-regeneration-correction.md)の共通fixtureとNative関連74件で検証した。
+元の出典turn/quoteを残し、Native内部wrapperは元revisionを別途保持して再書き出しで復元する。
+actorの初期全履歴保持、入力配列、選択前のraw_prompt、ONNXの全候補token計算は残り、生成全体の容量合格ではない。
+
 Core復元の媒体交換中に実process killすると、現在DBの参照媒体が欠落する不具合を再現・修正した。
 [Core interruption](validation/2026-10-31-unified-core-interruption.md)に実kill3地点を含む66件の検証を記録する。
 媒体を検証して両世代分を先に保持し、SQLiteのatomic反映を後に行う。独立復旧ZIPと同期/owner/削除保護は維持。
@@ -413,3 +422,8 @@ route callbackの終了確認で失敗した。[Cloud CI synchronization](valida
 [Browser cache CI](validation/2026-10-31-unified-browser-cache-ci.md)にPC固有Chromium pathの除去と
 失敗詳細のconsole出力を記録する。環境変数なしのWindows実ブラウザーで記憶14/履歴13ケース成功。
 公開CIでの再確認は別の条件として残す。
+
+381d1a9のpush Ubuntuでは、公開作品の遷移元カードを待機完了と誤認し、遷移先の初回GETを
+好み変更時の再取得と誤計上した。[Publication CI](validation/2026-10-31-unified-publication-ci.md)に
+遷移先見出し/カードでの待機と、制御した応答保留での6→6・7→7のGET照合を記録する。
+再取得禁止assert・既存期限・製品取得処理は維持。修正後のCI成功は別途確認する。
