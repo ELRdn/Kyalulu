@@ -51,7 +51,7 @@ def assert_actor_context(rows):
     assert projections and preservation and inputs, 'Missing direct projection, original byte or Worker evidence'
     assert all(item['older_snapshot_fields'] == 0 and item['latest_complete'] and item['metadata_complete'] and item['header_complete'] for item in projections)
     assert all(item['stored_bytes_equal'] and item['decoded_equal'] for item in preservation)
-    assert all(item['full_original_reference_equal'] and item['settings_equal'] and item['grammar_equal'] for item in inputs)
+    assert all(item['fitted_original_reference_equal'] and item['admission_before_worker'] and item['settings_equal'] and item['grammar_equal'] for item in inputs)
     successes = [row for row in rows if row.get('outcome') == 'success']
     assert len(successes) == 12 and all(row['observation']['worker_inputs'][0]['raw_prompt_equal'] for row in successes)
     completions = [item for row in successes for item in row['observation']['public_completions']]
@@ -61,7 +61,7 @@ def assert_actor_context(rows):
     assert len(large) == 1 and max(item['historical_snapshot_bytes'] for item in large[0]['observation']['actor_projections']) >= 4 * 1024 * 1024
     assert len(rows) == 84, 'Original 36 normal + 36 fault + 12 reload matrix must remain'
     return {'direct_idb_helper_reads': len(projections), 'historical_byte_comparisons': len(preservation),
-            'worker_full_original_comparisons': len(inputs), 'raw_prompt_exact_comparisons': len(successes),
+            'worker_fitted_original_comparisons': len(inputs), 'raw_prompt_exact_comparisons': len(successes),
             'public_completion_comparisons': len(completions),
             'public_completion_json_bytes': [item['event_json_bytes'] for item in completions],
             'saved_receipt_json_bytes': [item['saved_receipt_json_bytes'] for item in completions],
@@ -74,7 +74,8 @@ async def main():
               'production_used': False, 'real_inference_attempts': 0,
               'limits': ['Synthetic inference Worker and fictional OPFS metadata; no model/download/provider',
                          'Actor keeps full role/content history and a complete latest message; no total peak-RAM bound is claimed',
-                         'Injected receipt quota, not physical disk exhaustion; Chromium, not physical mobile hardware']}
+                         'Injected receipt quota, not physical disk exhaustion; Chromium, not physical mobile hardware',
+                         'GGUF success matrix uses an immutable short Library character fixture; stock Mocha mandatory overflow is an explicit negative case']}
     report['started_at'] = datetime.now(timezone.utc).isoformat()
     report['source_before'] = fingerprint()
     try:
@@ -132,6 +133,8 @@ async def main():
                 assert not report['native_workers'], report['native_workers']
                 report['parser_evidence'] = assert_bounded_write_parsers(report['cases'])
                 report['actor_context_evidence'] = assert_actor_context(report['cases'])
+                report['mandatory_overflow'] = await page.evaluate('window.__GENERATION_COMMITS__.mandatoryOverflow()')
+                assert report['mandatory_overflow']['worker_generation_messages'] == 0 and report['mandatory_overflow']['originals_retained']
             finally:
                 await context.close()
                 report['context_closed'] = True

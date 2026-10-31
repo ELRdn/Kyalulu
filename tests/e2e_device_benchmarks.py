@@ -1,4 +1,4 @@
-"""Real BenchmarkLab/App/IDB/Web Locks/BroadcastChannel; synthetic inference only."""
+"""Real BenchmarkLab/App/IDB/Web Locks/BroadcastChannel over synthetic ONNX inference, not tokenizer acceptance."""
 import asyncio
 import json
 import sys
@@ -54,6 +54,8 @@ async def main():
                     page.on('pageerror', lambda error: errors.append(error.stack or str(error)))
                     await page.goto(address); await mount(page)
                     await page.get_by_role('checkbox', name='Kyalulu E2B JP Rolepaly beta · IQ3_M', exact=True).wait_for()
+                    await page.get_by_role('checkbox', name='Kyalulu E2B JP Rolepaly beta · IQ3_M', exact=True).uncheck()
+                    await page.get_by_role('checkbox', name='Google Gemma 4 E2B Mobile QAT · ONNX q2f16', exact=True).check()
                     await page.get_by_label('Scenario' if en else 'シナリオ', exact=True).select_option('mocha_memory_001')
                     await page.get_by_label('Runs' if en else '繰り返し', exact=True).fill('2')
                     await page.get_by_label('Seed' if en else 'シード', exact=True).fill('17')
@@ -129,7 +131,7 @@ async def main():
                     if en:
                         # Exercise the actual MobileRuntime reset path when loading never replies.
                         await page.evaluate('window.__DEVICE_RESEARCH__.pauseLoad(true)')
-                        response = await page.evaluate('window.__DEVICE_RESEARCH__.api("/api/benchmarks",{model_ids:["kyalulu-iq3m"],scenarios:["mocha_memory_001"],memory:"off",run_timeout_seconds:10})')
+                        response = await page.evaluate('window.__DEVICE_RESEARCH__.api("/api/benchmarks",{model_ids:["google-mobile-onnx"],scenarios:["mocha_memory_001"],memory:"off",run_timeout_seconds:10})')
                         assert response['status'] == 202
                         await page.wait_for_function('window.__DEVICE_RESEARCH__.status().loading')
                         timed_out = await job(page, response['data']['id'], ['timed_out'])
@@ -137,7 +139,7 @@ async def main():
                         await page.wait_for_function('!window.__DEVICE_RESEARCH__.status().busy')
                         assert (await page.evaluate('window.__DEVICE_RESEARCH__.status()'))['terminations'] >= 1
                         await page.evaluate('window.__DEVICE_RESEARCH__.pauseLoad(false)')
-                        response = await page.evaluate('window.__DEVICE_RESEARCH__.api("/api/benchmarks",{model_ids:["kyalulu-iq3m"],scenarios:["advanced_mocha_sfw_100"],memory:"on",history_turn_limit:2,memory_options:{top_k:3,budget_tokens:200},seed:73})')
+                        response = await page.evaluate('window.__DEVICE_RESEARCH__.api("/api/benchmarks",{model_ids:["google-mobile-onnx"],scenarios:["advanced_mocha_sfw_100"],memory:"on",history_turn_limit:2,memory_options:{top_k:3,budget_tokens:200},seed:73})')
                         assert response['status'] == 202
                         long_run = await job(page, response['data']['id'], ['completed'])
                         assert long_run['planned_turns'] == 100 and long_run['current']['turns_completed'] == 100

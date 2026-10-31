@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 import type { ChatTurn, MobileModel, Measurement } from './types';
 import { CONTEXT_TOKENS } from './types';
-import { fitContext, mergeTurns } from './context';
+import { conservativeTokens, fitContext, mergeTurns, validateTurns } from './context';
 import { MODELS, openModelFile, readyModels } from './models';
 import { sampling, ggufSampling } from './sampling';
 
@@ -79,14 +79,31 @@ async function load(modelId:string,cpu:boolean,base:string) {
   model=candidate;loadMs=performance.now()-start;
 }
 
-async function generate(id:number,turns:ChatTurn[],settings:Record<string,unknown>={},responseGrammar?:string) {
+type Admission={modelId:string;modelRevision:string;outputTokens:number;omitted:number};
+async function generate(id:number,turns:ChatTurn[],settings:Record<string,unknown>={},responseGrammar?:string,admitted=false,admission?:Admission) {
   if(!model)throw Error('モデルを読み込んでください。');
   abort=new AbortController();
-  if(!Array.isArray(turns)||turns.some(t=>!t||!['system','user','assistant'].includes(t.role)||typeof t.content!=='string'||t.content.length>128000))throw Error('会話データが不正です。');
+  if(!admitted)validateTurns(turns);
   const active=model,start=performance.now();let first:number|null=null,outputTokens:number|null=null;
   const {applied}=sampling(active,settings);
   const count=tokenizer?(messages:ChatTurn[])=>tokenizer.apply_chat_template(messages,{tokenize:true,add_generation_prompt:true,enable_thinking:false}).length:undefined;
-  const fitted=await fitContext(mergeTurns(turns),count,applied.max_tokens);
+  let fitted:{messages:ChatTurn[];omitted:number};
+  if(admitted){
+    if(active.runtime!=='gguf'||!gguf||tokenizer||!admission||typeof admission!=='object'||Array.isArray(admission)||admission.modelId!==active.id
+      ||admission.modelRevision!==(active.distributionRevision??active.revision)||admission.outputTokens!==applied.max_tokens
+      ||!Number.isSafeInteger(admission.omitted)||admission.omitted<0)throw Error('Invalid GGUF admission');
+    if(!Array.isArray(turns))throw Error('会話データが不正です。');
+    const budget=CONTEXT_TOKENS-applied.max_tokens;
+    if(32+128*turns.length>budget)throw Error('キャラ設定またはメッセージが長すぎます。短くして再送してください。');
+    for(let i=0;i<turns.length;i++){
+      const turn=turns[i];
+      if(!Object.hasOwn(turns,i)||!turn||!['system','user','assistant'].includes(turn.role)||typeof turn.content!=='string')throw Error('会話データが不正です。');
+      if(turn.content.length>budget)throw Error('キャラ設定またはメッセージが長すぎます。短くして再送してください。');
+    }
+    if(conservativeTokens(turns)>budget)throw Error('キャラ設定またはメッセージが長すぎます。短くして再送してください。');
+    // Omitting history can make separate system runs adjacent; merging again would change the admitted prompt.
+    fitted={messages:turns,omitted:admission.omitted};
+  }else fitted=await fitContext(mergeTurns(turns),count,applied.max_tokens);
   abort.signal.throwIfAborted();
   send(id,'context',{omitted:fitted.omitted});
   if(gguf) {
@@ -127,12 +144,12 @@ ctx.onmessage=async({data})=>{
     let result:Record<string,unknown>={};
     if(type==='load'){await load(data.modelId,data.cpu,data.base);result={backend};}
     else if(type==='unload')await unload();
-    else if(type==='generate')result=await generate(id,data.messages,data.settings,data.responseGrammar);
+    else if(type==='generate'||type==='generate-admitted')result=await generate(id,data.messages,data.settings,data.responseGrammar,type==='generate-admitted',data.admission);
     else throw Error('未対応の推論操作');
     send(id,'done',result);
   } catch(e) {
     if(type==='load')await unload().catch(()=>{});
-    if(abort?.signal.aborted&&type==='generate')send(id,'done',{stopped:true});
+    if(abort?.signal.aborted&&(type==='generate'||type==='generate-admitted'))send(id,'done',{stopped:true});
     else send(id,'error',{error:e instanceof Error?e.message:String(e)});
   } finally {busy=false;}
 };
