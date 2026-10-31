@@ -12,6 +12,9 @@ import { saveModelStatus } from '../mobile/store';
 import '../index.css';
 
 let calls=0,paused=false,pausedLoad=false,loading=false,terminations=0;
+let heldCall=0,resumeGeneration:(()=>void)|undefined;
+export const holdAtCall=(value:number)=>{heldCall=value;};
+export const resume=()=>{resumeGeneration?.();resumeGeneration=undefined;};
 export const pause=(value:boolean)=>{paused=value;};
 export const pauseLoad=(value:boolean)=>{pausedLoad=value;};
 export const owner=(value:string)=>rememberOwner(value);
@@ -47,9 +50,13 @@ export async function prepareRuntime() {
       }
       if(data.type==='generate'){
         calls++;if(paused){this.pending=data;return;}
-        const user=data.messages.filter((m:any)=>m.role==='user').at(-1).content;
-        this.emit({id:data.id,type:'delta',text:JSON.stringify({reply:'Fixtureの応答です。',state_update:{location:'図書館',time:'昼',mood:'calm',active_scene:'読書',relationship_state:{stage:'friend',tone:'warm',unresolved_conflict:false}},memory_proposals:[{type:'semantic',content:user.slice(0,100),source_kind:'user_statement'}]})});
-        this.emit({id:data.id,type:'done',measurement:{firstTokenMs:2,generationMs:5,tokensPerSecond:10,backend:'synthetic'}});
+        const reply=()=>{
+          const user=data.messages.filter((m:any)=>m.role==='user').at(-1).content;
+          this.emit({id:data.id,type:'delta',text:JSON.stringify({reply:'Fixtureの応答です。',state_update:{location:'図書館',time:'昼',mood:'calm',active_scene:'読書',relationship_state:{stage:'friend',tone:'warm',unresolved_conflict:false}},memory_proposals:[{type:'semantic',content:user.slice(0,100),source_kind:'user_statement'}]})});
+          this.emit({id:data.id,type:'done',measurement:{firstTokenMs:2,generationMs:5,tokensPerSecond:10,backend:'synthetic'}});
+        };
+        if(calls===heldCall){resumeGeneration=reply;return;}
+        reply();
       }else this.emit({id:data.id,type:'done'});
     }
     terminate(){terminations++;loading=false;this.pending=null;}

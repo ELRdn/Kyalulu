@@ -429,6 +429,7 @@ it.each([false,true])('accepts a large non-branch receipt without retaining root
   source.payload.draft='Keep unsent draft';source.payload.extension={keep:'original'};
   await appTransaction<void>(['entities'],'readwrite',(tx,done)=>writeEntity(tx,source,'put',done));
   const before=structuredClone([...fixture.parts]),lineage={root_id:'chat',fork_revision:2,source:{keep:'receipt provenance'}};
+  expect(before.length).toBeGreaterThan(1);expect(before.reduce((size,[,bytes])=>size+bytes.byteLength,0)).toBeGreaterThan(1024*1024);
   fixture.meta.set('sync:owner-a:outbox',{request_id:'cached-large',withdrawn:0,revisions:{chat:6},changes:[{id:'chat',kind:'conversation',base_revision:2,payload:source.payload,deleted:false}],
     receipt:{changes:[{id:'chat',revision:4,deleted:false,...(withLineage?{lineage}:{})}]}});
   vi.mocked(cloudFetch).mockImplementation(async(path,init)=>{
@@ -445,7 +446,11 @@ it.each([false,true])('accepts a large non-branch receipt without retaining root
   const {memoryReferences,...saved}=get('chat');
   expect(saved).toEqual({...source,serverRevision:4,dirty:true,payload:{...source.payload,...(withLineage?{lineage}:{})}});
   expect(memoryReferences).toMatchObject({sources:[],memories:[]});
-  if(!withLineage)expect([...fixture.parts]).toEqual(before);
+  if(!withLineage){
+    expect([...fixture.parts.keys()]).toEqual(before.map(([key])=>key));
+    // Native byte comparison avoids enumerating every typed-array index in deep equality.
+    for(const [key,bytes] of before)expect(Buffer.compare(Buffer.from(fixture.parts.get(key)),Buffer.from(bytes)),key).toBe(0);
+  }
   expect(fixture.meta.has('sync:owner-a:outbox')).toBe(false);
 });
 it('pins the expected authenticated account on consent writes and rejects late responses',async()=>{

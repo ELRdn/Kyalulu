@@ -407,6 +407,16 @@ actorの初期全履歴保持、入力配列、選択前のraw_prompt、ONNXの�
 e76cc81のWindows CIはRelayの実時計依存試験で失敗したため、製品制限を維持して試験時計を限定した。
 [Relay rate clock](validation/2026-10-31-unified-relay-rate-clock.md) に旧試験の境界再現と関連51件成功を記録する。
 
+Windows CIの通常受領試験は、全断片への汎用deep equalityが同期自体より重いことを計測した。
+[Sync ACK CI](validation/2026-10-31-unified-sync-ack-ci.md)に、順序・全byte一致と1MiB超/複数断片を維持した
+native比較への変更と関連93件成功を記録する。製品処理・既存期限は変更しない。
+[Benchmark completion CI](validation/2026-10-31-unified-benchmark-completion-ci.md)では、受付・処理完了を待って
+既存4行assertを適用する。第4実験の制御保留で旧5秒失敗を再現し、修正後のBenchmark/Research各日英2ケース、
+全Web1,469件と対応source closure3件が成功。元CIの処理速度や実モデル品質を再現したものとは扱わない。
+[Outbox guard CI](validation/2026-10-31-unified-outbox-guard-followup.md)では、compact headerのfence読取と
+保存断片の2巡読取を区別し、全byte/SHA・読取順・全文復元禁止を照合する。旧oracleの失敗を再現し、
+修正後11ケース成功。全件再読込/全文JSON化を挿入する負例2件も検出し、期限や製品処理は変えていない。
+
 Core復元の媒体交換中に実process killすると、現在DBの参照媒体が欠落する不具合を再現・修正した。
 [Core interruption](validation/2026-10-31-unified-core-interruption.md)に実kill3地点を含む66件の検証を記録する。
 媒体を検証して両世代分を先に保持し、SQLiteのatomic反映を後に行う。独立復旧ZIPと同期/owner/削除保護は維持。
