@@ -512,3 +512,9 @@ ID/UUID・本文・状態フラグへ投影し、再生成用には最新1発言
 全Web1,530件と型/統合buildが成功。全本文・Worker入力・raw_prompt・ONNX・Researchの容量課題は残る。
 独立Chromium84件は生成用投影156回・過去原本byte120回・Worker入力66回・raw_prompt12回を照合し、
 約4.36MBの過去snapshotを含む再生成も成功。301入力hash不変と所有process終了を確認し、source closure3件も成功。
+
+[Commercial acceptance](validation/2026-11-01-unified-commercial-acceptance.md)では、旧価格削除による
+有効サブスクのFree化、広告停止時の先行在庫通信、poll有無で変わる遅延完了受付を再現・修正した。
+保存済みowner/SKU/priceと入金receiptを照合し、広告の前後検査と24h受付期限・予約返却を統一する。
+実提供元・契約・本番入金の合格とは分け、価格・付与済み残高・既存台帳・検証原資は保持する。
+変更を固定後、通常pytestの課金/広告/統合/価格安全性120件と対応source closure3件が成功した。
