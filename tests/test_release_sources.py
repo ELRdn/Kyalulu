@@ -106,7 +106,7 @@ def test_source_contains_fixture_module_imports(tmp_path, monkeypatch):
     monkeypatch.syspath_prepend(str(root / 'scripts'))
     import collect_release_sources as sources
 
-    required = {'tests/fixtures/segmented-storage.html'}
+    required = {'tests/fixtures/segmented-storage.html', 'tests/fixtures/research-language.html'}
     # Only static from/side-effect imports and literal dynamic imports are used here.
     pattern = r'''(?:\bfrom\s*|\bimport\s*(?:\(\s*)?)["'](\.\.?/[^"']+)["']'''
     for name in sources.FILES:
@@ -139,7 +139,8 @@ def test_source_contains_local_python_helpers(tmp_path, monkeypatch):
 
     required = {'tests/e2e_segmented_storage.py', 'tests/conftest.py',
                 'tests/e2e_device_benchmarks.py', 'tests/test_benchmark.py',
-                'tests/test_json_stream.py', 'tests/test_native_outbox_guard.py'}
+                'tests/test_json_stream.py', 'tests/test_native_outbox_guard.py',
+                'tests/e2e_research_language.py'}
     # Only simple imports of sibling Python modules are used by these tests.
     for name in sources.FILES:
         if name.startswith('tests/') and name.endswith('.py'):

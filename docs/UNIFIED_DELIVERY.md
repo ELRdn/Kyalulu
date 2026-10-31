@@ -523,3 +523,9 @@ ID/UUID・本文・状態フラグへ投影し、再生成用には最新1発言
 同じChromiumの独立した2 contextを別端末として同時接続し、PCからの管理権限付与/失効を
 5段階で確認した。全20 checksと対応source/既存2principal unit4件が成功。
 自己権限変更拒否・vault不変・同一接続・登録鍵と会話保持を確認し、別process/実機の証拠とは分ける。
+
+[Research startup diagnostics](validation/2026-11-01-unified-research-startup-diagnostics.md)に、
+1ab8f93のWindows PRで発生したfixture importの30秒待機失敗を記録する。
+現在の同じ3ケースは成功し、例外/console/中断通信/phaseを残す診断の制御負例も成功。
+再試行・期限延長・assert緩和は行わず、元のCI原因は未確定として残す。
+Research driver/HTMLの対応source漏れ2件も失敗を再現して補い、関連collection/bundle/fingerprint45件が成功。
