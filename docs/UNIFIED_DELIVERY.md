@@ -529,3 +529,9 @@ ID/UUID・本文・状態フラグへ投影し、再生成用には最新1発言
 現在の同じ3ケースは成功し、例外/console/中断通信/phaseを残す診断の制御負例も成功。
 再試行・期限延長・assert緩和は行わず、元のCI原因は未確定として残す。
 Research driver/HTMLの対応source漏れ2件も失敗を再現して補い、関連collection/bundle/fingerprint45件が成功。
+
+[Portable prompt allocation](validation/2026-11-01-unified-portable-prompt-allocation.md)では、
+Loreの同一scan変換を走査ごとに1回へまとめ、Unicode変換の全文字配列と履歴slotの一時配列/引数展開を除去した。
+20万件の引数展開エラーをNode forkと実Chromiumで再現し、修正後は全件を照合。
+疎配列・明示null/undefined拒否を含む旧assemblerとの独立比較、関連179件・Python/source8件・型/統合build、
+最終実ブラウザー84件が成功。全履歴/Worker clone/raw prompt/SSE/Researchの全量保持と1GB全体受入れは残る。
