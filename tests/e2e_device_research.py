@@ -1,4 +1,4 @@
-"""Device Research through the real app/API/IDB, synthetic readiness and Worker only."""
+"""Device Research UI/persistence through the ONNX transport; readiness/inference are synthetic, not tokenizer acceptance."""
 import asyncio
 import json
 import sys
@@ -46,7 +46,7 @@ async def main():
                     await page.get_by_role('link', name='On-device research and ratings' if en else '端末内の比較・評価', exact=True).click()
                     await page.get_by_role('button', name='▶ Run' if en else '▶ 実行', exact=True).wait_for()
                     await page.get_by_label('Scenario' if en else 'シナリオ', exact=True).select_option('mocha_memory_001')
-                    await page.get_by_label('Model' if en else 'モデル', exact=True).select_option('kyalulu-iq3m')
+                    await page.get_by_label('Model' if en else 'モデル', exact=True).select_option('google-mobile-onnx')
                     await page.get_by_role('spinbutton').fill('1')
                     await page.get_by_role('checkbox', name='Memory' if en else '記憶', exact=True).check()
                     await page.get_by_role('button', name='▶ Run' if en else '▶ 実行', exact=True).click()
@@ -92,7 +92,7 @@ async def main():
                     # Stop uses the active request ID and retains a cancelled experiment.
                     await page.evaluate('window.__DEVICE_RESEARCH__.pause(true)')
                     await page.get_by_label('Scenario' if en else 'シナリオ', exact=True).select_option('mocha_memory_001')
-                    await page.get_by_label('Model' if en else 'モデル', exact=True).select_option('kyalulu-iq3m')
+                    await page.get_by_label('Model' if en else 'モデル', exact=True).select_option('google-mobile-onnx')
                     await page.get_by_role('spinbutton').fill('1')
                     await page.get_by_role('button', name='▶ Run' if en else '▶ 実行', exact=True).click()
                     await page.wait_for_function('window.__DEVICE_RESEARCH__.status().calls===1')

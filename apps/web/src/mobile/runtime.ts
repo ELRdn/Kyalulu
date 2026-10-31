@@ -1,9 +1,13 @@
-import type { ChatTurn, Measurement } from './types';
+import type { ChatTurn, Measurement, MobileModel } from './types';
+import { MODELS } from './models';
+import { admitGGUFTurns, validateTurns } from './context';
+import { sampling } from './sampling';
 
 type Event={id:number;type:string;text?:string;omitted?:number;measurement?:Measurement;error?:string;backend?:string};
 type Pending={resolve:(v:Event)=>void;reject:(e:Error)=>void;event?:(e:Event)=>void};
 export class MobileRuntime {
   private worker:Worker|null=null;
+  private loadedModel:MobileModel|null=null;
   private pending=new Map<number,Pending>();
   private sequence=0;
   private ensure() {
@@ -24,14 +28,26 @@ export class MobileRuntime {
     const worker=this.ensure(),id=++this.sequence;
     return new Promise<Event>((resolve,reject)=>{this.pending.set(id,{resolve,reject,event});worker.postMessage({id,type,...data});});
   }
-  load(modelId:string,cpu=false,base=new URL(import.meta.env.BASE_URL,document.baseURI).href) {return this.call('load',{modelId,cpu,base});}
-  generate(messages:ChatTurn[],event:(e:Event)=>void,settings:Record<string,unknown>={},responseGrammar?:string) {
-    return this.call('generate',{messages,settings,...(responseGrammar?{responseGrammar}:{})},event);
+  async load(modelId:string,cpu=false,base=new URL(import.meta.env.BASE_URL,document.baseURI).href) {
+    this.loadedModel=null;
+    const result=await this.call('load',{modelId,cpu,base});
+    this.loadedModel=MODELS.find(model=>model.id===modelId)??null;return result;
+  }
+  async generate(messages:ChatTurn[],event:(e:Event)=>void,settings:Record<string,unknown>={},responseGrammar?:string) {
+    const model=this.loadedModel;if(!model)throw Error('モデルを読み込んでください。');
+    validateTurns(messages);
+    const data={settings,...(responseGrammar?{responseGrammar}:{})};
+    if(model.runtime==='gguf'){
+      const {applied}=sampling(model,settings),fitted=admitGGUFTurns(messages,applied.max_tokens);
+      return this.call('generate-admitted',{...data,messages:fitted.messages,admission:{modelId:model.id,
+        modelRevision:model.distributionRevision??model.revision,outputTokens:applied.max_tokens,omitted:fitted.omitted}},event);
+    }
+    return this.call('generate',{...data,messages},event);
   }
   stop(){this.worker?.postMessage({type:'stop'});}
-  async unload(){if(this.worker)await this.call('unload',{});}
+  async unload(){if(this.worker)await this.call('unload',{});this.loadedModel=null;}
   reset(reason='推論を終了しました。') {
-    this.worker?.terminate();this.worker=null;
+    this.worker?.terminate();this.worker=null;this.loadedModel=null;
     for(const p of this.pending.values())p.reject(Error(reason));this.pending.clear();
   }
 }

@@ -157,7 +157,7 @@ export function mountAdapter(sid:string){
 export async function runAdapter(){
   const legacy=(await entity('adapter-legacy',adapterOwner))!,a=(await entity('adapter-a',adapterOwner))!;
   check(legacy.payload.memory_scope_mode==='world'&&legacy.payload.memories[0].source_session_id==='adapter-legacy','UI migration committed own projection');
-  const model='kyalulu-iq3m',response=await deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify({session_id:'adapter-b',generation_id:'adapter-generation',model_id:model,messages:[{role:'user',content:'鮭のお寿司が好き'}]})});
+  const model='google-mobile-onnx',response=await deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify({session_id:'adapter-b',generation_id:'adapter-generation',model_id:model,messages:[{role:'user',content:'鮭のお寿司が好き'}]})});
   check(response.ok&&(await response.text()).includes('event: done'),'Normal Device generation with scoped retrieval');
   const b=(await entity('adapter-b',adapterOwner))!,diagnostic=await readGenerationReceipt(adapterOwner,{kind:'conversation',id:b.id},b.payload.last_generation.generation_id);
   check(diagnostic.state==='inline','Fixture diagnostics retain complete inline compatibility');
@@ -190,7 +190,7 @@ export async function runAdapter(){
   mountAdapter('adapter-legacy');
   return {ok:true,normal_generation_shared_recall:true,own_snapshots_only:true,ui_legacy_migration:true,explicit_shared_migration:true,
     independent_duplicate_source_retained:true,source_erasure_scrubs_foreign_debug:true,history_deletion_allows_next_generation:true,
-    saved_reply_retained:true,model_backend:'synthetic',production_used:false};
+    saved_reply_retained:true,model_backend:'onnx-synthetic',production_used:false};
 }
 export async function resumeAdapter(){
   rememberOwner(adapterOwner);const legacy=(await entity('adapter-legacy',adapterOwner))!;

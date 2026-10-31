@@ -33,12 +33,12 @@ export async function mount(node:HTMLElement,lang:'ja'|'en',theme:'light'|'dark'
   return ()=>root.unmount();
 }
 export async function prepareRuntime() {
-  const model=MODELS.find(m=>m.id==='kyalulu-iq3m')!;
+  const models=MODELS.filter(model=>['kyalulu-iq3m','google-mobile-onnx'].includes(model.id));
   const directory={getDirectoryHandle:async()=>directory,getFileHandle:async(name:string)=>({getFile:async()=>{
-    const file=model.files.find(f=>f.sha256===name);if(!file)throw Error('Unknown fictional file');return {size:file.bytes};
+    const file=models.flatMap(model=>model.files).find(f=>f.sha256===name);if(!file)throw Error('Unknown fictional file');return {size:file.bytes};
   }})};
   Object.defineProperty(navigator.storage,'getDirectory',{configurable:true,value:async()=>directory});
-  await saveModelStatus({id:model.id,fingerprint:fingerprint(model),verifiedAt:new Date().toISOString()});
+  for(const model of models)await saveModelStatus({id:model.id,fingerprint:fingerprint(model),verifiedAt:new Date().toISOString()});
   Object.defineProperty(globalThis,'Worker',{configurable:true,value:class {
     onmessage:((event:MessageEvent)=>void)|null=null;
     pending:any=null;
@@ -48,7 +48,8 @@ export async function prepareRuntime() {
       if(data.type==='stop'){
         if(this.pending){this.emit({id:this.pending.id,type:'done',stopped:true,measurement:{}});this.pending=null;}return;
       }
-      if(data.type==='generate'){
+      if(data.type==='generate'||data.type==='generate-admitted'){
+        if(data.type==='generate-admitted')this.emit({id:data.id,type:'context',omitted:data.admission.omitted});
         calls++;if(paused){this.pending=data;return;}
         const reply=()=>{
           const user=data.messages.filter((m:any)=>m.role==='user').at(-1).content;

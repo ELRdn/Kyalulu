@@ -9,7 +9,7 @@ const {prepareRuntime}=await import('/src/pages/DeviceResearch.browser-fixture.t
 const {JsonStream}=await import('/src/lib/jsonStream.ts');
 const scopes=await import('/src/lib/deviceMemoryScopes.ts');
 const memory=await import('/src/lib/deviceMemoryStore.ts');
-const {RuntimeStateSchema}=await import('/@fs/'+location.pathname.split('/@fs/')[1].split('/tests/')[0]+'/packages/schemas/src/index.ts');
+const {RuntimeStateSchema,PortableDocumentSchema}=await import('/@fs/'+location.pathname.split('/@fs/')[1].split('/tests/')[0]+'/packages/schemas/src/index.ts');
 const catalog=(await import('/src/mobile/app-catalog.generated.json')).default;
 const {refreshSummaries,retrieveMemories,renderMemoryBlock,deviceResponseGrammar}=await import('/src/lib/deviceCore.ts');
 const {assemblePortable}=await import('/src/lib/devicePrompt.ts');
@@ -22,7 +22,9 @@ const hashBytes=async bytes=>Array.from(new Uint8Array(await crypto.subtle.diges
 const snapshotHash=value=>hashBytes(new TextEncoder().encode(canonical(value)));
 const clone=structuredClone;
 let active=false,caseId='',quota=null,worker=null,calls=0,callsAtSetup=0,held=null;
-let observation,latest=null,seeded,workerInput;
+let observation,latest=null,seeded,workerInput,prefitInput;
+const {MobileRuntime}=await import('/src/mobile/runtime.ts'),generate=MobileRuntime.prototype.generate;
+MobileRuntime.prototype.generate=function(messages,...args){prefitInput=clone(messages);return generate.call(this,messages,...args);};
 const requestKeys=new WeakMap(),parserSources=new WeakMap(),transactions=new WeakMap();
 const reset=()=>observation={part_reads:{readonly:0,readwrite:0},part_writes:0,parsers:[],transactions:[],quota_hits:0,actor_projections:[],historical_preservation:[],worker_inputs:[],public_completions:[]};
 reset();
@@ -82,7 +84,7 @@ Object.defineProperty(globalThis,'Worker',{configurable:true,value:class{
   constructor(){worker=this;}
   emit(data){queueMicrotask(()=>this.onmessage?.(new MessageEvent('message',{data})));}
   postMessage(data){
-    if(data.type==='generate'){calls++;held=data;workerInput=clone(data);return;}
+    if(data.type==='generate-admitted'){calls++;held=data;workerInput=clone(data);return;}
     if(data.type==='stop'){if(held){this.emit({id:held.id,type:'done',stopped:true,measurement:{}});held=null;}return;}
     check(['load','unload'].includes(data.type),'Unexpected synthetic Worker operation');this.emit({id:data.id,type:'done'});
   }
@@ -128,9 +130,15 @@ async function snapshot(){
         read.onsuccess=()=>done(read.result.map(bytes=>Array.from(bytes)));})};
   }finally{active=observing;}
 }
-const identity=settings=>scopes.memoryIdentity(settings,{character_id:catalog.characters.find(row=>row.id===settings.character_id)?.version??null,persona_id:null,world_id:null});
+const fixtureCharacter='admission-fixture-character';
+const identity=settings=>scopes.memoryIdentity(settings,{character_id:settings.character_id===fixtureCharacter?'1.0.1':catalog.characters.find(row=>row.id===settings.character_id)?.version??null,persona_id:null,world_id:null});
 async function setup(options){
   active=false;quota=null;held=null;workerInput=null;callsAtSetup=calls;caseId=options.id;localStorage.setItem('kyalulu-execution-target','device');app.rememberOwner(caseId);
+  const characterId=options.characterId??fixtureCharacter;
+  if(characterId===fixtureCharacter){
+    const document=PortableDocumentSchema.parse({name:'Admission fixture',data:{personality:'You are a helpful fictional character.'}});
+    await store.saveEntity(store.newEntity('character',characterId,{storage_policy:options.policy,document,versions:{1:document},current_revision:1},caseId),0);
+  }
   const sid='actor',state=RuntimeStateSchema.parse({session_id:sid,turn:40,last_summary:'Authored story summary'});
   const fact=(id,source,content,extra={})=>({id,scope:source,type:'semantic',content,origin:'user',supported:null,status:'active',version:1,
     source_session_id:source,source_kind:'user_statement',source_message_ids:[source==='actor'?79:901],access_count:0,...extra});
@@ -150,7 +158,8 @@ async function setup(options){
     messages[0].unknown.large='Unknown original 茶🙂'+ 'u'.repeat(128*1024);
   }
   const summaries=refreshSummaries(messages,[],sid);summaries[0]={...summaries[0],text:'Author supplied chapter summary',method:'model',revision:7};
-  const payload={storage_policy:options.policy,memory_scope_mode:options.mode,settings:{session_id:sid,character_id:'mocha_sfw',system_prompt:'',temperature:.8},
+  const payload={storage_policy:options.policy,memory_scope_mode:options.mode,settings:{session_id:sid,character_id:characterId,system_prompt:'',temperature:.8,
+    ...(characterId===fixtureCharacter?{library_binding:{character:{id:fixtureCharacter,revision:1}}}:{})},
     messages,memories:own,summaries,state,memory_enabled:true,draft:'Unsent draft must survive',pending_generation:null,
     unknown:{authored:'Top-level original 茶🙂',nested:[false,null,17]},
     last_generation:{generation_id:'old',session_id:sid,status:'completed',assistant_id:80,user_id:79,reply:'古い確定返信'}};
@@ -199,6 +208,17 @@ async function assertProjection(saved,stage){
     historical_snapshot_bytes:historicalSnapshotBytes,latest_bytes:new TextEncoder().encode(JSON.stringify(context.latest)).length,
     latest_sha256:await snapshotHash(context.latest),latest_complete:true,metadata_complete:true,header_complete:true});
 }
+function referenceAdmission(turns,reserve){
+  const messages=[];
+  for(const turn of turns){const previous=messages.at(-1);if(previous?.role===turn.role)previous.content+='\n\n'+turn.content;else messages.push({...turn});}
+  const costs=new Map(messages.map(message=>[message,new TextEncoder().encode(message.content).length+128]));let omitted=0;
+  while(messages.reduce((sum,message)=>sum+costs.get(message),32)>2048-reserve){
+    const newest=messages.map(message=>message.role).lastIndexOf('user'),index=messages.findIndex((message,i)=>message.role!=='system'&&i<newest);
+    check(index>=0,'Reference mandatory context fits');messages.splice(index,1);omitted++;
+    while(messages[index]?.role==='assistant'){messages.splice(index,1);omitted++;}
+  }
+  return {messages,omitted};
+}
 async function assertWorkerInput(regenerate){
   const p=seeded.actor.payload,history=regenerate?p.messages.slice(0,-1):[...p.messages,{role:'user',content:requestBody.messages.at(-1).content}];
   // The compile endpoint and assembler are unchanged; the oracle uses full originals, never the actor projection.
@@ -213,11 +233,15 @@ async function assertWorkerInput(regenerate){
     '\nJSON only; continue current state: '+JSON.stringify({reply:'in-character reply',state_update:story,memory_proposals:[]})+
     '. Memories: <=3 {type:semantic|episodic|relationship,content,source_kind:user_statement|user_correction|work_setting|story_event}. Never invent user facts.';
   const expected=assemblePortable(prompt,history.filter(row=>!['stopped','interrupted'].includes(row.imported_state)).map(({role,content})=>({role,content})),contract);
-  check(JSON.stringify(workerInput.messages)===JSON.stringify(expected),'Worker real messages equal full-original history reference exactly');
+  check(JSON.stringify(prefitInput)===JSON.stringify(expected),'Exact original pre-fit input matches full stored-history reference');
+  const fitted=referenceAdmission(expected,256);
+  check(workerInput.type==='generate-admitted'&&workerInput.admission.outputTokens===256&&workerInput.admission.omitted===fitted.omitted,'Admission occurs before content-bearing Worker message');
+  check(JSON.stringify(workerInput.messages)===JSON.stringify(fitted.messages),'Worker real messages equal independent fit of full-original history');
   check(same(workerInput.settings,{temperature:.8})&&workerInput.responseGrammar===deviceResponseGrammar,'Worker real settings and response grammar');
   check(!JSON.stringify(workerInput.messages).includes('Multiple MiB before'),'Historical snapshots never enter Worker input');
-  observation.worker_inputs.push({messages:expected.length,bytes:new TextEncoder().encode(JSON.stringify(expected)).length,sha256:await snapshotHash(expected),
-    full_original_reference_equal:true,imported_states_filtered:true,settings_equal:true,grammar_equal:true,regeneration_state:regenerate?'latest.before':'current'});
+  observation.worker_inputs.push({messages:fitted.messages.length,bytes:new TextEncoder().encode(JSON.stringify(fitted.messages)).length,sha256:await snapshotHash(fitted.messages),
+    prefit_messages:expected.length,prefit_bytes:new TextEncoder().encode(JSON.stringify(expected)).length,prefit_sha256:await snapshotHash(expected),omitted:fitted.omitted,
+    fitted_original_reference_equal:true,admission_before_worker:true,imported_states_filtered:true,settings_equal:true,grammar_equal:true,regeneration_state:regenerate?'latest.before':'current'});
 }
 let responsePromise,bodyPromise,requestBody;
 async function start(regenerate=false){
@@ -226,7 +250,9 @@ async function start(regenerate=false){
   responsePromise=deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify(requestBody)});
   const response=await responsePromise;bodyPromise=response.text();
   if(!response.ok){const text=await bodyPromise;active=false;return {status:response.status,text};}
-  check(held!==null,'Actual API admitted and invoked synthetic Worker');await assertWorkerInput(regenerate);return {status:response.status};
+  if(held===null)throw Error('Actual API did not invoke synthetic Worker: '+(await bodyPromise).slice(0,2048)+'; pre-fit system bytes='+
+    prefitInput.filter(message=>message.role==='system').map(message=>new TextEncoder().encode(message.content).length).join(','));
+  await assertWorkerInput(regenerate);return {status:response.status};
 }
 function invariant(before,after){
   check(after.actor.payload.draft==='Unsent draft must survive','Unsent draft preserved');
@@ -249,7 +275,7 @@ function assertAtomic(status,options){
 }
 async function run(options){
   const large=await setup(options),before=await snapshot();
-  const admitted=await start(options.regenerate);check(admitted.status===200,'Generation API admission');const pending=await snapshot();
+  const admitted=await start(options.regenerate);check(admitted.status===200,'Generation API admission: '+JSON.stringify(admitted).slice(0,2048));const pending=await snapshot();
   check(pending.receipt.status==='pending'&&pending.actor.payload.pending_generation==='turn','Durable pending receipt and actor agree');
   check(same(pending.actor.payload.messages,options.regenerate?before.actor.payload.messages:[...before.actor.payload.messages,pending.actor.payload.messages.at(-1)]),'Pending retains old reply or appends only user');
   check(pending.actor.payload.messages.length===(options.regenerate?80:81),'Explicit pending message count');
@@ -273,7 +299,7 @@ async function run(options){
     check(after.header.memoryReferences===null,'Canonical receipt never manufactures an empty memory-reference index');
     check(after.actor.payload.state.turn===41&&after.actor.payload.state.location==='library'&&after.actor.payload.state.last_summary==='Authored story summary','Explicit state update and authored summary preservation');
     check(same(reply.before.state,options.regenerate?before.actor.payload.messages.at(-1).before.state:before.actor.payload.state)&&same(reply.after.state,after.actor.payload.state),'Before/after state snapshots use latest regeneration origin');
-    check(after.receipt.raw_prompt===JSON.stringify(workerInput.messages),'Saved raw_prompt equals actual Worker input byte for byte');
+    check(after.receipt.raw_prompt===JSON.stringify(prefitInput),'Saved raw_prompt equals full original pre-fit input byte for byte');
     check(same(after.receipt.compiled,(await (await deviceFetch('/api/prompt/compile',{method:'POST',body:JSON.stringify(before.actor.payload.settings)})).json())),'Saved compiled prompt equals original-settings reference');
     const completions=new SSEDecoder().feed(stream,true).filter(event=>event.event==='done');check(completions.length===1,'Exactly one public completion');
     const completed=JSON.parse(completions[0].data),expected=Object.fromEntries(Object.entries(after.receipt).filter(([key])=>!['attempts','compiled','raw_prompt'].includes(key)));
@@ -361,5 +387,20 @@ async function resume(){
   assertAtomic('failed',options);
   active=false;return {reload_retry_protection:true,orphan_recovery:true,idempotent:true,observation:clone(observation)};
 }
-window.__GENERATION_COMMITS__={run,fault,resume};
+async function mandatoryOverflow(){
+  const options={id:'mandatory-mocha-overflow',policy:'local',mode:'legacy',characterId:'mocha_sfw'};
+  await setup(options);const before=await snapshot();active=true;
+  const response=await deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify({session_id:'actor',generation_id:'turn',model_id:'kyalulu-iq3m',
+    messages:[{role:'user',content:'鮭のお寿司が好きです。お茶が好きです'}]})});
+  const stream=await response.text();active=false;
+  check(response.ok&&stream.includes('キャラ設定またはメッセージが長すぎます'),'Mandatory overflow returns the original context error');
+  check(held===null&&calls===callsAtSetup,'Mandatory overflow posts no generation content to Worker');
+  const after=await snapshot();invariant(before,after);
+  check(after.receipt.status==='failed'&&after.actor.payload.pending_generation===null,'Context failure resolves pending receipt');
+  check(after.actor.payload.messages.length===before.actor.payload.messages.length+1,'Durable submitted user retained');
+  check(same(after.actor.payload.messages.slice(0,-1),before.actor.payload.messages),'All old messages remain exact after context failure');
+  check(same(after.actor.payload.state,before.actor.payload.state)&&same(after.actor.payload.memories,before.actor.payload.memories),'Context failure applies no story or memory output');
+  return {ok:true,stock_character:'mocha_sfw',output_tokens:256,worker_generation_messages:0,originals_retained:true};
+}
+window.__GENERATION_COMMITS__={run,fault,resume,mandatoryOverflow};
 </script>

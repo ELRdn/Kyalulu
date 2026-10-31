@@ -4,6 +4,10 @@
 技術的に接続できない契約機能は閉じた実装と検証を用意し、接続待ちとして報告する。
 ローカルで通った部分だけに完成条件を縮めない。
 
+端末内GGUFでは、既存の保守的な文脈計算によりMocha＋記憶などの必須promptが上限を超える条件を確認した。
+従来の架空Workerはこの上限を検査しておらず、過去の100ターン結果をGGUFの実動作保証には扱えない。
+本文・既定上限を削減して隠さず、native tokenizer/templateと実モデルでの対応を未達事項として残す。
+
 | 必須範囲 | 現時点 | 完了を証明するもの |
 |---|---|---|
 | app.kyalulu.com への統合と旧URL移行導線 | 本番未反映。統合Caddy・Cloud/Native共通配信・同一originのAPIと3文書・Workerを実HTTPS proxyで検証。Cloud/旧Mobileの監査済み候補と移行手順を保持 | 実配信・TLS・API・OAuth callback・旧URL導線・既存Remote鍵の照合 |
@@ -566,3 +570,12 @@ metadata/part順序/keys/件数の完全照合を維持した修正を記録す�
 同じ3ケースはローカル約3.1–3.7秒から0.11–0.34秒へ短縮。Hosted確認と前版のbrowser資源障害は別途残す。
 f7f8844のCIはWebを通過後、outbox試験の古いversion=3期待で失敗。outbox/選択同期fixtureの期待を4へ直し、
 index・key/原本・owner・撤回・quota等のassertを維持した。実Chromium11＋15ケース成功、選択同期のhash不変とcleanupも確認。
+
+[GGUF admission](validation/2026-11-01-unified-gguf-admission.md)では、旧選択方針を維持したまま
+Worker送信前に元の範囲descriptorから必要なmerged runだけを生成し、モデル/版/出力reserveをWorkerで再検証する。
+省略後に隣接したsystemを再結合せず、診断は選択前の完全入力を保持する。独立oracle・境界/停止等83件、
+既定並列の全Web1,760件・型/build・source47件が成功。354入力hash不変の最終5driverで生成84＋Mocha超過拒否、
+共有記憶・日英Research/比較各2・OPFS16を確認し、履歴/target切替の日英各2も別の固定sourceで成功。
+66入力のmessage JSONは選択前約3.35MBからWorker送信1,014–1,261 bytesへ減り、12件の元promptを完全照合。
+正常系GGUFは短い固定版Library作品、長いResearch/100ターンと記憶UIはONNX架空輸送として明記し、Mocha動作保証へ代用しない。
+上記のGGUF文脈制約、main/compiler/Lore/ONNXの全量保持・実容量/実モデル/実機・最新配布物と本番条件は残る。
