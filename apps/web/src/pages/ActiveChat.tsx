@@ -84,23 +84,13 @@ import ConversationContext from '../components/ConversationContext';
 import PortableMedia from '../components/PortableMedia';
 import StoryRuntime from '../components/StoryRuntime';
 import VisualNovelScene from '../components/VisualNovelScene';
+import { SavedDiagnostics } from '../components/SavedDiagnostics';
 import FirstChatTutorial, { useFirstChatTutorial, type TutorialReceipt } from '../components/FirstChatTutorial';
 import type { GenerationProgress } from '../../../../packages/schemas/src';
 import type { ClientTimings } from '../lib/clientTimings';
 import "./activeChat.css";
 
-type DebugData = {
-  session_id: string;
-  settings: SessionSettings;
-  compiled: CompiledPrompt;
-  prompt_source?:'saved_generation'|'current_settings'|'unavailable';
-  history_count: number;
-  approx_turn: number;
-  relationship: string;
-  state: Record<string, unknown>;
-  generation: GenerationResult | null;
-  memory?: MemoryTrace | null;
-};
+type DebugData = Awaited<ReturnType<typeof fetchChatDebug>>;
 
 function settingsSnapshot(settings: SessionSettings) {
   return JSON.stringify([settings.session_id, settings.system_prompt, settings.temperature,
@@ -1442,9 +1432,11 @@ function ActiveChatSession() {
           {debugData && (
             <>
               <DebugSection title={debugData.prompt_source==='current_settings'?(en?'📝 Current settings preview':'📝 現在の設定のプレビュー'):(en ? '📝 Raw prompt' : '📝 生プロンプト (raw prompt)')}>
+                {debugData.device_diagnostics&&<SavedDiagnostics info={debugData.device_diagnostics} />}
+                {!debugData.device_diagnostics&&
                 <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 10, lineHeight: 1.6, background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 8, padding: 10, maxHeight: 220, overflowY: "auto", color: "var(--text-primary)", margin: 0 }}>
                   {debugData.prompt_source==='unavailable'?(en?'The original generation prompt is not saved on this device.':'元の生成プロンプトは、この端末には保存されていません。'):(debugData.generation?.raw_prompt || debugData.compiled?.system_prompt || (en ? '(none)' : '(なし)'))}
-                </pre>
+                </pre>}
               </DebugSection>
               <DebugSection title={en ? 'Compatibility settings / Lore selection' : '互換設定・Loreの採用結果'}>
                 <DebugJson value={{ messages: debugData.compiled?.ordered_messages, lore: debugData.compiled?.sections?.lore, compatibility: debugData.compiled?.sections?.compatibility, binding: debugData.settings.library_binding }} />

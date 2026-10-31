@@ -105,7 +105,8 @@ it.each([
   if(path.startsWith('/api/chat/settings')||path.startsWith('/api/chat/context/')){
     expect(openEntity).not.toHaveBeenCalled();expect(conversationInfo).toHaveBeenCalledExactlyOnceWith('requested','owner-a');expect(conversationPage).toHaveBeenCalledExactlyOnceWith('requested','owner-a',50,undefined);
     for(const [key,value] of before){const {opened,...expected}=value;const {opened:actual,...record}=fixture.records.get(key);expect(record).toEqual(expected);if(key!=='owner-a:requested')expect(actual).toBe(opened);}
-  }else{expect(openEntity).toHaveBeenCalledExactlyOnceWith('requested','owner-a');expect(fixture.records).toEqual(before);}
+  }else if(path.startsWith('/api/chat/debug')){expect(openEntity).not.toHaveBeenCalled();expect(fixture.records).toEqual(before);}
+  else{expect(openEntity).toHaveBeenCalledExactlyOnceWith('requested','owner-a');expect(fixture.records).toEqual(before);}
 });
 
 it('refuses a migration preview while the source generation is pending',async()=>{
@@ -271,7 +272,7 @@ it('distinguishes an unavailable generation prompt from a current-settings previ
   const source=saved();source.payload.last_generation={generation_id:'synced-summary',status:'completed',reply:'Saved reply'};put(source);
   const result=await request('/api/chat/debug?session_id=requested');
   expect(result.status).toBe(200);expect(result.body.prompt_source).toBe('unavailable');
-  expect(result.body.generation.raw_prompt).toBeUndefined();expect(result.body.compiled).toBeTruthy();
+  expect(result.body.generation.raw_prompt).toBeUndefined();expect(result.body.compiled).toBeNull();
 });
 
 it.each([['/api/chat/sessions/requested/data','GET'],['/api/chat/sessions/requested/branch','DELETE']])('requires the explicit mutation method for conversation operations: %s',async(path,method)=>{

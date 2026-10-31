@@ -224,7 +224,8 @@ it('keeps created World revisions immutable and applies selected cast, Lore, RPG
   expect(content).toContain('OLD RULE');expect(content).not.toContain('NEW RULE');expect(content).toContain('Known harbor');expect(content).toContain('船長');expect(content).toContain('ONE OFF');
   expect(fixture.settings).toMatchObject({temperature:.25,top_p:.8,top_k:7,max_tokens:512});
   const saved=decoded(fixture.records.get('owner-a:chat'),fixture.parts);expect(saved.payload.state.rpg.hp).toBe(90);expect(saved.payload.state.rpg.rolls).toHaveLength(1);
-  expect(saved.payload.last_generation.generation_config.unsupported).toEqual(['stop']);expect(saved.payload.settings.system_prompt).toBe('');
+  const generation=await request('/api/chat/generations/fixture-gen?session_id=chat');
+  expect(generation.status).toBe(200);expect(generation.body.generation_config.unsupported).toEqual(['stop']);expect(saved.payload.settings.system_prompt).toBe('');
   fixture.owner='owner-b';expect((await request('/api/creator/world/'+first.body.id)).status).toBe(404);expect((await request('/api/worlds')).body.worlds.some((w:any)=>w.id===second.body.id)).toBe(false);
   expect(fetch).not.toHaveBeenCalled();
 });

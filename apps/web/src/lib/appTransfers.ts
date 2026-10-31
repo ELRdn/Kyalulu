@@ -60,6 +60,7 @@ export function* jsonChunks(value:unknown):Generator<Uint8Array> {
 
 export async function uploadSync(body:{request_id:string;changes:unknown[]}|SyncUploadSource,call:Call,active:Active) {
   if(typeof body.request_id!=='string'||!body.request_id||body.request_id.length>100)throw Error('Invalid sync transfer');
+  if('changes' in body&&body.changes.some((change:any)=>Object.hasOwn(change?.payload?.last_generation??{},'device_diagnostics')))throw Error('Local diagnostic reference in fixed outbox');
   const chunks='chunks' in body?body.chunks:()=>jsonChunks(body),inline='inline' in body?body.inline:async()=>post(body);
   const sendInline=async()=>{const init=await inline();await active();return call('',init);};
   const send=async(path:string,value:unknown)=>{const init=post(value);await active();return call(path,init);};

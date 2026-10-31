@@ -23,6 +23,7 @@ vi.mock('./deviceMemoryStore',async original=>{
       return {header,messages:messages.map((message:any)=>({id:message.id,uuid:message.uuid,role:message.role,content:message.content,imported_state:message.imported_state})),latest:messages.at(-1),source:{id,owner,revision:session.revision,deleted:false,bodyToken:null,metadata:structuredClone(metadata)}};
     },
     commitDeviceGeneration:async(source:any,change:any,extra:any)=>{
+      if(change.input!==undefined)change={...change,receipt:{...change.receipt,raw_prompt:JSON.stringify(change.input)}};
       const {saveEntity}=await import('./appStore');
       const {generationChangeView,validateGenerationReceipt}=await import('./deviceGenerationChange');
       const key='generation:'+source.owner+':'+change.receipt.generation_id;
@@ -51,6 +52,7 @@ vi.mock('./appStore',async importOriginal=>({
   ...await importOriginal<typeof import('./appStore')>(),
   allEntities:vi.fn(async()=>[]),getMeta:async(key:string)=>structuredClone(fixture.meta.get(key)),entity:vi.fn(async()=>structuredClone(fixture.saved)),openEntity:async()=>structuredClone(fixture.saved??{id:'chat',owner:'fixture-owner',revision:0,payload:{settings:{},state:{turn:0},messages:[],memories:fixture.memories,summaries:[],memory_enabled:fixture.memory}}),
   conversationPage:vi.fn(async()=>fixture.saved&&{revision:fixture.saved.revision,metadata:fixture.saved.payload}),
+  readConversationSummary:async()=>fixture.saved&&{count:fixture.saved.payload.messages.length},
   recoverConversationGeneration:vi.fn(async(owner:string,id:string,_sessionId:string,revision?:number)=>{
     if(revision!==undefined&&revision!==fixture.saved.revision)throw Error('Stale confirmation');
     const key='generation:'+owner+':'+id,recovered={...fixture.meta.get(key),status:'failed'};

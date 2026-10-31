@@ -211,7 +211,7 @@ async function run(){
   let expected;
   if(!['missing-library','missing-creator'].includes(scenario))expected=baselineChanges(records,owner);
   between={'revision-change':'revision','token-change':'token','consent-change':'consent','existing-winner':'winner'}[scenario];
-  if(between||scenario==='consent-after-stage')writerDb=await new Promise((resolve,reject)=>{const open=indexedDB.open('kyalulu-app-v1',3);open.onsuccess=()=>resolve(open.result);open.onerror=reject;});
+  if(between||scenario==='consent-after-stage')writerDb=await new Promise((resolve,reject)=>{const open=indexedDB.open('kyalulu-app-v1');open.onsuccess=()=>resolve(open.result);open.onerror=reject;});
   install();measuring=true;let rejected=false;
   try{
     if(failing||scenario==='existing-winner')try{await stageSyncBatch(owner);}catch{rejected=true;}

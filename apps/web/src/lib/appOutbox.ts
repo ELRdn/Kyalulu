@@ -36,7 +36,7 @@ export function outboxSyncSource(owner:string,batch:StoredOutbox):SyncUploadSour
     if(owner!==deviceOwner()||generationBusy()||!header||canonical(sourceFields(header))!==signature)throw Error('Fixed outbox changed');
   };
   async function* chunks():AsyncGenerator<Uint8Array> {
-    const parser=new JsonStream({omitChangePayloads:true}),digest=new Sha256();let size=0,buffer=new Uint8Array(LIMIT),used=prefix.length;
+    const parser=new JsonStream({omitChangePayloads:true,rejectLocalDiagnostics:true}),digest=new Sha256();let size=0,buffer=new Uint8Array(LIMIT),used=prefix.length;
     buffer.set(prefix);parser.feed(prefix);
     for(let index=0;index<ref.chunks;index++){
       const bytes=await appTransaction<Uint8Array>(['meta','parts'],'readonly',(tx,done)=>{

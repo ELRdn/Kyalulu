@@ -1,7 +1,7 @@
 import { Sha256 } from '../mobile/sha256';
 import { deviceExecutionLockName } from './deviceExecution';
 
-export type GenerationChange={metadata:Record<string,any>;append:any[];regenerate?:number;receipt:Record<string,any>};
+export type GenerationChange={metadata:Record<string,any>;append:any[];regenerate?:number;receipt:Record<string,any>;input?:readonly unknown[];projection?:Record<string,any>};
 const hash=(text:string)=>new Sha256().update(new TextEncoder().encode(text)).digest();
 export function validateGenerationReceipt(owner:string,id:string,change:GenerationChange,previous:any) {
   const receipt=change.receipt;
@@ -44,7 +44,7 @@ export function generationChangeView(change:GenerationChange) {
         else if(message.content!==receipt.reply||message.content!==receipt.full)throw Error('Generation reply changed');
       }
       if(userHash!==receipt.user_content_sha256)throw Error('Generation user changed');
-      return {...metadata,...(completed?{last_generation:receipt}:{})};
+      return {...metadata,...(completed?{last_generation:change.projection??receipt}:{})};
     },
   };
 }

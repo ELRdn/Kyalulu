@@ -22,6 +22,8 @@ import { scopedMemoryRoute } from './deviceScopedMemoryApi';
 import { storageStep } from './segmentedStorage';
 import { historyAffected,invalidHistoryMemory,detachHistoryMemories,type HistoryChange } from './deviceHistoryChange';
 import type { GenerationChange } from './deviceGenerationChange';
+import { generationReceiptChunks,readGenerationHeader,readGenerationReceipt,readGenerationSnapshot,generationSummary,isGenerationHeader } from './deviceGenerationStore';
+import { jsonChunks,SYNC_INLINE_BYTES } from './appTransfers';
 
 let runtime:MobileRuntime|undefined, loaded='';
 let running:string|null=null;
@@ -30,6 +32,20 @@ const contentHash=(raw:Uint8Array)=>new Sha256().update(raw).digest();
 const outputSchema=DeviceGenerationOutputSchema;
 const json=(value:unknown,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
 const fail=(message:string,status=400)=>Object.assign(Error(message),{status});
+const inlineJson=(value:unknown)=>{let bytes=0;for(const part of jsonChunks(value))if((bytes+=part.length)>SYNC_INLINE_BYTES)return false;return true;};
+function diagnosticStream(chunks:AsyncIterable<Uint8Array>,owner:string,signal?:AbortSignal) {
+  const iterator=chunks[Symbol.asyncIterator]();let closed=false;
+  return new Response(new ReadableStream<Uint8Array>({
+    async pull(controller){
+      try{
+        if(owner!==deviceOwner())throw Error('Account changed');signal?.throwIfAborted();const next=await iterator.next();
+        if(closed)return;if(owner!==deviceOwner())throw Error('Account changed');signal?.throwIfAborted();
+        if(next.done){closed=true;controller.close();}else controller.enqueue(next.value);
+      }catch(error){if(!closed){closed=true;controller.error(error);}await iterator.return?.(undefined);}
+    },
+    async cancel(){closed=true;await iterator.return?.(undefined);},
+  },{highWaterMark:0}),{headers:{'Content-Type':'application/json','Cache-Control':'no-store','Content-Disposition':'attachment; filename="diagnostics.json"'}});
+}
 type MemoryEvent={id:number;scope:string;op:string;memory_id:string|null;generation_id:string|null;detail:unknown;created_at:string};
 async function memoryEvents(owner:string,sessionId:string) {
   const events=await getMeta<MemoryEvent[]>(memoryEventsKey(owner,sessionId));
@@ -236,12 +252,12 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
     if(p.pending_generation)throw fail('Reconcile the pending generation before sending again',409);
     const memoryContext:ScopedMemory|undefined=!scope&&['world','shared'].includes(p.memory_scope_mode)
       ?await scopedSourceMemory(generationSource!,settings=>memoryIdentityFor(settings,owner)):undefined;
-    const save=scope?async(value:AppEntity,_revision:number,_metadata:Record<string,unknown>)=>scope.save(value):
-      async(value:AppEntity,revision:number,extra:Record<string,unknown>)=>{
+    const save=scope?async(value:AppEntity,_revision:number,metadata:Record<string,unknown>,input?:readonly unknown[])=>scope.save(value,metadata['generation:'+owner+':'+generationId] as Record<string,any>,input):
+      async(value:AppEntity,revision:number,extra:Record<string,unknown>,input?:readonly unknown[])=>{
         if(generationSource!.revision!==revision)throw fail('Generation source changed',409);
         const receipt=extra['generation:'+owner+':'+generationId] as Record<string,any>,{messages,...metadata}=value.payload;
         const change:GenerationChange={metadata,receipt,append:receipt.status==='completed'||receipt.status==='pending'&&!body.regenerate_message_id?[messages.at(-1)]:[],
-          ...(body.regenerate_message_id?{regenerate:body.regenerate_message_id}:{})};
+          ...(body.regenerate_message_id?{regenerate:body.regenerate_message_id}:{}),...(input===undefined?{}:{input})};
         if(memoryContext){
           memoryContext.domain.pending=value.payload.pending_generation?{session_id:id,generation_id:generationId}:null;
           const result=await saveScopedMemory(memoryContext,[],{[generationId]:receipt},undefined,{sourceId:id,change});
@@ -360,7 +376,7 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
           const done={...pending,status:'completed',assistant_id:assistantId,full:parsed.reply,reply:parsed.reply,state,telemetry:{...result.measurement,memory,
             ...(scope?{first_reply_ms:result.measurement?.firstTokenMs??null,tokens_per_second:result.measurement?.tokensPerSecond??null}:{})},
             generation_config:{...generationConfig,requested:{model_id:model.id,...generationConfig.requested},applied:{model_id:model.id,...generationConfig.applied}},validation:{ok:true,retries:0,errors:[]},
-            compiled:prompt,raw_prompt:JSON.stringify(input),state_before:baseState,memory,
+            compiled:prompt,state_before:baseState,memory,
             token_budget:{total_prompt_tokens:input.reduce((sum,m)=>sum+estimateTokens(m.content),0),estimated:true}};
           if(memoryContext&&workingMemory&&admittedMemory){
             const pool=workingMemory.domain.pools[workingMemory.scope],ownIds=new Set(baseMemories.map((m:DeviceMemory)=>m.id));
@@ -371,7 +387,7 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
           }
           current=await save({...current,payload:{...current.payload,messages,memories:stored,state,last_generation:done,pending_generation:null,
             summaries:summaries.finish()}},current.revision,{['generation:'+owner+':'+generationId]:done,
-              ...(!scope&&!memoryContext&&trace?{[memoryEventsKey(owner,id)]:events}:{})});
+              ...(!scope&&!memoryContext&&trace?{[memoryEventsKey(owner,id)]:events}:{})},input);
           send('done',Object.fromEntries(Object.entries(done).filter(([key])=>!['attempts','compiled','raw_prompt'].includes(key))));
         } catch(error) {
           let saveError='';
@@ -539,11 +555,20 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
     const message={id:await nextId(owner),uuid:crypto.randomUUID(),role:'assistant',content:intro,model_id:'intro',created_at:new Date().toISOString()};
     await saveEntity({...session,payload:{...session.payload,messages:[message]}},session.revision);return json({injected:true,intro});
   }
-  const generation=path.match(/^\/api\/chat\/generations\/([^/]+)(\/cancel)?$/);
+  const generation=path.match(/^\/api\/chat\/generations\/([^/]+)(\/(?:cancel|diagnostics))?$/);
   if(generation) {
-    if(generation[2]?method!=='POST':method!=='GET')throw fail('Invalid generation status operation',405);
+    const cancel=generation[2]==='/cancel',diagnostics=generation[2]==='/diagnostics';
+    if(cancel?method!=='POST':method!=='GET')throw fail('Invalid generation status operation',405);
     const key='generation:'+owner+':'+generation[1];let status=await getMeta<any>(key);
     if(!status||status.session_id!==url.searchParams.get('session_id'))throw fail('Generation not found',404);
+    if(diagnostics)return diagnosticStream(generationReceiptChunks(owner,{kind:'conversation',id:status.session_id},generation[1],init.signal??undefined),owner,init.signal??undefined);
+    if(isGenerationHeader(status)){
+      const result=await readGenerationReceipt(owner,{kind:'conversation',id:status.session_id},generation[1],init.signal??undefined);
+      const latest=await readGenerationHeader(owner,{kind:'conversation',id:status.session_id},generation[1]);
+      if(!isGenerationHeader(latest)||latest.catalog_sha256!==status.catalog_sha256)throw fail('Generation changed; reload diagnostics',409);
+      return json(result.state==='inline'?result.value:{...generationSummary(status),device_diagnostics:{state:status.diagnostics_state??'stored',bytes:result.bytes,sha256:result.sha256,
+        export_url:`/api/chat/generations/${encodeURIComponent(generation[1])}/diagnostics?session_id=${encodeURIComponent(status.session_id)}`}});
+    }
     if(generation[2]&&running===generation[1])runtime?.stop();
     if(status.status==='pending'&&running!==generation[1]&&generation[2]&&!navigator.locks)throw fail('Web Locks are required for on-device generation',503);
     if(status.status==='pending'&&running!==generation[1]&&navigator.locks){
@@ -599,13 +624,58 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
     const updated={...summary,text:body.text,revision:summary.revision+1,method:'manual'};
     await saveConversationMetadata(view,{summaries:summaries.map(s=>s===summary?updated:s)});return json(updated);
   }
+  if(path==='/api/chat/debug/diagnostics'){
+    if(method!=='GET')throw fail('Diagnostics export requires GET',405);
+    const id=url.searchParams.get('session_id')??'default',source=await historySource(id,owner),value=source?.metadata.last_generation;
+    if(!source||!value)throw fail('Saved diagnostics unavailable',404);
+    if(value.device_diagnostics)return diagnosticStream(generationReceiptChunks(owner,{kind:'conversation',id},value.generation_id,init.signal??undefined),owner,init.signal??undefined);
+    async function* legacy(){
+      yield* jsonChunks(value);
+      const latest=await readMemorySource(id,owner);
+      if(!latest||latest.revision!==source!.revision||latest.bodyToken!==source!.bodyToken)throw Error('Saved diagnostics changed');
+    }
+    return diagnosticStream(legacy(),owner,init.signal??undefined);
+  }
   if(path==='/api/chat/debug') {
-    const session=await conversation(url.searchParams.get('session_id')??'default',owner),p=session.payload;
-    const binding=['world','shared'].includes(p.memory_scope_mode)?memoryBinding(await readDeviceMemoryDomain(owner,memoryPolicy(session)),session.id):undefined;
-    return json({session_id:session.id,settings:p.settings,compiled:p.last_generation?.compiled??await compiled(p.settings,[],owner),history_count:p.messages.length,approx_turn:p.state.turn,
-      prompt_source:p.last_generation?(p.last_generation.compiled||p.last_generation.raw_prompt?'saved_generation':'unavailable'):'current_settings',
-      relationship:p.state.relationship_state.stage,state:p.state,generation:p.last_generation??null,memory:p.last_generation?.memory??p.last_generation?.telemetry?.memory??null,
-      memory_session:{enabled:p.memory_enabled===true,scope:binding?deviceMemoryScope(memoryPolicy(session),binding.scope):session.id}});
+    const id=url.searchParams.get('session_id')??'default',source=await historySource(id,owner),p=source?.metadata??blank(id).payload;
+    const session={id,revision:source?.revision??0,deleted:false,payload:p};
+    const count=(await readConversationSummary(id,owner))?.count??0;
+    const binding=['world','shared'].includes(p.memory_scope_mode)?memoryBinding(await readDeviceMemoryDomain(owner,memoryPolicy(session)),id):undefined;
+    let generation=p.last_generation??null,info:Record<string,any>|undefined,story:Record<string,any>|undefined;
+    if(generation?.device_diagnostics){
+      const export_url=`/api/chat/generations/${encodeURIComponent(generation.generation_id)}/diagnostics?session_id=${encodeURIComponent(session.id)}`;
+      try{
+        const header=await readGenerationHeader(owner,{kind:'conversation',id:session.id},generation.generation_id);
+        if(!header||header.status==='deleted'){info={state:'unavailable'};generation={generation_id:generation.generation_id,status:generation.status};}
+        else {
+        const result=await readGenerationReceipt(owner,{kind:'conversation',id:session.id},generation.generation_id,init.signal??undefined);
+        if(result.state==='inline')generation=result.value;
+        else {
+          info={state:header.diagnostics_state??'stored',bytes:result.bytes,sha256:result.sha256,export_url};
+          if(isGenerationHeader(header)&&header.sections.compiled){
+            try{story=(await readGenerationSnapshot(owner,{kind:'conversation',id:session.id},generation.generation_id,init.signal??undefined)).world;}
+            catch{if(owner!==deviceOwner())throw fail('Account changed',409);init.signal?.throwIfAborted();}
+          }
+        }
+        if(generation.erased_memory_source||header.diagnostics_state==='erased')info={state:'erased',export_url};
+        const latest=await readGenerationHeader(owner,{kind:'conversation',id:session.id},p.last_generation.generation_id);
+        if(!isGenerationHeader(latest)||latest.catalog_sha256!==header.catalog_sha256)throw Error('Generation changed during debug read');
+        }
+      }catch{
+        if(owner!==deviceOwner())throw fail('Account changed',409);init.signal?.throwIfAborted();
+        generation={generation_id:p.last_generation.generation_id,status:p.last_generation.status};story=undefined;info={state:'corrupt'};
+      }
+    }
+    const result={session_id:session.id,settings:p.settings,compiled:generation?generation.compiled??null:await compiled(p.settings,[],owner),history_count:count,approx_turn:p.state.turn,
+      prompt_source:info?.state??(generation?(generation.compiled||generation.raw_prompt?'saved_generation':'unavailable'):'current_settings'),
+      relationship:p.state.relationship_state.stage,state:p.state,generation,memory:generation?.memory??generation?.telemetry?.memory??null,
+      memory_session:{enabled:p.memory_enabled===true,scope:binding?deviceMemoryScope(memoryPolicy(session),binding.scope):session.id},...(info?{device_diagnostics:info}:{}),...(story?{story}:{})};
+    if(!inlineJson(result)&&p.last_generation?.generation_id){
+      const export_url=`/api/chat/debug/diagnostics?session_id=${encodeURIComponent(session.id)}`;
+      return json({...result,compiled:null,generation:{generation_id:p.last_generation.generation_id,status:p.last_generation.status},memory:null,
+        prompt_source:'stored',device_diagnostics:{state:'stored',export_url}});
+    }
+    return json(result);
   }
   let memorySessionRecord:AppEntity|undefined;
   const scopedMemoryResponse=await scopedMemoryRoute(path,method,body,url,owner,async(id,owner)=>memorySessionRecord=await conversation(id,owner),settings=>memoryIdentityFor(settings,owner));

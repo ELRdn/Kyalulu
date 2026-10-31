@@ -17,14 +17,15 @@ const seed=()=>({...newEntity('conversation','history',structuredClone(history.p
 const huge=()=>{const value=seed();value.payload.unknown={text:'茶🙂é\\"\n'.repeat(270000),nested:JSON.parse('{"__proto__":{"retain":true},"extension":[null,true,0]}')};return value;};
 const open=(version)=>new Promise((resolve,reject)=>{const request=indexedDB.open(dbName,version);request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});
 const save=value=>appTransaction(['entities'],'readwrite',(tx,done)=>writeEntity(tx,value,'put',done));
-const physical=()=>appTransaction(['entities','meta','parts'],'readonly',(tx,done)=>{
+const capture=(tx,done)=>{
   const result={},entities=tx.objectStore('entities').getAll(),meta=tx.objectStore('meta'),keys=meta.getAllKeys(),values=meta.getAll();
   values.onsuccess=()=>{result.entities=entities.result;result.meta=keys.result.map((key,index)=>[key,values.result[index]]);
     const pieces=[],request=tx.objectStore('parts').openCursor();request.onsuccess=()=>{const cursor=request.result;
       if(!cursor){result.parts=pieces;done(result);return;}
       pieces.push([cursor.key,cursor.value.length,new Sha256().update(cursor.value).digest()]);cursor.continue();};
   };
-});
+};
+const physical=()=>appTransaction(['entities','meta','parts'],'readonly',capture);
 const header=()=>appTransaction(['entities'],'readonly',(tx,done)=>{const read=tx.objectStore('entities').get([owner,'history']);read.onsuccess=()=>done(read.result);});
 async function rejected(action,message){let failed=false;try{await action();}catch{failed=true;}check(failed,message);}
 async function run(){
@@ -432,21 +433,34 @@ async function run(){
     probes.push('kind-filter-before-body','owner-isolation','unfiltered-and-selected-corruption-reject','readonly-preservation');return;
   }
   if(scenario.startsWith('upgrade-')||scenario==='blocked'){
-    const version=scenario==='upgrade-v2'?2:1;
-    const request=indexedDB.open(dbName,version);request.onupgradeneeded=()=>{const db=request.result;db.createObjectStore('entities',{keyPath:['owner','id']});const meta=db.createObjectStore('meta');if(version===2)meta.createIndex('sync-outbox-state',['request_id','withdrawn']);};
+    const version=scenario==='upgrade-v3'?3:scenario==='upgrade-v2'?2:1;
+    const request=indexedDB.open(dbName,version);request.onupgradeneeded=()=>{const db=request.result;db.createObjectStore('entities',{keyPath:['owner','id']});const meta=db.createObjectStore('meta');if(version>=2)meta.createIndex('sync-outbox-state',['request_id','withdrawn']);if(version===3)db.createObjectStore('parts');};
     const old=await new Promise((resolve,reject)=>{request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});
     const value=seed(),batch={request_id:'legacy-fixed',revisions:{history:7},changes:[{id:value.id,kind:value.kind,base_revision:4,payload:value.payload,deleted:false}]};
-    await new Promise((resolve,reject)=>{const tx=old.transaction(['entities','meta'],'readwrite');tx.objectStore('entities').put(value);tx.objectStore('meta').put(batch,'sync:'+owner+':outbox');tx.oncomplete=resolve;tx.onabort=reject;});
+    if(version===3){
+      const {writeParts}=await import('/src/lib/segmentedStorage.ts');
+      await new Promise((resolve,reject)=>{
+        const tx=old.transaction(['entities','meta','parts'],'readwrite'),{payload,...header}=value;
+        writeParts(tx,[owner,'entity',value.id],payload,parts=>{
+          tx.objectStore('entities').put({...header,payloadParts:parts,selection:{storage_policy:payload.storage_policy,cache_evicted:false,pending_generation:false,
+            maximumMessageId:Math.max(...payload.messages.map(message=>message.id)),messageIdsValid:true}});
+          writeOutbox(tx,owner,batch,()=>{});
+        });
+        tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);
+      });
+    }else await new Promise((resolve,reject)=>{const tx=old.transaction(['entities','meta'],'readwrite');tx.objectStore('entities').put(value);tx.objectStore('meta').put(batch,'sync:'+owner+':outbox');tx.oncomplete=resolve;tx.onabort=reject;});
+    const preserved=version===3?await new Promise(resolve=>capture(old.transaction(['entities','meta','parts'],'readonly'),resolve)):undefined;
     if(scenario==='blocked'){
       await rejected(()=>entity(value.id,owner),'Blocked upgrade did not reject');old.close();
     }else old.close();
     same(await entity(value.id,owner),value,'Legacy data changed at upgrade');
-    const raw=await physical();check(!raw.parts.length&&raw.entities[0].payload&&!raw.entities[0].payloadParts,'Upgrade eagerly rewrote inline body');
-    same(await getMeta('sync:'+owner+':outbox'),batch,'Upgrade rewrote old outbox');
+    const raw=await physical();
+    if(version===3){same(raw,preserved,'v3 upgrade changed headers, fixed outbox or physical parts');probes.push('v3-physical-closure-preserved');}
+    else{check(!raw.parts.length&&raw.entities[0].payload&&!raw.entities[0].payloadParts,'Upgrade eagerly rewrote inline body');same(await getMeta('sync:'+owner+':outbox'),batch,'Upgrade rewrote old outbox');}
     const mixed=huge();mixed.id='segmented';await save(mixed);
     same(await entity('segmented',owner),mixed,'Mixed segmented body lost');same(await entity(value.id,owner),value,'Mixed inline body lost');
-    const db=await open();check(db.version===3&&db.objectStoreNames.contains('parts'),'v3 missing');db.close();
-    await rejected(()=>open(2),'v2 client reopened v3');probes.push('lazy-upgrade','mixed-inline-parts','v2-reopen-fails');return;
+    const db=await open();check(db.version===4&&db.objectStoreNames.contains('parts'),'v4 missing');db.close();
+    await rejected(()=>open(2),'v2 client reopened v4');await rejected(()=>open(3),'v3 client reopened v4');probes.push('lazy-upgrade','mixed-inline-parts','v2-reopen-fails','v3-reopen-fails');return;
   }
   if(scenario==='late-success'){
     const original=indexedDB.open.bind(indexedDB);let late;
@@ -627,7 +641,7 @@ async function run(){
     const reading=appTransaction(['entities'],'readonly',(tx,done)=>{
       connection=tx.db;const handler=connection.onversionchange;connection.onversionchange=event=>{seen=true;handler.call(connection,event);};
       const next=()=>{const read=tx.objectStore('entities').get([owner,value.id]);read.onsuccess=()=>seen?done(read.result):next();};
-      next();upgrade=open(4);
+      next();upgrade=open(5);
     });
     await reading;const db=await upgrade;db.close();check(seen,'Connection did not observe versionchange');
     let closed=false;try{connection.transaction('entities');}catch{closed=true;}check(closed,'Old connection still open');

@@ -9,6 +9,7 @@ import type { GenerationStatus } from './chatRecovery';
 import { deviceExecutionLockName } from './deviceExecution';
 import { changedHistoryMessage,changedHistoryMetadata,validateHistoryChange,type HistoryChange } from './deviceHistoryChange';
 import { generationChangeView,type GenerationChange } from './deviceGenerationChange';
+import { writeGenerationReceipt,preserveLegacyGeneration,isGenerationHeader,validateGenerationHeader,deleteGenerationReceipt,eraseGenerationMemoryReferences } from './deviceGenerationRecords';
 
 export type EntityKind = 'conversation' | 'character' | 'persona' | 'world' | 'preset' | 'profile';
 export type AppEntity = { id: string; owner: string; kind: EntityKind; revision: number; serverRevision: number;
@@ -30,6 +31,7 @@ type MemoryReferences={sources:string[];memories:string[];hash:string};
 export type StoredEntity=Omit<AppEntity,'payload'>&{payload?:AppEntity['payload'];payloadParts?:Parts;selection?:EntitySelection;memoryReferences?:MemoryReferences|null};
 export type StoredOutbox=Outbox&{changesParts?:Parts;count?:number};
 function memoryReferences(payload:AppEntity['payload']) {
+  if(payload.last_generation?.device_diagnostics!==undefined)return null;
   const sources=new Set<string>(),memories=new Set<string>();
   for(const trace of [payload.last_generation?.memory,payload.last_generation?.telemetry?.memory]){
     if(trace==null)continue;if(typeof trace!=='object')return null;
@@ -199,10 +201,11 @@ export function writeConversationMemories(tx:IDBTransaction,header:StoredEntity,
   });
 }
 /** Caller verifies the source and receipt in this transaction; no full history enters a save. */
-export function writeConversationGeneration(tx:IDBTransaction,header:StoredEntity,change:GenerationChange,done:(bodyToken:string)=>void) {
+export function writeConversationGeneration(tx:IDBTransaction,header:StoredEntity,change:GenerationChange,done:(bodyToken:string,projection?:Record<string,any>)=>void) {
   storageWrite(tx,next=>storageStep(tx,()=>{
     if(header.owner!==deviceOwner()||header.kind!=='conversation'||header.deleted||!Number.isSafeInteger(header.revision+1))throw Error('Invalid generation source');
-    const view=generationChangeView(change),complete=(token:string)=>{done(token);next();};
+    const write=(projection?:Record<string,any>)=>{
+    const view=generationChangeView({...change,projection}),complete=(token:string)=>{done(token,projection);next();};
     if(header.payloadParts){
       let metadata:Record<string,any>;
       rewriteConversationParts(tx,[header.owner,'entity',header.id],header.payloadParts,p=>metadata=view.finish(p),(ref,_p,scan)=>{
@@ -215,7 +218,13 @@ export function writeConversationGeneration(tx:IDBTransaction,header:StoredEntit
       persistEntity(tx,{...header,revision:header.revision+1,dirty:metadata.storage_policy==='sync',opened:Date.now(),payload:{...metadata,messages}} as AppEntity,'put',()=>{
         const read=tx.objectStore('entities').get([header.owner,header.id]);read.onsuccess=()=>storageStep(tx,()=>complete(read.result.payloadParts.token));
       });
-    }
+    }};
+    if(change.receipt.status==='completed'&&change.input!==undefined){
+      const holder={kind:'conversation' as const,id:header.id};
+      const preserve=(payload:Record<string,any>)=>preserveLegacyGeneration(tx,header.owner,holder,payload.last_generation,
+        ()=>writeGenerationReceipt(tx,header.owner,holder,change.receipt,change.input,(_header,projection)=>write(projection)));
+      if(header.payloadParts)readParts(tx,[header.owner,'entity',header.id],header.payloadParts,preserve,new JsonStream({limit:0}));else preserve(header.payload!);
+    }else write();
   }));
 }
 /** Caller holds the owner execution lease; domain recovery also commits its pending domain here. */
@@ -288,7 +297,8 @@ export function writeOutbox(tx:IDBTransaction,owner:string,value:Outbox|null,don
 }
 async function database() {
   return new Promise<IDBDatabase>((resolve,reject) => {
-    const open=indexedDB.open(DB,3);let settled=false;
+    // Fence older writers that cannot preserve canonical generation diagnostic parts.
+    const open=indexedDB.open(DB,4);let settled=false;
     open.onupgradeneeded=()=>{
       if(settled){open.transaction!.abort();return;}
       if(!open.result.objectStoreNames.contains('entities'))open.result.createObjectStore('entities',{keyPath:['owner','id']});
@@ -301,7 +311,7 @@ async function database() {
       const db=open.result;db.onversionchange=()=>db.close();
       if(settled){db.close();return;}settled=true;resolve(db);
     };
-    open.onerror=()=>{settled=true;reject(Error('Cannot open device storage; use a v3-compatible client / v3対応のアプリで保存領域を開いてください'));};
+    open.onerror=()=>{settled=true;reject(Error('Cannot open device storage; update the app before retrying / 保存領域を開けません。アプリを更新して再試行してください'));};
   });
 }
 export async function appTransaction<T>(stores:string[],mode:IDBTransactionMode,
@@ -365,6 +375,7 @@ export async function generationHistory(id:string,generationId:string,owner=devi
     const receipt=tx.objectStore('meta').get('generation:'+owner+':'+generationId);
     receipt.onsuccess=()=>storageStep(tx,()=>{
       const status=receipt.result;
+      if(isGenerationHeader(status))validateGenerationHeader(status,owner,{kind:'conversation',id},generationId);
       const positive=(n:unknown)=>Number.isSafeInteger(n)&&Number(n)>0;
       if(!status||status.generation_id!==generationId||status.session_id!==id||!['completed','invalid','failed','cancelled'].includes(status.status)
         ||status.assistant_id!==null&&!positive(status.assistant_id)||status.user_id!==null&&!positive(status.user_id)
@@ -382,6 +393,7 @@ export async function generationHistory(id:string,generationId:string,owner=devi
           if(status.assistant_id!==null){
             const assistant=messages.find((m:any)=>m.id===status.assistant_id),user=messages.find((m:any)=>m.id===status.user_id);
             if(assistant?.role!=='assistant'||typeof assistant.content!=='string'||typeof status.reply==='string'&&assistant.content!==status.reply
+              ||typeof status.reply_sha256==='string'&&new Sha256().update(new TextEncoder().encode(assistant?.content??'')).digest()!==status.reply_sha256
               ||status.user_id!==null&&(user?.role!=='user'||typeof user.content!=='string')
               ||typeof status.user_content_sha256==='string'&&new Sha256().update(new TextEncoder().encode(user?.content??'')).digest()!==status.user_content_sha256)throw Error('Saved generation messages changed');
           }
@@ -490,6 +502,12 @@ export function scrubGenerationRecords(tx:IDBTransaction,owner:string,sessionId:
           const key=selected[index++];if(key===undefined){conversations();return;}
           const read=meta.get(key);read.onsuccess=()=>storageStep(tx,()=>{
             const value=read.result;
+            if(isGenerationHeader(value)){
+              validateGenerationHeader(value,owner,value.holder,value.generation_id);
+              if(value.session_id===sessionId)deleteGenerationReceipt(tx,value,scan);
+              else eraseGenerationMemoryReferences(tx,value,sessionId,removed,()=>scan());
+              return;
+            }
             if(value?.session_id===sessionId)meta.put({generation_id:value.generation_id,session_id:sessionId,status:'deleted'},key);
             else {const redacted=eraseDeviceMemoryReferences(value,sessionId,removed);if(redacted!==value)meta.put(redacted,key);}
             scan();
@@ -503,11 +521,19 @@ export function scrubGenerationRecords(tx:IDBTransaction,owner:string,sessionId:
         const current=cursor.result;if(!current){next();return;}
         const header=current.value as StoredEntity;
         if(header.id===sessionId||header.kind!=='conversation'||header.deleted||!referencesSource(header,sessionId,removed)){current.continue();return;}
-        restoreEntity(tx,header,value=>{
-          const result=value!.payload.last_generation,redacted=eraseDeviceMemoryReferences(result,sessionId,removed);
+        const inspect=(payload:Record<string,any>)=>{
+          if(payload.last_generation?.device_diagnostics){current.continue();return;}
+          const result=payload.last_generation,redacted=eraseDeviceMemoryReferences(result,sessionId,removed);
           if(redacted===result){current.continue();return;}
-          persistEntity(tx,{...value!,revision:value!.revision+1,payload:{...value!.payload,last_generation:redacted}},'put',()=>current.continue());
-        });
+          if(header.payloadParts){
+            const at=[owner,'entity',header.id] as const;
+            rewriteConversationParts(tx,at,header.payloadParts,{last_generation:redacted},(ref,metadata,scan)=>{
+              const saved=tx.objectStore('entities').put(conversationPartsHeader({...header,revision:header.revision+1},ref,{...metadata,last_generation:redacted},scan));
+              saved.onsuccess=()=>removeParts(tx,at,header.payloadParts,()=>current.continue());
+            });
+          }else persistEntity(tx,{...header,revision:header.revision+1,payload:{...payload,last_generation:redacted}} as AppEntity,'put',()=>current.continue());
+        };
+        if(header.payloadParts)readParts(tx,[owner,'entity',header.id],header.payloadParts,inspect,new JsonStream({limit:0}));else inspect(header.payload!);
       });
     };
     domains();

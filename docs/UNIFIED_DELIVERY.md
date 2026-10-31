@@ -13,7 +13,7 @@
 | 実行先/モデル/保存/同期の表示、生成中切替の停止・保存確認 | Cloud実API/DB/台帳、暗号化PC実通信、Device実保存で、架空推論による生成中・保存結果確認待ちの3方向切替拒否、入力復帰、往復の下書き/履歴保持と自動転送なしを確認。Cloud/PCは画面離脱/再読込も実確認。Cloudの遅延成功は取消0消費、明示再送は成功精算 | 実モデル/提供元、実機、本番配信を含む3方式の全面受入れは残る |
 | Portable再利用、ブラウザ記憶/物語とPython共通fixture | World/cast/Lore、6形式export、JSON/PNG/CHARX/backup・ST/CAI/BYAF import、原本保持・選択履歴のatomic commit、媒体upload/再生取得を実装。48入力とLore条件、実decoder・実IDBの共通検証 | 各形式の追加実データ・全画面媒体操作、実容量・実モデル・実機を含むパリティ試験は残る |
 | 認証・課金経路とRuntime通信の分離、Cloud鍵をRemoteへ送らない | 実Chromium/Noise/Relay/HostでCloud cookie/bearer/owner/CSRFの正の対照とRemote復号前後の2要求を検証し、認証canary混入0を確認 | 本番HTTPS/OAuth、全API/ブラウザー・認証切替の全面受入れは残る |
-| 安定ID/revisionと数値ID互換、永続outbox、自動同期 | Cloud/device/Native-PCを隔離検証。Browserの本文/固定outboxを1MiB断片へ分割し、v1/v2→v3混在読込・破損/容量不足時のatomic rollbackを実Chromiumで確認 | decoded tree/UI全体化、250MB/1GB/RSS・旧DB復元の全面照合、全方式の統合証拠 |
+| 安定ID/revisionと数値ID互換、永続outbox、自動同期 | Cloud/device/Native-PCを隔離検証。Browserの本文/固定outboxを1MiB断片へ分割し、v1/v2/v3→v4混在読込・v3のheader/物理断片不変・旧版拒否・破損/容量不足時のatomic rollbackを実Chromiumで確認 | decoded tree/UI全体化、250MB/1GB/RSS・旧DB復元の全面照合、全方式の統合証拠。v4保存領域を旧clientで直接再開しない |
 | 競合の共通履歴分岐、記憶を自動混合せず出典保持 | state/記憶/作品設定snapshot往復、記録済みrevisionの共通message列、同期済み/登録前のNative分岐のUUID継承と初回受領前のowner継承を隔離検証。証跡なしの旧分岐は推測で結合しない | 証跡のない旧分岐の扱い、祖先本文の復元、旧設定欠落、3方式の実UI確認 |
 | 同期削除・復元、未送信変更の保護 | 条件付き承認でNative-PC/Browserのowner/revision・撤回fence・永続受領を検証。Native論理復元とCore全体復元は現在outbox/受領/ownerを保護し、自動同期停止・旧受領照合・復元単位の別コピー確認を適用。Core/既存同期の関連132件で検証 | 強制終了時のDB/媒体の一括耐久性、配布版をまたぐ全面復旧、実容量・実機・本番復旧の確認が必要 |
 | 端末限定の外部送信禁止・共有記憶分離 | 実Device保存/架空推論で生成・手動記憶、外部モデル拒否、同期未同意時の自動Cloud/同期/広告通信0を実Chromiumで確認 | 実Worker/モデルの通信、共有記憶の全面隔離、全機能/実機の否定試験は残る |
@@ -548,3 +548,13 @@ Loreの同一scan変換を走査ごとに1回へまとめ、Unicode変換の全�
 4,500,276 bytesの完全SHA-256照合、途中失敗時の元ファイル保持、picker取消時の読取なしを確認。
 保存非対応ブラウザは実測1,500,000 bytesまでの明示fallbackとし、超過は保存せず案内する。
 OS pickerは置換しており実機証拠ではない。診断tree読取/保存/Workerの容量課題と1GB全体受入れは残す。
+
+[Generation diagnostics](validation/2026-11-01-unified-generation-diagnostics.md)では、通常/共有記憶/Researchの
+診断をowner・holder付きの正規receiptへ一度だけ分割保存し、会話/研究本文は参照にする。
+小容量互換、総展開量での境界、完全export、旧診断保持、消去時の物理断片削除、同期への参照送出拒否を実装。
+v4の保存versionで旧writerを拒否し、v3の既存header/outbox/物理断片を更新時に書き換えない。
+消去直後の古いdebug診断/キャスト表示を4ケースで再現・修正した。
+最終Web1,683件・型/統合build・source関連47件、352入力hash不変の実Chromium7driverが成功。
+分割保存54・初回同期30・生成84・日英研究/比較各2・OPFS16、追加受信26ケースを確認した。
+原本/活動中Research・Worker/ONNX・実容量/実機・最新配布物の受入れは残り、全体完了とは扱わない。
+親543c903のWindows PR CIはquotaケースの画面遷移がERR_NO_BUFFER_SPACEで失敗し、原因/解消は未確定。

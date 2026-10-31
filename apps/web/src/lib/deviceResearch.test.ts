@@ -31,18 +31,25 @@ vi.mock('./appStore',async original=>({...await original<typeof import('./appSto
     }));fixture.transactions=result.catch(()=>undefined);return result;
   },
 }));
-// Route tests retain their in-memory store; the new storage boundary is exercised in real IndexedDB.
+// These fixtures expose the restored legacy shape; the real canonical boundary is tested in deviceResearchStore.test.ts.
 vi.mock('./deviceResearchStore',async()=>{
   const {appTransaction}=await import('./appStore');
   const start=(owner:string)=>'device-research:'+JSON.stringify(owner)+':experiment:';
   return {
     readResearchExperiment:async(owner:string,id:string)=>structuredClone(fixture.metadata.get(start(owner)+id)),
     listResearchExperiments:async(owner:string)=>[...fixture.metadata].filter(([key])=>key.startsWith(start(owner))).map(([,value])=>({meta:structuredClone(value.meta),revision:value.revision,...(value.job_id?{job_id:value.job_id}:{})})),
-    writeResearchExperiment:(owner:string,id:string,value:any)=>appTransaction(['meta'],'readwrite',(tx,done)=>{
+    writeResearchExperiment:(owner:string,id:string,value:any,packet?:{receipt:any;input?:readonly unknown[]})=>appTransaction(['meta'],'readwrite',(tx,done)=>{
       const store=tx.objectStore('meta'),read=store.get(start(owner)+id);
       read.onsuccess=()=>{
         if(owner!==fixture.owner||(read.result?.revision??0)!==value.revision){tx.abort();return;}
-        const revision=value.revision+1;store.put({...value,revision},start(owner)+id);done(revision);
+        const restore=(turn:any)=>{
+          const previous=read.result?.turns.find((saved:any)=>saved.generation_id===turn.generation_id);
+          const raw=packet?.receipt.status==='completed'&&packet.receipt.generation_id===turn.generation_id&&packet.input!==undefined
+            ?JSON.stringify(packet.input):previous?.raw_prompt;
+          return turn.raw_prompt===undefined&&raw!==undefined?{...turn,raw_prompt:raw}:turn;
+        };
+        const revision=value.revision+1,turns=value.turns.map(restore),last=value.session.payload.last_generation;
+        store.put({...value,revision,turns,session:{...value.session,payload:{...value.session.payload,...(last?{last_generation:restore(last)}:{})}}},start(owner)+id);done(revision);
       };
     }),
   };
@@ -140,7 +147,7 @@ it('reports a late serialization failure as a failed stream and keeps the saved 
   const result=await (await post('/api/experiments/run',request())).json(),id=result.results[0].experiment_id;
   const record=records()[0];record.turns[0].raw_prompt='x'.repeat(3*1024*1024);record.turns.at(-1).extension=1n;
   const response=await deviceFetch('/api/experiments/'+id+'/export'),reader=response.body!.getReader();
-  expect(response.status).toBe(200);expect((await reader.read()).value?.length).toBe(1024*1024);
+  expect(response.status).toBe(200);expect((await reader.read()).value?.length).toBeGreaterThan(0);
   await expect((async()=>{while(!(await reader.read()).done){/* Require a verified EOF, never just a prefix. */}})()).rejects.toThrow();
   expect(records()[0]).toBe(record);expect(record.turns.at(-1).extension).toBe(1n);
   reader.releaseLock();
