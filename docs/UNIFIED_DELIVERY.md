@@ -427,3 +427,8 @@ route callbackの終了確認で失敗した。[Cloud CI synchronization](valida
 好み変更時の再取得と誤計上した。[Publication CI](validation/2026-10-31-unified-publication-ci.md)に
 遷移先見出し/カードでの待機と、制御した応答保留での6→6・7→7のGET照合を記録する。
 再取得禁止assert・既存期限・製品取得処理は維持。修正後のCI成功は別途確認する。
+
+Windows分岐driverでは、固定LF hashのhelperがCRLFで配信されると初期化が失敗することを再現した。
+[Branch CI](validation/2026-10-31-unified-branch-ci.md)にhelper配信の改行正規化とケース別診断を記録する。
+04ea182の製品sourceで全24ケース・161入力hash不変が成功し、CRLFと改行以外の改ざん拒否も確認。
+既存のchecksum・assert・期限を保ち、元CIの例外そのものの回収や修正後のWindows CI成功とは区別する。

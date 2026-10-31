@@ -71,6 +71,8 @@ async def main(output, scenarios, pilot):
     zod_entry = Path(resolved).parent / 'index.js'
     assert zod_entry.is_file(), 'Installed Zod ESM entry missing'
     fixture_route = '/@fs/' + quote(FIXTURE.as_posix(), safe='/:')
+    helper_path = ROOT / 'tests/fixtures/memory-source-projection.html'
+    helper_route = '/@fs/' + quote(helper_path.as_posix(), safe='/:')
     import_map = '<script type="importmap">' + json.dumps({'imports': {
         'zod': '/@fs/' + quote(zod_entry.as_posix(), safe='/:@')}}) + '</script>\n'
     report = {'ok': False, 'acceptance': False, 'pilot': pilot, 'scenarios': [],
@@ -79,6 +81,7 @@ async def main(output, scenarios, pilot):
               'websockets_closed': [], 'request_errors': [], 'console_errors': [],
               'owned_contexts_closed': 0, 'browser_restarts': 0,
               'zod_esm_entry': str(zod_entry), 'zod_esm_sha256': hashlib.sha256(zod_entry.read_bytes()).hexdigest(),
+              'helper_newlines': 'LF (Windows checkout CRLF normalized before pinned helper validation)',
               'vite_stopped': False, 'production_used': False, 'real_inference_attempts': 0,
               'limits': ['Fictional >=3 MiB / 80 messages / multiple 1 MiB parts; no 1 GB, heap/RSS or physical-device claim',
                          'Graceful page reload or owned Chromium close/relaunch; no crash/power-loss recovery claim',
@@ -102,13 +105,17 @@ async def main(output, scenarios, pilot):
                         assert html.count('<script type="module">') == 1
                         await route.fulfill(status=200, content_type='text/html',
                                             body=html.replace('<script type="module">', import_map + '<script type="module">', 1))
+                    elif url.path == helper_route:
+                        # Git may check out HTML as CRLF; the audited helper is pinned with LF.
+                        await route.fulfill(status=200, content_type='text/html',
+                                            body=helper_path.read_text(encoding='utf-8').replace('\r\n', '\n'))
                     else:
                         await route.continue_()
                 else:
                     report['network_denied'].append(route.request.url)
                     await route.abort()
 
-            async def launch(profile):
+            async def launch(profile, result):
                 context = await runtime.chromium.launch_persistent_context(profile, headless=True, service_workers='block')
                 await context.route('**/*', guard)
 
@@ -122,9 +129,17 @@ async def main(output, scenarios, pilot):
                 await context.route_web_socket('**/*', close_socket)
                 page = await context.new_page()
                 page.set_default_timeout(30000)
-                page.on('pageerror', lambda error: report['page_errors'].append(str(error)))
-                page.on('requestfailed', lambda request: report['request_errors'].append({'url': request.url, 'error': request.failure}))
-                page.on('console', lambda message: report['console_errors'].append(message.text) if message.type == 'error' else None)
+
+                def diagnostic(kind, value):
+                    report[kind].append(value)
+                    result.setdefault(kind, []).append(value)
+                    print(json.dumps({'scenario': result['scenario'], 'stage': result.get('stage'), kind: value}), flush=True)
+
+                page.on('pageerror', lambda error: diagnostic('page_errors', str(error)))
+                page.on('requestfailed', lambda request: diagnostic('request_errors', {'url': request.url, 'error': request.failure}))
+                page.on('console', lambda message: diagnostic('console_errors', message.text) if message.type == 'error' else None)
+                page.on('response', lambda response: print(json.dumps({'scenario': result['scenario'], 'stage': result.get('stage'),
+                    'http_error': {'url': response.url, 'status': response.status}}), flush=True) if response.status >= 400 else None)
                 report['chromium_version'] = context.browser.version
                 return context, page
 
@@ -138,36 +153,54 @@ async def main(output, scenarios, pilot):
             for scenario in scenarios:
                 started = time.monotonic()
                 result = {'scenario': scenario, 'ok': False, 'inputs_sha256_before': fingerprints()}
+
+                def stage(value):
+                    result['stage'] = value
+                    print(json.dumps({'scenario': scenario, 'stage': value}), flush=True)
+
                 with tempfile.TemporaryDirectory(prefix='branch-profile-', dir=output) as profile:
                     context = page = None
                     try:
-                        context, page = await launch(profile)
-                        await page.goto(url)
+                        stage('launch')
+                        context, page = await launch(profile, result)
+                        stage('initialize')
+                        response = await page.goto(url)
+                        result['navigation'] = {'url': page.url, 'status': response.status if response else None,
+                                                'fixture_route': fixture_route, 'helper_route': helper_route}
                         await page.wait_for_function('window.__DEVICE_BRANCHES__ !== undefined')
+                        stage('fixture-ready')
                         result['oracle_self_check'] = await page.evaluate('window.__DEVICE_BRANCHES__.selfCheck()')
+                        result['stage'] = 'scenario'
                         result.update(await asyncio.wait_for(page.evaluate('(name)=>window.__DEVICE_BRANCHES__.run(name)', scenario), 120))
                         if scenario.startswith('quota-'):
                             await close(context)
                             context = None
-                            context, page = await launch(profile)
+                            context, page = await launch(profile, result)
                             report['browser_restarts'] += 1
                             await page.goto(url)
                             result['reopen_kind'] = 'Graceful Chromium close/relaunch, same disposable profile'
                         else:
                             await page.reload()
                             result['reopen_kind'] = 'Page reload, fresh module state'
+                        result['stage'] = 'reopen-initialize'
                         await page.wait_for_function('window.__DEVICE_BRANCHES__ !== undefined')
+                        result['stage'] = 'reopen-verify'
                         result['reopen'] = await page.evaluate('window.__DEVICE_BRANCHES__.resume()')
                     except Exception:
                         result['ok'] = False
                         result['error'] = traceback.format_exc()
+                        print(json.dumps({'scenario': scenario, 'stage': result.get('stage'), 'error': result['error']}), flush=True)
                         if page and not page.is_closed():
                             try:
                                 result['progress'] = await page.evaluate('window.__BRANCH_PROGRESS__ ?? null')
                                 result['module_resources'] = await page.evaluate('performance.getEntriesByType("resource").map(r=>({url:r.name,bytes:r.transferSize}))')
+                                result['initialization'] = await page.evaluate('({url:location.href,ready:document.readyState,importmap:document.querySelector("script[type=importmap]")?.textContent??null})')
+                                print(json.dumps({'scenario': scenario, 'progress': result['progress'], 'navigation': result.get('navigation'),
+                                                  'initialization': result['initialization'], 'module_resources': result['module_resources']}), flush=True)
                                 await page.screenshot(path=str(output / (scenario + '-failure.png')))
                             except Exception:
                                 result['evidence_error'] = traceback.format_exc()
+                                print(json.dumps({'scenario': scenario, 'evidence_error': result['evidence_error']}), flush=True)
                     finally:
                         if context:
                             await close(context)
