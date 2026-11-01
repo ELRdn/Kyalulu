@@ -164,7 +164,7 @@ def render_block(memories: list[dict]) -> str:
 
 
 PROPOSAL_INSTRUCTION = (
-    '\nAlso return "memory_proposals" (third key): at most 3 short memories worth keeping for future '
+    '\nAlso return "memory_proposals" (third key): at most 3 memories worth keeping for future '
     'conversations, each {"type": "semantic"|"episodic"|"relationship", "content": "..."}. '
     "semantic = stable facts or preferences the user stated; episodic = something that happened or was "
     "promised; relationship = a change in how the two relate. Only propose what was actually said in "
@@ -172,6 +172,9 @@ PROPOSAL_INSTRUCTION = (
     " Include source_kind: user_statement/user_correction for what the USER explicitly said; "
     "story_event only for fictional narrative events; work_setting only for explicit canon. "
     "Never promote the character's invented past, preferences or events into facts about the user."
+    " For user_statement/user_correction, copy the complete current user message verbatim into content; "
+    "do not summarize, translate or extract fragments. If it exceeds 200 characters, omit that proposal. "
+    "Use [] when nothing new is worth keeping."
 )
 
 

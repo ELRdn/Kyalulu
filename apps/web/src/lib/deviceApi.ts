@@ -345,7 +345,8 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
       (world?.rpg?'\nServer-owned RPG outcome: narrate these results; never invent rolls or change HP, skills or inventory. Reject actions forbidden by the world rules.\n'+JSON.stringify(rpg):'')+
       renderMemoryBlock(memories,true)+
       '\nJSON only; continue current state: '+JSON.stringify({reply:'in-character reply',state_update:storyState,memory_proposals:[]})+
-      '. Memories: <=3 {type:semantic|episodic|relationship,content,source_kind:user_statement|user_correction|work_setting|story_event}. Never invent user facts.';
+      '. Memories: <=3 {type:semantic|episodic|relationship,content,source_kind:user_statement|user_correction|work_setting|story_event}. Never invent user facts. '+
+      'For user_statement/user_correction, copy the complete current user message verbatim into content; do not summarize, translate or extract fragments. If it exceeds 200 characters, omit that proposal. Use [] when nothing new is worth keeping.';
     const pending={generation_id:generationId,session_id:id,status:'pending',assistant_id:null,user_id:userId,user_content_sha256:contentHash(encoder.encode(last.content)),
       execution_lock:deviceExecutionLockName(owner)};
     let current=await save({...session,payload:{...p,messages:body.regenerate_message_id?p.messages:messages,pending_generation:generationId,...(scope?{message_sequence:assistantId}:{})}},session.revision,{['generation:'+owner+':'+generationId]:pending});
