@@ -137,7 +137,8 @@ class CloudStore:
                     (owner, consent),
                 )
                 if is_new and enroll and self.config.trial_credits:
-                    self._trial(owner, db, required=True)
+                    # Pausing free gifts must not block unified account access.
+                    self._trial(owner, db, required=not self.config.unified_enabled)
             row = db.execute("SELECT * FROM accounts WHERE id=?", (owner,)).fetchone()
             if not row:
                 raise CloudError("consent_required", 403)
@@ -300,7 +301,12 @@ class CloudStore:
                 raise CloudError('unified_app_awaiting_acceptance', 503)
             expires = time.time() + 30 * 86400
             source = 'trial:' + owner
-            service._reserve_free(db, owner, source, self.config.trial_credits, expires)
+            try:
+                service._reserve_free(db, owner, source, self.config.trial_credits, expires)
+            except CloudError as exc:
+                if not required and exc.code == 'free_budget_exhausted':
+                    return False
+                raise
             service._grant_reserved(db, owner, source, self.config.trial_credits, expires, 'trial')
             db.execute('UPDATE accounts SET trial_granted=1 WHERE id=?', (owner,))
             return True

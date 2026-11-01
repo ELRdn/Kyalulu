@@ -654,3 +654,7 @@ PID終了と日英の下書き/履歴再起動が成功。旧入力とのRuntime
 9 wrapperのbuild-root resource/shebangと9 RECORD差分だけを狭く検証した。未取得wheelの再hashは主張しない。
 今回の配布物はcanonical診断とGGUF事前選択を含む。元のMocha制約・tokenizer未実装、license3 grant・署名・
 clean OS/macOS/Linux image/実機/実容量・実モデル・実OAuthと地域/提供元条件・本番反映は未完了のまま。
+
+[Free-grant admission](validation/2026-11-01-unified-trial-admission.md)では、無料原資がないと統合版の
+新規登録・OAuthまで失敗する問題を修正。残高0で利用でき、裏付けのない付与や既存台帳の書換えは行わない。
+架空データの関連182件が成功。旧betaの必須原資・登録上限・商用ゲートを維持し、実OAuthと本番反映は未確認。
