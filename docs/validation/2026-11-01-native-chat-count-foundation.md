@@ -6,10 +6,12 @@ OpenAI chat parser and tokenizer as completion. It does not enqueue completion,
 evaluate tokens, or change the default 2,048-token context / 256-token output
 reserve. The UTF-8 heuristic remains only a bounded optional-history selector.
 
-The corrected diagnostic **standard and compat GPU probes now pass** on the
-fixed real GGUF. Pure production WASM/SDK and integrated application acceptance
-remain separate pending gates. The CPU stock-Mocha generation hit its explicit
-600-second probe deadline and remains unresolved.
+The corrected diagnostic and **pure production standard/compat GPU probes now
+pass** on the fixed real GGUF. An immutable UI build and its actual compiled
+standard Worker also pass full structured completion, large-history omission,
+native overflow, stop and recovery checks. Complete packaged/physical-device/
+production acceptance remains separate. CPU stock-Mocha generation hit its
+explicit 600-second probe deadline and remains unresolved.
 
 Main validates every original message before omission, transports mandatory
 runs first, then sends only selected optional runs. Worker recounts each entire
@@ -170,3 +172,62 @@ preserves ONNX raw generation, pause/hold/stop/terminate behavior. Fresh tests
 pass history paging **2/2**, target switching **2/2**, runtime privacy **1/1**,
 and a private protocol self-check **20/20**, without assertion/timeout changes.
 These remain fictional inference and do not establish native acceptance.
+
+## Pure production SDK and compiled Worker result
+
+Both ordinary WASM variants were rebuilt from the restored pure source and the
+actual public SDK builder completed: **25 SDK source inputs, 56 emitted SDK
+files, 4 matched native assets**. Neither source nor native binaries contain
+the diagnostic extension. The SDK build record intentionally retains
+`native_count_verified=false` and `release_accepted=false`; building alone is
+not an execution attestation.
+
+| Asset | Bytes | SHA-256 |
+|---|---:|---|
+| Standard glue | 139,467 | `9b05511cbc017a1598e981582c4494ab6583cdc0d237ad891005854e94c7b3fa` |
+| Standard WASM | 8,791,107 | `e2b639414175f13a05e905e28bb13b97ab4714b074dc213c9cae984b6ebe3b5e` |
+| Compat glue | 172,589 | `c17c308d55f3cfe0c25a917abf6bbe6eb8fee396c8376df877938a60d05b89a4` |
+| Compat WASM | 16,040,959 | `6673b9daca867affc34fc1a84af9255941399534bde1d8d555693b399d3fb1af` |
+
+`production-model-gpu-02` then exits successfully using those ordinary binaries
+and that SDK on both variants: five exact previously measured inputs, actual
+1,792/1,793 boundaries, invalid kwargs, preabort, two bounded real completions,
+same post-generation counts, PLE reads unchanged on counts, and no diagnostic
+debug fields. External/API requests, page errors and prohibited storage
+attempts are zero; owned browser/server cleanup passes. The earlier `-01`
+browser result also passed, but its Python summary crashed when an absent
+diagnostic property became `None`; the formatter was corrected and the entire
+probe repeated as `-02`, rather than presenting that failing command as success.
+
+The immutable **77d967f** UI export built with the matching SDK/assets and native
+Vite configuration loader. TypeScript and unified build pass; audit verifies
+all **1,203 source files and 60 SDK/native input files unchanged**, the four
+output native hashes, actual SDK/count wire markers, required UI entry documents
+and absence of diagnostic markers. Node v26.5.1 and reused installed dependencies
+were used. There was no dependency installation or clean-install acceptance.
+
+`compiled-worker-01` uses the real immutable `MobileRuntime` and **built standard
+Worker/SDK**, with no model or inference mock. Its test bootstrap only restricts
+storage access and imports the compiled Worker; requests/results are unchanged.
+It reads existing public model readiness metadata only from the `models` store;
+conversation stores, other DBs, writes, local/session storage and external/API
+traffic are forbidden. It verifies the cached model shards before use.
+
+- Stock Mocha/world/memory/grammar completes a **101-token valid structured
+  result** under the unchanged 2,048 context / 256 output default. Observed load
+  5.18s, first output 1.82s, total generation 4.43s on this desktop/headless GPU
+  test; these are not phone or cross-backend performance guarantees.
+- **3,360,883 logical bytes / 28 old runs** remain in the original input but are
+  absent from both Worker packets. Each transported message array is below
+  2,048 bytes; native mandatory count is 389 and omitted count is 28.
+- An actual **1,793-token** mandatory input is rejected without output.
+- Aborting on the real native count event prevents window continuation and
+  output; a subsequent real generation succeeds on the same runtime.
+
+The JSON envelope passes the production schema, but the sampled reply contains
+unusual quotation/bracket fragments. This is transport/schema evidence, not
+conversational-quality or long-term-memory acceptance. No conversation is saved
+by this probe. Full UI/account persistence, actual CPU stock completion, ONNX,
+physical phones, clean OS and complete packaged/production acceptance remain
+open. Exact manifests/results are private under
+`native-chat-count-build-20261101/{ui-build-audit.json,compiled-worker-01}`.
