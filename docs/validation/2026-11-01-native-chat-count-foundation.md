@@ -468,3 +468,53 @@ Evidence: `openrouter-grounding-ci-20261101`,
 `research-user-evidence-20261101/summary.json`, and the retained public CI log
 `lore-stream-scan-20261101/ci-1b79f06-failed.log`. This closes the caller/fixture
 gap, not a real external-provider or Research model-quality acceptance.
+
+## Fixed d09742f full Python and fresh delivery
+
+An exact1,204-file d09742fd0fb39de5ce38007e441bb8765a7e71b1 export passes
+TypeScript and the gated unified UI build with matching ordinary SDK/native
+inputs. The complete Python suite then passes **1,501 tests and seven
+subtests**, with one explicit skip for an absent optional pre-patch PLE
+snapshot. No test, assertion or deadline is deselected/weakened. Source and
+all supplied dependency inputs remain unchanged.
+
+The first local test environment correctly rejected its outside-workspace
+dependency junction in four source-collection tests. A separate physical
+renderer-input projection fixed that boundary but exposed two missing
+explicit TypeScript-API prerequisites. Both failures remain recorded.
+The final environment copies3,086 installed metadata/license inputs and three
+TypeScript API/package/license files with hashes, passes the19-test/one-skip
+prerequisite check, then reruns the entire suite successfully. Python imports
+are pinned to the fixed export. This is reused local dependencies, not a
+clean install or a third-party grant determination. Private evidence:
+`unified-d09742f-validation-20261101/{python-complete-result.json,python-complete.log,python-complete.xml,python-complete-inputs.json}`.
+
+Fresh offline Native and unified Cloud candidates contain matching1,119-file
+source offers, including the new Research test; all113 changed paths are
+offered without documentation exceptions. The original archive/manifest/
+precache/license/vendor/interpreter checks pass, fresh SDK25→56 outputs match,
+and29 packed-source tests pass.9 generated wrapper and9 RECORD differences
+retain their narrow provenance checks.5,676 retained input files plus the
+nine-file root baseline remain hash-identical. Neither candidate is signed,
+published or production-selected.
+
+| Candidate | Bytes | SHA-256 |
+|---|---:|---|
+| Windows Native | 142,444,929 | `bccd805c54362ae407deccd8d6f290f806ccb43a9aebe7e25e387e9ff7236705` |
+| Unified Cloud | 67,184,506 | `a2b460c7d5dd7610e2fe347146fdc7b2cf72c03b9e6034f12683ee4fd26f8be2` |
+
+Parent independently rehashes both archives and verifies the actual installed
+packed CLI: restart/history/memory, fictional backup/restore/rollback, seven
+pointer faults and process exit pass. Fresh JA/EN packed browser checks pass
+draft/target/receipt/history/restart and credential/referrer-free fictional
+Cloud handoff with two mock generations and zero external/page errors.
+The installed Worker/SDK/native six files exactly match the real4cd execution
+code; the new selector separately matches all40 saved complete compiled
+objects. These code bindings do not relabel mocked packed calls as inference.
+Private evidence: `portable-delivery-d09742f-20261101/results.json` and
+`packed-acceptance-d09742f-20261101/{result.json,commands.json,packed-model-code-binding.json}`.
+
+Current Hosted CI, useful user-fact/response quality, JSON termination,
+CPU stock completion, whole-capacity/ONNX/Research paths, physical devices,
+primary grants/signing/clean OS/current Linux and Auth/region/provider/
+production gates remain separate. Full objective completion is not claimed.
