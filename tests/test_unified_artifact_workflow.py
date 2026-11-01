@@ -4,6 +4,7 @@ import itertools
 import json
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -14,6 +15,17 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 JOBS = yaml.safe_load((ROOT / '.github/workflows/npm-beta-artifacts.yml').read_text())['jobs']
 CLOUD = JOBS['cloud']
+
+
+def test_unmerged_branch_trigger_is_limited_to_image_validation_changes():
+    workflow = yaml.safe_load((ROOT / '.github/workflows/npm-beta-artifacts.yml').read_text())
+    triggers = workflow.get('on', workflow.get(True))
+    assert 'workflow_dispatch' in triggers
+    assert triggers['push'] == {
+        'branches': ['codex/unified-app-integration'],
+        'paths': ['.github/workflows/npm-beta-artifacts.yml', 'deploy/cloud/Dockerfile',
+                  'deploy/cloud/Dockerfile.prebuilt', 'tests/test_unified_artifact_workflow.py'],
+    }
 
 
 def test_same_run_wasm_checks_and_pinned_build():
@@ -55,7 +67,7 @@ def test_same_run_wasm_checks_and_pinned_build():
     assert build.index('tar -xzf kyalulu-cloud.tar.gz -C context') < build.index('sha256sum -c SHA256SUMS') < build.index('docker build ')
     assert 'sha256sum -c kyalulu-cloud.tar.gz.sha256' in build
     assert 'docker build --file context/Dockerfile --tag "$CLOUD_IMAGE" context' in build
-    assert not any(word in '\n'.join(runs) for word in ('docker push', 'docker save', 'pnpm publish', 'npm publish'))
+    assert not any(word in '\n'.join(runs) for word in ('docker push', 'docker login', 'docker save', 'pnpm publish', 'npm publish'))
 
 
 def test_wasm_upload_carries_only_hashed_public_sdk_inputs():
@@ -138,7 +150,8 @@ def test_native_acceptance_retains_only_explicit_fictional_evidence():
 
 def test_container_sandbox_and_evidence_allowlist():
     runs = [step['run'] for step in CLOUD['steps'] if 'run' in step]
-    containers = [shlex.split(run.split("<<'PY'", 1)[0]) for run in runs if run.startswith('docker run ')]
+    containers = [shlex.split('docker run ' + run.split('docker run ', 1)[1])
+                  for run in runs if 'docker run ' in run and 'container_id=$(' not in run]
     default = next(step for step in CLOUD['steps'] if step.get('name') == 'Exercise the unmodified Cloud default command')
     script = default['run']
     containers.append(shlex.split(script.split('container_id=$(', 1)[1].split(')\n', 1)[0]))
@@ -147,19 +160,16 @@ def test_container_sandbox_and_evidence_allowlist():
         assert '--rm' in arguments and '--read-only' in arguments
         for option, value in {'--network': 'none', '--user': '10002:10002', '--cap-drop': 'ALL',
                               '--security-opt': 'no-new-privileges', '--pids-limit': '64',
-                              '--memory': '384m', '--cpus': '0.5',
+                              '--memory': '256m', '--cpus': '0.25',
                               '--tmpfs': '/tmp:rw,nosuid,nodev,mode=1777,size=256m'}.items():
             assert arguments[arguments.index(option) + 1] == value
-        mounts = [arguments[index + 1] for index, argument in enumerate(arguments) if argument == '--mount']
-        assert len(mounts) == (0 if index == 2 else 1)
-        assert all(mount.endswith(',readonly') for mount in mounts)
-        assert not any(option in arguments for option in ('-e', '--env-file', '--volume', '-v', '--publish', '-p', '--privileged', '--entrypoint'))
+        assert not any(option in arguments for option in ('-e', '--env-file', '--mount', '--volume', '-v', '--publish', '-p', '--privileged', '--entrypoint'))
         environment = dict(arguments[position + 1].split('=', 1) for position, argument in enumerate(arguments) if argument == '--env')
         assert environment == ({
             'KYALULU_CLOUD_MODE': '1', 'KYALULU_CLOUD_DATA_DIR': '/tmp/cloud',
             'KYALULU_CLOUD_BACKUP_DIR': '/tmp/backups',
             'KYALULU_CLOUD_ORIGIN': 'https://container.kyalulu.invalid',
-            'KYALULU_CLOUD_SECRET': 'FICTIONAL-DEFAULT-COMMAND-ONLY-0123456789',
+            'KYALULU_CLOUD_SECRET': '$cloud_test_secret',
             'KYALULU_UNIFIED_APP_ENABLED': '1', 'KYALULU_CLOUD_SIGNUP_LIMIT': '0',
             'KYALULU_CLOUD_TRIAL_CREDITS': '0', 'KYALULU_MONTHLY_SUBSIDY_JPY': '0',
         } if index == 2 else {})
@@ -169,16 +179,20 @@ def test_container_sandbox_and_evidence_allowlist():
     assert 'timeout 30s docker exec -i "$container_id" python -' in script
     assert 'trap cleanup EXIT' in script and 'docker rm --force "$container_id" > /dev/null' in script
     assert script.index('\ncleanup\n') < script.index("container_id=''\ntrap - EXIT") < script.index("report['default_command'] = True")
-    assert 'src=$PWD/tests/fixtures/unified-container.py,dst=/tmp/unified-container.py,readonly' in containers[1][containers[1].index('--mount') + 1]
+    assert '-i' in containers[0] and '-i' in containers[1]
+    assert containers[1][containers[1].index('$CLOUD_IMAGE') + 1:][:4] == ['python', '-', '<', 'tests/fixtures/unified-container.py']
+    assert "import secrets; print(secrets.token_hex(32))" in script
     upload, = (step for step in CLOUD['steps'] if step.get('uses') == 'actions/upload-artifact@v4')
     assert upload['with']['path'].splitlines() == [
-        '.artifacts/cloud-vps/image-id.txt', '.artifacts/cloud-vps/kyalulu-cloud.tar.gz',
+        '.artifacts/cloud-vps/image-id.txt',
         '.artifacts/cloud-vps/kyalulu-cloud.tar.gz.sha256',
+        '.artifacts/cloud-vps/image-check.json', '.artifacts/cloud-vps/fixture-check.json',
+        '.artifacts/cloud-vps/default-check.json',
         '.artifacts/cloud-vps/check-report.json']
 
 
-@pytest.mark.parametrize('case', ['ready', 'transport-failure', 'bad-status'])
-def test_default_command_health_probe_is_bounded_and_uses_container_loopback(monkeypatch, case):
+@pytest.mark.parametrize('case', ['ready', 'transport-failure', 'bad-status', 'device-tampered', 'device-policy'])
+def test_default_command_health_probe_is_bounded_and_uses_container_loopback(monkeypatch, tmp_path, capsys, case):
     import httpx
     import time
 
@@ -187,6 +201,10 @@ def test_default_command_health_probe_is_bounded_and_uses_container_loopback(mon
     ticks, requests = itertools.count(0, 10), []
     monkeypatch.setattr(time, 'monotonic', lambda: next(ticks))
     monkeypatch.setattr(time, 'sleep', lambda seconds: None)
+    device = tmp_path / 'device/index.html'
+    device.parent.mkdir()
+    device.write_bytes(b'fictional-device')
+    monkeypatch.setenv('KYALULU_WEB_DIST', str(tmp_path))
 
     class Client:
         def __init__(self, **options):
@@ -199,25 +217,33 @@ def test_default_command_health_probe_is_bounded_and_uses_container_loopback(mon
             pass
 
         def get(self, url):
-            assert url == 'http://127.0.0.1:8000/api/health'
+            assert url.startswith('http://127.0.0.1:8000/')
             requests.append(url)
+            if url.endswith('/device/'):
+                return httpx.Response(200, content=b'wrong' if case == 'device-tampered' else device.read_bytes(),
+                    headers={'cross-origin-opener-policy': 'same-origin',
+                             'cross-origin-embedder-policy': 'unsafe-none' if case == 'device-policy' else 'require-corp',
+                             'content-security-policy': "default-src 'self'", 'cache-control': 'no-transform'})
+            assert url.endswith('/api/health')
             if case == 'transport-failure' or len(requests) == 1:
                 raise httpx.ConnectError('Startup is not ready')
-            return SimpleNamespace(status_code=200 if case == 'ready' else 503)
+            return SimpleNamespace(status_code=503 if case == 'bad-status' else 200)
 
     monkeypatch.setattr(httpx, 'Client', Client)
     if case == 'ready':
         exec(compile(script, '<default-command-probe>', 'exec'))
+        assert json.loads(capsys.readouterr().out) == {
+            'ok': True, 'health': True, 'device_sha256': hashlib.sha256(device.read_bytes()).hexdigest()}
     else:
-        with pytest.raises(AssertionError, match='did not become healthy within 30 seconds'):
+        with pytest.raises(AssertionError, match='did not become healthy within 30 seconds' if case in ('transport-failure', 'bad-status') else None):
             exec(compile(script, '<default-command-probe>', 'exec'))
-    assert len(requests) == 2
+    assert len(requests) == (2 if case in ('transport-failure', 'bad-status') else 3)
 
 
-@pytest.mark.parametrize('case', ['valid', 'tampered', 'missing', 'escape', 'empty'])
+@pytest.mark.parametrize('case', ['valid', 'tampered', 'missing', 'escape', 'empty', 'extra', 'duplicate', 'bad-digest', 'missing-scenarios'])
 def test_image_manifest_verifier_executes_and_fails_closed(tmp_path, case):
     run = next(step['run'] for step in CLOUD['steps'] if step.get('name') == 'Verify copied image files against the context manifest')
-    script = run.split("<<'PY'", 1)[1].split('\n', 1)[1].rsplit('\nPY', 1)[0]
+    script = run.split("<<'PY'", 1)[1].split('\n', 1)[1].split('\nPY', 1)[0]
     dockerfile = (ROOT / 'deploy/cloud/Dockerfile.prebuilt').read_text()
     names = []
     for line in dockerfile.splitlines():
@@ -232,8 +258,8 @@ def test_image_manifest_verifier_executes_and_fails_closed(tmp_path, case):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(name.encode())
         lines.append(f'{hashlib.sha256(path.read_bytes()).hexdigest()}  {name}')
-    # These context-only files deliberately do not exist in the image.
-    lines.extend(f'{"0" * 64}  {name}' for name in ('scenarios/absent.yaml', 'Dockerfile', 'requirements.txt'))
+    # These context-only files deliberately do not exist under /srv in the image.
+    lines.extend(f'{"0" * 64}  {name}' for name in ('Dockerfile', 'requirements.txt'))
     if case == 'tampered':
         (tmp_path / 'runtime/python/fixture.txt').write_bytes(b'tampered')
     elif case == 'missing':
@@ -242,11 +268,86 @@ def test_image_manifest_verifier_executes_and_fails_closed(tmp_path, case):
         lines.append(f'{"0" * 64}  runtime/python/../../../outside')
     elif case == 'empty':
         lines = []
+    elif case == 'extra':
+        (tmp_path / 'web/unexpected.txt').write_text('not in manifest')
+    elif case == 'duplicate':
+        lines.append(lines[0])
+    elif case == 'bad-digest':
+        lines[0] = 'wrong  ' + names[0]
+    # Exercise the real official-scenario loader against the COPY fixture too.
+    shutil.copytree(ROOT / 'runtime/python', tmp_path / 'runtime/python', dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns('__pycache__'))
+    for directory in ('characters', 'scenarios'):
+        shutil.copytree(ROOT / directory, tmp_path / directory, dirs_exist_ok=True)
+    if case == 'missing-scenarios':
+        shutil.rmtree(tmp_path / 'scenarios')
+    else:
+        # Include real scenario/character/runtime files in the fixture manifest.
+        lines.extend(f'{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.relative_to(tmp_path).as_posix()}'
+                     for directory in ('runtime/python', 'characters', 'scenarios')
+                     for path in (tmp_path / directory).rglob('*') if path.is_file() and path.relative_to(tmp_path).as_posix() not in names)
     manifest.write_text('\n'.join(lines))
-    result = subprocess.run([sys.executable, '-', str(manifest)], input=script, text=True,
+    import os
+    result = subprocess.run([sys.executable, '-c', script], input=manifest.read_text(), text=True,
+                            env={**os.environ, 'PYTHONPATH': str(tmp_path / 'runtime'), 'PYTHONDONTWRITEBYTECODE': '1'},
                             cwd=tmp_path, capture_output=True)
     if case == 'valid':
         assert result.returncode == 0, result.stderr
-        assert json.loads(result.stdout) == {'ok': True, 'checked_files': len(names)}
+        report = json.loads(result.stdout)
+        assert report['ok'] and report['checked_files'] == len(lines) - 2
+        assert report['manifest_sha256'] == hashlib.sha256(manifest.read_bytes()).hexdigest()
+        assert report['official_scenarios'] == 3
     else:
         assert result.returncode != 0 and not result.stdout, result.stderr
+
+
+@pytest.mark.parametrize('dockerfile', ['Dockerfile', 'Dockerfile.prebuilt'])
+def test_image_copies_support_official_scenario_loading(tmp_path, monkeypatch, dockerfile):
+    from python.core import experiment, prompt_compiler
+
+    # Emulate the actual data COPYs, then use the runtime loader, not a text assertion.
+    for line in (ROOT / 'deploy/cloud' / dockerfile).read_text().splitlines():
+        if line.startswith('COPY ') and line.split()[1] in ('characters', 'scenarios'):
+            _, source, destination = line.split()
+            shutil.copytree(ROOT / source, tmp_path / destination)
+    monkeypatch.setattr(experiment, 'SCENARIOS_DIR', tmp_path / 'scenarios')
+    monkeypatch.setattr(prompt_compiler, 'CHAR_DIR', tmp_path / 'characters')
+    assert len(experiment.OFFICIAL_SCENARIOS) == 3
+    for name, character in experiment.OFFICIAL_SCENARIOS.items():
+        scenario = experiment.load_scenario(name)
+        assert scenario.character == character and len(scenario.turns) == 20
+        assert experiment.is_official_scenario(scenario)
+
+
+@pytest.mark.parametrize('fault', ['valid', 'manifest', 'device', 'source', 'fixture'])
+def test_report_binds_image_fixture_and_default_command_to_the_same_code(tmp_path, monkeypatch, fault):
+    run = next(step['run'] for step in CLOUD['steps'] if step.get('name') == 'Exercise the unmodified Cloud default command')
+    script = run.split("<<'PY'", 2)[2].split('\n', 1)[1].split('\nPY', 1)[0]
+    root = tmp_path / '.artifacts/cloud-vps'
+    (root / 'context').mkdir(parents=True)
+    (root / 'context/SHA256SUMS').write_bytes(b'fictional manifest')
+    reports = {
+        'image': {'ok': True, 'manifest_sha256': hashlib.sha256(b'fictional manifest').hexdigest(),
+                  'files_sha256': {'web/device/index.html': 'device', 'kyalulu-source.tar.gz': 'source'}},
+        'fixture': {'ok': fault != 'fixture', 'source_sha256': 'wrong' if fault == 'source' else 'source'},
+        'default': {'ok': True, 'device_sha256': 'wrong' if fault == 'device' else 'device'},
+    }
+    if fault == 'manifest':
+        (root / 'context/SHA256SUMS').write_bytes(b'changed manifest')
+    for name, report in reports.items():
+        (root / f'{name}-check.json').write_text(json.dumps(report))
+    for name in ('.github/workflows/npm-beta-artifacts.yml', 'deploy/cloud/Dockerfile.prebuilt', 'tests/fixtures/unified-container.py'):
+        target = tmp_path / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b'fictional code')
+    monkeypatch.chdir(tmp_path)
+    if fault == 'valid':
+        exec(compile(script, '<cloud-check-report>', 'exec'))
+        report = json.loads((root / 'check-report.json').read_text())
+        assert report['default_command'] is True
+        assert len(report['code_sha256']) == 3
+        assert set(report['code_sha256'].values()) == {hashlib.sha256(b'fictional code').hexdigest()}
+    else:
+        with pytest.raises(AssertionError):
+            exec(compile(script, '<cloud-check-report>', 'exec'))
+        assert not (root / 'check-report.json').exists()

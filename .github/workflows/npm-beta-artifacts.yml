@@ -1,6 +1,13 @@
 name: npm local beta artifacts (no publication)
 on:
   workflow_dispatch:
+  push:
+    branches: [codex/unified-app-integration]
+    paths:
+      - .github/workflows/npm-beta-artifacts.yml
+      - deploy/cloud/Dockerfile
+      - deploy/cloud/Dockerfile.prebuilt
+      - tests/test_unified_artifact_workflow.py
 permissions:
   contents: read
 jobs:
@@ -227,42 +234,63 @@ jobs:
           docker image inspect --format '{{.Id}}' "$CLOUD_IMAGE" > image-id.txt
       - name: Verify copied image files against the context manifest
         run: |
+          verifier=$(cat <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path, PurePosixPath
+          import re
+          import sys
+          root = Path.cwd().resolve()
+          directories = ('runtime/python/', 'web/', 'characters/', 'personas/', 'worlds/', 'prompts/', 'scenarios/')
+          files = {'scripts/cloud_admin.py', 'LICENSE', 'kyalulu-source.tar.gz'}
+          # /tmp/requirements.txt is hidden by tmpfs; the build verifies its context hash and uv hashes.
+          manifest = sys.stdin.buffer.read()
+          expected = {}
+          names = set()
+          for line in manifest.decode('ascii').splitlines():
+              digest, name = line.split('  ', 1)
+              path = PurePosixPath(name)
+              assert re.fullmatch('[a-f0-9]{64}', digest), name
+              assert not path.is_absolute() and '..' not in path.parts and path.as_posix() == name, name
+              assert '\\' not in name and name not in names, name
+              names.add(name)
+              if name.startswith(directories) or name in files:
+                  expected[name] = digest
+          assert files <= expected.keys()
+          assert all(any(name.startswith(prefix) for name in expected) for prefix in directories)
+          actual = set()
+          for prefix in directories:
+              for path in (root / prefix).rglob('*'):
+                  assert not path.is_symlink(), path
+                  if path.is_file():
+                      actual.add(path.relative_to(root).as_posix())
+          assert actual == {name for name in expected if name.startswith(directories)}, 'Image file set differs'
+          for name, digest in expected.items():
+              source = root / name
+              assert source.resolve().is_relative_to(root), name
+              assert not any(path.is_symlink() for path in (source, *source.parents)), name
+              with source.open('rb') as stream:
+                  assert hashlib.file_digest(stream, 'sha256').hexdigest() == digest, name
+          from python.core.experiment import OFFICIAL_SCENARIOS, is_official_scenario, load_scenario
+          assert len(OFFICIAL_SCENARIOS) == 3
+          assert all(is_official_scenario(load_scenario(name)) for name in OFFICIAL_SCENARIOS)
+          print(json.dumps({'ok': True, 'checked_files': len(expected), 'files_sha256': expected,
+              'manifest_sha256': hashlib.sha256(manifest).hexdigest(), 'official_scenarios': len(OFFICIAL_SCENARIOS)}))
+          PY
+          )
           docker run --rm -i --network none --read-only --user 10002:10002 \
             --cap-drop ALL --security-opt no-new-privileges \
             --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=256m \
-            --pids-limit 64 --memory 384m --cpus 0.5 \
-            --mount "type=bind,src=$PWD/.artifacts/cloud-vps/context/SHA256SUMS,dst=/tmp/context-SHA256SUMS,readonly" \
-            "$CLOUD_IMAGE" python - /tmp/context-SHA256SUMS <<'PY' > .artifacts/cloud-vps/image-check.json
-          import hashlib
-          import json
-          from pathlib import Path
-          import sys
-          root = Path.cwd().resolve()
-          directories = ('runtime/python/', 'web/', 'characters/', 'personas/', 'worlds/', 'prompts/')
-          files = {'scripts/cloud_admin.py', 'LICENSE', 'kyalulu-source.tar.gz'}
-          checked = []
-          # scenarios/ is bundled for source delivery but is not copied by Dockerfile.prebuilt.
-          for line in Path(sys.argv[1]).read_text().splitlines():
-              digest, name = line.split('  ', 1)
-              if not (name.startswith(directories) or name in files):
-                  continue
-              source = root / name
-              assert source.resolve().is_relative_to(root) and not source.is_symlink(), name
-              with source.open('rb') as stream:
-                  assert hashlib.file_digest(stream, 'sha256').hexdigest() == digest, name
-              checked.append(name)
-          assert all(any(name.startswith(prefix) for name in checked) for prefix in directories)
-          assert files <= set(checked)
-          print(json.dumps({'ok': True, 'checked_files': len(checked)}))
-          PY
+            --pids-limit 64 --memory 256m --cpus 0.25 \
+            "$CLOUD_IMAGE" python -c "$verifier" < .artifacts/cloud-vps/context/SHA256SUMS \
+            > .artifacts/cloud-vps/image-check.json
       - name: Exercise the isolated Cloud image fixture
         run: |
-          docker run --rm --network none --read-only --user 10002:10002 \
+          docker run --rm -i --network none --read-only --user 10002:10002 \
             --cap-drop ALL --security-opt no-new-privileges \
             --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=256m \
-            --pids-limit 64 --memory 384m --cpus 0.5 \
-            --mount "type=bind,src=$PWD/tests/fixtures/unified-container.py,dst=/tmp/unified-container.py,readonly" \
-            "$CLOUD_IMAGE" python /tmp/unified-container.py > .artifacts/cloud-vps/fixture-check.json
+            --pids-limit 64 --memory 256m --cpus 0.25 \
+            "$CLOUD_IMAGE" python - < tests/fixtures/unified-container.py > .artifacts/cloud-vps/fixture-check.json
       - name: Exercise the unmodified Cloud default command
         shell: bash
         run: |
@@ -273,21 +301,26 @@ jobs:
             fi
           }
           trap cleanup EXIT
+          cloud_test_secret=$(python -c 'import secrets; print(secrets.token_hex(32))')
           container_id=$(docker run --detach --rm --network none --read-only --user 10002:10002 \
             --cap-drop ALL --security-opt no-new-privileges \
             --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=256m \
-            --pids-limit 64 --memory 384m --cpus 0.5 \
+            --pids-limit 64 --memory 256m --cpus 0.25 \
             --env KYALULU_CLOUD_MODE=1 \
             --env KYALULU_CLOUD_DATA_DIR=/tmp/cloud \
             --env KYALULU_CLOUD_BACKUP_DIR=/tmp/backups \
             --env KYALULU_CLOUD_ORIGIN=https://container.kyalulu.invalid \
-            --env KYALULU_CLOUD_SECRET=FICTIONAL-DEFAULT-COMMAND-ONLY-0123456789 \
+            --env "KYALULU_CLOUD_SECRET=$cloud_test_secret" \
             --env KYALULU_UNIFIED_APP_ENABLED=1 \
             --env KYALULU_CLOUD_SIGNUP_LIMIT=0 \
             --env KYALULU_CLOUD_TRIAL_CREDITS=0 \
             --env KYALULU_MONTHLY_SUBSIDY_JPY=0 \
             "$CLOUD_IMAGE")
-          timeout 30s docker exec -i "$container_id" python - <<'PY'
+          timeout 30s docker exec -i "$container_id" python - <<'PY' > .artifacts/cloud-vps/default-check.json
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
           import time
           import httpx
           deadline = time.monotonic() + 29
@@ -301,16 +334,30 @@ jobs:
                   time.sleep(0.25)
               else:
                   raise AssertionError('Default Uvicorn command did not become healthy within 30 seconds')
+              response = client.get('http://127.0.0.1:8000/device/')
+              expected = (Path(os.environ['KYALULU_WEB_DIST']) / 'device/index.html').read_bytes()
+              assert response.status_code == 200 and response.content == expected
+              assert response.headers['cross-origin-opener-policy'] == 'same-origin'
+              assert response.headers['cross-origin-embedder-policy'] == 'require-corp'
+              assert len(response.headers.get_list('content-security-policy')) == 1
+              assert 'no-transform' in response.headers['cache-control']
+          print(json.dumps({'ok': True, 'health': True, 'device_sha256': hashlib.sha256(expected).hexdigest()}))
           PY
           cleanup
           container_id=''
           trap - EXIT
           uv run --no-sync python - <<'PY'
+          import hashlib
           import json
           from pathlib import Path
           root = Path('.artifacts/cloud-vps')
-          report = {name: json.loads((root / f'{name}-check.json').read_text()) for name in ('image', 'fixture')}
+          report = {name: json.loads((root / f'{name}-check.json').read_text()) for name in ('image', 'fixture', 'default')}
           assert all(result['ok'] for result in report.values())
+          assert report['image']['manifest_sha256'] == hashlib.sha256((root / 'context/SHA256SUMS').read_bytes()).hexdigest()
+          assert report['image']['files_sha256']['web/device/index.html'] == report['default']['device_sha256']
+          assert report['image']['files_sha256']['kyalulu-source.tar.gz'] == report['fixture']['source_sha256']
+          report['code_sha256'] = {name: hashlib.sha256(Path(name).read_bytes()).hexdigest() for name in (
+              '.github/workflows/npm-beta-artifacts.yml', 'deploy/cloud/Dockerfile.prebuilt', 'tests/fixtures/unified-container.py')}
           report['default_command'] = True
           (root / 'check-report.json').write_text(json.dumps(report, indent=2) + '\n')
           PY
@@ -320,6 +367,8 @@ jobs:
           name: cloud-image-checks
           path: |
             .artifacts/cloud-vps/image-id.txt
-            .artifacts/cloud-vps/kyalulu-cloud.tar.gz
             .artifacts/cloud-vps/kyalulu-cloud.tar.gz.sha256
+            .artifacts/cloud-vps/image-check.json
+            .artifacts/cloud-vps/fixture-check.json
+            .artifacts/cloud-vps/default-check.json
             .artifacts/cloud-vps/check-report.json
