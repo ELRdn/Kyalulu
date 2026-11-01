@@ -55,6 +55,32 @@ async def test_rp_thought_contract_and_visible_reply_for_both_prompt_paths(porta
     assert result['attempts'][0]['messages'][-1]['content'] == '*（まだ帰りたくない）*'
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('portable', [False, True])
+async def test_memory_instruction_matches_current_utterance_grounding(portable):
+    from pathlib import Path
+    from python.core.memory import MemoryProposal, validate_proposals
+    from python.core.portable_prompt import compile_portable
+    from python.core.portable_schema import PortableDocument
+    fixture = json.loads((Path(__file__).parent / 'fixtures/unified-memory-provenance.json').read_text(encoding='utf-8'))
+    compiled = (compile_portable({'document': PortableDocument(name='アキ').model_dump()})
+                if portable else CompiledPrompt(system_prompt='character'))
+    statement = '紅茶が好きです。砂糖は入れません。'
+    output = {**VALID, 'memory_proposals': [{'type': 'semantic', 'content': statement, 'source_kind': 'user_statement'}]}
+    events = [e async for e in generate_events(Fake([json.dumps(output, ensure_ascii=False)]), model='test',
+        messages=[{'role': 'user', 'content': '古い話題'}, {'role': 'assistant', 'content': '架空の過去'},
+                  {'role': 'user', 'content': statement}],
+        compiled=compiled, state=RuntimeState(), requested={}, memory={'block': '', 'trace': {}})]
+    result = events[-1]['result']
+    assert result['status'] == 'completed'
+    messages = result['attempts'][0]['messages']
+    assert fixture['user_proposal_instruction'] in messages[0]['content']
+    assert messages[-1] == {'role': 'user', 'content': statement}
+    proposals = [MemoryProposal.model_validate(p) for p in result['memory']['proposals']]
+    assert validate_proposals(proposals, [], statement)[0]['supported'] is True
+    assert validate_proposals(proposals, [], '古い話題')[0]['supported'] is False
+
+
 @pytest.mark.parametrize("ascii_only", [True, False])
 def test_reply_prefix_all_chunk_boundaries(ascii_only):
     raw = json.dumps(VALID, ensure_ascii=ascii_only)

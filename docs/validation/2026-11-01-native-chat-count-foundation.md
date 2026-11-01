@@ -777,3 +777,41 @@ current-head aggregate success is claimed. Supabase remains user-authenticated,
 but CUA still fails kernel initialization and desktop fallback returns
 USER_CONTROL. Site/Redirect values are unread and settings untouched. Draft PR,
 region/provider and production holds remain unchanged.
+
+## Align memory instructions with complete-utterance validation
+
+The retained real-model sample has no supported new user fact. Comparing the
+current model instructions with the unchanged validator finds a concrete
+contract mismatch: Python asks for short memories and Device only says not to
+invent facts, while both validators require the complete current user utterance
+with whitespace collapse only. Device and Python now explicitly request the
+complete current user message verbatim, reject summarization/translation/
+fragments in the instruction, and ask for omission when it exceeds the existing
+200-character content limit. Empty proposals remain allowed. No validator,
+schema, existing memory, authored prompt, model or sampler is changed.
+
+The shared provenance fixture supplies the exact instruction to generation-path
+tests. Both old Python prompt paths and the Device path reproduce its absence
+before correction. The Python test also retains previous conversation turns
+and verifies an exact proposal against the current utterance and rejects it
+against an older one. Existing provenance/negation/paraphrase quarantine remains.
+
+The complete Device contract no longer passes the byte-only conservative
+estimate in the stock shared-memory regression. That test now explicitly checks
+this overflow and the native-admission route while retaining the full character,
+memory labels, response shape and merged repeated-user input. It is a mocked
+transport test, not proof of actual native fit. A fresh fixed-source build and
+actual native count are required; prior b886/4cd execution does not prove the
+new prompt fits. The earlier useful-memory and JSON failures remain valid, and
+neither instruction correctness nor synthetic output establishes quality.
+
+Working-source validation before the final explicit200-character wording passes
+all1,929 Web tests/103 files, typecheck and102 Python generation/memory/provenance
+tests. The final wording and source-archive/fingerprint checks are tracked in
+private `memory-proposal-contract-20261101/`; immutable build, actual native
+fit and current package acceptance remain separate. Original root-level Vitest
+invocation searched artifact copies unintentionally, so its exact owned process
+was stopped and its lack of remaining children verified. Validation runs use
+`apps/web` as cwd. A missing parent temporary directory caused a Python setup
+failure; after creating the private artifact directory the unchanged102 tests
+pass. No failed attempt is counted as success.

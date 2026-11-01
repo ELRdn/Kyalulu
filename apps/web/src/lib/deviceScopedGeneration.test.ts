@@ -27,12 +27,13 @@ import { scopedSessionMemory,saveScopedMemory } from './deviceScopedMemory';
 import { memoryIdentity } from './deviceMemoryScopes';
 import { readDeviceMemoryDomain } from './deviceMemoryStore';
 import { receiveConversation } from './appSyncData';
-import { conservativeTokens,mergeTurns } from '../mobile/context';
+import { conservativeTokens,mergeTurns,planGGUFContext } from '../mobile/context';
 import { readGenerationReceipt } from './deviceGenerationStore';
 import { CONTEXT_TOKENS,OUTPUT_TOKENS } from '../mobile/types';
 import { refreshSummaries,estimateTokens } from './deviceCore';
 import * as memoryStore from './deviceMemoryStore';
 import catalog from '../mobile/app-catalog.generated.json';
+import provenance from '../../../../tests/fixtures/unified-memory-provenance.json';
 
 beforeEach(()=>{
   fixture.paused=undefined;fixture.signal=undefined;fixture.stop.mockClear();
@@ -227,13 +228,18 @@ it('stores a fresh source after explicit new evidence matches a previously forgo
   expect(rows.find((row:any)=>row.source_generation_id==='new-evidence')).toMatchObject({status:'active',source_session_id:'b',source_message_ids:[101]});
 });
 
-it('preserves the default character, shared fact and JSON contract with a mocked runtime (not native count proof)',async()=>{
+it('preserves the default character and exact-quote contract for native admission (mocked runtime, not native count proof)',async()=>{
   const a=source('a',31),b=source('b',71);delete a.payload.settings.world_id;delete b.payload.settings.world_id;b.payload.memories=[];
   await seed(a);await seed(b);fixture.meta.set('message-sequence:'+fixture.owner,100);
   expect((await turn('b','budget')).text).toContain('event: done');
-  expect(conservativeTokens(mergeTurns(fixture.inputs[0]))).toBeLessThanOrEqual(CONTEXT_TOKENS-OUTPUT_TOKENS);
+  // The byte heuristic cannot admit this complete contract; actual native counting must decide.
+  expect(conservativeTokens(mergeTurns(fixture.inputs[0]))).toBeGreaterThan(CONTEXT_TOKENS-OUTPUT_TOKENS);
+  const plan=planGGUFContext(fixture.inputs[0]);expect(plan.legacy).toBeNull();
+  expect(plan.mandatory).toContainEqual(plan.runs[plan.newestUserRun]);
+  expect(plan.turns[plan.runs[plan.newestUserRun].start]).toMatchObject({role:'user',content:'鮭のお寿司が好きです\n\n鮭のお寿司が好きです'});
   const system=fixture.inputs[0].filter((message:any)=>message.role==='system').map((message:any)=>message.content).join('\n');
   expect(system).toContain('relationship_state');expect(system).toContain('Never invent user facts');expect(system).not.toContain('state_version');
+  expect(system).toContain(provenance.user_proposal_instruction);
   expect(system).toContain('Story events are fiction, not user facts');expect(system).toContain('source: user_statement');
 });
 

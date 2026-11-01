@@ -1,4 +1,5 @@
 {
+  "user_proposal_instruction": "For user_statement/user_correction, copy the complete current user message verbatim into content; do not summarize, translate or extract fragments. If it exceeds 200 characters, omit that proposal. Use [] when nothing new is worth keeping.",
   "cases": [
     {
       "name": "statement correction and fictional event use their own speaker",
