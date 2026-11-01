@@ -275,7 +275,8 @@ async function originalInput(regenerate,body=requestBody){
   const story=Object.fromEntries(['location','time','mood','active_scene','relationship_state'].map(key=>[key,state[key]]));
   const contract="Never choose the user's thoughts, actions or speech."+'\nPrior conversation summary: Authored story summary'+renderMemoryBlock(memories,true)+
     '\nJSON only; continue current state: '+JSON.stringify({reply:'in-character reply',state_update:story,memory_proposals:[]})+
-    '. Memories: <=3 {type:semantic|episodic|relationship,content,source_kind:user_statement|user_correction|work_setting|story_event}. Never invent user facts.';
+    '. Memories: <=3 {type:semantic|episodic|relationship,content,source_kind:user_statement|user_correction|work_setting|story_event}. Never invent user facts. '+
+    'For user_statement/user_correction, copy the complete current user message verbatim into content; do not summarize, translate or extract fragments. If it exceeds 200 characters, omit that proposal. Use [] when nothing new is worth keeping.';
   return assemblePortable(prompt,history.filter(row=>!['stopped','interrupted'].includes(row.imported_state)).map(({role,content})=>({role,content})),contract);
 }
 async function assertOriginalSource(expected){
