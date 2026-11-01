@@ -896,3 +896,76 @@ and [run41277630503](https://github.com/ELRdn/Kyalulu/actions/runs/41277630503)
 are now successful. a89 and e31 runs remain in progress at the latest check;
 current-head aggregate success is not inferred. Draft and production holds
 remain in effect.
+
+## Follow-up source, UI and hosted image validation
+
+Runtime sync now passes the selected language to unnamed conversation labels;
+JA/EN switching preserves authored names, selection state and request counts.
+The related27 UI tests pass. The fixed23b8e2b Cloud candidate is67,214,762 bytes,
+SHA-256 `a08534deb7e4c88023375b36921bdd5fe0d8557cdd4c72607e73b05bfeb5ca33`.
+Its typecheck/unified build, source59 tests and unmodified Windows ASGI9 checks
+pass. That probe skips the three Linux-only UID/network/rootfs checks; no image
+acceptance is inferred. The candidate predates the following fixes.
+
+Hosted e31 [run41281267568](https://github.com/ELRdn/Kyalulu/actions/runs/41281267568)
+fails both OSes in the generation matrix because its independent reference
+contract omits the new current-user memory instruction. Local reproduction
+finds the same first difference at758. Commit7e012bc adds that complete
+instruction to the reference; it changes no product code, comparison, original
+history/window policy,100-poll guard or600-second deadline. All84 actual
+Chromium generation/fault/restart cases plus mocked overflow/rescue pass with
+317 input hashes unchanged, no external/page errors and owned cleanup. The
+read-only fixed SDK's61 files also remain unchanged. Earlier private runner
+setup failures are retained, not counted as the reproduced product-test failure.
+The same hosted e31 run separately passes full Python: Ubuntu1,500 plus7
+subtests/4 skips, Windows1,503 plus7 subtests/1 skip. These passing steps do not
+make the whole run successful.
+
+The canonical fingerprint includes all public `deploy/cloud` inputs, but the
+shared source collector omitted `VPS.md`. Commit2e81c93 adds that single public
+runbook without changing the fingerprint algorithm or private-path exclusions.
+A fixed23b export plus the two explicit correction files now reproduces its
+complete583-input fingerprint from offered source; this replaces the earlier
+overlap-only observation. Related67 tests and one final regression pass. The
+older e31/23b source archives retain that documentation omission and are not
+retroactively marked corrected. Private evidence:
+`source-fingerprint-vps-20261101/{results.json,final-result.json}` and
+`generation-contract-ci-20261101/{before-04/result.json,after/result.json,after/cleanup.json}`.
+
+Both Cloud Dockerfiles also omitted the official scenario directory. Commit
+1a0cb08 copies it and verifies the real three-scenario loader as well as the
+complete image file set/content hashes. The existing hosted workflow now sends
+the unchanged image fixture over stdin, uses network none/read-only/no host
+binds or published ports,256MiB/0.25CPU/pids64 and only fictional tmpfs data.
+The default Uvicorn command is checked through container loopback health/device
+bytes and isolation headers. Reports bind manifest/source/device/code hashes;
+Cloud uploads contain only JSON/hash evidence. Combined final workflow/source/
+SDK regression tests pass95 cases, after correcting an initial missing parent
+temporary-directory setup. Bash syntax checks pass. The current actual run is
+[41286381032](https://github.com/ELRdn/Kyalulu/actions/runs/41286381032), pinned to
+1a0cb08c42f6f5228b107c12b00f348b5708d4c4. Its wasm job is live at verification;
+Native/macOS/Cloud image results remain pending. No duplicate dispatch, signing,
+image push, publication, production change or merge is performed.
+
+## Rejected full-tree restoration experiments
+
+Two private variants retain the original exact-size generator, complete decoded
+tree and full physical/body hashes. Neither becomes product code. Per-part
+readonly transactions restore250MB correctly but peak at2,384,379,904 sampled
+WS bytes, failing the unchanged below2GiB gate for a1GB run.16KiB decoder feeds
+pass that gate;1GB saves and verifies all954 physical parts, then restoration
+hits the4GiB Job budget (peak commit4,295,708,672 bytes, sampled WS4,255,903,744).
+No complete1GB restored-body result exists. The480-second/4GiB/2GiB system-floor
+conditions, dataset and gates are unchanged, with no forced GC or missing
+samples. Exact helpers/fixtures and fixed e31 product inputs remain unchanged;
+all owned browser/server processes exit. The four watchdog tests pass in each
+small self-check. Private evidence: `full-restore-transactions-20261101/audit-summary.json`.
+This rejects two hypotheses, not a product-size limit or a claim that corrupted
+data caused the failure. Whole UI/ONNX/Research/aggregate capacity remains open.
+
+Local Docker Desktop normal startup also ends with context deadline exceeded;
+no engine version/image is observed. Stalled owned read-query CLIs are stopped
+after exact identity checks; Desktop/backend are not force-reset. Hosted Linux
+validation is used instead. ConoHa's supplied server-detail URL is retained, but
+the browser kernel failure and desktop USER_CONTROL still prevent reading its
+connection details. No ConoHa setting or authentication is changed.

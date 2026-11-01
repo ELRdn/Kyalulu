@@ -53,6 +53,11 @@ Web全1,928/103file・型検査・source45件、317入力不変の実Chromium84�
 固定e31df3cの型・統合build・Web全1,929件とPython関連147件が成功。同版の実Librarianは新指示を欠落なく渡し、必須入力のnative計数290/306/318、通常完了2＋停止1、72項目と再起動後receipt3件一致を確認。モデル3,125,578,496 bytes・source/build/native不変。Librarianのbyte概算自体は閾値未満で、概算超過するMocha/shared-memory経路や記憶品質の合格とは分ける。
 別の実count-onlyで、固定試験と同じMocha/共有記憶/反復userの完全入力は概算1,998に対してnative401と確認。1,792枠内で、計数直後の停止により履歴window・生成context・deltaはいずれも0、原本/モデル不変。これは必須入力の収容証拠で、Mocha応答・記憶品質の合格ではない。
 固定e31df3cのNative/Cloud配布候補も更新し、同一対応source1,123件と全変更119path、Native9,055/Cloud236 memberを照合。対応source30件（架空Git改行試験を含む）・関連UI146件・実梱包CLI復元/rollbackと日英UI再起動が成功。親側でも2配布物のsize/SHA-256を独立照合した。推論はこの梱包確認では架空で、SDK/native/依存/CPythonはhash確認済み再利用。署名・最終license・現行Linux・実機・本番条件は残る。
+後続23b8e2bでRuntime同期一覧の未命名会話に表示言語を渡し、英語のFree chatと著者名/選択/通信不変を関連27件で確認。固定Cloud候補67,214,762 bytesとWindows ASGI9件も成功したが、以降のfixture/収集/Docker修正を含まない。
+e31のHosted生成試験は、新指示を欠いた独立期待promptで両OSとも失敗。7e012bcで期待する指示全文を補い、原本/保存/出典の比較・期限を保った実Chromium84＋mock超過/救済が成功。CI全体の成功とは分ける。
+提供sourceに公開VPS文書がなくcanonical指紋を再現できない欠落も確認し、2e81c93で共通収集を修正。固定23b＋修正2fileの583入力完全一致、関連67＋単体1件と、最終CI/Dockerを合わせた95件の回帰が成功。旧e31/23b提供sourceの欠落を修正済みと遡及して扱わない。
+1a0cb08で両Dockerfileの公式研究scenarioコピー漏れとLinux検証を修正。既存WASM/Native/Cloud workflowのrun41286381032が進行中。同一runの成果物を使い、無network/read-only/架空DB・manifest全file集合/hash・既定Uvicornのhealth/deviceを検証する。実imageの合格は未確認。
+全文復元の私的2案も検証。tx分割は250MB復元peak WS2,384,379,904で1GB gateを満たさず、16KiB復号案は1GB全954part照合後にJob commit4,295,708,672で停止。安全予算・入力を変えず両案不採用とし、製品の保存コードは変更していない。
 
 | 必須範囲 | 現時点 | 完了を証明するもの |
 |---|---|---|
@@ -80,7 +85,7 @@ Web全1,928/103file・型検査・source45件、317入力不変の実Chromium84�
 | 固定公開snapshot、区分/審査、不明保留、人手/通報/非表示/異議申立て | 固定hash・審査revision、人手確認、公開API、地域/成人/ブロックの先行制限、日英画面と通報→非表示→異議→再承認をASGI/Chromiumで検証。旧Communityは封鎖し元DB保持 | 自動分類・公開媒体adapter、運用規模/旧データ移行、実OAuth/実機/本番の証拠 |
 | 日本の個人事業/未成年/成人AI/投稿/地域への提供元適合 | 外部条件未確定 | 本人の契約・適合確認。代理申込みや購入は行わない |
 | 日英の全画面、アクセシビリティ、日本語IME | Cloud設定/旧同期、記憶・出典・検査・要約訂正、共通エラー、モデル開示/見積同意/公式推論要約、プリセット/Lorebook/表情、研究の実行・比較・採点・検査・ランキング、長ターン比較実験の条件・状態・結果表、会話開始・初回案内・入力/待機・モデル準備・既知mood/日時・共通ナビ・探索/検索・Hub表示を日英対応。393/1280pxの実端末DB操作と同意の撤回、架空Runtimeでの研究下書き・比較条件の保持をChromiumで確認。他にJA中心の画面・提供元の生文が残る | 対象画面一覧を埋めた日英・幅・テーマ・IME確認 |
-| 配布物、対応ソース、移行/復旧手順、接続待ち一覧 | 固定e31df3cのNative/統合Cloudを新規UI buildから梱包。Native9,055/Cloud236 member・同一対応source1,123件・全変更119path、SDK25入力/56出力・WASM4点・license/precacheを照合。SDK/native/依存/Python3.13.7はhash確認済みの再利用。対応source30・関連UI146件、実梱包CLIの架空復元/rollback・pointer故障7件・PID終了、日英下書き/履歴再起動を確認。親側でも配布物2件のsize/hashを照合。実モデル証拠は別の同版固定buildであり梱包確認の推論は架空 | 現行Linux image・署名・最終license審査（3 grant未確認）・clean OS/初回公開取得・macOS・実機・実容量・返信/記憶品質・本番復旧/切替の受入れは残る。旧Linux/macOS証拠を現行版へ流用しない |
+| 配布物、対応ソース、移行/復旧手順、接続待ち一覧 | e31のNative/Cloudと後続23bのCloudに固定梱包・source照合・CLI/日英UI証拠を保持。旧提供sourceのVPS文書欠落は2e81c93で修正し、583入力の完全指紋一致を確認。新しい1a0cb08のWASM/Native/隔離Cloud imageは同一run41286381032で進行中。旧梱包の成功を新修正の証拠へ流用しない | 現行CI結果・Linux image・署名・最終license審査（3 grant未確認）・clean OS/初回公開取得・macOS・実機・実容量・返信/記憶品質・本番復旧/切替の受入れは残る |
 | Android/iPhone実機20ターン、ロック復帰、回線切替 | 未実施 | 実機に基づく個別証拠。PCブラウザで代用しない |
 | 本番反映、残高/台帳/予算維持、旧環境への復旧 | 未実施 | バックアップの隔離復元、反映前後照合、実配信hashと正常性 |
 
