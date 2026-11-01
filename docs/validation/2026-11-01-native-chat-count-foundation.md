@@ -368,5 +368,18 @@ The private cache/native loader changes only the test server launcher.
 Evidence: `generation-failure-diagnostics-20261101/browser/result.json` and
 `owned-cleanup.json`. Inference is synthetic in these84 cases; native count,
 real model and physical-phone claims remain tied to their separate runs.
+An immutable4cd3673 export subsequently passes TypeScript and the gated unified
+Vite build using copied, verified ordinary SDK/native inputs. All1,203 source
+files match the exact Git archive byte-for-byte and remain unchanged; all60
+SDK/native inputs are unchanged and all four emitted native hashes match.
+Only four explicit installed-dependency junctions and the documented public
+`VITE_RELAY_ORIGIN=https://relay.kyalulu.com` build constant are supplied. No
+Relay connection, install, model execution or production access occurs.
+Initial sandbox junction denial, a projection missing package-local dependency
+links, and a missing Relay constant are retained as failed harness attempts;
+the complete04 attempt exits zero. Private evidence:
+`unified-source-check-4cd3673-20261101-04/{result.json,source-binding.json,command-0.log,command-1.log}`.
+This is an exact-source UI build, not a new full Native/Cloud package or an
+execution attestation for the newly compiled Worker.
 New real-model quality, a new fixed-source distribution and production are
 not inferred from these unit tests or the earlier7bae72f package.
