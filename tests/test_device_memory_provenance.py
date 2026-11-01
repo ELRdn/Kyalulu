@@ -1,5 +1,6 @@
 """Shared device decisions against real Python commit and temporary SQLite storage."""
 import json
+from copy import deepcopy
 from pathlib import Path
 
 import aiosqlite
@@ -18,7 +19,8 @@ async def test_memory_commit_provenance(case, tmp_path, monkeypatch):
     scope = "session:provenance"
     for item in case["existing"]:
         await memories.create(scope, item["type"], item["content"], origin=item["origin"],
-                              supported=item["supported"], source_kind=item["source_kind"])
+                              supported=item["supported"], source_kind=item["source_kind"],
+                              source_quote=item.get("source_quote", ""))
         if item["confirmation"] == "user_confirmed":
             # Match a user-confirmed unsupported row without changing its source kind/content.
             async with aiosqlite.connect(db.DB_PATH) as connection:
@@ -54,3 +56,24 @@ def test_reply_evidenced(case):
 @pytest.mark.parametrize("case", FIXTURE["render"], ids=lambda case: case["name"])
 def test_memory_block_sources(case):
     assert logic.render_block(case["memories"]) == case["expected"]
+
+
+@pytest.mark.parametrize("case", FIXTURE["eligibility"], ids=lambda case: case["name"])
+def test_legacy_retrieval_and_dedup_share_eligibility_without_rewriting(case):
+    memory = deepcopy(case["memory"])
+    before = deepcopy(memory)
+    for query in (memory["content"], "unrelated query"):
+        trace = logic.retrieve([memory], query)
+        assert trace["injected"] == ([memory["id"]] if case["eligible"] else [])
+        if memory["status"] == "active":
+            candidate = trace["candidates"][0]
+            assert candidate["supported"] is memory["supported"]
+            assert candidate["decision"] in (logic.INJECTED if case["eligible"] else ("unverified",))
+        else:
+            assert trace["candidates"] == []
+    proposal = logic.MemoryProposal(type=memory["type"], content=memory["content"],
+                                    source_kind=memory["source_kind"] or "user_statement")
+    decisions = logic.validate_proposals([proposal, proposal], [memory], memory["content"])
+    assert decisions[0]["action"] == ("skip" if case["eligible"] else "store")
+    assert decisions[1]["action"] == "skip" and decisions[1]["reason"] == "duplicate"
+    assert memory == before

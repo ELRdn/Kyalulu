@@ -243,7 +243,7 @@ it('exposes actual turn memory evidence, source speakers and audit events throug
   expect(p.last_generation.telemetry.memory).toEqual(trace);expect(trace.decisions).toHaveLength(3);
   const [story,user,canon]=p.memories.slice(1),messages=p.messages;
   expect(story).toMatchObject({supported:true,source_kind:'story_event',source_quote:fixture.reply,source_message_ids:[messages[1].id],source_revision:'1',source_generation_id:'provenance',confirmation:'unverified'});
-  expect(user).toMatchObject({supported:true,source_kind:'user_statement',source_quote:messages[0].content,source_message_ids:[messages[0].id],confirmation:'unverified'});
+  expect(user).toMatchObject({supported:false,source_kind:'user_statement',source_quote:messages[0].content,source_message_ids:[messages[0].id],confirmation:'unverified'});
   expect(canon).toMatchObject({supported:false,source_kind:'work_setting',confirmation:'unverified'});
   expect(trace.decisions.map((d:any)=>d.memory_id)).toEqual([story.id,user.id,canon.id]);
   expect(p.memories[0].access_count).toBe(3);expect(fixture.memories[0].access_count).toBe(2);

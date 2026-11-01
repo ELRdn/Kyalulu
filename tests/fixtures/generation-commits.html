@@ -99,14 +99,15 @@ Object.defineProperty(globalThis,'Worker',{configurable:true,value:class{
   }
   terminate(){held=null;}
 }});
+const invalidOutput='{"reply":'+' '.repeat(9000)+'🙂';
 function terminal(outcome){
   check(held,'Worker must be paused after real pending admission');const id=held.id;held=null;
   if(outcome==='stopped'){worker.emit({id,type:'done',stopped:true,measurement:{}});return;}
   completionCalls++;
   const output={reply:'新しい架空の返信です',state_update:{location:'library',time:'noon',mood:'calm',active_scene:'reading',relationship_state:{stage:'friend',tone:'warm',unresolved_conflict:false}},
     memory_proposals:[{type:'semantic',content:'鮭のお寿司が好きです',source_kind:'user_statement'}]};
-  worker.emit({id,type:'delta',text:outcome==='invalidJSON'?'{"reply":':JSON.stringify(output)});
-  worker.emit({id,type:'done',measurement:{firstTokenMs:2,generationMs:5,tokensPerSecond:10,backend:'synthetic'}});
+  worker.emit({id,type:'delta',text:outcome==='invalidJSON'?invalidOutput:JSON.stringify(output)});
+  worker.emit({id,type:'done',measurement:{firstTokenMs:2,generationMs:5,tokensPerSecond:10,backend:'synthetic',outputTokens:256}});
 }
 const receiptKey=()=>`generation:${caseId}:turn`;
 const rawHeader=()=>store.appTransaction(['entities'],'readonly',(tx,done)=>{const read=tx.objectStore('entities').get([caseId,'actor']);read.onsuccess=()=>done(read.result);});
@@ -346,6 +347,22 @@ async function run(options){
     check(same(after.actor.payload.messages,pending.actor.payload.messages),'Stopped/invalid standard keeps user; regeneration keeps old assistant');
     for(const field of ['state','memories','summaries','last_generation'])check(same(after.actor.payload[field],before.actor.payload[field]),'Failed generation preserves '+field);
     check(same(after.domain.pools,before.domain.pools),'Failed generation preserves shared memory pools');
+    check(after.receipt.assistant_id===null&&after.receipt.validation.ok===false&&after.receipt.validation.retries===0,'Failure diagnostics never apply a reply or retry');
+    check(after.receipt.validation.errors.length===1&&after.receipt.validation.errors[0].length<=2000,'Bounded durable failure reason');
+    const attempt=after.receipt.attempts[0],expected=options.outcome==='invalidJSON'?invalidOutput:'';
+    check(after.receipt.attempts.length===1&&attempt.number===1&&attempt.raw===expected.slice(0,8192)&&attempt.raw_utf16_units===expected.length&&attempt.raw_truncated===(expected.length>8192),'Exact bounded raw failure diagnostic');
+    if(options.outcome==='invalidJSON')check(after.receipt.telemetry.outputTokens===256&&after.receipt.telemetry.backend==='synthetic','Failure retains actual returned measurement');
+    check(new TextEncoder().encode(JSON.stringify(after.receipt)).length<=64*1024,'Complete failure receipt remains bounded');
+    if(options.mode!=='legacy'){
+      check(after.receipt.telemetry.memory.candidates.some(row=>row.source_session_id==='peer'),'Failure retains minimal injected-source links');
+      const redacted=scopes.eraseDeviceMemoryReferences(after.receipt,'peer',new Set());
+      check(!Object.hasOwn(redacted,'attempts')&&redacted.validation.errors.length===0,'Source erasure removes failed raw diagnostics and errors');
+      check(after.receipt.attempts.length===1,'Erasure projection does not mutate the saved receipt');
+    }
+    const status=await deviceFetch('/api/chat/generations/turn?session_id=actor');
+    check(status.ok&&same(await status.json(),after.receipt),'Failure diagnostics survive public status reread');
+    const failures=new SSEDecoder().feed(stream,true).filter(event=>event.event==='error');
+    check(failures.length===1&&Object.keys(JSON.parse(failures[0].data)).join(',')==='error','Failure SSE exposes only the error message');
   }
   if(options.mode!=='legacy')check(after.domain.pending===null,'Domain pending clear');
   assertAtomic('pending',options);assertAtomic(success?'completed':'failed',options);

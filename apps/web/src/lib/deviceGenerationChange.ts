@@ -1,8 +1,16 @@
 import { Sha256 } from '../mobile/sha256';
 import { deviceExecutionLockName } from './deviceExecution';
+import { jsonChunks } from './appTransfers';
 
 export type GenerationChange={metadata:Record<string,any>;append:any[];regenerate?:number;receipt:Record<string,any>;input?:readonly unknown[];projection?:Record<string,any>};
 const hash=(text:string)=>new Sha256().update(new TextEncoder().encode(text)).digest();
+export function validateSmallGenerationReceipt(receipt:Record<string,any>) {
+  const fields=['generation_id','session_id','status','assistant_id','user_id','user_content_sha256','execution_lock',
+    ...(receipt.status==='failed'?['validation','telemetry','attempts']:[])];
+  if(Object.keys(receipt).some(name=>!fields.includes(name)))throw Error('Invalid small generation receipt');
+  let bytes=0;
+  for(const chunk of jsonChunks(receipt))if((bytes+=chunk.length)>64*1024)throw Error('Small generation receipt exceeds 64 KiB');
+}
 export function validateGenerationReceipt(owner:string,id:string,change:GenerationChange,previous:any) {
   const receipt=change.receipt;
   if(!receipt||typeof receipt.generation_id!=='string'||!receipt.generation_id||receipt.generation_id.length>200
@@ -13,6 +21,7 @@ export function validateGenerationReceipt(owner:string,id:string,change:Generati
     ||receipt.status!=='pending'&&(!previous||previous.status!=='pending'||previous.session_id!==id
       ||previous.generation_id!==receipt.generation_id||previous.user_id!==receipt.user_id
       ||previous.user_content_sha256!==receipt.user_content_sha256||previous.execution_lock!==receipt.execution_lock))throw Error('Generation receipt changed');
+  if(receipt.status!=='completed')validateSmallGenerationReceipt(receipt);
 }
 
 /** Inspect unchanged source messages and validate the small append/replacement before adoption. */

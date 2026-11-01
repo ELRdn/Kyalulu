@@ -1,5 +1,5 @@
 import { expect,it } from 'vitest';
-import { generationChangeView,validateGenerationReceipt,type GenerationChange } from './deviceGenerationChange';
+import { generationChangeView,validateGenerationReceipt,validateSmallGenerationReceipt,type GenerationChange } from './deviceGenerationChange';
 import { deviceExecutionLockName } from './deviceExecution';
 import { Sha256 } from '../mobile/sha256';
 
@@ -12,6 +12,17 @@ const apply=(messages:any[],original:any,change:GenerationChange):Record<string,
   const view=generationChangeView(change),retained=messages.flatMap(message=>{const result=view.message(message);return result===null?[]:[result];});
   return {...view.finish(original),messages:[...retained,...change.append]};
 };
+
+it('bounds inline failed diagnostics by complete encoded UTF-8 size and keeps pending receipts small',()=>{
+  const failed={...receipt('failed'),attempts:[{number:1,raw:'茶🙂'.repeat(1000)}],telemetry:{outputTokens:256},validation:{ok:false,errors:['Incomplete JSON'],retries:0}};
+  expect(()=>validateSmallGenerationReceipt(failed)).not.toThrow();
+  const base={...receipt('failed'),telemetry:''},size=JSON.stringify(base).length;
+  expect(()=>validateSmallGenerationReceipt({...base,telemetry:'a'.repeat(64*1024-size)})).not.toThrow();
+  expect(()=>validateSmallGenerationReceipt({...base,telemetry:'a'.repeat(64*1024-size+1)})).toThrow('exceeds 64 KiB');
+  expect(()=>validateSmallGenerationReceipt({...base,telemetry:'茶'.repeat(30000)})).toThrow('exceeds 64 KiB');
+  expect(()=>validateSmallGenerationReceipt({...failed,compiled:{private:'not inline'}})).toThrow('Invalid small');
+  expect(()=>validateSmallGenerationReceipt({...failed,status:'pending'})).toThrow('Invalid small');
+});
 
 it.each(['pending','completed','failed'])('preserves the original reply during regeneration except completed replacement (%s)',status=>{
   const baseline=structuredClone({source,messages:[user,oldReply]}),pending=receipt('pending');

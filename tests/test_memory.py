@@ -34,7 +34,8 @@ async def test_proposals_are_deduplicated_and_flagged_when_unsupported():
     out = logic.validate_proposals(props, existing, evidence)
     assert [d["action"] for d in out] == ["skip", "store", "store"]
     assert out[0]["reason"] == "duplicate"
-    assert out[1]["supported"] is True and out[2]["supported"] is False
+    # A plausible paraphrase is not a quote of the complete user utterance.
+    assert out[1]["supported"] is False and out[2]["supported"] is False
     assert logic.evidenced("寿司が好き。特にサーモン", "サーモンのお寿司が好きなんだよね")
     assert not logic.evidenced("寿司が好き。特にサーモン", "今日は雨だね")
 
@@ -84,6 +85,48 @@ async def test_unverified_memories_are_inspectable_but_not_injected():
     assert trace["injected"] == [] and trace["candidates"][0]["decision"] == "unverified"
     item["origin"] = "model_edited"
     assert logic.retrieve([item], "花")["injected"] == ["x"]
+
+
+async def test_legacy_false_support_cannot_inject_or_suppress_new_grounded_memory(isolated):
+    import aiosqlite
+    from python.storage import db, memories
+
+    scope, content = "session:legacy-grounding", "本棚の整理について一緒に考えてくれる？"
+    old = [await memories.create(scope, "semantic", content, origin="model", supported=supported,
+                                 source_session_id="legacy-grounding", source_kind="user_statement",
+                                 source_quote="近所のお店について、一緒に考えてくれる？")
+           for supported in (True, None)]
+    prepared = await memories.prepare(scope, content)
+    assert prepared["trace"]["injected"] == [] and prepared["block"] == ""
+    assert {c["decision"] for c in prepared["trace"]["candidates"]} == {"unverified"}
+    assert await memories.list_memories(scope) == old
+
+    async def commit(generation):
+        result = {"status": "completed", "generation_id": generation, "reply": "架空の応答",
+                  "memory": {"candidates": [], "injected": [], "injected_tokens": 0,
+                             "proposals": [{"type": "semantic", "content": content, "source_kind": "user_statement"}]}}
+        await memories.commit(scope, result, session_id="legacy-grounding", turn=1,
+                              evidence_text=content, source_message_ids=[1, 2], source_revision="turn:1")
+        return result["memory"]["decisions"][0]
+
+    stored = await commit("grounded")
+    assert stored["action"] == "store" and stored["supported"] is True
+    rows = await memories.list_memories(scope)
+    assert rows[:2] == old and len(rows) == 3
+    assert rows[2]["source_quote"] == content and rows[2]["source_message_ids"] == [1]
+    assert rows[2]["source_generation_id"] == "grounded" and rows[2]["source_revision"] == "turn:1"
+    assert (await memories.prepare(scope, content))["trace"]["injected"] == [stored["memory_id"]]
+    repeated = await commit("repeat")
+    assert repeated["action"] == "skip" and repeated["reason"] == "duplicate"
+    assert await memories.list_memories(scope) == rows
+
+    async with aiosqlite.connect(db.DB_PATH) as connection:
+        await connection.execute("UPDATE memories SET confirmation='user_confirmed',supported=0 WHERE id=?", (old[0]["id"],))
+        await connection.commit()
+    await memories.update(old[1]["id"], content=content + "（手動確認）")
+    assert set((await memories.prepare(scope, content))["trace"]["injected"]) == {m["id"] for m in rows}
+    edited = await memories.get(old[1]["id"])
+    assert edited["origin"] == "model_edited" and edited["confirmation"] == "user_confirmed"
 
 
 async def test_memory_normalizes_before_validation_and_orders_by_insertion(isolated):
