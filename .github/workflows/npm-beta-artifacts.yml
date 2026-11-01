@@ -21,6 +21,7 @@ jobs:
           python scripts/mobile_wasm/prepare.py
           CMAKE_BUILD_PARALLEL_LEVEL=2 bash scripts/mobile_wasm/build.sh
           cp scripts/mobile_wasm/ple.patch .artifacts/mobile-wasm/ple.patch
+      - run: python scripts/mobile_wasm/build_sdk.py --record-inputs
       - name: Hash exact Native WASM and license inputs
         working-directory: .artifacts/mobile-wasm
         run: |
@@ -29,7 +30,8 @@ jobs:
             wllama/LICENCE wllama/llama.cpp/LICENSE \
             wllama/llama.cpp/licenses/LICENSE-jsonhpp \
             emdawn/emdawnwebgpu_pkg/webgpu/src/LICENSE \
-            emdawn/emdawnwebgpu_pkg/webgpu_cpp/LICENSE ple.patch > SHA256SUMS
+            emdawn/emdawnwebgpu_pkg/webgpu_cpp/LICENSE ple.patch chat-count.patch \
+            SDK_INPUTS.json > SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
           name: native-wasm-inputs
@@ -38,6 +40,21 @@ jobs:
             .artifacts/mobile-wasm/SHA256SUMS
             .artifacts/mobile-wasm/downloads.json
             .artifacts/mobile-wasm/ple.patch
+            .artifacts/mobile-wasm/chat-count.patch
+            .artifacts/mobile-wasm/SDK_INPUTS.json
+            .artifacts/mobile-wasm/wllama/package.json
+            .artifacts/mobile-wasm/wllama/tsconfig.build.json
+            .artifacts/mobile-wasm/wllama/cpp/glue.hpp
+            .artifacts/mobile-wasm/wllama/cpp/wllama.cpp
+            .artifacts/mobile-wasm/wllama/cpp/wllama-context.h
+            .artifacts/mobile-wasm/wllama/cpp/generate_glue_prototype.js
+            .artifacts/mobile-wasm/wllama/scripts/generate_wasm_from_cdn.js
+            .artifacts/mobile-wasm/wllama/src/**/*.ts
+            .artifacts/mobile-wasm/wllama/src/workers-code/*.js
+            !.artifacts/mobile-wasm/wllama/src/**/*.test.ts
+            !.artifacts/mobile-wasm/wllama/src/workers-code/generated.ts
+            !.artifacts/mobile-wasm/wllama/src/glue/messages.ts
+            !.artifacts/mobile-wasm/wllama/src/wasm-from-cdn.ts
             .artifacts/mobile-wasm/build-standard/wllama.js
             .artifacts/mobile-wasm/build-standard/wllama.wasm
             .artifacts/mobile-wasm/build-compat/wllama.js
@@ -80,17 +97,36 @@ jobs:
           python - <<'PY'
           from hashlib import sha256
           from pathlib import Path
-          root = Path('.artifacts/mobile-wasm').resolve()
-          lines = (root / 'SHA256SUMS').read_text().splitlines()
-          assert len(lines) == 10
+          import re
+          root = Path('.artifacts/mobile-wasm')
+          assert not root.is_symlink()
+          root = root.resolve()
+          manifest = root / 'SHA256SUMS'
+          assert not manifest.is_symlink()
+          lines = manifest.read_text().splitlines()
+          expected = {
+              'build-standard/wllama.js', 'build-standard/wllama.wasm',
+              'build-compat/wllama.js', 'build-compat/wllama.wasm',
+              'wllama/LICENCE', 'wllama/llama.cpp/LICENSE',
+              'wllama/llama.cpp/licenses/LICENSE-jsonhpp',
+              'emdawn/emdawnwebgpu_pkg/webgpu/src/LICENSE',
+              'emdawn/emdawnwebgpu_pkg/webgpu_cpp/LICENSE',
+              'ple.patch', 'chat-count.patch', 'SDK_INPUTS.json',
+          }
+          assert len(lines) == len(expected) == 12
+          assert {line.split('  ', 1)[1] for line in lines} == expected
           for line in lines:
               digest, name = line.split('  ', 1)
               source = root / name
-              assert source.resolve().is_relative_to(root) and not source.is_symlink()
+              assert re.fullmatch('[a-f0-9]{64}', digest), name
+              assert source.resolve().is_relative_to(root)
+              assert not any(path.is_symlink() for path in (source, *source.parents)), name
               assert sha256(source.read_bytes()).hexdigest() == digest, name
           PY
+          python scripts/mobile_wasm/build_sdk.py --verify-inputs
       - name: Match compiled patch to corresponding source
-        run: python -c "from pathlib import Path; assert Path('scripts/mobile_wasm/ple.patch').read_text(encoding='utf-8') == Path('.artifacts/mobile-wasm/ple.patch').read_text(encoding='utf-8'), 'Compiled patch differs from corresponding source'"
+        run: python -c "from pathlib import Path; names=('ple.patch','chat-count.patch'); assert all(Path('scripts/mobile_wasm',name).read_text(encoding='utf-8') == Path('.artifacts/mobile-wasm',name).read_text(encoding='utf-8') for name in names), 'Compiled patch differs from corresponding source'"
+      - run: python scripts/mobile_wasm/build_sdk.py
       - run: uv run --no-sync python scripts/build_app_catalog.py
       - run: pnpm --filter web build:native
         env:
@@ -145,17 +181,36 @@ jobs:
           python - <<'PY'
           from hashlib import sha256
           from pathlib import Path
-          root = Path('.artifacts/mobile-wasm').resolve()
-          lines = (root / 'SHA256SUMS').read_text().splitlines()
-          assert len(lines) == 10
+          import re
+          root = Path('.artifacts/mobile-wasm')
+          assert not root.is_symlink()
+          root = root.resolve()
+          manifest = root / 'SHA256SUMS'
+          assert not manifest.is_symlink()
+          lines = manifest.read_text().splitlines()
+          expected = {
+              'build-standard/wllama.js', 'build-standard/wllama.wasm',
+              'build-compat/wllama.js', 'build-compat/wllama.wasm',
+              'wllama/LICENCE', 'wllama/llama.cpp/LICENSE',
+              'wllama/llama.cpp/licenses/LICENSE-jsonhpp',
+              'emdawn/emdawnwebgpu_pkg/webgpu/src/LICENSE',
+              'emdawn/emdawnwebgpu_pkg/webgpu_cpp/LICENSE',
+              'ple.patch', 'chat-count.patch', 'SDK_INPUTS.json',
+          }
+          assert len(lines) == len(expected) == 12
+          assert {line.split('  ', 1)[1] for line in lines} == expected
           for line in lines:
               digest, name = line.split('  ', 1)
               source = root / name
-              assert source.resolve().is_relative_to(root) and not source.is_symlink()
+              assert re.fullmatch('[a-f0-9]{64}', digest), name
+              assert source.resolve().is_relative_to(root)
+              assert not any(path.is_symlink() for path in (source, *source.parents)), name
               assert sha256(source.read_bytes()).hexdigest() == digest, name
           PY
+          python scripts/mobile_wasm/build_sdk.py --verify-inputs
       - name: Match compiled patch to corresponding source
-        run: python -c "from pathlib import Path; assert Path('scripts/mobile_wasm/ple.patch').read_text(encoding='utf-8') == Path('.artifacts/mobile-wasm/ple.patch').read_text(encoding='utf-8'), 'Compiled patch differs from corresponding source'"
+        run: python -c "from pathlib import Path; names=('ple.patch','chat-count.patch'); assert all(Path('scripts/mobile_wasm',name).read_text(encoding='utf-8') == Path('.artifacts/mobile-wasm',name).read_text(encoding='utf-8') for name in names), 'Compiled patch differs from corresponding source'"
+      - run: python scripts/mobile_wasm/build_sdk.py
       - run: uv run --no-sync python scripts/build_app_catalog.py
       - run: pnpm --filter web build:app
         env:

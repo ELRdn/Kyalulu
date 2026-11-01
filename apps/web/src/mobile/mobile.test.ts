@@ -41,10 +41,10 @@ describe('context window',()=>{
     s.messages.push({id:'partial',role:'assistant',content:'UNFINISHED',state:'interrupted'});
     expect(conversationTurns(s).some(m=>m.content==='UNFINISHED')).toBe(false);
   });
-  it('merges consecutive user turns after a stopped generation without deleting saved messages',()=>{
+  it('passes original user fragments after a stopped generation to runtime without deleting saved messages',()=>{
     const d=initialData(),s=newConversation(d.characters[0],'kyalulu-iq3m');
     s.messages.push({id:'a',role:'user',content:'前の入力'},{id:'b',role:'assistant',content:'途中',state:'stopped'},{id:'c',role:'user',content:'次の入力'});
-    expect(conversationTurns(s).at(-1)).toEqual({role:'user',content:'前の入力\n\n次の入力'});
+    expect(conversationTurns(s).slice(-2)).toEqual([{role:'user',content:'前の入力'},{role:'user',content:'次の入力'}]);
     expect(s.messages).toHaveLength(4);
   });
 });

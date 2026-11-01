@@ -6,7 +6,9 @@ The generated ple.patch is published with runtime source and build evidence.
 """
 from pathlib import Path
 import difflib
+import os
 import shutil
+import subprocess
 
 ROOT = Path(__file__).resolve().parents[2]
 WORK = ROOT / '.artifacts/mobile-wasm'
@@ -28,6 +30,7 @@ def edit(path, old, new):
 
 
 def main():
+    originals.clear()
     src = WORK / 'llama.cpp'
     if src.exists():
         if not src.resolve().is_relative_to(WORK.resolve()) or not L.resolve().is_relative_to(WORK.resolve()):
@@ -145,7 +148,22 @@ ggml_tensor * llama_model_base::create_tensor''')
             after = (W/path).read_text(encoding='utf-8')
             patches.extend(difflib.unified_diff(before.splitlines(True), after.splitlines(True), fromfile='a/'+path, tofile='b/'+path))
         (Path(__file__).parent/'ple.patch').write_text(''.join(patches), encoding='utf-8', newline='\n')
-    print('Patched pinned source. PLE table remains intact; only requested rows are dequantized.')
+    patch = Path(__file__).with_name('chat-count.patch')
+    if patch.is_symlink() or W.is_symlink() or not W.resolve().is_relative_to(WORK.resolve()):
+        raise RuntimeError('Chat count source escaped workspace')
+    # Archives have no Git metadata; do not let an enclosing checkout redirect paths.
+    env = {**os.environ, 'GIT_CEILING_DIRECTORIES': str(W.parent)}
+    command = ['git', 'apply', '-p1']
+    applied = subprocess.run(command + ['--reverse', '--check', str(patch)], cwd=W, env=env,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if applied.returncode:
+        subprocess.run(command + ['--check', str(patch)], cwd=W, env=env, check=True)
+        subprocess.run(command + [str(patch)], cwd=W, env=env, check=True)
+    destination = WORK / patch.name
+    if destination.is_symlink():
+        raise RuntimeError('Chat count patch destination must not be linked')
+    shutil.copyfile(patch, destination)
+    print('Prepared pinned PLE row streaming and read-only native chat token count.')
 
 
 if __name__ == '__main__':

@@ -2,6 +2,7 @@
 import type { ChatTurn, MobileModel, Measurement } from './types';
 import { CONTEXT_TOKENS } from './types';
 import { conservativeTokens, fitContext, mergeTurns, validateTurns } from './context';
+import type { GGUFRun } from './context';
 import { MODELS, openModelFile, readyModels } from './models';
 import { sampling, ggufSampling } from './sampling';
 
@@ -17,7 +18,89 @@ let backend='';
 let runtimeVariant='';
 let loadMs=0;
 let pleLazy:boolean|null=null;
+type Fence={modelId:string;modelRevision:string;outputTokens:number};
+type Admission=Fence&{originalRuns:number;newestUserRun:number};
+type WindowPacket={admission:Fence;history?:GGUFRun[];error?:string};
+let operation:{id:number;window?:{resolve:(packet:WindowPacket)=>void;reject:(error:Error)=>void}}|null=null;
 const send=(id:number,type:string,data:Record<string,unknown>={})=>ctx.postMessage({id,type,...data});
+const checkpoint=async(signal:AbortSignal)=>{await new Promise(resolve=>setTimeout(resolve,0));signal.throwIfAborted();};
+function checkFence(value:Fence,applied:Record<string,number>) {
+  if(!model||model.runtime!=='gguf'||!gguf||!value||typeof value!=='object'||Array.isArray(value)
+    ||value.modelId!==model.id||value.modelRevision!==(model.distributionRevision??model.revision)||value.outputTokens!==applied.max_tokens)throw Error('Invalid GGUF admission');
+}
+function checkRuns(value:GGUFRun[],admission:Admission,mandatory:boolean) {
+  if(!Array.isArray(value))throw Error('Invalid GGUF runs');
+  let previous=-1,tail=0;
+  for(let i=0;i<value.length;i++){
+    const run=value[i];
+    if(!Object.hasOwn(value,i)||!run||!Number.isSafeInteger(run.run)||run.run<=previous||run.run>=admission.originalRuns
+      ||!['system','user','assistant'].includes(run.role)||typeof run.content!=='string')throw Error('Invalid GGUF runs');
+    previous=run.run;
+    const required=run.role==='system'||admission.newestUserRun<0||run.run>=admission.newestUserRun;
+    if(required!==mandatory||run.role==='user'&&run.run>admission.newestUserRun)throw Error('Invalid GGUF run boundary');
+    if(run.run>=admission.newestUserRun)tail++;
+    if(run.run===admission.newestUserRun&&run.role!=='user')throw Error('Invalid GGUF newest user');
+  }
+  if(mandatory&&tail!==(admission.newestUserRun<0?admission.originalRuns:admission.originalRuns-admission.newestUserRun))throw Error('Incomplete GGUF mandatory tail');
+}
+function ggufChatOptions(messages:ChatTurn[],applied:Record<string,number>,responseGrammar:string|undefined,signal:AbortSignal) {
+  return {messages,stream:true as const,...ggufSampling(applied),
+    ...(responseGrammar?{grammar:responseGrammar,reasoning_budget_tokens:0,reasoning_format:'none' as const}:{}),
+    abortSignal:signal,chat_template_kwargs:{enable_thinking:false},cache_prompt:true};
+}
+async function fitGGUF(id:number,mandatory:GGUFRun[],admission:Admission,applied:Record<string,number>,grammar:string|undefined,signal:AbortSignal) {
+  checkFence(admission,applied);
+  if(!Number.isSafeInteger(admission.originalRuns)||admission.originalRuns<1||!Number.isSafeInteger(admission.newestUserRun)
+    ||admission.newestUserRun< -1||admission.newestUserRun>=admission.originalRuns)throw Error('Invalid GGUF admission boundary');
+  checkRuns(mandatory,admission,true);
+  const engine=gguf!;
+  if(!('countChatTokens' in engine)||typeof engine.countChatTokens!=='function')throw Error('Native count SDK is required; update matched runtime assets.');
+  const countChatTokens=engine.countChatTokens.bind(engine);
+  const checkCount=(value:unknown)=>{
+    if(typeof value!=='number'||!Number.isSafeInteger(value)||value<0)throw Error('Invalid native token count');
+    return value;
+  };
+  let mandatoryInputTokens:unknown,mandatoryCountError:string|undefined;
+  signal.throwIfAborted();
+  try{mandatoryInputTokens=await countChatTokens(ggufChatOptions(mandatory.map(({role,content})=>({role,content})),applied,grammar,signal));}
+  catch(error){signal.throwIfAborted();mandatoryCountError=error instanceof Error?error.message:String(error);}
+  signal.throwIfAborted();
+  if(mandatoryCountError===undefined)mandatoryInputTokens=checkCount(mandatoryInputTokens);
+  await checkpoint(signal);
+  const packet=await new Promise<WindowPacket>((resolve,reject)=>{
+    const stop=()=>reject(Error('Generation stopped'));
+    operation!.window={resolve:packet=>{signal.removeEventListener('abort',stop);resolve(packet);},
+      reject:error=>{signal.removeEventListener('abort',stop);reject(error);}};
+    signal.addEventListener('abort',stop,{once:true});
+    send(id,'admission-count',mandatoryCountError===undefined?{mandatoryInputTokens}:{mandatoryCountError});
+  });
+  signal.throwIfAborted();checkFence(packet.admission,applied);
+  if(Object.hasOwn(packet,'history')===Object.hasOwn(packet,'error'))throw Error('Invalid GGUF window');
+  if(Object.hasOwn(packet,'error')){
+    if(typeof packet.error!=='string')throw Error('Invalid GGUF window error');
+    throw Error(packet.error);
+  }
+  const history=packet.history!;
+  checkRuns(history,admission,false);
+  const requiredIds=new Set(mandatory.map(run=>run.run));
+  if(history.some(run=>requiredIds.has(run.run)))throw Error('Overlapping GGUF runs');
+  const budget=CONTEXT_TOKENS-applied.max_tokens;
+  if(conservativeTokens(history)-32>budget)throw Error('Invalid GGUF history window');
+  const runs=[...mandatory,...history].sort((a,b)=>a.run-b.run);
+  while(true){
+    signal.throwIfAborted();
+    // Never re-merge systems that became adjacent after omission.
+    const options=ggufChatOptions(runs.map(({role,content})=>({role,content})),applied,grammar,signal);
+    const inputTokens=checkCount(await countChatTokens(options));
+    signal.throwIfAborted();
+    if(inputTokens<=budget){await checkpoint(signal);return {messages:options.messages,options,omitted:admission.originalRuns-runs.length,inputTokens};}
+    const index=runs.findIndex(run=>run.role!=='system'&&run.run<admission.newestUserRun);
+    if(index<0)throw Error('キャラ設定またはメッセージが長すぎます。短くして再送してください。');
+    runs.splice(index,1);
+    while(runs[index]?.role==='assistant'&&runs[index].run<admission.newestUserRun)runs.splice(index,1);
+    await checkpoint(signal);
+  }
+}
 
 async function unload() {
   abort?.abort();stopper?.interrupt();
@@ -79,37 +162,24 @@ async function load(modelId:string,cpu:boolean,base:string) {
   model=candidate;loadMs=performance.now()-start;
 }
 
-type Admission={modelId:string;modelRevision:string;outputTokens:number;omitted:number};
 async function generate(id:number,turns:ChatTurn[],settings:Record<string,unknown>={},responseGrammar?:string,admitted=false,admission?:Admission) {
   if(!model)throw Error('モデルを読み込んでください。');
   abort=new AbortController();
+  operation={id};
+  if(model.runtime==='gguf'&&!admitted)throw Error('GGUF requires native admission');
   if(!admitted)validateTurns(turns);
   const active=model,start=performance.now();let first:number|null=null,outputTokens:number|null=null;
   const {applied}=sampling(active,settings);
   const count=tokenizer?(messages:ChatTurn[])=>tokenizer.apply_chat_template(messages,{tokenize:true,add_generation_prompt:true,enable_thinking:false}).length:undefined;
-  let fitted:{messages:ChatTurn[];omitted:number};
+  let fitted:{messages:ChatTurn[];omitted:number},options:ReturnType<typeof ggufChatOptions>|undefined;
   if(admitted){
-    if(active.runtime!=='gguf'||!gguf||tokenizer||!admission||typeof admission!=='object'||Array.isArray(admission)||admission.modelId!==active.id
-      ||admission.modelRevision!==(active.distributionRevision??active.revision)||admission.outputTokens!==applied.max_tokens
-      ||!Number.isSafeInteger(admission.omitted)||admission.omitted<0)throw Error('Invalid GGUF admission');
-    if(!Array.isArray(turns))throw Error('会話データが不正です。');
-    const budget=CONTEXT_TOKENS-applied.max_tokens;
-    if(32+128*turns.length>budget)throw Error('キャラ設定またはメッセージが長すぎます。短くして再送してください。');
-    for(let i=0;i<turns.length;i++){
-      const turn=turns[i];
-      if(!Object.hasOwn(turns,i)||!turn||!['system','user','assistant'].includes(turn.role)||typeof turn.content!=='string')throw Error('会話データが不正です。');
-      if(turn.content.length>budget)throw Error('キャラ設定またはメッセージが長すぎます。短くして再送してください。');
-    }
-    if(conservativeTokens(turns)>budget)throw Error('キャラ設定またはメッセージが長すぎます。短くして再送してください。');
-    // Omitting history can make separate system runs adjacent; merging again would change the admitted prompt.
-    fitted={messages:turns,omitted:admission.omitted};
+    const native=await fitGGUF(id,turns as GGUFRun[],admission!,applied,responseGrammar,abort.signal);
+    fitted=native;options=native.options;
   }else fitted=await fitContext(mergeTurns(turns),count,applied.max_tokens);
   abort.signal.throwIfAborted();
   send(id,'context',{omitted:fitted.omitted});
   if(gguf) {
-    const stream=await gguf.createChatCompletion({messages:fitted.messages,stream:true,...ggufSampling(applied),
-      ...(responseGrammar?{grammar:responseGrammar,reasoning_budget_tokens:0,reasoning_format:'none'}:{}),
-      abortSignal:abort.signal,chat_template_kwargs:{enable_thinking:false},cache_prompt:true});
+    const stream=await gguf.createChatCompletion(options!);
     for await(const chunk of stream) {
       const text=chunk.choices?.[0]?.delta?.content;
       if(text){first??=performance.now()-start;send(id,'delta',{text});}
@@ -136,20 +206,30 @@ async function generate(id:number,turns:ChatTurn[],settings:Record<string,unknow
   return {measurement};
 }
 ctx.onmessage=async({data})=>{
-  if(data.type==='stop'){abort?.abort();stopper?.interrupt();return;}
+  if(data.type==='stop'){
+    if(operation&&(data.id===operation.id||data.id===undefined&&model?.runtime==='onnx')){abort?.abort();stopper?.interrupt();}
+    return;
+  }
   const {id,type}=data;
+  if(type==='admission-window'){
+    const current=operation;
+    if(current&&current.id===id&&current.window){const waiter=current.window;current.window=undefined;waiter.resolve(data);}
+    return;
+  }
   if(busy){send(id,'error',{error:'処理中です。停止してから操作してください。'});return;}
   busy=true;
   try {
     let result:Record<string,unknown>={};
     if(type==='load'){await load(data.modelId,data.cpu,data.base);result={backend};}
     else if(type==='unload')await unload();
-    else if(type==='generate'||type==='generate-admitted')result=await generate(id,data.messages,data.settings,data.responseGrammar,type==='generate-admitted',data.admission);
+    else if(type==='generate'||type==='generate-admitted')result=await generate(id,type==='generate-admitted'?data.mandatory:data.messages,data.settings,data.responseGrammar,type==='generate-admitted',data.admission);
     else throw Error('未対応の推論操作');
     send(id,'done',result);
   } catch(e) {
     if(type==='load')await unload().catch(()=>{});
     if(abort?.signal.aborted&&(type==='generate'||type==='generate-admitted'))send(id,'done',{stopped:true});
     else send(id,'error',{error:e instanceof Error?e.message:String(e)});
-  } finally {busy=false;}
+  } finally {
+    operation?.window?.reject(Error('Generation ended'));operation=null;abort=null;busy=false;
+  }
 };

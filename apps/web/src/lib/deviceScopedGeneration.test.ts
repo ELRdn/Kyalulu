@@ -1,13 +1,15 @@
 import { beforeEach,afterEach,expect,it,vi } from 'vitest';
 import { harness,decoded } from './idbHarness.test-support';
 const fixture=vi.hoisted(()=>({owner:'scoped-owner',records:new Map<string,any>(),meta:new Map<string,any>(),parts:new Map<string,any>(),
-  fail:false,reply:'架空の返信',proposals:[] as any[],inputs:[] as any[],locks:new Set<string>()}));
+  fail:false,reply:'架空の返信',proposals:[] as any[],inputs:[] as any[],locks:new Set<string>(),
+  paused:undefined as Promise<void>|undefined,signal:undefined as AbortSignal|undefined,stop:vi.fn()}));
 vi.mock('./appContext',()=>({deviceOwner:()=>fixture.owner,setGenerationBusy:vi.fn()}));
 vi.mock('./appSync',()=>({hydrateConversation:vi.fn()}));
 vi.mock('../mobile/models',()=>({MODELS:[{id:'fixture',runtime:'gguf',temperature:.8,topK:64,topP:.95}],readyModels:async()=>new Set(['fixture'])}));
 vi.mock('../mobile/runtime',()=>({MobileRuntime:class{
-  async load(){} stop(){}
-  async generate(input:any,emit:any){fixture.inputs.push(input);if(fixture.fail)throw Error('Fictional inference failure');
+  async load(){} stop=fixture.stop;
+  async generate(input:any,emit:any,_settings:any,_grammar:any,signal?:AbortSignal){fixture.inputs.push(input);fixture.signal=signal;await fixture.paused;
+    if(signal?.aborted)return {stopped:true};if(fixture.fail)throw Error('Fictional inference failure');
     emit({type:'delta',text:JSON.stringify({reply:fixture.reply,state_update:{location:'library',time:'now',mood:'calm',active_scene:'tea',relationship_state:{stage:'stranger',tone:'neutral',unresolved_conflict:false}},memory_proposals:fixture.proposals})});return {measurement:{},stopped:false};}
 }}));
 vi.mock('./appStore',async original=>{
@@ -31,6 +33,7 @@ import { CONTEXT_TOKENS,OUTPUT_TOKENS } from '../mobile/types';
 import catalog from '../mobile/app-catalog.generated.json';
 
 beforeEach(()=>{
+  fixture.paused=undefined;fixture.signal=undefined;fixture.stop.mockClear();
   fixture.records.clear();fixture.meta.clear();fixture.parts.clear();fixture.inputs=[];fixture.locks.clear();fixture.fail=false;fixture.reply='架空の返信';fixture.proposals=[];
   vi.stubGlobal('IDBKeyRange',{bound:(lower:any,upper:any)=>({lower,upper})});vi.stubGlobal('location',{href:'https://device.test/device/'});
   vi.stubGlobal('navigator',{locks:{request:async(name:string,_options:any,callback:any)=>{
@@ -67,6 +70,24 @@ it('creates the first default world conversation with its receipt and domain in 
   expect(fixture.meta.get('generation:'+fixture.owner+':first-world').status).toBe('completed');
   const domain=await readDeviceMemoryDomain(fixture.owner,'local');expect(domain.pending).toBeNull();
   expect(Object.values(domain.bindings).some(binding=>binding.entity_revision===saved.revision)).toBe(true);
+});
+
+it.each([false,true])('rolls back scoped admission stop without memory access/proposal commits (regenerate=%s)',async regenerate=>{
+  await seed(source('a',31));await seed(source('b',71));fixture.meta.set('message-sequence:'+fixture.owner,100);
+  if(regenerate)expect((await turn('b','accepted')).text).toContain('event: done');
+  const before=(await entity('b'))!,pools=structuredClone((await readDeviceMemoryDomain(fixture.owner,'local')).pools);
+  fixture.inputs=[];fixture.proposals=[{type:'semantic',content:'Should not persist',source_kind:'user_statement'}];
+  let release!:()=>void;fixture.paused=new Promise<void>(resolve=>{release=resolve;});
+  const request=turn('b','cancelled',regenerate?{regenerate_message_id:before.payload.messages.at(-1).id}:{});
+  await vi.waitFor(()=>expect(fixture.inputs).toHaveLength(1));
+  expect((await deviceFetch('/api/chat/generations/cancelled/cancel?session_id=b',{method:'POST'})).status).toBe(200);
+  expect(fixture.signal?.aborted).toBe(true);expect(fixture.stop).toHaveBeenCalledTimes(1);
+  release();expect((await request).text).toContain('event: error');
+  const after=(await entity('b'))!;
+  expect(regenerate?after.payload.messages:after.payload.messages.slice(0,-1)).toEqual(before.payload.messages);
+  for(const key of ['state','memories','summaries','last_generation','draft'])expect(after.payload[key]).toEqual(before.payload[key]);
+  const domain=await readDeviceMemoryDomain(fixture.owner,'local');expect(domain.pools).toEqual(pools);expect(domain.pending).toBeNull();
+  expect(fixture.meta.get('generation:'+fixture.owner+':cancelled').status).toBe('failed');
 });
 
 it('roundtrips and branches an actual manually corrected generated fact after regeneration',async()=>{
@@ -182,7 +203,7 @@ it('stores a fresh source after explicit new evidence matches a previously forgo
   expect(rows.find((row:any)=>row.source_generation_id==='new-evidence')).toMatchObject({status:'active',source_session_id:'b',source_message_ids:[101]});
 });
 
-it('fits the default character, one shared fact and JSON contract within the bounded Device context',async()=>{
+it('preserves the default character, shared fact and JSON contract with a mocked runtime (not native count proof)',async()=>{
   const a=source('a',31),b=source('b',71);delete a.payload.settings.world_id;delete b.payload.settings.world_id;b.payload.memories=[];
   await seed(a);await seed(b);fixture.meta.set('message-sequence:'+fixture.owner,100);
   expect((await turn('b','budget')).text).toContain('event: done');

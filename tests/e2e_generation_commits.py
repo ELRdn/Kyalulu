@@ -51,7 +51,8 @@ def assert_actor_context(rows):
     assert projections and preservation and inputs, 'Missing direct projection, original byte or Worker evidence'
     assert all(item['older_snapshot_fields'] == 0 and item['latest_complete'] and item['metadata_complete'] and item['header_complete'] for item in projections)
     assert all(item['stored_bytes_equal'] and item['decoded_equal'] for item in preservation)
-    assert all(item['fitted_original_reference_equal'] and item['admission_before_worker'] and item['settings_equal'] and item['grammar_equal'] for item in inputs)
+    assert all(item['fitted_original_reference_equal'] and item['mandatory_only_first_packet'] and item['bounded_history_after_mock_count']
+               and not item['native_count_proof'] and item['settings_equal'] and item['grammar_equal'] for item in inputs)
     successes = [row for row in rows if row.get('outcome') == 'success']
     assert len(successes) == 12 and all(row['observation']['worker_inputs'][0]['raw_prompt_equal'] for row in successes)
     completions = [item for row in successes for item in row['observation']['public_completions']]
@@ -71,11 +72,11 @@ def assert_actor_context(rows):
 
 async def main():
     report = {'ok': False, 'cases': [], 'blocked_requests': [], 'page_errors': [], 'native_workers': [],
-              'production_used': False, 'real_inference_attempts': 0,
+              'production_used': False, 'real_inference_attempts': 0, 'native_count_proof': False,
               'limits': ['Synthetic inference Worker and fictional OPFS metadata; no model/download/provider',
                          'Actor keeps full role/content history and a complete latest message; no total peak-RAM bound is claimed',
                          'Injected receipt quota, not physical disk exhaustion; Chromium, not physical mobile hardware',
-                         'GGUF success matrix uses an immutable short Library character fixture; stock Mocha mandatory overflow is an explicit negative case']}
+                         'GGUF matrix uses fictional counts; stock Mocha has forced-mock overflow and mock-rescue cases, neither is native count proof']}
     report['started_at'] = datetime.now(timezone.utc).isoformat()
     report['source_before'] = fingerprint()
     try:
@@ -134,7 +135,10 @@ async def main():
                 report['parser_evidence'] = assert_bounded_write_parsers(report['cases'])
                 report['actor_context_evidence'] = assert_actor_context(report['cases'])
                 report['mandatory_overflow'] = await page.evaluate('window.__GENERATION_COMMITS__.mandatoryOverflow()')
-                assert report['mandatory_overflow']['worker_generation_messages'] == 0 and report['mandatory_overflow']['originals_retained']
+                assert report['mandatory_overflow']['synthetic_completion_calls'] == 0 and report['mandatory_overflow']['originals_retained']
+                assert not report['mandatory_overflow']['native_count_proof']
+                report['mandatory_mock_rescue'] = await page.evaluate('window.__GENERATION_COMMITS__.mandatoryMockRescue()')
+                assert report['mandatory_mock_rescue']['mandatory_bytes_preserved'] and report['mandatory_mock_rescue']['raw_prompt_preserved']
             finally:
                 await context.close()
                 report['context_closed'] = True
