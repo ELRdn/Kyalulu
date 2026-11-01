@@ -45,6 +45,7 @@ function preparedSdk(required: boolean) {
         const bytes = checked(`build-${name}`, record.runtime_assets[name]);
         // shortcut: wire markers reject stale binaries; they do not prove real model token counts.
         if (name.endsWith('.wasm') && (!bytes.subarray(0, 4).equals(Buffer.from('\0asm')) || !bytes.includes('ctok_req') || !bytes.includes('ctok_res'))) throw Error('Native chat-count capability missing');
+        if (name.endsWith('.wasm') && bytes.includes('countProbe')) throw Error('Diagnostic count probes cannot be bundled');
       }
     } catch (error) {
       throw new Error('Matched native chat-count SDK/WASM required. From the repository root run: python scripts/mobile_wasm/prepare.py && bash scripts/mobile_wasm/build.sh && python scripts/mobile_wasm/build_sdk.py', { cause: error });
