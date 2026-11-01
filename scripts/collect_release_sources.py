@@ -272,6 +272,7 @@ FILES = (
     "deploy/cloud/Caddyfile.unified.example",
     "deploy/cloud/Caddyfile.cloud-migration.example",
     "deploy/cloud/README.md",
+    "deploy/cloud/VPS.md",
     "models/example-le.yaml",
     "models/example-lmstudio.yaml",
     "models/example-ollama.yaml",

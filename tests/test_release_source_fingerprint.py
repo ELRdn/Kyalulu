@@ -18,6 +18,7 @@ from python.cloud.release_readiness import evidence_status, source_fingerprint
     "tests/fixtures/rp-format.json",
     "deploy/cloud/Caddyfile.unified.example",
     "deploy/cloud/Caddyfile.cloud-migration.example",
+    "deploy/cloud/VPS.md",
 ])
 def test_delivered_input_change_rejects_previous_evidence(tmp_path, name):
     source = tmp_path / name
@@ -30,3 +31,31 @@ def test_delivered_input_change_rejects_previous_evidence(tmp_path, name):
     assert evidence_status(entry, source_fingerprint(tmp_path), root=tmp_path) == "accepted"
     source.write_text("version two", encoding="utf-8")
     assert evidence_status(entry, source_fingerprint(tmp_path), root=tmp_path) == "stale_source"
+
+
+def test_full_export_and_offered_source_have_identical_fingerprint(tmp_path, monkeypatch):
+    from pathlib import Path
+    import shutil
+    from python.cloud.release_readiness import SOURCE_DIRS, SOURCE_FILES
+
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.syspath_prepend(str(root / "scripts"))
+    import collect_release_sources as sources
+
+    exported = tmp_path / "export"
+    for name in dict.fromkeys((*sources.DIRECTORIES, *SOURCE_DIRS)):
+        if (root / name).is_dir():
+            shutil.copytree(root / name, exported / name, dirs_exist_ok=True,
+                            ignore=sources.ignore_private)
+    for name in {*sources.FILES, *SOURCE_FILES}:
+        if (root / name).is_file():
+            target = exported / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(root / name, target)
+    expected = source_fingerprint(root)
+    assert source_fingerprint(exported) == expected
+    monkeypatch.setattr(sources, "ROOT", exported)
+    offered = tmp_path / "offered"
+    sources.collect(offered)
+    assert (offered / "deploy/cloud/VPS.md").read_bytes() == (exported / "deploy/cloud/VPS.md").read_bytes()
+    assert source_fingerprint(offered) == expected
