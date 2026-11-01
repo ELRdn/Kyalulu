@@ -82,3 +82,21 @@ earlier published implementation `d0cb5a2`; it is not CI evidence for this chang
 No production rollout, merge, provider activation, or physical-phone acceptance
 is implied. Region/provider confirmation, Supabase actual URL settings, Android/
 iPhone testing, and the other previously recorded release gates remain open.
+
+## New-head CI correction
+
+The first `8868886` PR run **41259533309** failed the old grammar fixture on both
+OSes (1 failed, 1,786 passed / 101 files). It still sent raw GGUF `generate`,
+which the new admission contract intentionally rejects, and its mock lacked
+the native count API. The same failure was reproduced locally before editing.
+The fixture now exercises mandatory count and window continuation, retains all
+grammar/plain-reasoning assertions, and additionally requires final count and
+completion to receive the same options object. The corrected grammar fixture
+and admission Worker suite pass **60 tests / 2 files**; product guards are not
+weakened. This is not yet hosted-CI or real-tokenizer acceptance.
+
+Further source inspection explains the ineffective legacy decode counters:
+this pinned server calls `llama_process`, which uses the context's extended-batch
+encode/decode methods directly. Diagnostic hooks on those actual methods are
+being rebuilt. Unchanged output from the unused legacy-entry experiment is
+retained as diagnostic failure evidence; LTO was not established as the cause.
