@@ -40,11 +40,87 @@ def test_same_run_wasm_checks_and_pinned_build():
     assert web['env'] == {'VITE_RELAY_ORIGIN': 'https://relay.kyalulu.com'}
     patch_check = next(step['run'] for step in steps if step.get('name') == 'Match compiled patch to corresponding source')
     assert runs.index(patch_check) < runs.index(web['run'])
+    for job, command in (('bundle', 'build:native'), ('cloud', 'build:app')):
+        steps = JOBS[job]['steps']
+        install = next(i for i, step in enumerate(steps) if step.get('run') == 'pnpm install --frozen-lockfile')
+        download = next(i for i, step in enumerate(steps) if step.get('uses') == 'actions/download-artifact@v4')
+        verify = next(i for i, step in enumerate(steps) if step.get('name') == 'Verify Native WASM and license inputs')
+        patch = next(i for i, step in enumerate(steps) if step.get('name') == 'Match compiled patch to corresponding source')
+        sdk = next(i for i, step in enumerate(steps) if step.get('run') == 'python scripts/mobile_wasm/build_sdk.py')
+        ui = next(i for i, step in enumerate(steps) if step.get('run') == 'pnpm --filter web ' + command)
+        assert max(install, download) < verify < patch < sdk < ui
+        assert '--verify-inputs' in steps[verify]['run']
+        assert all(name in steps[patch]['run'] for name in ('ple.patch', 'chat-count.patch'))
     build = next(run for run in runs if 'docker build ' in run)
     assert build.index('tar -xzf kyalulu-cloud.tar.gz -C context') < build.index('sha256sum -c SHA256SUMS') < build.index('docker build ')
     assert 'sha256sum -c kyalulu-cloud.tar.gz.sha256' in build
     assert 'docker build --file context/Dockerfile --tag "$CLOUD_IMAGE" context' in build
     assert not any(word in '\n'.join(runs) for word in ('docker push', 'docker save', 'pnpm publish', 'npm publish'))
+
+
+def test_wasm_upload_carries_only_hashed_public_sdk_inputs():
+    steps = JOBS['wasm']['steps']
+    record = next(i for i, step in enumerate(steps) if step.get('run') == 'python scripts/mobile_wasm/build_sdk.py --record-inputs')
+    hashed = next(i for i, step in enumerate(steps) if step.get('name') == 'Hash exact Native WASM and license inputs')
+    upload = next(i for i, step in enumerate(steps) if step.get('uses') == 'actions/upload-artifact@v4')
+    assert record < hashed < upload
+    assert not any('pnpm install' in step.get('run', '') for step in steps)
+    hashes = shlex.split(steps[hashed]['run'].replace('\\\n', ''))
+    assert hashes[0] == 'sha256sum' and hashes[-2:] == ['>', 'SHA256SUMS']
+    names = hashes[1:-2]
+    assert len(names) == len(set(names)) == 12
+    assert {'SDK_INPUTS.json', 'chat-count.patch', 'ple.patch'} <= set(names)
+    paths = steps[upload]['with']['path'].splitlines()
+    prefix = '.artifacts/mobile-wasm/'
+    assert set(prefix + name for name in names) <= set(paths)
+    assert all(path.startswith((prefix, '!' + prefix)) for path in paths)
+    assert all(not any(part in path for part in ('node_modules', 'cache', '.git/', 'emsdk')) for path in paths)
+    # The generator's fixed inputs are explicit; public TS and the two JS workers are bounded globs.
+    import runpy
+    sdk = runpy.run_path(str(ROOT / 'scripts/mobile_wasm/build_sdk.py'))
+    for name in sdk['SDK_FIXED_INPUTS']:
+        if name.startswith('src/'):
+            continue
+        assert prefix + 'wllama/' + name in paths
+    assert prefix + 'wllama/src/**/*.ts' in paths
+    assert prefix + 'wllama/src/workers-code/*.js' in paths
+    assert '!' + prefix + 'wllama/src/**/*.test.ts' in paths
+    for name in sdk['SDK_GENERATED']:
+        assert '!' + prefix + 'wllama/' + name in paths
+
+
+@pytest.mark.parametrize('fault', ['valid', 'tampered', 'missing', 'duplicate', 'unexpected', 'escape', 'bad-digest', 'linked'])
+def test_native_input_verifier_executes_with_exact_base_manifest(tmp_path, fault):
+    run = next(step['run'] for step in CLOUD['steps'] if step.get('name') == 'Verify Native WASM and license inputs')
+    script = run.split("<<'PY'", 1)[1].split('\n', 1)[1].split('\nPY', 1)[0]
+    producer = next(step['run'] for step in JOBS['wasm']['steps'] if step.get('name') == 'Hash exact Native WASM and license inputs')
+    names = shlex.split(producer.replace('\\\n', ''))[1:-2]
+    root = tmp_path / '.artifacts/mobile-wasm'
+    lines = []
+    for name in names:
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(name.encode())
+        lines.append(f'{hashlib.sha256(path.read_bytes()).hexdigest()}  {name}')
+    if fault == 'tampered':
+        (root / 'chat-count.patch').write_bytes(b'tampered')
+    elif fault == 'missing':
+        (root / 'SDK_INPUTS.json').unlink()
+    elif fault == 'duplicate':
+        lines[-1] = lines[0]
+    elif fault == 'unexpected':
+        lines[-1] = '0' * 64 + '  unknown'
+    elif fault == 'escape':
+        lines[-1] = '0' * 64 + '  ../outside'
+    elif fault == 'bad-digest':
+        lines[0] = 'wrong  ' + names[0]
+    elif fault == 'linked':
+        # Keep the test unprivileged on Windows while exercising the actual rejection branch.
+        script = "original_is_symlink = Path.is_symlink\nPath.is_symlink = lambda path: path.name == 'chat-count.patch' or original_is_symlink(path)\n" + script
+        script = 'from pathlib import Path\n' + script
+    (root / 'SHA256SUMS').write_text('\n'.join(lines))
+    result = subprocess.run([sys.executable, '-'], input=script, text=True, cwd=tmp_path, capture_output=True)
+    assert (result.returncode == 0) == (fault == 'valid'), result.stderr
 
 
 def test_native_acceptance_retains_only_explicit_fictional_evidence():

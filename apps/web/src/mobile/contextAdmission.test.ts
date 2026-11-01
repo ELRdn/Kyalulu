@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { admitGGUFTurns, conservativeTokens, mergeTurns, validateTurns } from './context';
+import { admitGGUFTurns, conservativeTokens, materializeGGUFRuns, mergeTurns, planGGUFContext, selectGGUFHistory, validateTurns } from './context';
 import { CONTEXT_TOKENS, OUTPUT_TOKENS, type ChatTurn } from './types';
 
 const turn=(role:ChatTurn['role'],content:string):ChatTurn=>({role,content});
@@ -23,6 +23,23 @@ async function oracle(turns:ChatTurn[],reserve=OUTPUT_TOKENS) {
 }
 
 describe('admitGGUFTurns',()=>{
+  it('preserves the legacy candidate despite mandatory native overflow and snapshots source values',()=>{
+    const turns=[turn('user','old'),turn('assistant','reply'),turn('user','latest')],plan=planGGUFContext(turns);
+    turns[0].content='mutated';
+    expect(materializeGGUFRuns(plan,selectGGUFHistory(plan,1900)).map(({content})=>content)).toEqual(['old','reply']);
+  });
+  it('rescues mandatory proxy overflow with a bounded whole-unit history heuristic',()=>{
+    const turns=freeze([turn('system','あ'.repeat(2000)),turn('user','obsolete'.repeat(1000)),turn('assistant','old reply'),turn('user','latest')]);
+    const plan=planGGUFContext(turns);
+    expect(plan.legacy).toBeNull();expect(selectGGUFHistory(plan,1700)).toEqual([]);
+    expect(materializeGGUFRuns(plan,plan.mandatory)).toEqual([{run:0,...turns[0]},{run:3,...turns[3]}]);
+    expect(()=>selectGGUFHistory(plan,1793)).toThrow('長すぎ');
+  });
+  it('does not reapply original message cap to a materialized mandatory run',()=>{
+    const plan=planGGUFContext([turn('system','x'.repeat(128000)),turn('system','y'.repeat(128000)),turn('user','latest')]);
+    expect(materializeGGUFRuns(plan,plan.mandatory)[0].content.length).toBe(256002);
+    expect(selectGGUFHistory(plan,100)).toEqual([]);
+  });
   it('matches merge then fit across empty fragments, Unicode, system barriers and trailing assistants',async()=>{
     const fixtures:ChatTurn[][]=[
       [],

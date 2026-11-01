@@ -4,7 +4,7 @@ import type { ChatTurn, MobileModel } from './types';
 
 const engine=vi.hoisted(()=>({
   models:[] as MobileModel[],
-  load:vi.fn(),exit:vi.fn(),debug:vi.fn(),completion:vi.fn(),
+  load:vi.fn(),exit:vi.fn(),debug:vi.fn(),completion:vi.fn(),count:vi.fn(),
   tokenize:vi.fn(),generate:vi.fn(),dispose:vi.fn(),reset:vi.fn(),interrupt:vi.fn(),
   tokenizerLoad:vi.fn(),onnxLoad:vi.fn(),
   trace:[] as {messages:ChatTurn[];options:Record<string,unknown>}[],
@@ -19,6 +19,7 @@ vi.mock('@wllama/wllama',()=>({Wllama:class {
   exit=engine.exit;
   _getDebugInfo=engine.debug;
   createChatCompletion=engine.completion;
+  countChatTokens=engine.count;
 }}));
 vi.mock('@huggingface/transformers',()=>({
   env:{backends:{onnx:{wasm:{}}}},
@@ -33,9 +34,9 @@ vi.mock('@huggingface/transformers',()=>({
 type Packet=Record<string,any>;
 const origin='https://device.test';
 const turn=(role:ChatTurn['role'],content:string):ChatTurn=>({role,content});
-const admission={modelId:'fixture',modelRevision:'distribution-v1',outputTokens:256,omitted:0};
+const admission={modelId:'fixture',modelRevision:'distribution-v1',outputTokens:256,originalRuns:1,newestUserRun:0};
 const request=(overrides:Packet={}):Packet=>({
-  id:2,type:'generate-admitted',messages:[turn('user','Hello')],
+  id:2,type:'generate-admitted',mandatory:[{run:0,...turn('user','Hello')}],
   settings:{max_tokens:256},admission:{...admission},...overrides,
 });
 let worker:{location:{origin:string};postMessage:ReturnType<typeof vi.fn>;onmessage:(event:{data:Packet})=>Promise<void>};
@@ -53,8 +54,8 @@ async function boot(modelId:string|null='fixture') {
   }
 }
 async function rejected(data:Packet) {
-  await send(data);
-  expect(events(data.id)).toEqual([{id:data.id,type:'error',error:expect.any(String)}]);
+  await run(data);
+  expect(events(data.id).filter(event=>event.type!=='admission-count')).toEqual([{id:data.id,type:'error',error:expect.any(String)}]);
   expect(events(data.id)[0].error).not.toBe('未対応の推論操作');
   expect(engine.completion).not.toHaveBeenCalled();
   expect(engine.generate).not.toHaveBeenCalled();
@@ -70,6 +71,7 @@ beforeEach(()=>{
   engine.models.splice(0,engine.models.length,model,{...sourceOnly,id:'source-only'},
     {...sourceOnly,id:'onnx',runtime:'onnx'});
   engine.trace=[];
+  engine.count.mockResolvedValue(7);
   engine.load.mockResolvedValue(undefined);engine.exit.mockResolvedValue(undefined);
   engine.debug.mockResolvedValue({plePresent:false});
   engine.completion.mockImplementation(async()=>(async function*(){
@@ -94,170 +96,175 @@ beforeEach(()=>{
 });
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();});
 
-describe('generate-admitted worker protocol',()=>{
-  it('consumes admitted messages once, keeping newly adjacent systems, grammar and sampling unchanged',async()=>{
+async function run(data:Packet,history:Packet[]=[]){
+  const running=send(data);
+  await vi.waitFor(()=>expect(events(data.id).some(event=>['admission-count','error','done'].includes(event.type))).toBe(true));
+  if(events(data.id).some(event=>event.type==='admission-count'))
+    await send({id:data.id,type:'admission-window',admission:data.admission,history});
+  await running;
+}
+const wire=(run:number,role:ChatTurn['role'],content:string)=>({run,role,content});
+
+describe('held native admission protocol',()=>{
+  it('counts and generates the identical final options without remerging newly adjacent systems',async()=>{
     await boot();
-    const messages=[turn('system','first system'),turn('system','system after omitted history'),
-      turn('user','latest 😀'),turn('assistant','prefill')];
+    const mandatory=[wire(0,'system','head'),wire(3,'system','middle'),wire(4,'user','latest 😀'),wire(5,'assistant','prefill')];
     const settings={temperature:.25,top_k:17,top_p:.82,max_tokens:384,min_p:.07,
       repeat_penalty:1.12,repeat_last_n:80,frequency_penalty:.2,presence_penalty:-.1,seed:42};
-    const data=request({messages,settings,responseGrammar:deviceResponseGrammar,
-      admission:{...admission,outputTokens:384,omitted:4}});
-    const original=structuredClone(data);
-    messages.forEach(Object.freeze);Object.freeze(messages);Object.freeze(settings);Object.freeze(data.admission);Object.freeze(data);
-    await send(data);
-    expect(engine.load).toHaveBeenCalledWith([] ,expect.objectContaining({n_ctx:2048,n_gpu_layers:0,reasoning:false,
-      default_template_kwargs:{enable_thinking:false}}));
-    expect(engine.completion).toHaveBeenCalledExactlyOnceWith({messages,stream:true,temperature:.25,top_k:17,top_p:.82,
+    const data=request({mandatory,settings,responseGrammar:deviceResponseGrammar,
+      admission:{...admission,outputTokens:384,originalRuns:6,newestUserRun:4}});
+    const original=structuredClone(data);mandatory.forEach(Object.freeze);Object.freeze(mandatory);
+    await run(data);
+    const options=engine.completion.mock.calls[0][0];
+    expect(options).toEqual({messages:mandatory.map(({role,content})=>({role,content})),stream:true,temperature:.25,top_k:17,top_p:.82,
       max_tokens:384,min_p:.07,penalty_repeat:1.12,penalty_last_n:80,penalty_freq:.2,penalty_present:-.1,seed:42,
       grammar:deviceResponseGrammar,reasoning_budget_tokens:0,reasoning_format:'none',
       abortSignal:expect.any(AbortSignal),chat_template_kwargs:{enable_thinking:false},cache_prompt:true});
-    expect(engine.completion.mock.calls[0][0].messages).toEqual(original.messages);
+    expect(engine.count).toHaveBeenCalledTimes(2);
+    expect(engine.count.mock.calls.at(-1)![0]).toBe(options);
     expect(context.mergeTurns).not.toHaveBeenCalled();expect(context.fitContext).not.toHaveBeenCalled();
-    expect(engine.tokenize).not.toHaveBeenCalled();expect(engine.generate).not.toHaveBeenCalled();
-    expect(events(2)).toEqual([
-      {id:2,type:'context',omitted:4},{id:2,type:'delta',text:'fictional output'},
-      {id:2,type:'done',measurement:expect.objectContaining({modelId:'fixture',revision:'distribution-v1',
-        outputTokens:3,structuredOutput:'grammar'})},
-    ]);
+    expect(events(2)).toEqual([{id:2,type:'admission-count',mandatoryInputTokens:7},{id:2,type:'context',omitted:2},
+      {id:2,type:'delta',text:'fictional output'},{id:2,type:'done',measurement:expect.objectContaining({outputTokens:3,structuredOutput:'grammar'})}]);
     expect(data).toEqual(original);
   });
-
-  it.each([0,Number.MAX_SAFE_INTEGER])('accepts safe omitted=%s with default reserve and no grammar',async omitted=>{
+  it('rescues intact mandatory text beyond proxy budget and beyond the merged original cap',async()=>{
     await boot();
-    await send(request({settings:undefined,admission:{...admission,omitted}}));
+    const content='あ'.repeat(128000)+'\n\n'+'😀'.repeat(64000);
+    await run(request({mandatory:[wire(0,'system',content),wire(1,'user','latest')],admission:{...admission,originalRuns:2,newestUserRun:1}}));
     expect(engine.completion).toHaveBeenCalledTimes(1);
-    expect(engine.completion.mock.calls[0][0]).toMatchObject({max_tokens:256,temperature:.7,top_k:64,top_p:.95});
-    for(const key of ['grammar','reasoning_budget_tokens','reasoning_format'])expect(engine.completion.mock.calls[0][0]).not.toHaveProperty(key);
-    expect(events(2)[0]).toEqual({id:2,type:'context',omitted});
-    expect(events(2).at(-1)).toMatchObject({type:'done',measurement:{structuredOutput:'text'}});
+    expect(engine.completion.mock.calls[0][0].messages[0].content).toBe(content);
   });
-
-  it('uses source revision when no distribution revision exists',async()=>{
-    await boot('source-only');
-    await send(request({admission:{...admission,modelId:'source-only',modelRevision:'source-v1'}}));
-    expect(engine.completion).toHaveBeenCalledTimes(1);
-    expect(events(2).at(-1)).toMatchObject({type:'done',measurement:{modelId:'source-only',revision:'source-v1'}});
+  it('recounts nonmonotone whole candidates and drops entire units with system barriers',async()=>{
+    await boot();
+    engine.count.mockResolvedValueOnce(25).mockResolvedValueOnce(1900).mockResolvedValueOnce(1950).mockResolvedValueOnce(1700);
+    const data=request({mandatory:[wire(0,'system','head'),wire(3,'system','barrier'),wire(6,'user','latest')],
+      admission:{...admission,originalRuns:7,newestUserRun:6}});
+    await run(data,[wire(1,'user','old1'),wire(2,'assistant','reply1'),wire(4,'user','old2'),wire(5,'assistant','reply2')]);
+    expect(engine.count.mock.calls.map(([o])=>o.messages.map((m:ChatTurn)=>m.content))).toEqual([
+      ['head','barrier','latest'],['head','old1','reply1','barrier','old2','reply2','latest'],
+      ['head','barrier','old2','reply2','latest'],['head','barrier','latest']]);
+    expect(events(2)).toContainEqual({id:2,type:'context',omitted:4});
+    expect(engine.completion.mock.calls[0][0]).toBe(engine.count.mock.calls.at(-1)![0]);
   });
-
-  it.each([
-    ['missing',undefined],['null',null],['boolean',false],['string','admission'],['array',[]],['empty',{}],
-    ['array with matching fields',Object.assign([],{...admission})],
-    ['missing model',{modelRevision:admission.modelRevision,outputTokens:256,omitted:0}],
-    ['missing revision',{modelId:'fixture',outputTokens:256,omitted:0}],
-    ['missing reserve',{modelId:'fixture',modelRevision:admission.modelRevision,omitted:0}],
-    ['missing omitted',{modelId:'fixture',modelRevision:admission.modelRevision,outputTokens:256}],
-    ['foreign model',{...admission,modelId:'source-only'}],
-    ['foreign revision',{...admission,modelRevision:'other-revision'}],
-    ['source instead of distribution revision',{...admission,modelRevision:'source-v1'}],
-    ['negative omitted',{...admission,omitted:-1}],['fractional omitted',{...admission,omitted:.5}],
-    ['unsafe omitted',{...admission,omitted:Number.MAX_SAFE_INTEGER+1}],
-    ['NaN omitted',{...admission,omitted:NaN}],['infinite omitted',{...admission,omitted:Infinity}],
-    ['string omitted',{...admission,omitted:'0'}],
-    ['reserve mismatch',{...admission,outputTokens:255}],['string reserve',{...admission,outputTokens:'256'}],
-    ['fractional reserve',{...admission,outputTokens:256.5}],['NaN reserve',{...admission,outputTokens:NaN}],
-  ])('rejects %s admission before inference',async(_name,value)=>{
+  it.each([1792,1793])('uses exact final native boundary %s with default output256',async count=>{
+    await boot();engine.count.mockResolvedValue(count);
+    await run(request({settings:undefined}));
+    expect(engine.completion).toHaveBeenCalledTimes(count===1792?1:0);
+    expect(events(2).at(-1)).toMatchObject({type:count===1792?'done':'error'});
+    if(count===1792)expect(engine.completion.mock.calls[0][0].max_tokens).toBe(256);
+  });
+  it('does not reject an old valid window when mandatory-only count overflows or fails to parse',async()=>{
+    await boot();
+    for(const [i,value] of [1900,new Error('mandatory template')].entries()){
+      engine.count.mockReset();
+      if(value instanceof Error)engine.count.mockRejectedValueOnce(value);else engine.count.mockResolvedValueOnce(value);
+      engine.count.mockResolvedValueOnce(100);
+      await run(request({id:10+i,mandatory:[wire(2,'user','latest')],admission:{...admission,originalRuns:3,newestUserRun:2}}),
+        [wire(0,'user','old'),wire(1,'assistant','reply')]);
+      expect(events(10+i).at(-1)).toMatchObject({type:'done'});
+    }
+    expect(engine.completion).toHaveBeenCalledTimes(2);
+  });
+  it.each([undefined,null,false,'admission',[],{}, {...admission,modelId:'other'},{...admission,modelRevision:'source-v1'},
+    {...admission,outputTokens:255},{...admission,outputTokens:'256'},{...admission,originalRuns:-1},
+    {...admission,originalRuns:1.5},{...admission,newestUserRun:1},{...admission,newestUserRun:-2}])('rejects malformed/stale fence %j',async value=>{
     await boot();await rejected(request({admission:value}));
   });
-
-  it.each([
-    ['null',null],['string','messages'],['array-like object',{0:turn('user','latest'),length:1}],
-    ['null turn',[null]],['scalar turn',[17]],['tuple turn',[['user','latest']]],
-    ['foreign role',[{role:'tool',content:'latest'}]],['missing role',[{content:'latest'}]],
-    ['missing content',[{role:'user'}]],['numeric content',[{role:'user',content:17}]],
-    ['boxed content',[{role:'user',content:new String('latest')}]],
-    ['hole',Array(1)],['leading hole',[,turn('user','latest')]],['trailing hole',[turn('user','latest'),,]],
-    ['overbudget scalar',[turn('user','x'.repeat(1633))]],
-    ['UTF-8 overflow',[turn('user','あ'.repeat(545))]],
-    ['oversized content',[turn('user','x'.repeat(128001))]],
-    ['overbudget array',Array.from({length:14},()=>turn('system',''))],
-  ])('rejects %s messages without fitting, dropping or truncating them',async(_name,messages)=>{
-    await boot();await rejected(request({messages}));
+  it.each([null,'messages',[null],Array(1),[{run:0,role:'tool',content:'x'}],[wire(-1,'user','x')],
+    [wire(0,'user','x'),wire(0,'user','x')],[wire(0,'system','missing latest')],
+    [{run:0,role:'user',content:17}]])('rejects malformed mandatory sequence %j',async mandatory=>{
+    await boot();await rejected(request({mandatory}));
   });
-
-  it('rejects a prototype-provided array position',async()=>{
-    await boot();
-    const messages=Array<ChatTurn>(1);
-    Object.setPrototypeOf(messages,Object.assign(Object.create(Array.prototype),{0:turn('user','latest')}));
-    await rejected(request({messages}));
+  it.each([NaN,Infinity,-1,1.5,'7',undefined])('rejects malformed public count %s before generation',async count=>{
+    await boot();engine.count.mockResolvedValue(count);await rejected(request());
   });
-
-  it('accepts the exact conservative byte boundary without changing the output reserve',async()=>{
-    await boot();
-    const messages=[turn('user','x'.repeat(1632))]; // 32 + 128 + 1632 + 256 = 2048.
-    await send(request({messages}));
-    expect(engine.completion).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({messages,max_tokens:256}));
-    expect(events(2).at(-1)).toMatchObject({type:'done'});
+  it('fails explicitly if the loaded engine lacks public native count',async()=>{
+    await boot();engine.count=undefined as any;
+    // The loaded instance retains its own field; boot another instance with no method.
+    await send({id:3,type:'load',modelId:'fixture',cpu:true,base:origin+'/'});
+    await rejected(request());expect(events(2)[0].error).toContain('SDK is required');
+    engine.count=vi.fn();
   });
-
-  it('compares admission against the requested reserve rather than the default',async()=>{
-    await boot();await rejected(request({settings:{max_tokens:512}}));
+  it.each([null,[],{max_tokens:0},{max_tokens:1025},{max_tokens:256.5},{temperature:NaN},{seed:-1}])('revalidates settings %j',async settings=>{
+    await boot();await rejected(request({settings}));
   });
-
-  it.each([null,[],{max_tokens:0},{max_tokens:1025},{max_tokens:256.5},{temperature:NaN},{seed:-1}])(
-    'revalidates settings %j before inference',async settings=>{
-      await boot();await rejected(request({settings}));
-    });
-
-  it('rejects an admission before a model is loaded',async()=>{
+  it('rejects missing model, ONNX admission and raw GGUF bypass',async()=>{
     await boot(null);await rejected(request());
-  });
-
-  it('rejects the GGUF admission operation on a loaded ONNX model',async()=>{
-    await boot('onnx');
-    await rejected(request({admission:{...admission,modelId:'onnx',modelRevision:'source-v1'}}));
-    expect(engine.tokenize).not.toHaveBeenCalled();
-  });
-
-  it('rejects a stale admission after switching the loaded model',async()=>{
-    await boot();
-    await send({id:3,type:'load',modelId:'source-only',cpu:true,base:origin+'/'});
-    expect(events(3)).toEqual([{id:3,type:'done',backend:'WASM CPU'}]);
-    expect(engine.exit).toHaveBeenCalledTimes(1);
-    await rejected(request());
-  });
-
-  it('unloads the GGUF and rejects further admissions until another load',async()=>{
-    await boot();await send({id:3,type:'unload'});
-    expect(engine.exit).toHaveBeenCalledTimes(1);expect(events(3)).toEqual([{id:3,type:'done'}]);
-    await rejected(request());
+    await send({id:1,type:'load',modelId:'onnx',cpu:true,base:origin+'/'});
+    await rejected(request({id:3}));
     await send({id:4,type:'load',modelId:'fixture',cpu:true,base:origin+'/'});
-    await send(request({id:5}));
-    expect(engine.completion).toHaveBeenCalledTimes(1);expect(events(5).at(-1)).toMatchObject({type:'done'});
+    await rejected({id:5,type:'generate',messages:[turn('user','raw')]});
   });
-
-  it('blocks concurrent operations, stops an admitted stream and clears busy for the next request',async()=>{
+  it('pins source revision when distribution revision is absent and recovers from errors',async()=>{
+    await boot('source-only');await rejected(request());
+    await run(request({id:3,admission:{...admission,modelId:'source-only',modelRevision:'source-v1'}}));
+    expect(events(3).at(-1)).toMatchObject({type:'done'});
+  });
+  it('rejects malformed continuation once and ignores stale/duplicate continuations',async()=>{
     await boot();
-    let release!:()=>void;
+    const running=send(request());
+    await vi.waitFor(()=>expect(events(2)[0]?.type).toBe('admission-count'));
+    await send({id:99,type:'admission-window',history:[]});
+    await send({id:2,type:'admission-window',admission:{...admission,outputTokens:512},history:[]});
+    await running;expect(events(2).filter(e=>e.type==='error')).toHaveLength(1);
+    await send({id:2,type:'admission-window',admission,history:[]});
+    await run(request({id:3}));expect(events(3).at(-1)).toMatchObject({type:'done'});
+  });
+  it.each([{}, {history:[],error:'both'}, {history:null}, {history:[wire(0,'user','overlap')]},
+    {history:[wire(0,'system','hidden system')]}, {error:17}])('rejects invalid continuation body %j',async body=>{
+    await boot();const running=send(request());
+    await vi.waitFor(()=>expect(events(2)[0]?.type).toBe('admission-count'));
+    await send({id:2,type:'admission-window',admission,...body});await running;
+    expect(events(2).at(-1)?.type).toBe('error');expect(engine.completion).not.toHaveBeenCalled();
+  });
+  it('retains streaming stop and then allows another admitted request',async()=>{
+    await boot();let release!:()=>void;
     const gate=new Promise<void>(resolve=>{release=resolve;});
     engine.completion.mockImplementationOnce(async(options:Packet)=>(async function*(){
-      yield {choices:[{delta:{content:'partial'}}]};
-      await gate;options.abortSignal.throwIfAborted();
-      yield {choices:[{delta:{content:'should not escape'}}]};
+      yield {choices:[{delta:{content:'partial'}}]};await gate;options.abortSignal.throwIfAborted();
+      yield {choices:[{delta:{content:'must not escape'}}]};
     })());
-    const running=send(request());
-    try {
-      await vi.waitFor(()=>expect(events(2)).toContainEqual({id:2,type:'delta',text:'partial'}),{timeout:1000});
-      for(const [index,type] of ['generate','generate-admitted','load','unload'].entries()) {
-        const id=10+index;await send(request({id,type,modelId:'source-only',cpu:true,base:origin+'/'}));
-        expect(events(id)).toEqual([{id,type:'error',error:'処理中です。停止してから操作してください。'}]);
-      }
-      expect(engine.load).toHaveBeenCalledTimes(1);expect(engine.exit).not.toHaveBeenCalled();
-      expect(engine.completion).toHaveBeenCalledTimes(1);
-      await send({type:'stop'});
-      expect(engine.completion.mock.calls[0][0].abortSignal.aborted).toBe(true);
-    } finally {release();await running;}
-    expect(events(2)).toEqual([{id:2,type:'context',omitted:0},{id:2,type:'delta',text:'partial'},
-      {id:2,type:'done',stopped:true}]);
-    await send(request({id:20}));
-    expect(engine.completion).toHaveBeenCalledTimes(2);expect(events(20).at(-1)).toMatchObject({type:'done',measurement:{outputTokens:3}});
+    const running=run(request());
+    await vi.waitFor(()=>expect(events(2)).toContainEqual({id:2,type:'delta',text:'partial'}));
+    await send({id:2,type:'stop'});release();await running;
+    expect(events(2).at(-1)).toEqual({id:2,type:'done',stopped:true});
+    expect(events(2).filter(e=>e.type==='delta')).toHaveLength(1);
+    await run(request({id:3}));expect(events(3).at(-1)).toMatchObject({type:'done'});
   });
-
-  it('recovers after a rejected admission without changing the next valid request',async()=>{
-    await boot();await rejected(request({admission:{...admission,omitted:-1}}));
-    await send(request({id:3}));
-    expect(engine.completion).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({messages:[turn('user','Hello')],max_tokens:256}));
-    expect(events(3).at(-1)).toMatchObject({type:'done'});
+  it('rejects optional history that impersonates a mandatory system run id',async()=>{
+    await boot();
+    await run(request({mandatory:[wire(0,'system','keep'),wire(2,'user','latest')],
+      admission:{...admission,originalRuns:3,newestUserRun:2}}),[wire(0,'assistant','overlap')]);
+    expect(events(2).at(-1)).toMatchObject({type:'error',error:'Overlapping GGUF runs'});
+    expect(engine.completion).not.toHaveBeenCalled();
+  });
+  it.each(['mandatory','window','final'])('holds busy and drains stop at %s boundary without generating',async phase=>{
+    await boot();
+    let release!:(value:number)=>void;
+    const gate=new Promise<number>(resolve=>{release=resolve;});
+    if(phase==='mandatory')engine.count.mockReturnValueOnce(gate);
+    if(phase==='final')engine.count.mockResolvedValueOnce(7).mockReturnValueOnce(gate);
+    const running=send(request());
+    if(phase!=='mandatory'){
+      await vi.waitFor(()=>expect(events(2)[0]?.type).toBe('admission-count'));
+      if(phase==='final')await send({id:2,type:'admission-window',admission,history:[]});
+    }else await vi.waitFor(()=>expect(engine.count).toHaveBeenCalledTimes(1));
+    for(const [i,type] of ['generate','generate-admitted','load','unload'].entries()){
+      await send({id:10+i,type});
+      expect(events(10+i)[0]).toMatchObject({type:'error',error:'処理中です。停止してから操作してください。'});
+    }
+    await send({id:999,type:'stop'});
+    expect(events(2).at(-1)?.type).not.toBe('done');
+    await send({id:2,type:'stop'});
+    if(phase!=='window'){
+      await send({id:30,type:'unload'});expect(events(30)[0].type).toBe('error');
+      release(7);
+    }
+    await running;expect(events(2).at(-1)).toEqual({id:2,type:'done',stopped:true});
+    expect(engine.completion).not.toHaveBeenCalled();
+    await send({id:2,type:'admission-window',admission,history:[]});
+    engine.count.mockResolvedValue(7);await run(request({id:40}));
+    expect(events(40).at(-1)).toMatchObject({type:'done'});
   });
 });
 

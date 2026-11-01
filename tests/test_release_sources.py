@@ -66,19 +66,23 @@ def test_wasm_builder_keeps_unix_lines_in_windows_git_export(tmp_path, monkeypat
 
     assert '.gitattributes' in sources.FILES
     builder = 'scripts/mobile_wasm/build.sh'
-    for name in ('.gitattributes', builder):
+    patch = 'scripts/mobile_wasm/chat-count.patch'
+    files = ('.gitattributes', builder, patch)
+    for name in files:
         target = tmp_path / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes((root / name).read_bytes().replace(b'\r\n', b'\n'))
     def git(*args):
         return subprocess.check_output(['git', '-c', 'core.autocrlf=true', *args], cwd=tmp_path, stderr=subprocess.PIPE)
     git('init', '--quiet')
-    git('add', '.gitattributes', builder)
+    git('add', *files)
     git('-c', 'user.name=Release fixture', '-c', 'user.email=fixture@example.invalid',
         '-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'Fictional release source')
     with tarfile.open(fileobj=io.BytesIO(git('archive', '--format=tar', 'HEAD'))) as archive:
         script = archive.extractfile(builder).read()
+        exported_patch = archive.extractfile(patch).read()
     assert b'\n' in script and b'\r\n' not in script
+    assert exported_patch == (root / patch).read_bytes().replace(b'\r\n', b'\n')
 
 
 def test_source_contains_browser_fixture_imports(tmp_path, monkeypatch):
@@ -169,6 +173,7 @@ def test_source_contains_test_tree_and_ci_entrypoints(tmp_path, monkeypatch):
     required.update(re.findall(r'\b(?:scripts|tests)/[\w./-]+\.(?:py|mjs)',
                                (root / workflow).read_text(encoding='utf-8')))
     required.add(workflow)
+    assert {'tests/e2e_native_admission.py', 'tests/fixtures/native-admission.html'} <= required
     assert 'tests' not in sources.DIRECTORIES  # Keep private/unreviewed tests outside the offer.
     assert required <= set(sources.FILES), f'Uncollected test inputs: {sorted(required - set(sources.FILES))}'
     monkeypatch.setattr(sources, 'DIRECTORIES', ())

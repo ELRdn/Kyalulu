@@ -27,6 +27,7 @@ import { jsonChunks,SYNC_INLINE_BYTES } from './appTransfers';
 
 let runtime:MobileRuntime|undefined, loaded='';
 let running:string|null=null;
+let activeGeneration:{id:string;sessionId:string;owner:string;stop:()=>void}|null=null;
 const encoder=new TextEncoder();
 const contentHash=(raw:Uint8Array)=>new Sha256().update(raw).digest();
 const outputSchema=DeviceGenerationOutputSchema;
@@ -236,6 +237,15 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
   currentOwner();
   if(running||deviceResearchBusy()&&!scope)throw fail('A generation is already running',409);
   running=generationId;setGenerationBusy(true);
+  const incoming=signal,controller=new AbortController();
+  const active={id:generationId,sessionId:id,owner,stop:()=>{controller.abort();runtime?.stop();}};
+  activeGeneration=active;signal=controller.signal;
+  if(incoming?.aborted)controller.abort();else incoming?.addEventListener('abort',active.stop,{once:true});
+  const finish=()=>{
+    incoming?.removeEventListener('abort',active.stop);
+    if(activeGeneration===active){activeGeneration=null;running=null;setGenerationBusy(false);}
+    release();
+  };
   try {
     runtime??=new MobileRuntime();
     if(loaded!==model.id){
@@ -338,14 +348,13 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
     const stream=new ReadableStream<Uint8Array>({start(controller) {
       let ended=false,raw='';
       const send=(event:string,data:unknown)=>{if(!ended&&!closed)controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));};
-      const abort=()=>runtime?.stop();signal?.addEventListener('abort',abort,{once:true});
       void (async()=>{
         try {
           signal?.throwIfAborted();
           const input=assemblePortable(prompt,messages.filter((m:any)=>!['stopped','interrupted'].includes(m.imported_state)).map((m:any)=>({role:m.role,content:m.content})),system);
           const result=await runtime!.generate(input as import('../mobile/types').ChatTurn[],event=>{
             if(event.type==='delta'){raw+=event.text??'';send('progress',{stage:'generation',elapsed_ms:0});}
-          },requested,deviceResponseGrammar);
+          },requested,deviceResponseGrammar,signal);
           if(deviceOwner()!==owner)throw fail('Account changed');
           if((result as any).stopped||signal?.aborted)throw fail('Generation stopped');
           let parsed;
@@ -395,11 +404,11 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
           try{current=await save({...current,payload:{...current.payload,pending_generation:null}},current.revision,{['generation:'+owner+':'+generationId]:{...pending,status:'failed'}});}
           catch{saveError=' Device save failed; the pending record is retained / 保存できないため未完了の記録を保持しています。';}
           send('error',{error:(error instanceof Error?error.message:String(error))+saveError});
-        } finally {signal?.removeEventListener('abort',abort);running=null;setGenerationBusy(false);release();if(!ended&&!closed){ended=true;controller.close();}}
+        } finally {finish();if(!ended&&!closed){ended=true;controller.close();}}
       })();
-    },cancel(){closed=true;runtime?.stop();}});
+    },cancel(){closed=true;active.stop();}});
     return new Response(stream,{headers:{'Content-Type':'text/event-stream','Cache-Control':'no-store'}});
-  } catch(error) {running=null;setGenerationBusy(false);throw error;}
+  } catch(error) {finish();throw error;}
 }
 
 export async function deviceFetch(input:string,init:RequestInit={}) :Promise<Response> {
@@ -560,6 +569,10 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
     const cancel=generation[2]==='/cancel',diagnostics=generation[2]==='/diagnostics';
     if(cancel?method!=='POST':method!=='GET')throw fail('Invalid generation status operation',405);
     const key='generation:'+owner+':'+generation[1];let status=await getMeta<any>(key);
+    if(cancel&&activeGeneration?.id===generation[1]&&activeGeneration.owner===owner&&activeGeneration.sessionId===url.searchParams.get('session_id')){
+      activeGeneration.stop();
+      if(!status)return json({generation_id:generation[1],session_id:activeGeneration.sessionId,status:'pending'});
+    }
     if(!status||status.session_id!==url.searchParams.get('session_id'))throw fail('Generation not found',404);
     if(diagnostics)return diagnosticStream(generationReceiptChunks(owner,{kind:'conversation',id:status.session_id},generation[1],init.signal??undefined),owner,init.signal??undefined);
     if(isGenerationHeader(status)){
@@ -569,7 +582,6 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
       return json(result.state==='inline'?result.value:{...generationSummary(status),device_diagnostics:{state:status.diagnostics_state??'stored',bytes:result.bytes,sha256:result.sha256,
         export_url:`/api/chat/generations/${encodeURIComponent(generation[1])}/diagnostics?session_id=${encodeURIComponent(status.session_id)}`}});
     }
-    if(generation[2]&&running===generation[1])runtime?.stop();
     if(status.status==='pending'&&running!==generation[1]&&generation[2]&&!navigator.locks)throw fail('Web Locks are required for on-device generation',503);
     if(status.status==='pending'&&running!==generation[1]&&navigator.locks){
       await navigator.locks.request(deviceExecutionLockName(owner),{ifAvailable:true},async lock=>{

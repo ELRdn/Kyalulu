@@ -1,13 +1,15 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { SSEDecoder } from './sse';
-const fixture=vi.hoisted(()=>({saved:undefined as any,sequence:0,busy:vi.fn(),fail:true,memory:false,memories:[] as any[],reply:'fixture reply',proposals:[] as any[],meta:new Map<string,any>(),locks:new Set<string>(),paused:undefined as Promise<void>|undefined,started:false}));
+const fixture=vi.hoisted(()=>({saved:undefined as any,sequence:0,busy:vi.fn(),fail:true,memory:false,memories:[] as any[],reply:'fixture reply',proposals:[] as any[],meta:new Map<string,any>(),locks:new Set<string>(),paused:undefined as Promise<void>|undefined,started:false,
+  stop:vi.fn(),signals:[] as (AbortSignal|undefined)[],preparation:undefined as Promise<void>|undefined,preparing:false}));
 vi.mock('../mobile/runtime',()=>({MobileRuntime:class {
-  async load(){} async generate(_messages:any,event:any){
-    fixture.started=true;await fixture.paused;
+  async load(){} async generate(_messages:any,event:any,_settings:any,_grammar:any,signal?:AbortSignal){
+    fixture.signals.push(signal);fixture.started=true;await fixture.paused;
+    if(signal?.aborted)return {stopped:true};
     if(fixture.fail)throw Error('fixture inference failed');
     event({type:'delta',text:JSON.stringify({reply:fixture.reply,state_update:{location:'library',time:'now',mood:'calm',active_scene:'tea',relationship_state:{stage:'stranger',tone:'neutral',unresolved_conflict:false}},memory_proposals:fixture.proposals})});
     return {measurement:{memory:'must not override the actual memory trace'},stopped:false};
-  } stop(){}
+  } stop=fixture.stop;
 }}));
 vi.mock('../mobile/models',()=>({MODELS:[{id:'fixture',runtime:'gguf',temperature:.8,topK:64,topP:.95}],readyModels:async()=>new Set(['fixture'])}));
 vi.mock('./appSync',()=>({hydrateConversation:vi.fn()}));
@@ -18,6 +20,7 @@ vi.mock('./deviceMemoryStore',async original=>{
   };
   return {...await original<typeof import('./deviceMemoryStore')>(),recoverDeviceMemoryGeneration:async()=>null,
     readDeviceGenerationSource:async(id:string,owner:string)=>{
+      if(fixture.preparation){fixture.preparing=true;await fixture.preparation;}
       const {openEntity}=await import('./appStore');const session=(await openEntity(id,owner))!;
       const {messages,...metadata}=session.payload,{payload:_,...header}=session;
       return {header,messages:messages.map((message:any)=>({id:message.id,uuid:message.uuid,role:message.role,content:message.content,imported_state:message.imported_state})),latest:messages.at(-1),source:{id,owner,revision:session.revision,deleted:false,bodyToken:null,metadata:structuredClone(metadata)}};
@@ -68,6 +71,7 @@ import { allEntities,entity,recoverConversationGeneration } from './appStore';
 import { deviceExecutionLockName } from './deviceResearch';
 
 beforeEach(()=>{fixture.saved=undefined;fixture.sequence=0;fixture.fail=true;fixture.memory=false;fixture.memories=[];fixture.reply='fixture reply';fixture.proposals=[];fixture.meta.clear();fixture.busy.mockClear();fixture.locks.clear();fixture.paused=undefined;fixture.started=false;
+  fixture.stop.mockClear();fixture.signals=[];fixture.preparation=undefined;fixture.preparing=false;
   vi.mocked(allEntities).mockResolvedValue([]);
   vi.mocked(entity).mockClear();vi.mocked(recoverConversationGeneration).mockClear();
   vi.stubGlobal('navigator',{locks:{request:async(name:string,_options:any,fn:any)=>{
@@ -75,6 +79,45 @@ beforeEach(()=>{fixture.saved=undefined;fixture.sequence=0;fixture.fail=true;fix
   }}});
 });
 afterEach(()=>{vi.unstubAllGlobals();});
+
+it.each(['signal','endpoint','reader'])('retains pending user and rolls back count-boundary cancellation through %s',async method=>{
+  fixture.fail=false;vi.stubGlobal('location',{href:'https://device.test/device/'});
+  let release!:()=>void;fixture.paused=new Promise<void>(resolve=>{release=resolve;});
+  const controller=new AbortController(),generation='cancel-'+method;
+  const response=await deviceFetch('/api/chat/stream',{method:'POST',signal:controller.signal,body:JSON.stringify({session_id:'chat',generation_id:generation,model_id:'fixture',messages:[{role:'user',content:'Retain submitted input'}]})});
+  const before=structuredClone(fixture.saved.payload);
+  let stream:Promise<string>|undefined;
+  if(method==='reader')await response.body!.getReader().cancel();
+  else {
+    stream=response.text();
+    if(method==='signal')controller.abort();
+    else expect((await deviceFetch('/api/chat/generations/'+generation+'/cancel?session_id=chat',{method:'POST'})).status).toBe(200);
+  }
+  expect(fixture.signals.at(-1)?.aborted).toBe(true);expect(fixture.stop).toHaveBeenCalledTimes(1);
+  expect(fixture.meta.get('generation:fixture-owner:'+generation).status).toBe('pending');
+  expect(fixture.locks.size).toBe(1);release();
+  if(stream)expect(await stream).toContain('event: error');
+  await vi.waitFor(()=>expect(fixture.meta.get('generation:fixture-owner:'+generation).status).toBe('failed'));
+  expect(fixture.saved.payload).toEqual({...before,pending_generation:null});
+  await vi.waitFor(()=>expect(fixture.locks.size).toBe(0));
+});
+
+it('latches endpoint cancel during source preparation before a receipt/runtime generation exists',async()=>{
+  fixture.fail=false;vi.stubGlobal('location',{href:'https://device.test/device/'});
+  const body={session_id:'chat',model_id:'fixture',messages:[{role:'user',content:'Retain preparation input'}]};
+  await (await deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify({...body,generation_id:'first'})})).text();
+  const before=structuredClone(fixture.saved.payload);fixture.started=false;fixture.signals=[];
+  let release!:()=>void;fixture.preparation=new Promise<void>(resolve=>{release=resolve;});
+  const request=deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify({...body,generation_id:'preparation'})});
+  await vi.waitFor(()=>expect(fixture.preparing).toBe(true));
+  const cancel=await deviceFetch('/api/chat/generations/preparation/cancel?session_id=chat',{method:'POST'});
+  expect(cancel.status).toBe(200);expect((await cancel.json()).status).toBe('pending');
+  release();expect(await (await request).text()).toContain('event: error');
+  expect(fixture.started).toBe(false);expect(fixture.signals).toEqual([]);
+  expect(fixture.saved.payload.messages.slice(0,-1)).toEqual(before.messages);
+  for(const key of ['state','memories','last_generation'])expect(fixture.saved.payload[key]).toEqual(before[key]);
+  expect(fixture.meta.get('generation:fixture-owner:preparation').status).toBe('failed');
+});
 
 it('rejects an empty generation identity before loading or saving',async()=>{
   const response=await deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify({session_id:'chat',generation_id:'',model_id:'fixture',messages:[{role:'user',content:'Keep draft'}]})});
