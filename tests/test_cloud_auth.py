@@ -121,6 +121,49 @@ async def test_callback_cancellation_missing_flow_and_raw_error_are_safe(tmp_pat
 
 
 @pytest.mark.asyncio
+async def test_unified_login_survives_paused_free_grants(tmp_path):
+    cfg = config(tmp_path, private_test=False, allowed_emails=(), signup_limit=2,
+                 trial_credits=1000, monthly_subsidy_jpy=0, test_budget_nano=0,
+                 test_prior_cost_nano=0, unified_enabled=True, legal_approved=True,
+                 region_policies=(("JP", {"accepted": True, "version": "fixture",
+                                          "minimum_age": 18, "guardian_below": 18}),))
+    owner = str(uuid4())
+
+    def respond(request):
+        assert request.url.host == "supabase.test"
+        if request.url.path.endswith("/token"):
+            return httpx.Response(200, json={"access_token": "fixture-access",
+                "refresh_token": "fixture-refresh", "expires_in": 3600})
+        assert request.url.path.endswith("/user")
+        return httpx.Response(200, json={"id": owner, "email": "owner@example.test",
+                                        "email_confirmed_at": "2026-10-04"})
+
+    app = create_app(cfg, transport=httpx.MockTransport(respond))
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url=cfg.origin,
+                                headers={"Origin": cfg.origin}, follow_redirects=False) as client:
+        eligibility = await client.post('/api/cloud/app/eligibility', json={'country': 'JP', 'age': 25})
+        assert eligibility.status_code == 200
+        version = provider_consent_version(cfg)
+        login = await client.post('/api/cloud/auth/login', json={'provider': 'google', 'consent': True,
+            'country': 'JP', 'operator_backend': cfg.operator_backend,
+            'provider_consent_version': version, 'provider_disclosure_version': version,
+            'eligibility_ticket': eligibility.json()['ticket']})
+        assert login.status_code == 200
+        callback = await client.get('/auth/callback?code=fixture-code')
+        assert callback.status_code == 303 and callback.headers['location'] == cfg.origin + '/#/'
+        assert SESSION_COOKIE in callback.headers['set-cookie']
+        account = await client.get('/api/cloud/account')
+        assert account.status_code == 200 and account.json()['wallet']['credits'] == 0
+        with app.state.store.transaction() as db:
+            assert db.execute('SELECT trial_granted FROM accounts WHERE id=?', (owner,)).fetchone()[0] == 0
+            for table in ('credit_lots', 'app_free_reserves', 'app_reward_reserves'):
+                assert db.execute('SELECT COUNT(*) FROM ' + table).fetchone()[0] == 0
+        checkout = await client.post('/api/cloud/billing/checkout',
+                                     json={'sku': 'credits_5', 'request_id': str(uuid4())})
+        assert checkout.status_code == 503 and checkout.json()['error'] == 'billing_awaiting_acceptance'
+
+
+@pytest.mark.asyncio
 async def test_invitation_and_unverified_identity_cannot_create_account(tmp_path):
     cfg=config(tmp_path)
     store=CloudStore(cfg)
