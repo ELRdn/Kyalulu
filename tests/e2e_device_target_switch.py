@@ -149,7 +149,10 @@ async def main():
                         terminal = saved['terminal']
                         assert proof['revision'] == saved['session']['revision']
                         assert terminal == {**proof['status'], 'execution_lock': 'device-research:' + json.dumps(OWNER) + ':lock:',
-                            'user_content_sha256': hashlib.sha256(INPUT.encode()).hexdigest()}, terminal
+                            'user_content_sha256': hashlib.sha256(INPUT.encode()).hexdigest(),
+                            'validation': {'ok': False, 'retries': 0, 'errors': ['Generation stopped']},
+                            'telemetry': {},
+                            'attempts': [{'number': 1, 'raw': '', 'raw_truncated': False, 'raw_utf16_units': 0}]}, terminal
                         stopped = saved['session']['payload']
                         assert stopped['pending_generation'] is None and stopped['storage_policy'] == 'local'
                         assert stopped['messages'][:2] == baseline['data']['history']
