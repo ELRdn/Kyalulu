@@ -51,7 +51,7 @@ export default function RuntimeSyncSettings() {
       {value&&loadedOwner===owner&&<><p role="status">{en?'Cloud copying: ':'Cloud側のコピー: '}{value.accepted?(en?'Enabled':'有効'):(en?'Off':'オフ')}</p>
         <fieldset disabled={busy||generation}><legend>{en?'Cloud conversations to copy':'コピーするCloud会話'}</legend>
           {sessions.filter(s=>!s.nsfw).map(s=><label className="k-cloud__checkbox" key={s.session_id}><input type="checkbox" checked={selected.includes(s.session_id)}
-            onChange={e=>setSelected(ids=>e.target.checked?[...ids,s.session_id]:ids.filter(id=>id!==s.session_id))}/>{sessionTitle(s)} · {s.count} {en?'messages':'件'} {s.sync_copy?`(${en?'Synced copy':'同期コピー'} v${s.sync_copy.revision})`:''}</label>)}
+            onChange={e=>setSelected(ids=>e.target.checked?[...ids,s.session_id]:ids.filter(id=>id!==s.session_id))}/>{sessionTitle(s,en?'en':'ja')} · {s.count} {en?'messages':'件'} {s.sync_copy?`(${en?'Synced copy':'同期コピー'} v${s.sync_copy.revision})`:''}</label>)}
           {!sessions.length&&<p>{en?'No Cloud conversations yet. You can enable incoming device copies.':'Cloud会話はまだありません。端末からのコピー受け取りは有効にできます。'}</p>}
           {selected.filter(id=>!sessions.some(s=>s.session_id===id)).map(id=><label className="k-cloud__checkbox" key={id}><input type="checkbox" checked onChange={()=>setSelected(ids=>ids.filter(item=>item!==id))}/>{en?'Unavailable selection — uncheck before saving':'一覧にない選択済み会話 — チェックを外して保存してください'}</label>)}
         </fieldset>
