@@ -90,6 +90,17 @@ it('uses the validated selection snapshot after an asynchronous read',async()=>{
   fixture.read=()=>{fixture.read=undefined;selected[0].role='assistant';selected[0].run=1;selected.length=0;};
   expect(await prepared.runtime.materialize(selected)).toEqual([{run:0,role:'system',content:prepared.canonical.contract}]);
 });
+it('aborts pinned metadata at the next part rather than reading all remaining chunks',async()=>{
+  await seed();const stored=original();stored.payload.legacy_metadata='x'.repeat(3*1024*1024);
+  await appTransaction<void>(['entities','meta','parts'],'readwrite',(tx,done)=>writeEntity(tx,stored,'put',done));
+  const source=(await readMemorySource('chat','source-owner'))!,controller=new AbortController();let reads=0;
+  fixture.read=()=>{if(++reads===2)controller.abort();};
+  const before=snapshot();await expect(prepareDeviceGenerationSource(source,{ordered_messages:[]} as any,'Contract',256,undefined,controller.signal)).rejects.toThrow();
+  expect([...fixture.records]).toEqual(before.records);expect([...fixture.meta]).toEqual(before.meta);
+  expect([...fixture.parts.keys()]).toEqual(before.parts.map(([key])=>key));
+  for(const [key,bytes] of before.parts)expect(Buffer.compare(Buffer.from(fixture.parts.get(key)),Buffer.from(bytes)),key).toBe(0);
+  expect(reads).toBe(2);
+});
 it.each(['owner','revision','body','checksum','abort'])('publishes no prepared context after %s failure',async fault=>{
   const source=await seed(),controller=new AbortController();
   if(fault==='owner')fixture.owner='foreign';if(fault==='revision')source.revision++;if(fault==='body')source.bodyToken=crypto.randomUUID();
