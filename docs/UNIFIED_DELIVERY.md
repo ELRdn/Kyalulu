@@ -58,8 +58,10 @@ e31のHosted生成試験は、新指示を欠いた独立期待promptで両OSと
 提供sourceに公開VPS文書がなくcanonical指紋を再現できない欠落も確認し、2e81c93で共通収集を修正。固定23b＋修正2fileの583入力完全一致、関連67＋単体1件と、最終CI/Dockerを合わせた95件の回帰が成功。旧e31/23b提供sourceの欠落を修正済みと遡及して扱わない。
 1a0cb08で両Dockerfileの公式研究scenarioコピー漏れとLinux検証を修正。既存WASM/Native/Cloud workflowのrun41286381032が進行中。同一runの成果物を使い、無network/read-only/架空DB・manifest全file集合/hash・既定Uvicornのhealth/deviceを検証する。実imageの合格は未確認。
 全文復元の私的2案も検証。tx分割は250MB復元peak WS2,384,379,904で1GB gateを満たさず、16KiB復号案は1GB全954part照合後にJob commit4,295,708,672で停止。安全予算・入力を変えず両案不採用とし、製品の保存コードは変更していない。
-同一run41286381032は1a0cb08のWASM・Linux Cloud・Windows/macOS Nativeの全4jobが成功。取得した検証JSONとmanifest、実行したCIコード3点をGit原本hashと照合した。Cloudは227file・公式scenario3件・無network/非root/read-only・既定Uvicorn/Deviceを確認。Native両OSは架空データの実梱包CLI復旧/rollback・pointer故障7件・日英UI再起動が成功。clean OS・初回公開取得・実推論・実機・本番の証拠とは分ける。配布物本体の親側再取得/hash照合は今回行っていない。Runtime/Web全体CIは別runで追跡する。
+同一run41286381032は1a0cb08のWASM・Linux Cloud・Windows/macOS Nativeの全4jobが成功。取得した検証JSONとmanifest、実行したCIコード3点をGit原本hashと照合した。Cloudは227file・公式scenario3件・無network/非root/read-only・既定Uvicorn/Deviceを確認。Native両OSは架空データの実梱包CLI復旧/rollback・pointer故障7件・日英UI再起動が成功。後続で親側もNative2件の本体を取得しhash一致を確認。付属ソースは両OS各887 tracked fileを原本と照合し、Windows846件のCRLF差とOS別license一覧を区別した。raw source全体の同一性は主張しない。clean OS・初回公開取得・実推論・実機・本番の証拠とは分ける。Runtime/Web全体CIは別runで追跡する。
 別の固定e31実モデルは標準Librarian30の最初20ターンを一度だけ実行し、20完了・460項目・完全元入力/window20件・再起動後receipt20件が一致。モデル3,125,578,496 bytesとsource/build/native不変。提案4件中、原文一致2件は一般的な依頼文で、花/飲み物/予定/好み訂正のturn1/2/3/15からは提案0件。不一致2件は候補照合12回で注入を拒否。記憶品質は未合格を維持する。読取専用再起動の監査に残っていた旧3件固定は20件へ訂正し、生成入力/比較を変えず変更hashを記録した。
+復元の両案を組み合わせても、250MB全体の保存/復元は成功したがpeak WS2,300,755,968で既存gateを超え、1GBは実行せず不採用。別の小容量Node試作は1,346 scalar例・992 parser比較で意味/拒否が一致したが、部分parseの連結文字列は通常照合時に平坦化され、省メモリ対策として採用しない。Chromeへの同等性やOOM原因の確定は主張せず、保存の製品コード・安全予算は変更していない。
+1a0cb08のRuntime/Web run41286384301もUbuntu/Windowsとも成功。各OSの53 run stepに失敗・skipはなく、型・Web/Python・梱包build・同期/生成/研究/復旧/Remote/外部送信制限の既存工程が完了した。実機・実容量・返信/記憶品質・本番条件の未達をこのCIで取り消さない。
 
 | 必須範囲 | 現時点 | 完了を証明するもの |
 |---|---|---|
@@ -87,7 +89,7 @@ e31のHosted生成試験は、新指示を欠いた独立期待promptで両OSと
 | 固定公開snapshot、区分/審査、不明保留、人手/通報/非表示/異議申立て | 固定hash・審査revision、人手確認、公開API、地域/成人/ブロックの先行制限、日英画面と通報→非表示→異議→再承認をASGI/Chromiumで検証。旧Communityは封鎖し元DB保持 | 自動分類・公開媒体adapter、運用規模/旧データ移行、実OAuth/実機/本番の証拠 |
 | 日本の個人事業/未成年/成人AI/投稿/地域への提供元適合 | 外部条件未確定 | 本人の契約・適合確認。代理申込みや購入は行わない |
 | 日英の全画面、アクセシビリティ、日本語IME | Cloud設定/旧同期、記憶・出典・検査・要約訂正、共通エラー、モデル開示/見積同意/公式推論要約、プリセット/Lorebook/表情、研究の実行・比較・採点・検査・ランキング、長ターン比較実験の条件・状態・結果表、会話開始・初回案内・入力/待機・モデル準備・既知mood/日時・共通ナビ・探索/検索・Hub表示を日英対応。393/1280pxの実端末DB操作と同意の撤回、架空Runtimeでの研究下書き・比較条件の保持をChromiumで確認。他にJA中心の画面・提供元の生文が残る | 対象画面一覧を埋めた日英・幅・テーマ・IME確認 |
-| 配布物、対応ソース、移行/復旧手順、接続待ち一覧 | 旧e31/23bの固定証拠は保持し、VPS文書欠落は2e81c93で修正。現行実装1a0cb08の同一run41286381032でWASM・隔離Linux Cloud・Windows/macOS Nativeの全4job成功。Cloud227file/hash・scenario3件・既定起動、両OSの実梱包CLI復旧/日英UI/再起動を架空推論で確認。親側は取得JSON/manifestとCIコードhashを照合 | 別のRuntime/Web全体CI・署名・最終license審査（3 grant未確認）・clean OS/初回公開取得・実機・実容量・返信/記憶品質・本番復旧/切替の受入れは残る。配布物本体を親側で再取得した証拠や実推論へ読み替えない |
+| 配布物、対応ソース、移行/復旧手順、接続待ち一覧 | 旧e31/23bの固定証拠は保持し、VPS文書欠落は2e81c93で修正。現行実装1a0cb08の同一run41286381032でWASM・隔離Linux Cloud・Windows/macOS Nativeの全4job成功。別のRuntime/Web run41286384301もUbuntu/Windows各53工程成功。Cloud227file/hash・scenario3件・既定起動、両OSの実梱包CLI復旧/日英UI/再起動を架空推論で確認。親側でJSON/manifest・CIコードとNative本体hashを照合。付属tracked source各887件の原本対応と改行/OS別license差を記録 | 署名・最終license審査（3 grant未確認）・clean OS/初回公開取得・実機・実容量・返信/記憶品質・本番復旧/切替の受入れは残る。Cloud本体の親側再取得、source全体のバイト同一性、実推論へ読み替えない |
 | Android/iPhone実機20ターン、ロック復帰、回線切替 | 未実施 | 実機に基づく個別証拠。PCブラウザで代用しない |
 | 本番反映、残高/台帳/予算維持、旧環境への復旧 | 未実施 | バックアップの隔離復元、反映前後照合、実配信hashと正常性 |
 

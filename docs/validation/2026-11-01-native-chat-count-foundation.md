@@ -977,8 +977,9 @@ finishes successfully for exact1a0cb08c42f6f5228b107c12b00f348b5708d4c4:
 WASM, Linux Cloud, Windows x64 Native and macOS arm64 Native all pass. The parent
 downloads only Cloud check JSON/hash files, Native acceptance records/screenshots
 and manifests. Their cross-record hashes agree; the three reported CI/fixture/
-Dockerfile code hashes match exact committed Git bytes. The parent does not
-download or independently hash the executable archives, or execute downloaded code.
+Dockerfile code hashes match exact committed Git bytes. That initial audit does
+not download/hash executable archives; the subsequent independent check below
+adds Native archive hashes. Downloaded code is not executed.
 
 Cloud checks227 copied files, all three official scenarios, UID10002/network
 none/read-only, closed unapproved Auth/region/billing/ads, and the unmodified
@@ -1020,3 +1021,56 @@ earlier JSON failures is claimed. Private evidence:
 `real-memory-quality-e31-20261101/run-402f5e76-1ed6-44c3-bfb9-43b6d0628755/{acceptance-summary.json,memory-injection-audit.json}`.
 
 Draft/region/provider and production holds remain in effect.
+
+## Independent Native archives and rejected restoration variants
+
+The parent subsequently downloads the exact successful run's Windows and macOS
+Native archives without installing/executing them. Their actual sizes are
+121,226,382 and115,242,601 bytes; both SHA-256 values match the manifests and
+browser acceptance records above. The archives contain6,087/4,720 members and
+1,428/1,440 offered-source files respectively. Each offer's887 tracked files
+correspond to exact1a0cb08 Git blobs: macOS is byte-identical for all887, Windows
+has41 raw matches plus846 exact CRLF-only differences. Protected upstream notice
+bytes are never normalized. The initial raw-Git-byte assumption fails on Windows
+`.gitattributes`; that failure is retained before the difference classification.
+The archives themselves are neither normalized nor rewritten.
+
+Across the source offers576 files are byte-identical; remaining common-file
+differences reduce to `renderer-licenses.json` after classifying CRLF. Four
+Windows-only and16 macOS-only files are renderer license notices. Full raw
+source-offer identity is therefore not claimed. All raw hashes and differences
+are retained in `hosted-delivery-1a0cb08-20261101/native-archive-audit.json`.
+Actions-artifact retrieval is not a first public release download or clean-OS
+installation. No license/signing/device/production gate is changed.
+
+A third private restoration candidate combines per-part readonly transactions
+and16KiB decoder feeds. The original four watchdog checks and small full-body
+restart pass;250MB also saves/restores correctly. Save/reload sampled peak WS is
+1,378,910,208/2,300,755,968 bytes (reload peak Job commit2,037,145,600). This fails
+the unchanged below2GiB gate, so1GB is not executed and the candidate is rejected.
+Source, exact-size input, full physical/body checks and4GiB/480-second limits are
+unchanged; all owned processes exit. Initial sandbox preparation stalls before
+a browser starts; a no-op coroutine independently identifies `socketpair` accept
+in Windows asyncio initialization. After those setup processes are terminal,
+ordinary-permission checks run. Evidence: `full-restore-combined-20261101/RESULT.json`.
+
+A separate Node-only scalar prototype tests unchanged raw fragments through
+native JSON.parse and primitive-string concatenation.1,346 cases/4,038 chunk
+runs and992 in-memory existing-parser comparisons preserve code units, stringify
+bytes and invalid-input rejection. V8 inspection finds one-byte ASCII leaves and
+an initial cons string, but normal full code-unit inspection flattens the result
+to a sequential two-byte string. It fails the predeclared retained-rope criterion
+and is not adopted. Node26.5.1/V814.6 is not proven identical to Chrome151; this
+does not establish Chrome's OOM cause. No browser/model/capacity run, forced GC,
+product parser/storage change or weakened validation is performed. Evidence:
+`json-scalar-representation-20261101/{README.md,results.json}`.
+
+The independent Runtime/Web [run41286384301](https://github.com/ELRdn/Kyalulu/actions/runs/41286384301)
+also completes successfully at exact1a0cb08. Ubuntu and Windows each finish all
+53 run steps with no failed or skipped run step. This includes typecheck,
+Web/Python tests, builds, the previously corrected generation oracle, Research,
+fictional restore, Remote and privacy checks. Parent-required step checks and
+the exact committed workflow hash are retained in
+`hosted-delivery-1a0cb08-20261101/runtime-web-audit.json`. This establishes that
+specific matrix run; it does not convert the outstanding real-device, capacity,
+model-quality, license/provider or production conditions into acceptance.
