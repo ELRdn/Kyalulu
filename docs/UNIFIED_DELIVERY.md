@@ -45,6 +45,10 @@ Python Researchの根拠を現在発言へ揃え、3ターン/リセット/出�
 Web全1,928/103file・型検査・source45件、317入力不変の実Chromium84＋mock境界/救済、日英target/Research各2件が成功。1,206/2,050発言・Lore境界・非同期改変/停止・原本/出典を検証。観測用の全run再生はメモリ証拠にせず、metadata/ONNX/Research/UI・実250MB/1GB/RSS、同版の実モデル/配布物/本番受入れを残す。
 固定b88671cでも型・統合production build・Web全1,928件が成功。1,208source/SDK-native60入力不変・配信runtime4点一致と旧実4cd Workerのbyte一致を確認し、新Device APIの実推論/容量受入れとは分ける。
 後続の3MiB metadata停止試験で、中止後も4断片を読んでいたことを再現。断片ごとのAbortSignal確認で2要求に留め、原本全byteと既存receipt保護を維持。関連73・Web全1,929/103file・型検査が成功し、固定b886の実モデル/容量cohortとは分けて追跡する。
+固定ba37ae6の隔離exportでも型・統合production build・Web全1,929件が成功。1,208source/SDK-native60入力不変・配信runtime4点一致を確認。後述の実モデル/容量検証はb886固定で、この修正を含むとは扱わない。
+固定b886の実Device API/production Worker/キャッシュGGUFでは通常完了2件＋最初の実出力後停止1件が成功。69項目・独立した元入力/window比較2件・native計数3件・再起動後receipt3件完全一致とモデル3,125,578,496 bytes不変を確認。観測module誤接続で失敗した別の実完了1件も保存し、従来の記憶品質/JSON未完の失敗を取り消さない。
+同b886の架空250,000,000/1,000,000,000 JSON bytesでは全断片hash・完全原本からの旧入力oracle・1,001投影/要約/選択本文を新processで照合。4GiB/480秒と250MB→1GB gateを維持し、1GBの保存/読取phaseのsampled WSは3,497,062,400/2,142,511,104 bytes。これはsource componentの証拠で、全tree/UI復元・推論・ONNX/Research/aggregate・実機/本番の容量合格ではない。
+公開CIは7b1f209のrun41275097567、d00c232のrun41274170638が成功。e76d901の後続2runは確認時点で進行中で、現HEAD全体のCI合格とは扱わない。
 
 | 必須範囲 | 現時点 | 完了を証明するもの |
 |---|---|---|
