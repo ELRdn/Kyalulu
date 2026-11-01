@@ -8,6 +8,10 @@ changes remain outside the integration commits.
 
 ## Local Build
 
+First prepare both patched WASM variants as described in `docs/MOBILE.md`, then
+run `python scripts/mobile_wasm/build_sdk.py` to create their matching public SDK.
+Use a fresh artifact work directory when rebuilding; preserve previous evidence.
+
 ```powershell
 pnpm --filter web typecheck
 pnpm --filter web test -- --pool threads --maxWorkers 1
@@ -25,7 +29,9 @@ For the packed PC Runtime, use `pnpm --filter web build:native` and
 uses the Runtime's explicitly configured `KYALULU_REGION_POLICIES`; absent regional
 approval stays closed. No Cloud account or online policy lookup is required.
 Existing `build` and `build:mobile` entry points remain separate and supported.
-Pinned Mobile WASM outputs in `.artifacts/mobile-wasm` are required for `build:app`.
+Matching pinned WASM outputs and the generated public SDK/manifest in
+`.artifacts/mobile-wasm` are required for `build:app`, `build:native` and
+`build:mobile`. An installed unpatched npm SDK cannot substitute for them.
 
 ## Delivered Behavior
 

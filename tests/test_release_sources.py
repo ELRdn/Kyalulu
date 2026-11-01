@@ -85,6 +85,35 @@ def test_wasm_builder_keeps_unix_lines_in_windows_git_export(tmp_path, monkeypat
     assert exported_patch == (root / patch).read_bytes().replace(b'\r\n', b'\n')
 
 
+def test_build_recipe_prepares_public_sdk_before_gated_ui(tmp_path, monkeypatch):
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.syspath_prepend(str(root / 'scripts'))
+    import collect_release_sources as sources
+    monkeypatch.setattr(sources, 'DIRECTORIES', ())
+    monkeypatch.setattr(sources, 'FILES', ())
+    monkeypatch.setattr(sources, 'collect_renderer_licenses', lambda destination: None)
+    sources.collect(tmp_path / 'source')
+    recipe = (tmp_path / 'source/BUILD.md').read_text(encoding='utf-8')
+    steps = ['prepare.py', 'build.sh', 'python scripts/mobile_wasm/build_sdk.py', 'pnpm --filter web build:app']
+    positions = [recipe.index(step) for step in steps]
+    assert positions == sorted(positions)
+
+
+def test_source_includes_current_native_count_delivery_evidence(tmp_path, monkeypatch):
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.syspath_prepend(str(root / 'scripts'))
+    import collect_release_sources as sources
+    required = {'docs/validation/2026-11-01-native-chat-count-foundation.md',
+                'docs/validation/2026-11-01-unified-delivery-d0cb5a2.md'}
+    assert required <= set(sources.FILES)
+    monkeypatch.setattr(sources, 'DIRECTORIES', ())
+    monkeypatch.setattr(sources, 'FILES', tuple(sorted(required)))
+    monkeypatch.setattr(sources, 'collect_renderer_licenses', lambda destination: None)
+    sources.collect(tmp_path / 'source')
+    for name in required:
+        assert (tmp_path / 'source' / name).read_bytes() == (root / name).read_bytes()
+
+
 def test_source_contains_browser_fixture_imports(tmp_path, monkeypatch):
     root = Path(__file__).resolve().parents[1]
     monkeypatch.syspath_prepend(str(root / 'scripts'))

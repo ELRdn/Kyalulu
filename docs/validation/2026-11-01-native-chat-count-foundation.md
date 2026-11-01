@@ -231,3 +231,17 @@ by this probe. Full UI/account persistence, actual CPU stock completion, ONNX,
 physical phones, clean OS and complete packaged/production acceptance remain
 open. Exact manifests/results are private under
 `native-chat-count-build-20261101/{ui-build-audit.json,compiled-worker-01}`.
+
+## Distribution reproduction correction
+
+Fresh immutable77 Native/Cloud candidates were built and archive-audited with
+the actual production SDK/native inputs. The audit also exposed two source-offer
+documentation gaps: generated `BUILD.md` omitted the now-mandatory SDK build
+step, and this report plus the preceding d0cb5a2 delivery report were outside
+the explicit source allowlist. Both were reproduced by failing tests before
+correction. The collector now includes both reports and orders WASM preparation
+before the public SDK build and the gated UI builds. Mobile/unified/deployment
+instructions also name the SDK stage, both patches, matching manifests and fresh
+isolated output requirements. The source-collector suite passes **16 tests**.
+Existing immutable77 candidates are retained as prior evidence; the corrected
+recipe/source-offer needs a new fixed-source candidate before final delivery.
