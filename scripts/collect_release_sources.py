@@ -395,6 +395,7 @@ FILES = (
     "tests/test_remote_vault.py",
     "tests/test_seo_weekly_report.py",
     "tests/test_storage_capacity_driver.py",
+    "tests/test_sync_staging_driver.py",
     "tests/test_transfer_compatibility_parity.py",
     "tests/test_transfer_erasure_parity.py",
     "tests/test_unified_app.py",

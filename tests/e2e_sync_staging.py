@@ -4,9 +4,11 @@ import asyncio
 import base64
 import hashlib
 import json
+import re
+import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 from playwright.async_api import async_playwright
 from browser_fixture_server import local_vite
@@ -33,6 +35,110 @@ SCENARIOS = (
     'owner-after-stage', 'busy-after-stage', 'consent-after-stage',
     'existing-outbox', 'existing-winner', 'reload',
 )
+DIAGNOSTIC_STAGES = {'module-loading', 'modules-ready', 'rows', 'seed', 'before-snapshot', 'oracle',
+                     'writer-open', 'stageSyncBatch', 'syncNow', 'after-snapshot', 'assertions', 'complete'}
+
+
+def diagnostic_snapshot(value):
+    """Whitelist counters; never copy fixture keys, bodies, stacks or transport payloads."""
+    if not isinstance(value, dict):
+        return {}
+    count = lambda number: min(number, 1_000_000_000) if type(number) is int and number >= 0 else 0
+    stage = lambda name: name if isinstance(name, str) and name in DIAGNOSTIC_STAGES else 'unknown'
+    probes = value.get('probes', {})
+    probes = probes if isinstance(probes, dict) else {}
+    counters = {key: count(probes.get(key)) for key in (
+        'outboxAdds', 'outboxAddSuccess', 'outboxPuts', 'allEntityReads', 'injected', 'referenceReads', 'network')}
+    for key in ('reads', 'lastReads', 'parsers', 'rootMax', 'messageCallbacks'):
+        modes = probes.get(key, {})
+        counters[key] = {mode: count(modes.get(mode)) if isinstance(modes, dict) else 0
+                         for mode in ('readonly', 'readwrite')}
+    stages = value.get('stages', [])
+    return {'stage': stage(value.get('stage')), 'probes': counters,
+            'stages': [{'stage': stage(item.get('stage')), 'ms': count(item.get('ms'))}
+                       for item in stages[-16:] if isinstance(item, dict)] if isinstance(stages, list) else []}
+
+
+def public_module_path(url, port):
+    try:
+        parsed = urlsplit(url)
+        local = parsed.scheme == 'http' and parsed.hostname == '127.0.0.1' and parsed.port == port
+    except ValueError:
+        return None
+    if not local:
+        return None
+    value = unquote(parsed.path)
+    root = '/@fs/' + ROOT.as_posix().rstrip('/') + '/'
+    if value.startswith(root):
+        value = '/' + value[len(root):]
+    if len(value) > 256 or '..' in value.split('/'):
+        return '[other-loopback]'
+    if value in ('/@vite/client', '/@react-refresh') or re.fullmatch(
+        r'/(?:src/|packages/schemas/src/|node_modules/)[A-Za-z0-9_./@-]+\.(?:tsx?|jsx?|mjs|css|json)', value
+    ) or value in ('/tests/fixtures/sync-staging.html', '/tests/fixtures/sync-staging-oracle.ts', '/tests/fixtures/unified-history.json'):
+        return value
+    return '[other-loopback]'
+
+
+class StagingDiagnostics:
+    def __init__(self, port):
+        self.port, self.latest = port, {}
+        self.pending, self.failures = {}, []
+        self.requests = self.finished = self.http_errors = self.failed = self.omitted = 0
+
+    def console(self, message):
+        prefix = '__SYNC_STAGING_DIAGNOSTIC__'
+        text = message.text
+        if text.startswith(prefix) and len(text) <= 8192:
+            try:
+                self.latest = diagnostic_snapshot(json.loads(text[len(prefix):]))
+            except (ValueError, TypeError, RecursionError):
+                pass
+
+    def request(self, request):
+        public = public_module_path(request.url, self.port)
+        if public is not None:
+            self.requests += 1
+            if len(self.pending) < 64:
+                self.pending[request] = {'path': public, 'started': time.monotonic()}
+            else:
+                self.omitted += 1
+
+    def failure(self, request, status=None):
+        public = public_module_path(request.url, self.port)
+        if public is not None:
+            if status is None:
+                self.failed += 1
+            else:
+                self.http_errors += 1
+            if len(self.failures) < 16:
+                self.failures.append({'path': public, 'status': status})
+
+    def finish(self, request):
+        if public_module_path(request.url, self.port) is not None:
+            self.finished += 1
+        self.pending.pop(request, None)
+
+    async def snapshot(self, page):
+        # asyncio.wait does not wait for cancellation acknowledgment from an unresponsive renderer.
+        task = asyncio.create_task(page.evaluate('window.__SYNC_STAGING_SNAPSHOT__?.() ?? window.__SYNC_STAGING_DIAGNOSTICS__'))
+        done, _ = await asyncio.wait({task}, timeout=3)
+        state = 'timeout'
+        if done:
+            try:
+                self.latest = diagnostic_snapshot(task.result()) or self.latest
+                state = 'ok'
+            except (Exception, asyncio.CancelledError):
+                state = 'unavailable'
+        else:
+            task.cancel()
+            task.add_done_callback(lambda finished: None if finished.cancelled() else finished.exception())
+        return {'page_snapshot': state, 'last_checkpoint': self.latest,
+                'http': {'requests': self.requests, 'finished': self.finished, 'failed': self.failed,
+                         'http_errors': self.http_errors, 'tracking_omitted': self.omitted,
+                         'failures': list(self.failures),
+                         'pending': [{'path': item['path'], 'age_ms': min(1_000_000_000, round((time.monotonic() - item['started']) * 1000))}
+                                     for item in self.pending.values()]}}
 
 
 def fingerprints():
@@ -101,6 +207,9 @@ async def main(scenarios, frozen_source=None):
                     print(json.dumps({'scenario': scenario, 'stage': 'start'}), flush=True)
                     context = await browser.new_context(service_workers='block', accept_downloads=False)
                     blocked, errors, downloads = [], [], []
+                    diagnostics = StagingDiagnostics(port)
+                    page = None
+                    operation = 'new-page'
 
                     async def local_only(route):
                         parsed = urlsplit(route.request.url)
@@ -124,20 +233,35 @@ async def main(scenarios, frozen_source=None):
                     await context.route_web_socket('**/*', socket_only)
                     try:
                         page = await context.new_page()
+                        page.on('console', diagnostics.console)
+                        page.on('request', diagnostics.request)
+                        page.on('requestfinished', diagnostics.finish)
+                        page.on('requestfailed', lambda request: (diagnostics.failure(request), diagnostics.finish(request)))
+                        page.on('response', lambda response: diagnostics.failure(response.request, response.status) if response.status >= 400 else None)
                         page.on('pageerror', lambda error: errors.append(str(error)))
                         page.on('download', lambda download: downloads.append(download.suggested_filename))
                         path = quote((ROOT / 'tests/fixtures/sync-staging.html').as_posix(), safe='/:')
                         url = origin + '/@fs/' + path + '?scenario=' + scenario
                         for resumed in ([False, True] if scenario == 'reload' else [False]):
+                            diagnostics.latest = {}
+                            operation = 'navigation'
                             await page.goto(url + ('&resume=1' if resumed else ''))
+                            operation = 'wait-for-result'
                             await page.wait_for_function('window.__SYNC_STAGING__ !== undefined', timeout=90000)
+                            operation = 'read-result'
                             result = await page.evaluate('window.__SYNC_STAGING__')
+                            if not result['ok']:
+                                result['diagnostics'] = await diagnostics.snapshot(page)
+                            operation = 'decode-evidence'
                             decode_evidence(result)
                             result.update(blocked_network_requests=len(blocked), page_errors=list(errors), downloads=list(downloads))
                             results.append(result)
                             print(json.dumps(result, ensure_ascii=False), flush=True)
                     except Exception as error:
-                        results.append({'ok': False, 'scenario': scenario, 'exception': str(error), 'blocked': blocked, 'page_errors': errors})
+                        results.append({'ok': False, 'scenario': scenario, 'exception': str(error),
+                                        'operation': operation,
+                                        'blocked': blocked, 'page_errors': errors,
+                                        'diagnostics': await diagnostics.snapshot(page) if page is not None else {'page_snapshot': 'no-page'}})
                         print(json.dumps(results[-1]), flush=True)
                     finally:
                         await context.close()

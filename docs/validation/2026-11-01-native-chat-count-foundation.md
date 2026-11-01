@@ -1074,3 +1074,40 @@ the exact committed workflow hash are retained in
 `hosted-delivery-1a0cb08-20261101/runtime-web-audit.json`. This establishes that
 specific matrix run; it does not convert the outstanding real-device, capacity,
 model-quality, license/provider or production conditions into acceptance.
+
+## Follow-up Windows staging timeout: bounded diagnostics, cause still unknown
+
+The same Runtime implementation later fails Windows in documentation-head9db32b9
+[run41287863889](https://github.com/ELRdn/Kyalulu/actions/runs/41287863889), while
+Ubuntu succeeds. Only sync staging's `busy-readwrite` case times out at90,000ms;
+the surrounding cases succeed with no blocked request or page error reported.
+The passing1a matrix above remains valid evidence for that specific run, rather
+than proof that every later run is stable.
+
+A complete9db Git export excludes unrelated working-tree edits. Its original
+`busy-readwrite` case passes once locally, preserving the source and rejecting
+the tentative outbox as expected. The natural CI timeout is not reproduced and
+its root cause is not declared fixed. Only the driver/fixture gain bounded
+checkpoints before module loading, seeding, snapshots and staging, numeric probe
+counters and public loopback module request status. The original90-second wait,
+scenario order, inputs, assertions, fault injection and frozen oracle remain.
+Failure-only page evaluation has a separate3-second diagnostic boundary; no retry
+or skip is added. Query/userinfo are stripped from new diagnostic module paths;
+raw bodies, keys and transport payloads are excluded from the new fields.
+
+After those explicit fixture overlays, all30 real-Chromium results pass, including
+13 independent stdlib original-payload comparisons. An intentional module
+download failure still fails the original90-second wait and final assertion,
+but now records `module-loading`, zero source-processing counters and the failed
+`/src/lib/appSyncStage.ts` request. This verifies diagnosis of an injected loading
+failure, not the cause of the natural CI hang. All1,209 export files and61 reused
+SDK inputs remain unchanged during each run; owned browsers/servers exit.
+
+The two pure diagnostic regressions are collected by ordinary pytest and added
+to corresponding source. Combined diagnostic/source/fingerprint checks pass49
+tests with no skips. Initial temporary-directory setup errors and four subsequent
+dependency-junction escape rejections are retained. The final check instead uses
+the same fixed source plus3,086 hash-bound physical installed-metadata/notice
+files, keeping the original source-path fences. All those physical inputs and
+source files remain unchanged. No production sync implementation or validation
+rule is changed. Private evidence: `sync-staging-ci-20261101/{browser-audit.json,source-validation/final-audit.json}`.

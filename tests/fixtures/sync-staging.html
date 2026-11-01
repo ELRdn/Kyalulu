@@ -1,5 +1,15 @@
 <!doctype html><meta charset="utf-8"><title>Disposable initial sync staging proof</title>
 <p>Fictional data; browser networking is restricted to the owned fixture server.</p>
+<script>
+window.__SYNC_STAGING_DIAGNOSTICS__={stage:'module-loading',stages:[],probes:{}};
+window.__SYNC_STAGING_MARK__=stage=>{
+  const state=window.__SYNC_STAGING_DIAGNOSTICS__;
+  state.stage=stage;state.stages.push({stage,ms:Math.round(performance.now())});
+  if(state.stages.length>16)state.stages.shift();
+  console.info('__SYNC_STAGING_DIAGNOSTIC__'+JSON.stringify(window.__SYNC_STAGING_SNAPSHOT__?.()??state));
+};
+window.__SYNC_STAGING_MARK__('module-loading');
+</script>
 <script type="module">
 import history from './unified-history.json';
 import {baselineChanges} from './sync-staging-oracle.ts';
@@ -21,6 +31,12 @@ const simple=id=>({storage_policy:'sync',settings:{session_id:id,library_binding
 const probes={reads:{readonly:0,readwrite:0},lastReads:{readonly:0,readwrite:0},parsers:{readonly:0,readwrite:0},
   rootMax:{readonly:0,readwrite:0},messageCallbacks:{readonly:0,readwrite:0},outboxAdds:0,outboxAddSuccess:0,outboxPuts:0,
   allEntityReads:0,injected:0,referenceReads:[],network:[]};
+const mark=window.__SYNC_STAGING_MARK__;
+window.__SYNC_STAGING_SNAPSHOT__=()=>({...window.__SYNC_STAGING_DIAGNOSTICS__,probes:{
+  ...Object.fromEntries(['reads','lastReads','parsers','rootMax','messageCallbacks'].map(key=>[key,{readonly:probes[key].readonly,readwrite:probes[key].readwrite}])),
+  ...Object.fromEntries(['outboxAdds','outboxAddSuccess','outboxPuts','allEntityReads','injected'].map(key=>[key,probes[key]])),
+  referenceReads:probes.referenceReads.length,network:probes.network.length}});
+mark('modules-ready');
 let measuring=false,phase='',header,lastIndex,between,betweenDone,mutation,originals,writerDb;
 const parserModes=new WeakMap();
 function observe(parser){
@@ -201,9 +217,13 @@ async function transport(){
   try{await syncNow(owner);}finally{globalThis.fetch=original;}
 }
 async function run(){
+  mark('rows');
   const records=rows();
+  mark('seed');
   if(!resumed)await seed(records);else rememberOwner(owner);
+  mark('before-snapshot');
   const before=await raw(),beforeSource=await sourceSnapshot(before),beforeOutbox=before.meta.find(([key])=>key===outboxKey)?.[1];
+  mark('oracle');
   if(resumed){header=before.entities.find(([key])=>key[1]===primary)?.[1];lastIndex=header?.payloadParts?.chunks-1;}
   const failing=['missing-library','missing-creator','corrupt-last','missing-last','invalid-json','invalid-utf8','second-pass-corrupt','quota',
     'owner-readonly','owner-readwrite','busy-readonly','busy-readwrite','revision-change','token-change','consent-change'].includes(scenario);
@@ -211,13 +231,17 @@ async function run(){
   let expected;
   if(!['missing-library','missing-creator'].includes(scenario))expected=baselineChanges(records,owner);
   between={'revision-change':'revision','token-change':'token','consent-change':'consent','existing-winner':'winner'}[scenario];
+  mark('writer-open');
   if(between||scenario==='consent-after-stage')writerDb=await new Promise((resolve,reject)=>{const open=indexedDB.open('kyalulu-app-v1');open.onsuccess=()=>resolve(open.result);open.onerror=reject;});
   install();measuring=true;let rejected=false;
   try{
+    mark(failing||scenario==='existing-winner'?'stageSyncBatch':'syncNow');
     if(failing||scenario==='existing-winner')try{await stageSyncBatch(owner);}catch{rejected=true;}
     else await transport();
   }finally{uninstall();writerDb?.close();}
+  mark('after-snapshot');
   const after=await raw(),afterSource=await sourceSnapshot(after),batch=after.meta.find(([key])=>key===outboxKey)?.[1];
+  mark('assertions');
   if(mutation){beforeSource.entities=beforeSource.entities.map(([key,value])=>[key,key[0]===owner&&key[1]===primary?mutation:value]);}
   exact(afterSource,beforeSource,'Original entity headers/physical source parts changed');
   check(probes.allEntityReads===0,'Whole entity collection read');
@@ -265,6 +289,6 @@ async function run(){
   return {sourcePreserved:true,exactBytes:true,changes:expected.length,bytes:bytes.length,sha256:batch.changesParts.sha256,
     probes,evidence:{header:batch,parts:chunks.map(([key,bytes])=>({key,data:base64(bytes)})),expected:expectedText}};
 }
-try{window.__SYNC_STAGING__={ok:true,scenario,resumed,...await run()};}
-catch(error){window.__SYNC_STAGING__={ok:false,scenario,resumed,error:String(error),stack:error.stack,probes};}
+try{window.__SYNC_STAGING__={ok:true,scenario,resumed,...await run()};mark('complete');}
+catch(error){window.__SYNC_STAGING__={ok:false,scenario,resumed,error:String(error),stack:error.stack,probes};mark(window.__SYNC_STAGING_DIAGNOSTICS__.stage);}
 </script>
