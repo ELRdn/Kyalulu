@@ -587,3 +587,13 @@ against exact public tarballs and rechecks both d09742f archives. None of the
 three missing rights-holder grant texts is resolved; C MIT and V8 notices are
 not substitutes for wrapper/primary grants. Private evidence:
 `primary-license-grants-20261101/REPORT.md`. `license_reviewed` remains false.
+
+Fixed207ed85273d6c8172e5c188234ce709b149a494e export also passes typecheck,
+unified production build and all1,875 Web tests from the committed source,
+without the unrelated working-tree harness changes. All1,205 source files and
+60 SDK/native inputs remain hash-identical; four emitted runtime assets match
+their pinned inputs. Installed dependencies are reused through explicit
+junctions, not reinstalled. Private evidence:
+`conversation-input-replay-20261101/fixed-validation/{result.json,source-binding.json,web-tests.log}`.
+This is a built UI, not a fresh complete Native/Cloud archive or a new real-model
+run. Existing d09742f archives and real4cd evidence remain separately pinned.
