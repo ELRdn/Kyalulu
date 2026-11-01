@@ -704,3 +704,76 @@ input hashes unchanged. Private evidence: `gguf-source-replay-20261101/abort-met
 `gguf-source-cancel-20261101/{parent-web-result.json,typecheck.log}`.
 The immutable b886 model/build/source evidence remains separately pinned;
 this later abort-guard correction is not silently included in that cohort.
+
+## Completed source protocol and capacity evidence
+
+The fixed ba37ae6637c1b787122b505da2444ce0a8951181 export now also passes
+typecheck, unified production build and all1,929 Web tests. Its1,208 sources
+and60 SDK/native inputs remain unchanged, and four emitted runtime assets
+match. Private evidence: `gguf-source-cancel-20261101/fixed-validation/{result.json,source-binding.json,web-tests.log}`.
+The following model/capacity cohorts remain pinned to earlier b88671c; they
+do not exercise the later metadata cancellation correction.
+
+Actual b886 Device API/source Runtime, production Worker/SDK/WASM and cached
+GGUF complete two stock Librarian turns and one public cancellation after the
+first nonempty native delta. Context2,048/output256 and default sampling are
+unchanged, with no fixed seed or output edits.69 fixture assertions, two
+independent Python original-input/old-window comparisons and three observed
+native counts pass. Each source call performs mandatory/history replay. The
+cancelled call preserves the exact native prefix and failed receipt without
+assistant/story/memory advancement or automatic retry. A fresh read-only browser
+restart exactly matches all three receipts. All five model shards, totaling
+3,125,578,496 bytes, are rehashed unchanged, along with source/build/native
+inputs. Only the fresh owned application DB is writable; original model/profile
+metadata are read-only. No operator browser or production is used, and owned
+browser/server processes exit.
+
+Private evidence: `real-gguf-source-20261101/acceptance-summary.json` and
+`real-gguf-source-20261101/run-eb2a80a1-b559-4f70-a3a9-d52be2800b46/`.
+An additional actual successful generation with a mismatched observer-module
+identity is retained separately. Earlier setup failures and that observer defect
+are preserved; no natural model failure is discarded to produce this cohort.
+The prior40-turn useful-memory failure and natural JSON termination failure
+remain valid. This accepts protocol/persistence only, not semantic quality,
+whole capacity, physical devices or release.
+
+Separate fresh-process source-component checks pass at exactly250,000,000 and
+1,000,000,000 JSON bytes. The original independently filled Unicode/escape body
+generator,1MiB physical parts and complete part/stream hashes are preserved.
+Required generation metadata adds572 bytes charged against each final target;
+this payload deviation is recorded explicitly. An independent full-history old
+assembler establishes expected values during save. After browser exit, the new
+source helper verifies the physical stream, bounded1,001-row tail, full latest
+snapshot, provenance, summaries, token estimate and run descriptors, then
+materializes mandatory and deterministic selected older runs. That deterministic
+selection is data verification, not actual native fitting or inference.
+
+| Exact JSON bytes | Save sampled peak WS | Fresh source sampled peak WS | Save/source peak Job commit |
+| ---: | ---: | ---: | ---: |
+|250,000,000|1,839,312,896|1,868,488,704|1,513,275,392 /1,365,245,952|
+|1,000,000,000|3,497,062,400|2,142,511,104|3,184,656,384 /1,586,212,864|
+
+The4GiB Job committed-memory/working-set limits,480-second per-size deadline,
+2GiB system floor and original250MB-to-1GB gate are unchanged. Both250MB phase
+WS peaks are below2GiB and available memory at the gate is27,531,370,496 bytes.
+There are no unmeasured samples, external/page/WebSocket errors or remaining
+owned processes. Sampled WS sums can double-count shared pages; they are not
+private memory, heap or RSS measurements.1GB uses954 physical parts,15,241 run
+descriptors and838 summaries; complete decoded-tree/UI restoration, generation
+save/export, actual native fitting, ONNX/Research/aggregate/device/production
+capacity remain open. `whole_capacity_accepted=false` is retained.
+
+Private evidence: `gguf-source-capacity-20261101/runs/20261101-145816-e990076f/results.json`;
+small immutable self-check and four unchanged watchdog tests:
+`gguf-source-capacity-20261101/runs/20261101-144242-d7ec2d0e/results.json`.
+All observed product-module hashes match the fixed b886 source binding and
+inputs remain unchanged. No dependency installation or original WASM rebuild
+is claimed. Full Native/Cloud packages remain207ed85, not b886 or ba37.
+
+Hosted CI7b1f209 [run41275097567](https://github.com/ELRdn/Kyalulu/actions/runs/41275097567)
+and d00c232 [run41274170638](https://github.com/ELRdn/Kyalulu/actions/runs/41274170638)
+complete successfully. Two e76d901 runs remain in progress at the check; no
+current-head aggregate success is claimed. Supabase remains user-authenticated,
+but CUA still fails kernel initialization and desktop fallback returns
+USER_CONTROL. Site/Redirect values are unread and settings untouched. Draft PR,
+region/provider and production holds remain unchanged.
