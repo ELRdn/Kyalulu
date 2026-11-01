@@ -44,6 +44,7 @@ Python Researchの根拠を現在発言へ揃え、3ターン/リセット/出�
 通常Device/GGUFの推論入力も原本再読取へ接続し、actor本文は最大1,001投影＋完全な最新再生成snapshotに制限。全履歴の要約/原runサイズを同じ検証済み走査で作り、native選択後の必須/選択履歴だけ実体化する。ONNX/Research/旧Mobileの配列経路と保存原本/完全診断は維持。
 Web全1,928/103file・型検査・source45件、317入力不変の実Chromium84＋mock境界/救済、日英target/Research各2件が成功。1,206/2,050発言・Lore境界・非同期改変/停止・原本/出典を検証。観測用の全run再生はメモリ証拠にせず、metadata/ONNX/Research/UI・実250MB/1GB/RSS、同版の実モデル/配布物/本番受入れを残す。
 固定b88671cでも型・統合production build・Web全1,928件が成功。1,208source/SDK-native60入力不変・配信runtime4点一致と旧実4cd Workerのbyte一致を確認し、新Device APIの実推論/容量受入れとは分ける。
+後続の3MiB metadata停止試験で、中止後も4断片を読んでいたことを再現。断片ごとのAbortSignal確認で2要求に留め、原本全byteと既存receipt保護を維持。関連73・Web全1,929/103file・型検査が成功し、固定b886の実モデル/容量cohortとは分けて追跡する。
 
 | 必須範囲 | 現時点 | 完了を証明するもの |
 |---|---|---|

@@ -691,3 +691,16 @@ to prior real4cd execution. Dependencies are reused, not clean-installed.
 Private evidence: `gguf-source-replay-20261101/fixed-validation/{result.json,source-binding.json,web-tests.log}`.
 This code/asset binding does not prove the new asynchronous Device API with
 actual inference; that scoped check is tracked separately and not yet accepted.
+
+A follow-up3MiB metadata-only cancellation regression reproduces four source
+part requests after abort where two are expected. The source-read transaction
+now checks its AbortSignal at every guarded storage step, including metadata
+chunks without message callbacks, and preserves the original abort/account
+reason. The corrected test uses exact Buffer byte comparisons to avoid slow
+multi-MiB assertion traversal; the5-second test deadline is unchanged. Related
+73 tests and the complete Web suite1,929/103 files plus typecheck pass, with341
+input hashes unchanged. Private evidence: `gguf-source-replay-20261101/abort-metadata-before.log`,
+`gguf-source-replay-20261101/cancel-guard-after-02.log` and
+`gguf-source-cancel-20261101/{parent-web-result.json,typecheck.log}`.
+The immutable b886 model/build/source evidence remains separately pinned;
+this later abort-guard correction is not silently included in that cohort.

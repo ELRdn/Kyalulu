@@ -6,6 +6,7 @@ import type { compilePortable } from './devicePrompt';
 import { summaryRefresh,estimateTokens } from './deviceCore';
 import { validateTurns,type GGUFSourceInput,type GGUFSourceRun,type GGUFRun } from '../mobile/context';
 import type { ChatTurn } from '../mobile/types';
+import { guardStorage } from './segmentedStorage';
 
 /** All emitted values stay private until the pinned source and read transaction have verified. */
 export async function prepareDeviceGenerationSource(source:MemorySource,compiled:ReturnType<typeof compilePortable>,contract:string,
@@ -14,7 +15,11 @@ export async function prepareDeviceGenerationSource(source:MemorySource,compiled
   const ordered=compiled.ordered_messages.map(part=>Object.freeze({...part}));Object.freeze(ordered);
   const current=()=>{signal?.throwIfAborted();if(deviceOwner()!==stamp.owner)throw Error('Account changed');};
   const read=async(action:(tx:IDBTransaction,done:()=>void)=>void)=>{
-    current();await appTransaction<void>(['entities','parts'],'readonly',(tx,done)=>action(tx,()=>{current();done();}));current();
+    current();
+    try{await appTransaction<void>(['entities','parts'],'readonly',(tx,done)=>{
+      guardStorage(tx,()=>deviceOwner()===stamp.owner&&!signal?.aborted);action(tx,()=>{current();done();});
+    });}catch(error){current();throw error;}
+    current();
   };
   const encoder=new TextEncoder(),history:GGUFSourceRun[]=[],hasHistory=ordered.some(part=>part.slot==='history');let historyTokens=0;
   const append=(runs:GGUFSourceRun[],role:ChatTurn['role'],bytes:number)=>{
