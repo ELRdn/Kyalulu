@@ -24,6 +24,7 @@ COPY characters ./characters
 COPY personas ./personas
 COPY worlds ./worlds
 COPY prompts ./prompts
+COPY scenarios ./scenarios
 COPY LICENSE ./LICENSE
 COPY --from=sources /corresponding-source ./source
 COPY --from=sources /kyalulu-source.tar.gz ./kyalulu-source.tar.gz
