@@ -26,7 +26,17 @@ vi.mock('./deviceMemoryStore',async original=>{
       return {header,messages:messages.map((message:any)=>({id:message.id,uuid:message.uuid,role:message.role,content:message.content,imported_state:message.imported_state})),latest:messages.at(-1),source:{id,owner,revision:session.revision,deleted:false,bodyToken:null,metadata:structuredClone(metadata)}};
     },
     commitDeviceGeneration:async(source:any,change:any,extra:any)=>{
-      if(change.input!==undefined)change={...change,receipt:{...change.receipt,raw_prompt:JSON.stringify(change.input)}};
+      if(change.input!==undefined){
+        let input=change.input;
+        if(!Array.isArray(input)){
+          const history=(fixture.saved?.payload.messages??[]).filter((message:any)=>
+            message.id!==input.regenerate&&!['stopped','interrupted'].includes(message.imported_state)&&['user','assistant'].includes(message.role))
+            .map(({role,content}:any)=>({role,content}));
+          input=[{role:'system',content:input.contract},...input.ordered.flatMap((part:any)=>
+            part.slot==='history'?history:[{role:part.role,content:part.content}])];
+        }
+        change={...change,receipt:{...change.receipt,raw_prompt:JSON.stringify(input)}};
+      }
       const {saveEntity}=await import('./appStore');
       const {generationChangeView,validateGenerationReceipt}=await import('./deviceGenerationChange');
       const key='generation:'+source.owner+':'+change.receipt.generation_id;

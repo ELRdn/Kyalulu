@@ -545,3 +545,45 @@ access with missing kernel assets; the desktop alternative returns
 USER_CONTROL. Site URL/Redirect URLs remain unread and settings unchanged.
 This is an automation failure, not evidence of a login problem or approval
 to change Auth, region/provider conditions or production deployment.
+
+## Canonical input replay from a pinned conversation source
+
+Normal Device completion now saves its complete pre-fit diagnostic input by
+replaying the pending conversation source inside the receipt/history/domain
+transaction. The internal descriptor pins owner, conversation ID, revision and
+body token, the compiled order, the already assembled summary contract, and
+the optional replaced reply ID. It never enters exported JSON. The transient
+assembled input array is released before the save. Research and legacy array/
+raw-string inputs retain their existing contracts.
+
+Each history slot rereads and verifies the complete source while emitting
+ordered role/content JSON into existing1MiB parts. Repeated slots, imported
+stopped/interrupted exclusions and regeneration retain the old assembler's
+complete byte sequence; a compiler without a history slot still requires a
+verified source. Header/receipt/history/domain adoption stays atomic, including
+quota, checksum, owner/revision/body-token and replacement failures.
+
+Focused generation/storage/audit tests91 and the complete Web suite1,875/101
+files pass with338 input hashes unchanged; typecheck passes. New cases compare
+literal source-derived inputs and the unchanged old assembler, including
+multi-MiB JSON, escaping, Unicode and an unpaired surrogate. Real Chromium
+passes the existing84-case local/sync × legacy/world/shared generation/fault/
+restart matrix and mock overflow/rescue, with314 source inputs unchanged and
+owned processes closed. JA/EN Research browser checks also pass. All inference
+in these browser tests is synthetic. Corresponding-source/fingerprint tests45
+pass; the initial sandbox temporary-directory setup failure and a nonfatal
+pytest cache warning are separate environment limitations.
+
+Private evidence: `conversation-input-replay-20261101/{parent-web-result.json,source-tests.log,browser/result.json,research-browser/results.json}`.
+Independent static review finds no concrete defect in the replay/guard/caller
+slice. Main actor/compiler/GGUF planning still retain complete history during
+inference; ONNX, active Research, UI restoration and real250MB/1GB/RSS remain
+open. This completes the canonical-write replay step, not whole-capacity or
+model-quality acceptance. Fixed d09742f packages and real4cd model evidence
+remain pinned to those older sources until a new candidate is built/verified.
+
+The separate primary-license audit verifies all26 installed package files
+against exact public tarballs and rechecks both d09742f archives. None of the
+three missing rights-holder grant texts is resolved; C MIT and V8 notices are
+not substitutes for wrapper/primary grants. Private evidence:
+`primary-license-grants-20261101/REPORT.md`. `license_reviewed` remains false.
