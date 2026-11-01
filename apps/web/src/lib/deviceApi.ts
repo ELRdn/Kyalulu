@@ -23,6 +23,7 @@ import { storageStep } from './segmentedStorage';
 import { historyAffected,invalidHistoryMemory,detachHistoryMemories,type HistoryChange } from './deviceHistoryChange';
 import type { GenerationChange } from './deviceGenerationChange';
 import type { GenerationInput } from './deviceGenerationInput';
+import { prepareDeviceGenerationSource } from './deviceGenerationSource';
 import { generationReceiptChunks,readGenerationHeader,readGenerationReceipt,readGenerationSnapshot,generationSummary,isGenerationHeader } from './deviceGenerationStore';
 import { jsonChunks,SYNC_INLINE_BYTES } from './appTransfers';
 
@@ -71,10 +72,10 @@ async function conversation(id:string,owner=deviceOwner()) {
   if(record?.deleted)throw fail('Conversation deleted / 会話は削除されています',404);
   return record??blank(id);
 }
-async function generationSession(id:string,owner:string):Promise<{session:AppEntity;source:MemorySource;latest:any}> {
-  let result=await readDeviceGenerationSource(id,owner);
+async function generationSession(id:string,owner:string,limit?:number):Promise<{session:AppEntity;source:MemorySource;latest:any}> {
+  let result=await readDeviceGenerationSource(id,owner,limit);
   if(result?.source.metadata.cache_evicted){
-    await hydrateConversation(id,owner);await trimOfflineCache(owner,id);result=await readDeviceGenerationSource(id,owner);
+    await hydrateConversation(id,owner);await trimOfflineCache(owner,id);result=await readDeviceGenerationSource(id,owner,limit);
     if(!result||result.source.metadata.cache_evicted)throw fail('Conversation unavailable',503);
   }
   if(result)return {source:result.source,latest:result.latest,session:{...result.header,payload:{...result.source.metadata,messages:result.messages}}};
@@ -257,7 +258,8 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
       finally{signal?.removeEventListener('abort',stopLoad);}
     }
     currentOwner();
-    const opened=scope?undefined:await generationSession(id,owner),session=scope?.session??opened!.session,p=session.payload;
+    // Lore inspects at most1000 rows; the extra tail row preserves latest-reply regeneration.
+    const opened=scope?undefined:await generationSession(id,owner,model.runtime==='gguf'?1001:undefined),session=scope?.session??opened!.session,p=session.payload;
     let generationSource=opened?.source;
     if(session.owner!==owner||session.id!==id)throw fail('Invalid generation scope',409);
     if(p.pending_generation)throw fail('Reconcile the pending generation before sending again',409);
@@ -356,8 +358,9 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
       void (async()=>{
         try {
           signal?.throwIfAborted();
-          let input=assemblePortable(prompt,messages.filter((m:any)=>!['stopped','interrupted'].includes(m.imported_state)).map((m:any)=>({role:m.role,content:m.content})),system);
-          const result=await runtime!.generate(input as import('../mobile/types').ChatTurn[],event=>{
+          const prepared=!scope&&model.runtime==='gguf'?await prepareDeviceGenerationSource(generationSource!,prompt,system,generationConfig.applied.max_tokens,body.regenerate_message_id,signal):undefined;
+          let input=prepared?undefined:assemblePortable(prompt,messages.filter((m:any)=>!['stopped','interrupted'].includes(m.imported_state)).map((m:any)=>({role:m.role,content:m.content})),system);
+          const result=await runtime!.generate(prepared?.runtime??input! as import('../mobile/types').ChatTurn[],event=>{
             if(event.type==='delta'){raw+=event.text??'';send('progress',{stage:'generation',elapsed_ms:0});}
           },requested,deviceResponseGrammar,signal);
           measurement=result.measurement;
@@ -384,7 +387,7 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
             return {...proposal,memory_id:memoryId,source_message_ids:sourceIds};
           });
           const memory=trace?{...trace,proposals:parsed.memory_proposals,decisions,evidenced:memories.filter(m=>evidenced(m.content,parsed.reply)).map(m=>m.id)}:null;
-          const summaries=summaryRefresh(p.summaries,id);for(const message of messages)summaries.push(message);
+          const summaries=prepared?.summaries??summaryRefresh(p.summaries,id);if(!prepared)for(const message of messages)summaries.push(message);
           messages.push({id:assistantId,uuid:crypto.randomUUID(),role:'assistant',content:parsed.reply,created_at:new Date().toISOString(),model_id:model.id,
             before:{state:baseState,memories:baseMemories,settings:structuredClone(frozenSettings)},after:{state,memories:stored,settings:structuredClone(frozenSettings)}});
           summaries.push(messages.at(-1)!);
@@ -392,11 +395,11 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
             ...(scope?{first_reply_ms:result.measurement?.firstTokenMs??null,tokens_per_second:result.measurement?.tokensPerSecond??null}:{})},
             generation_config:{...generationConfig,requested:{model_id:model.id,...generationConfig.requested},applied:{model_id:model.id,...generationConfig.applied}},validation:{ok:true,retries:0,errors:[]},
             compiled:prompt,state_before:baseState,memory,
-            token_budget:{total_prompt_tokens:input.reduce((sum,m)=>sum+estimateTokens(m.content),0),estimated:true}};
-          const savedInput:GenerationInput=scope?input:{format:'conversation-input@1',
+            token_budget:{total_prompt_tokens:prepared?.tokenEstimate??input!.reduce((sum,m)=>sum+estimateTokens(m.content),0),estimated:true}};
+          const savedInput:GenerationInput=prepared?.canonical??(scope?input!:{format:'conversation-input@1',
             source:{id,owner,revision:generationSource!.revision,bodyToken:generationSource!.bodyToken},
-            contract:input[0].content,ordered:prompt.ordered_messages,...(body.regenerate_message_id?{regenerate:body.regenerate_message_id}:{})};
-          input=[];
+            contract:input![0].content,ordered:prompt.ordered_messages,...(body.regenerate_message_id?{regenerate:body.regenerate_message_id}:{})});
+          input=undefined;
           if(memoryContext&&workingMemory&&admittedMemory){
             const pool=workingMemory.domain.pools[workingMemory.scope],ownIds=new Set(baseMemories.map((m:DeviceMemory)=>m.id));
             for(const row of pool.memories)if(!ownIds.has(row.id)&&trace?.injected.includes(row.id)){row.access_count=(row.access_count??0)+1;row.last_accessed=now;}

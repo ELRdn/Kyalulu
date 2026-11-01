@@ -6,7 +6,7 @@ vi.mock('./appSync',()=>({hydrateConversation:vi.fn()}));
 vi.mock('../mobile/models',()=>({MODELS:[{id:'fixture',runtime:'gguf',temperature:.8,topK:64,topP:.95}],readyModels:async()=>new Set(['fixture'])}));
 vi.mock('../mobile/runtime',()=>({MobileRuntime:class{
   async load(){} stop(){}
-  async generate(turns:any,event:any,settings:any){fixture.turns=turns;fixture.settings=settings;event({type:'delta',text:JSON.stringify({reply:'fixture reply',state_update:{location:'港',time:'夜',mood:'calm',active_scene:'帰港',relationship_state:{stage:'friend',tone:'warm',unresolved_conflict:false}}})});return {measurement:{}};}
+  async generate(turns:any,event:any,settings:any){fixture.turns=Array.isArray(turns)?turns:await turns.materialize(turns.runs);fixture.settings=settings;event({type:'delta',text:JSON.stringify({reply:'fixture reply',state_update:{location:'港',time:'夜',mood:'calm',active_scene:'帰港',relationship_state:{stage:'friend',tone:'warm',unresolved_conflict:false}}})});return {measurement:{}};}
 }}));
 vi.mock('./appStore',async original=>({
   ...await original<typeof import('./appStore')>(),

@@ -8,7 +8,7 @@ vi.mock('./appSync',()=>({hydrateConversation:vi.fn()}));
 vi.mock('../mobile/models',()=>({MODELS:[{id:'fixture',runtime:'gguf',temperature:.8,topK:64,topP:.95}],readyModels:async()=>new Set(['fixture'])}));
 vi.mock('../mobile/runtime',()=>({MobileRuntime:class{
   async load(){} stop=fixture.stop;
-  async generate(input:any,emit:any,_settings:any,_grammar:any,signal?:AbortSignal){fixture.inputs.push(input);fixture.signal=signal;await fixture.paused;
+  async generate(input:any,emit:any,_settings:any,_grammar:any,signal?:AbortSignal){fixture.inputs.push(Array.isArray(input)?input:await input.materialize(input.runs));fixture.signal=signal;await fixture.paused;
     if(signal?.aborted)return {stopped:true};if(fixture.fail)throw Error('Fictional inference failure');
     emit({type:'delta',text:JSON.stringify({reply:fixture.reply,state_update:{location:'library',time:'now',mood:'calm',active_scene:'tea',relationship_state:{stage:'stranger',tone:'neutral',unresolved_conflict:false}},memory_proposals:fixture.proposals})});return {measurement:{},stopped:false};}
 }}));
@@ -30,6 +30,8 @@ import { receiveConversation } from './appSyncData';
 import { conservativeTokens,mergeTurns } from '../mobile/context';
 import { readGenerationReceipt } from './deviceGenerationStore';
 import { CONTEXT_TOKENS,OUTPUT_TOKENS } from '../mobile/types';
+import { refreshSummaries,estimateTokens } from './deviceCore';
+import * as memoryStore from './deviceMemoryStore';
 import catalog from '../mobile/app-catalog.generated.json';
 
 beforeEach(()=>{
@@ -62,6 +64,28 @@ async function diagnostic(id:string){
   const saved=(await entity(id))!,result=await readGenerationReceipt(fixture.owner,{kind:'conversation',id},saved.payload.last_generation.generation_id);
   expect(result.state).toBe('inline');if(result.state!=='inline')throw Error('Fixture diagnostics exceed inline representation');return result.value;
 }
+
+it.each([['legacy',false],['legacy',true],['world',false],['world',true]] as const)('keeps complete history/summary diagnostics past the actor window (%s, regenerate=%s)',async(mode,regenerate)=>{
+  const record=source('b',71);record.payload.memory_scope_mode=mode;
+  record.payload.messages=Array.from({length:1206},(_,index)=>({id:index+71,uuid:'history-'+index,role:index%2?'assistant':'user',content:'Original '+index+' 茶🙂',unknown:{keep:index}}));
+  record.payload.messages[0]={...record.payload.messages[0],role:'system',content:'Conversation older than the actor projection'};
+  record.payload.messages.at(-2).content='鮭のお寿司が好きです';
+  const latest=record.payload.messages.at(-1);latest.before={state:{...record.payload.state,turn:3},memories:record.payload.memories,settings:record.payload.settings};
+  record.payload.last_generation={generation_id:'old'};
+  await seed(record);fixture.meta.set('message-sequence:'+fixture.owner,10000);
+  const before=structuredClone((await entity('b'))!),read=vi.spyOn(memoryStore,'readDeviceGenerationSource');
+  try{
+    const result=await turn('b','long-history',regenerate?{regenerate_message_id:latest.id}:{});
+    expect(result.text).toContain('event: done');expect(read).toHaveBeenCalledWith('b',fixture.owner,1001);
+    const after=(await entity('b'))!,saved=await diagnostic('b'),input=JSON.parse(saved.raw_prompt);
+    const originalHistory=regenerate?before.payload.messages.slice(0,-1):[...before.payload.messages,after.payload.messages.at(-2)];
+    expect(input.filter((message:any)=>message.role!=='system')).toEqual(originalHistory.filter((message:any)=>message.role==='user'||message.role==='assistant').map(({role,content}:any)=>({role,content})));
+    expect(input[0].content).toContain('Conversation older than the actor projection');
+    expect(saved.token_budget.total_prompt_tokens).toBe(input.reduce((sum:number,message:any)=>sum+estimateTokens(message.content),0));
+    expect(after.payload.summaries).toEqual(refreshSummaries([...originalHistory,after.payload.messages.at(-1)],before.payload.summaries,'b'));
+    expect(after.payload.messages.slice(0,regenerate?-1:-2)).toEqual(regenerate?before.payload.messages.slice(0,-1):before.payload.messages);
+  }finally{read.mockRestore();}
+});
 
 it('creates the first default world conversation with its receipt and domain in one lifecycle',async()=>{
   const result=await turn('new-world','first-world');expect(result.status,result.text).toBe(200);expect(result.text).toContain('event: done');

@@ -41,6 +41,8 @@ Python Researchの根拠を現在発言へ揃え、3ターン/リセット/出�
 関連91・Web全1,875/101file・型検査・source45件、314入力不変の実Chromium84＋mock境界/救済・日英Research2件が成功。推論中の全文保持、ONNX/Research/UIと250MB/1GB/RSS全体、本番受入れは残る。
 固定207ed85の隔離exportでも型・統合production build・Web全1,875件が成功し、1,205source/SDK-native60入力不変と配信runtime4点一致を確認。無関係な作業tree変更を含めず、依存は再利用。実推論・実機・本番受入れとは分ける。
 同207のNative/統合Cloudも新規UI buildから梱包し、同一source1,120件・変更115pathすべてとSDK/WASM/依存/interpreterの再利用証拠を照合。梱包source29件＋除外されていた架空Git改行試験1件、実梱包CLIの復元/rollback・pointer故障7件・PID終了と日英UI再起動が成功。実モデルコード6点は旧4cd実行と同一だが、新Device APIの実推論証拠へ代用しない。
+通常Device/GGUFの推論入力も原本再読取へ接続し、actor本文は最大1,001投影＋完全な最新再生成snapshotに制限。全履歴の要約/原runサイズを同じ検証済み走査で作り、native選択後の必須/選択履歴だけ実体化する。ONNX/Research/旧Mobileの配列経路と保存原本/完全診断は維持。
+Web全1,928/103file・型検査・source45件、317入力不変の実Chromium84＋mock境界/救済、日英target/Research各2件が成功。1,206/2,050発言・Lore境界・非同期改変/停止・原本/出典を検証。観測用の全run再生はメモリ証拠にせず、metadata/ONNX/Research/UI・実250MB/1GB/RSS、同版の実モデル/配布物/本番受入れを残す。
 
 | 必須範囲 | 現時点 | 完了を証明するもの |
 |---|---|---|

@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { SSEDecoder } from './sse';
+import { harness } from './idbHarness.test-support';
 const fixture=vi.hoisted(()=>({saved:undefined as any,sequence:0,busy:vi.fn(),fail:true,memory:false,memories:[] as any[],reply:'fixture reply',proposals:[] as any[],meta:new Map<string,any>(),locks:new Set<string>(),paused:undefined as Promise<void>|undefined,started:false,
-  stop:vi.fn(),signals:[] as (AbortSignal|undefined)[],preparation:undefined as Promise<void>|undefined,preparing:false}));
+  stop:vi.fn(),signals:[] as (AbortSignal|undefined)[],preparation:undefined as Promise<void>|undefined,preparing:false,
+  sourceRead:undefined as Promise<void>|undefined,sourceReading:false}));
 vi.mock('../mobile/runtime',()=>({MobileRuntime:class {
   async load(){} async generate(_messages:any,event:any,_settings:any,_grammar:any,signal?:AbortSignal){
     fixture.signals.push(signal);fixture.started=true;await fixture.paused;
@@ -72,7 +74,13 @@ vi.mock('./appStore',async importOriginal=>({
     const {saveEntity}=await import('./appStore');
     await saveEntity({...fixture.saved,payload:{...fixture.saved.payload,pending_generation:null}},fixture.saved.revision,{[key]:recovered});return recovered;
   }),
-  appTransaction:async(_stores:any,_mode:any,_action:any)=>++fixture.sequence,
+  appTransaction:async(stores:string[],mode:string,action:any)=>{
+    if(mode==='readonly'&&stores.includes('parts')){
+      if(fixture.sourceRead){fixture.sourceReading=true;await fixture.sourceRead;}
+      return harness(new Map(fixture.saved?[[JSON.stringify(['fixture-owner',fixture.saved.id]),fixture.saved]]:[]),fixture.meta,new Map(),JSON.stringify,mode,action);
+    }
+    return ++fixture.sequence;
+  },
   saveEntity:vi.fn(async(value:any,_revision:number,metadata:Record<string,unknown>={})=>{if(fixture.fail&&fixture.saved)throw Error('fixture storage failed');
     fixture.saved=structuredClone({...value,revision:value.revision+1});for(const [key,item] of Object.entries(metadata))fixture.meta.set(key,structuredClone(item));return fixture.saved;}),
 }));
@@ -81,7 +89,7 @@ import { allEntities,entity,recoverConversationGeneration } from './appStore';
 import { deviceExecutionLockName } from './deviceResearch';
 
 beforeEach(()=>{fixture.saved=undefined;fixture.sequence=0;fixture.fail=true;fixture.memory=false;fixture.memories=[];fixture.reply='fixture reply';fixture.proposals=[];fixture.meta.clear();fixture.busy.mockClear();fixture.locks.clear();fixture.paused=undefined;fixture.started=false;
-  fixture.stop.mockClear();fixture.signals=[];fixture.preparation=undefined;fixture.preparing=false;
+  fixture.stop.mockClear();fixture.signals=[];fixture.preparation=undefined;fixture.preparing=false;fixture.sourceRead=undefined;fixture.sourceReading=false;
   vi.mocked(allEntities).mockResolvedValue([]);
   vi.mocked(entity).mockClear();vi.mocked(recoverConversationGeneration).mockClear();
   vi.stubGlobal('navigator',{locks:{request:async(name:string,_options:any,fn:any)=>{
@@ -96,6 +104,7 @@ it.each(['signal','endpoint','reader'])('retains pending user and rolls back cou
   const controller=new AbortController(),generation='cancel-'+method;
   const response=await deviceFetch('/api/chat/stream',{method:'POST',signal:controller.signal,body:JSON.stringify({session_id:'chat',generation_id:generation,model_id:'fixture',messages:[{role:'user',content:'Retain submitted input'}]})});
   const before=structuredClone(fixture.saved.payload);
+  await vi.waitFor(()=>expect(fixture.started).toBe(true));
   let stream:Promise<string>|undefined;
   if(method==='reader')await response.body!.getReader().cancel();
   else {
@@ -127,6 +136,21 @@ it('latches endpoint cancel during source preparation before a receipt/runtime g
   expect(fixture.saved.payload.messages.slice(0,-1)).toEqual(before.messages);
   for(const key of ['state','memories','last_generation'])expect(fixture.saved.payload[key]).toEqual(before[key]);
   expect(fixture.meta.get('generation:fixture-owner:preparation').status).toBe('failed');
+});
+
+it('cancels pinned input preparation after durable admission without entering inference or losing user data',async()=>{
+  fixture.fail=false;vi.stubGlobal('location',{href:'https://device.test/device/'});
+  let release!:()=>void;fixture.sourceRead=new Promise<void>(resolve=>{release=resolve;});
+  const response=await deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify({session_id:'chat',generation_id:'input-preparation',model_id:'fixture',messages:[{role:'user',content:'Keep input before native count'}]})});
+  const stream=response.text();await vi.waitFor(()=>expect(fixture.sourceReading).toBe(true));
+  const before=structuredClone(fixture.saved.payload);
+  expect(fixture.meta.get('generation:fixture-owner:input-preparation').status).toBe('pending');
+  expect((await deviceFetch('/api/chat/generations/input-preparation/cancel?session_id=chat',{method:'POST'})).status).toBe(200);
+  expect(fixture.started).toBe(false);expect(fixture.signals).toEqual([]);release();
+  expect(await stream).toContain('event: error');
+  expect(fixture.meta.get('generation:fixture-owner:input-preparation').status).toBe('failed');
+  expect(fixture.saved.payload).toEqual({...before,pending_generation:null});
+  expect(fixture.started).toBe(false);expect(fixture.signals).toEqual([]);expect(fixture.locks.size).toBe(0);
 });
 
 it('rejects an empty generation identity before loading or saving',async()=>{

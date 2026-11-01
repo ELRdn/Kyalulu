@@ -41,21 +41,24 @@ export async function readMemorySource(id:string,owner:string,onMessage?:(messag
 }
 
 /** Verified actor inputs are transient; commits always reread and preserve the complete stored history. */
-export async function readDeviceGenerationSource(id:string,owner:string) {
+export async function readDeviceGenerationSource(id:string,owner:string,limit?:number) {
+  if(limit!==undefined&&(!Number.isSafeInteger(limit)||limit<2))throw Error('Invalid generation history projection');
   const result=await appTransaction<{source:MemorySource;header:Omit<AppEntity,'payload'>;messages:any[];latest:any}|undefined>(['entities','parts'],'readonly',(tx,done)=>{
     guardStorage(tx,()=>owner===deviceOwner());
     const read=tx.objectStore('entities').get([owner,id]);read.onsuccess=()=>storageStep(tx,()=>{
       const header=read.result as StoredEntity|undefined;if(!header){done(undefined);return;}
       if(header.deleted)throw Object.assign(Error('Conversation deleted'),{status:404});
       if(header.kind!=='conversation')throw Error('Conversation unavailable');
-      const messages:any[]=[];let latest:any;
+      const messages:any[]=[];let latest:any,cursor=0;
       readMemorySourceTx(tx,header,id,owner,source=>{
         const {payloadParts:_,selection:__,memoryReferences:___,payload:____,...raw}=header;
-        done({source,header:raw,messages,latest});
+        done({source,header:raw,messages:cursor?[...messages.slice(cursor),...messages.slice(0,cursor)]:messages,latest});
       },message=>{
         latest=message;
-        messages.push(message&&typeof message==='object'&&!Array.isArray(message)
-          ?{id:message.id,uuid:message.uuid,role:message.role,content:message.content,imported_state:message.imported_state}:message);
+        const projected=message&&typeof message==='object'&&!Array.isArray(message)
+          ?{id:message.id,uuid:message.uuid,role:message.role,content:message.content,imported_state:message.imported_state}:message;
+        if(limit!==undefined&&messages.length===limit){messages[cursor]=projected;cursor=(cursor+1)%limit;}
+        else messages.push(projected);
       });
     });
   });
