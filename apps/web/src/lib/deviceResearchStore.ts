@@ -5,6 +5,7 @@ import { Sha256 } from '../mobile/sha256';
 import { jsonChunks } from './appTransfers';
 import { deviceExecutionLockName } from './deviceExecution';
 import { isGenerationHeader,validateGenerationHeader,generationSummary,writeGenerationReceipt } from './deviceGenerationStore';
+import { validateSmallGenerationReceipt } from './deviceGenerationChange';
 import { guardStorage,readParts,writeParts,removeParts,storageStep,type Parts } from './segmentedStorage';
 
 type Value=Record<string,any>;
@@ -126,7 +127,7 @@ export async function writeResearchExperiment(owner:string,id:string,value:Resea
               ||p.messages.find((message:Value)=>message.id===receipt.assistant_id)?.content!==receipt.reply)throw Error('Research result changed');
             writeGenerationReceipt(tx,owner,{kind:'research',id},turn,packet.input,()=>write());return;
           }
-          if(Object.keys(receipt).some(name=>!['generation_id','session_id','status','assistant_id','user_id','user_content_sha256','execution_lock'].includes(name)))throw Error('Invalid small generation receipt');
+          validateSmallGenerationReceipt(receipt);
           const saved=meta.put(receipt,'generation:'+owner+':'+generation);saved.onsuccess=()=>storageStep(tx,write);
         });
       };

@@ -85,3 +85,24 @@ Worker clones/merge/ONNX fitting and full capacity acceptance remain open.
 The complete Native/Cloud distribution candidates remain pinned at `81e5927`;
 this later source change is not present in those candidates. No providers,
 Auth settings, deployment, merge or production data were changed.
+
+## Later hosted Windows bootstrap failure: diagnostics only
+
+PR run41261419916 at77d967f passes Ubuntu but fails Windows job124715294289
+before fixture setup: `window.__RUNTIME_DOWNLOAD__` remains undefined at the
+unchanged30-second deadline. The public log does not identify the underlying
+module or request error, so its root cause is not established or claimed fixed.
+
+The fixture now records and rethrows module bootstrap failures; the driver
+prints bounded requestfailed/HTTP>=400/console/pageerror events, bootstrap
+details and the tail of its owned Vite log when failing. The original15
+assertions,16 cases and deadline remain. Local Windows baseline and final
+each pass16/16. Separate module-exception, HTTP503 and failed-request
+injections all fail as intended, emit concrete diagnostics, and retain the
+original exception. Owned contexts, browser and Vite close on all runs.
+Evidence and source hashes: `runtime-download-ci-20261101/summary.json`;
+its independent `check_evidence.py` rechecks original assertions, case matrix,
+diagnostics and cleanup. Local triage uses a private Vite cache/native config
+loader and reused dependencies. Hosted Windows parity and the root cause
+remain unresolved. No CI retry, timeout extension, shared launcher/cache
+change, dependency installation or assertion weakening was used.

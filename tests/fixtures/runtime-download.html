@@ -1,6 +1,11 @@
 <!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Disposable Runtime export fixture</title><div id="root"></div>
 <script type="module">
-import RefreshRuntime from '/@react-refresh';
-RefreshRuntime.injectIntoGlobalHook(window);window.$RefreshReg$=()=>{};window.$RefreshSig$=()=>type=>type;window.__vite_plugin_react_preamble_installed__=true;
-window.__RUNTIME_DOWNLOAD__=await import('/src/components/RuntimeDownload.browser-fixture.tsx');
+try {
+  const {default:RefreshRuntime}=await import('/@react-refresh');
+  RefreshRuntime.injectIntoGlobalHook(window);window.$RefreshReg$=()=>{};window.$RefreshSig$=()=>type=>type;window.__vite_plugin_react_preamble_installed__=true;
+  window.__RUNTIME_DOWNLOAD__=await import('/src/components/RuntimeDownload.browser-fixture.tsx');
+} catch(error) {
+  window.__RUNTIME_DOWNLOAD_ERROR__={name:String(error?.name??'Error').slice(0,100),message:String(error?.message??error).slice(0,2000),stack:String(error?.stack??'').slice(0,4000)};
+  throw error;
+}
 </script>

@@ -347,6 +347,7 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
     let closed=false;
     const stream=new ReadableStream<Uint8Array>({start(controller) {
       let ended=false,raw='';
+      let measurement:import('../mobile/types').Measurement|undefined;
       const send=(event:string,data:unknown)=>{if(!ended&&!closed)controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));};
       void (async()=>{
         try {
@@ -355,6 +356,7 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
           const result=await runtime!.generate(input as import('../mobile/types').ChatTurn[],event=>{
             if(event.type==='delta'){raw+=event.text??'';send('progress',{stage:'generation',elapsed_ms:0});}
           },requested,deviceResponseGrammar,signal);
+          measurement=result.measurement;
           if(deviceOwner()!==owner)throw fail('Account changed');
           if((result as any).stopped||signal?.aborted)throw fail('Generation stopped');
           let parsed;
@@ -399,11 +401,15 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
               ...(!scope&&!memoryContext&&trace?{[memoryEventsKey(owner,id)]:events}:{})},input);
           send('done',Object.fromEntries(Object.entries(done).filter(([key])=>!['attempts','compiled','raw_prompt'].includes(key))));
         } catch(error) {
-          let saveError='';
+          let saveError='';const message=error instanceof Error?error.message:String(error);
           if(memoryContext&&admittedMemory)memoryContext.domain=admittedMemory;
-          try{current=await save({...current,payload:{...current.payload,pending_generation:null}},current.revision,{['generation:'+owner+':'+generationId]:{...pending,status:'failed'}});}
+          try{current=await save({...current,payload:{...current.payload,pending_generation:null}},current.revision,{['generation:'+owner+':'+generationId]:{
+            ...pending,status:'failed',validation:{ok:false,retries:0,errors:[message.slice(0,2000)]},
+            telemetry:{...measurement,...(trace?{memory:{candidates:memories.map(({id,source_session_id})=>({id,source_session_id})),injected:trace.injected}}:{})},
+            // Failed receipts stay inline; cap raw diagnostics independently of model output limits.
+            attempts:[{number:1,raw:raw.slice(0,8192),raw_truncated:raw.length>8192,raw_utf16_units:raw.length}]}});}
           catch{saveError=' Device save failed; the pending record is retained / 保存できないため未完了の記録を保持しています。';}
-          send('error',{error:(error instanceof Error?error.message:String(error))+saveError});
+          send('error',{error:message+saveError});
         } finally {finish();if(!ended&&!closed){ended=true;controller.close();}}
       })();
     },cancel(){closed=true;active.stop();}});

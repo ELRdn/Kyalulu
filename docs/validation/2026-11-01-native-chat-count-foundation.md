@@ -245,3 +245,128 @@ instructions also name the SDK stage, both patches, matching manifests and fresh
 isolated output requirements. The source-collector suite passes **16 tests**.
 Existing immutable77 candidates are retained as prior evidence; the corrected
 recipe/source-offer needs a new fixed-source candidate before final delivery.
+
+## Fresh 7bae72f delivery and packed acceptance
+
+An immutable **7bae72f05d4c02bfad3f29960b307589e122049d** export subsequently
+reproduced the corrected recipe. Both source offers contain the same **1,118
+files**, including the two missing reports and SDK build instruction. All
+**101 changed paths** are included without documentation exceptions; 881
+required source files and the original license/precache/manifest checks pass.
+Fresh SDK output (25 inputs / 56 outputs) and all four native hashes match the
+ordinary production inputs above. Packed-source tests pass 29 with one
+deselected; archive-audit self-checks pass 14. Installed dependencies and the
+hash-verified Python interpreter are reused; this is not a clean-install proof.
+
+| Candidate | Bytes | SHA-256 |
+|---|---:|---|
+| Windows Native | 142,425,795 | `f27bae79ce9f25d7604df3136e945a36d5ee5bc738e5dad35cac6d84099bf822` |
+| Unified Cloud | 67,161,019 | `cad10b21bb2ffc217cc0dd35ec7bed7109bfe57a1b9c2f50a73b49ec34f9a767` |
+
+Parent verification independently rehashes both archives. Actual packed CLI
+checks and fresh JA/EN packed browser checks both exit zero: fictional
+restart/history/memory, backup/restore/rollback, seven pointer faults, actual
+PID exit, draft/target/receipt/restart and a credential/referrer-free fictional
+Cloud handoff. Browser inference remains mocked. A separate hash binding
+matches the packed Worker, SDK chunk and native four files (six files total)
+to the compiled real-model integration above; it does not relabel mocked
+packed browser calls as model inference. Prior77 outputs and retained toolchain
+baseline hashes are unchanged. Private evidence:
+`portable-delivery-7bae72f-20261101/{results.json,logs}` and
+`packed-acceptance-7bae72f-20261101/{result.json,commands.json,packed-model-code-binding.json}`.
+These unsigned, unpublished candidates do not contain later source fixes.
+
+## Actual persisted Device API: defects remain visible
+
+The immutable77 Device API and compiled production Worker/SDK were also used
+with the cached real GGUF through normal settings, stream, generation status,
+memory and events routes. Only fresh UUID probe DBs were writable; existing
+model metadata/shards were read-only, and private app DBs/storage, external
+requests and Cloud Auth were forbidden. Source1,203 / built86 / execution99
+files and the model's five shards were hash-checked. No model or transport mock
+replaced this run. This used desktop GPU, not physical phones.
+
+Mocha completes one turn; stock Librarian30 completes20/20. Librarian100
+completes16 turns, then turn17 exhausts the unchanged256 output tokens and
+ends in incomplete JSON. No retry, larger budget or turn18+ was attempted.
+The100 scenario shares the normal world memory scope with30 and starts with
+its two memories; it is not an independent empty-baseline benchmark.
+All38 receipts (37 completed, one failed) survive read-only browser restart
+unchanged, with425 saved-data assertions. The failed turn keeps the exact
+authored user, old state/history/memories, null assistant and cleared pending.
+Successful canonical diagnostics preserve original pre-fit input. Peer access
+metadata changes are separately reconciled, rather than reported as a fully
+unchanged peer entity.
+
+Memory quality fails: the source asks about nearby shops, but a proposed memory
+asks about bookshelf organization. Shared request wording produces12/17
+bigram overlap, exceeding0.3, so the wrong topic is saved as supported and
+actually injected later. A correct English translation of a Japanese flower
+statement stays unsupported. Source IDs/quotes alone do not prove the proposed
+content. Grammar also permits enough whitespace and free text that valid
+prefixes need not close within256 tokens. These are product defects, not
+storage-corruption evidence. Private full report and preserved failures:
+`real-device-memory-77d967f-20261101/{REPORT.md,acceptance-summary.json,memory-support-defect.json,failed-librarian100-turn17.json}`.
+
+Conversational quality, long-term recall, actual CPU stock completion,
+250MB/1GB capacity, physical devices, license grants, clean OS/signing,
+Supabase callback values, regional/provider conditions and production
+recovery/cutover remain unaccepted. Supabase is user-authenticated, but CUA
+startup still fails with missing kernel assets; desktop fallback returns
+USER_CONTROL. URL settings are unread and unchanged. No re-login or Auth
+save was attempted.
+
+## Source correction: conservative user grounding and bounded failures
+
+Python and Device now require complete-utterance equality for user-statement
+and user-correction proposals, collapsing Unicode whitespace only. Negation,
+qualification, case, punctuation and original language are retained. The
+same-kind user duplicate check uses this exact rule, so a nearby opposite
+statement cannot be suppressed by approximate bigram overlap. Other proposal
+types and reply-wording `evidenced` telemetry retain their prior semantics.
+This is textual correspondence, not a factuality or semantic verifier.
+
+Retrieval and duplicate suppression also recheck old model-origin user rows
+against their saved quote and explicit source kind, rather than trusting an
+old `supported=true/null`. Missing provenance or a mismatched quote remains
+inspectable but cannot be injected or suppress a new proposal. Original rows,
+stored flags and source metadata are not rewritten or deleted. Explicitly
+unsupported rows remain quarantined until manual confirmation/editing;
+manual memories and confirmed/edited rows remain usable. Correct paraphrases,
+translations, multi-statement fragments and truncated quotes can therefore
+be excluded. No prompt, grammar, stock content, sampling or context/output
+setting was changed to pass the regression.
+
+The normal Device failure path now persists its bounded reason (2,000 UTF-16
+units), actual returned measurement when available, one raw-output prefix
+(8,192 UTF-16 units) and explicit original length/truncation. Its minimal
+injected-memory ID/source links let existing source erasure remove raw/error
+diagnostics. No reply/state/memory is applied and no retry occurs. Failed
+receipts remain inline, with a shared complete-encoded-size ceiling of64KiB
+for conversation and Research; unexpected fields, oversized diagnostics,
+owner/revision conflicts and quota still reject atomically. A failed terminal
+write retains the durable pending record. Public failure SSE retains only the
+error message. The original256-token incomplete JSON remains unresolved;
+diagnostic preservation is not a repair of model generation.
+
+Shared33 proposal/provenance cases and19 legacy eligibility cases cover wrong
+topics, negation, exact corrections, translations, mixed utterances, source
+absence and manual confirmation without changing originals. Python90 tests
+and focused TS117 pass. Parent validation passes all1,832 Web tests /101 files,
+TypeScript and16 source-collector tests. Sandbox-specific asyncio socketpair
+and forked-test temporary-file failures were retained; the fictional Python
+and full Web tests pass in the ordinary scoped Windows environment. Private
+evidence: `memory-grounding-20261101/{summary.json,python-tests-fixed.log,ts-tests-final.log}`.
+Parent's actual Chromium Device generation matrix also passes84 cases plus
+mandatory-overflow/mock-rescue probes. It checks bounded raw diagnostics,
+actual returned mock measurements, minimal peer-source links and erasure
+projection, exact status rereads, old history/draft preservation, failed
+terminal-write pending retention, source/owner conflicts and reload recovery.
+Original input and source fingerprints remain unchanged; external requests
+and page errors are zero, and owned context/browser/Vite cleanup succeeds.
+The private cache/native loader changes only the test server launcher.
+Evidence: `generation-failure-diagnostics-20261101/browser/result.json` and
+`owned-cleanup.json`. Inference is synthetic in these84 cases; native count,
+real model and physical-phone claims remain tied to their separate runs.
+New real-model quality, a new fixed-source distribution and production are
+not inferred from these unit tests or the earlier7bae72f package.

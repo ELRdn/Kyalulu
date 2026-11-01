@@ -42,7 +42,8 @@ async def main():
                 for language, width, theme in [('ja', 393, 'light'), ('en', 1280, 'dark')]:
                     for mode, fault, large in CASES:
                         row = {'language': language, 'width': width, 'theme': theme,
-                               'mode': mode, 'fault': fault, 'large': large, 'ok': False}
+                               'mode': mode, 'fault': fault, 'large': large, 'ok': False,
+                               'diagnostics': {'request_failed': [], 'http_errors': [], 'console': []}}
                         report['cases'].append(row)
                         context = await browser.new_context(viewport={'width': width, 'height': 852}, accept_downloads=True)
                         try:
@@ -63,10 +64,22 @@ async def main():
                             await context.route('**/*', guard)
                             page = await context.new_page()
                             page.set_default_timeout(30000)
-                            page.on('pageerror', lambda error: report['page_errors'].append(str(error)))
+                            def diagnostic(kind, value):
+                                events = row['diagnostics'][kind]
+                                if len(events) < 10:
+                                    events.append(value)
+                            page.on('pageerror', lambda error: report['page_errors'].append(error.stack or str(error)))
+                            page.on('requestfailed', lambda request: diagnostic('request_failed', {
+                                'url': request.url[:1000], 'failure': str(request.failure)[:1000]}))
+                            page.on('response', lambda response: diagnostic('http_errors', {
+                                'url': response.url[:1000], 'status': response.status}) if response.status >= 400 else None)
+                            page.on('console', lambda message: diagnostic('console', {
+                                'type': message.type, 'text': message.text[:2000]}) if message.type in ('error', 'warning') else None)
                             page.on('worker', lambda worker: report['workers'].append(worker.url))
                             await page.goto(origin + '/@fs/' + quote((ROOT / 'tests/fixtures/runtime-download.html').as_posix(), safe='/:'))
-                            await page.wait_for_function('window.__RUNTIME_DOWNLOAD__ !== undefined')
+                            await page.wait_for_function('window.__RUNTIME_DOWNLOAD__ !== undefined || window.__RUNTIME_DOWNLOAD_ERROR__ !== undefined')
+                            row['boot_error'] = await page.evaluate('window.__RUNTIME_DOWNLOAD_ERROR__ ?? null')
+                            assert row['boot_error'] is None, f"RuntimeDownload fixture module boot failed: {row['boot_error']}"
                             await page.evaluate('theme=>{localStorage.setItem("my-zeta-theme",theme);document.documentElement.setAttribute("data-theme",theme)}', theme)
                             await page.evaluate('args=>window.__RUNTIME_DOWNLOAD__.setup(...args)', [language, mode, fault, large])
                             button = page.get_by_role('button', name='書き出し' if language == 'ja' else 'Export', exact=True)
@@ -122,8 +135,31 @@ async def main():
         assert len(report['cases']) == 16 and all(row['ok'] for row in report['cases'])
         report['ok'] = True
         print(json.dumps({'ok': True, 'cases': len(report['cases']), 'source_files': len(report['source_before'])}))
+    except Exception:
+        report['error'] = traceback.format_exc()
+        raise
     finally:
         save()
+        if not report['ok']:
+            failed = next((row for row in report['cases'] if not row['ok']), {})
+            log = OUTPUT / 'vite.log'
+            tail = ''
+            if log.is_file():
+                try:
+                    with log.open('rb') as stream:
+                        stream.seek(max(0, log.stat().st_size - 8000))
+                        tail = stream.read(8000).decode('utf-8', errors='replace')
+                except OSError as error:
+                    tail = f'Vite log read failed: {error}'
+            print(json.dumps({'ok': False, 'passed_cases': sum(row['ok'] for row in report['cases']),
+                'started_cases': len(report['cases']), 'failed_case': {key: failed.get(key) for key in (
+                    'language', 'mode', 'fault', 'large', 'boot_error', 'diagnostics')},
+                'error': report.get('error', '')[-6000:], 'blocked': report['blocked'][:10],
+                'page_errors': [error[:2000] for error in report['page_errors'][:10]],
+                'workers': report['workers'][:10], 'contexts_closed': report['contexts_closed'],
+                'browser_closed': report['browser_closed'],
+                'vite_log_tail': tail},
+                ensure_ascii=False), flush=True)
 
 
 if __name__ == '__main__':

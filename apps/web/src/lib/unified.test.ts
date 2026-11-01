@@ -111,6 +111,21 @@ it.each(provenance.cases)('matches Python memory commit provenance: $name',test=
     .toEqual(original.map(({type,content,source_kind,action})=>({type,content,source_kind,action})));
   decisions.forEach((decision,index)=>{if(decision.action==='skip')expect(decision).toEqual(original[index]);});
 });
+it.each(provenance.eligibility)('rechecks legacy retrieval and dedup without rewriting: $name',test=>{
+  const memory=test.memory as unknown as DeviceMemory,before=structuredClone(memory);
+  for(const query of [memory.content,'unrelated query']) {
+    const result=retrieveMemories([memory],query);
+    expect(result.injected).toEqual(test.eligible?[memory.id]:[]);
+    if(memory.status==='active')expect(result.candidates[0]).toMatchObject({
+      supported:memory.supported,decision:test.eligible?expect.stringMatching(/^(injected|recent_fill)$/):'unverified'});
+    else expect(result.candidates).toEqual([]);
+  }
+  const proposal={type:memory.type,content:memory.content,source_kind:memory.source_kind??'user_statement'};
+  const decisions=validateProposals([proposal,proposal],[memory],memory.content);
+  expect(decisions[0]).toMatchObject(test.eligible?{action:'skip',reason:'duplicate'}:{action:'store'});
+  expect(decisions[1]).toMatchObject({action:'skip',reason:'duplicate'});
+  expect(memory).toEqual(before);
+});
 it.each(provenance.evidence)('matches Python reply evidence: $name',test=>{
   expect(evidenced(test.content,test.reply)).toBe(test.expected);
 });

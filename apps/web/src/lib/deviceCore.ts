@@ -38,7 +38,19 @@ export function estimateTokens(text:string) {
   return Math.max(1,Math.ceil(cjk/1.5+(count-cjk)/4));
 }
 export type DeviceMemory={id:string;type:'semantic'|'episodic'|'relationship';content:string;
-  origin:string;supported:boolean|null;status:string;source_kind?:string;[key:string]:any};
+  origin:string;supported:boolean|null;status:string;source_kind?:string;source_session_id?:string|null;[key:string]:any};
+const memoryWhitespace=(text:string)=>text.replace(/\p{White_Space}+/gu,' ').replace(/^ | $/gu,'');
+function userGrounded(content:string,quote:unknown) {
+  // Complete-utterance correspondence only; this does not verify the statement's truth.
+  return typeof quote==='string'&&memoryWhitespace(content).length>0&&memoryWhitespace(content)===memoryWhitespace(quote);
+}
+function memoryEligible(m:DeviceMemory) {
+  if(m.status==='deleted')return false;
+  if(m.origin!=='model'||m.confirmation==='user_confirmed')return true;
+  if(m.supported===false)return false;
+  if(m.source_kind==='story_event')return m.supported===true;
+  return (m.source_kind==='user_statement'||m.source_kind==='user_correction')&&userGrounded(m.content,m.source_quote);
+}
 export function renderMemoryBlock(memories:DeviceMemory[],compact=false) {
   return memories.length?(compact?'\nRelevant memories; do not recite or invent. Story events are fiction, not user facts:\n'
     :'\nRelevant memory (remembered from earlier conversation; use it naturally when it fits, do not recite it, and never invent memories that are not listed):\n')
@@ -56,7 +68,7 @@ export function retrieveMemories(memories:DeviceMemory[],query:string,options:un
   let used=0;const injected:string[]=[];
   for(const m of ranked) {
     const tokens=estimateTokens(m.content)+4;
-    m.decision=m.supported===false&&m.origin==='model'?'unverified':m.score<min_score?'below_threshold':injected.length>=top_k?'over_top_k':used+tokens>budget_tokens?'over_budget':'injected';
+    m.decision=!memoryEligible(m)?'unverified':m.score<min_score?'below_threshold':injected.length>=top_k?'over_top_k':used+tokens>budget_tokens?'over_budget':'injected';
     if(m.decision==='injected'){used+=tokens;injected.push(m.id);}
   }
   for(const m of ranked.filter(m=>fill_recent&&m.decision==='below_threshold').sort((a,b)=>b.recency-a.recency)) {
@@ -94,13 +106,15 @@ export function prepareRpg(raw:unknown, state:Record<string,any>, input:string, 
 type Proposal={type:DeviceMemory['type'];content:string;source_kind:string};
 export function validateProposals(proposals:Proposal[],existing:DeviceMemory[],evidenceText:string) {
   const overlap=(a:Set<string>,b:Set<string>)=>b.size?[...b].filter(g=>a.has(g)).length/b.size:0;
-  const seen=existing.filter(m=>m.status!=='deleted'&&(m.supported!==false||m.confirmation==='user_confirmed')).map(m=>({grams:memoryBigrams(m.content),kind:m.source_kind??'user_statement'}));
+  const seen=existing.filter(memoryEligible).map(m=>({grams:memoryBigrams(m.content),kind:m.source_kind??'user_statement',content:memoryWhitespace(m.content)}));
   const evidence=memoryBigrams(evidenceText);
   return proposals.slice(0,3).map(p=>{
-    const content=p.content.trim().replace(/\s+/gu,' '),grams=memoryBigrams(content),item={...p,content};
+    const content=memoryWhitespace(p.content),grams=memoryBigrams(content),item={...p,content};
+    const userSource=p.source_kind==='user_statement'||p.source_kind==='user_correction';
     if(Array.from(normalizeMemory(content)).length<2)return {...item,action:'skip' as const,reason:'too_short'};
-    if(seen.some(s=>s.kind===p.source_kind&&overlap(s.grams,grams)>=.8&&overlap(grams,s.grams)>=.8))return {...item,action:'skip' as const,reason:'duplicate'};
-    seen.push({grams,kind:p.source_kind});return {...item,action:'store' as const,supported:overlap(evidence,grams)>=.3};
+    if(seen.some(s=>s.kind===p.source_kind&&(userSource?s.content===content:overlap(s.grams,grams)>=.8&&overlap(grams,s.grams)>=.8)))return {...item,action:'skip' as const,reason:'duplicate'};
+    seen.push({grams,kind:p.source_kind,content});return {...item,action:'store' as const,supported:
+      userSource?userGrounded(content,evidenceText):overlap(evidence,grams)>=.3};
   });
 }
 export function memoryDecisions(proposals:Proposal[],existing:DeviceMemory[],userText:string,reply:string,sourceRevision:string|null) {

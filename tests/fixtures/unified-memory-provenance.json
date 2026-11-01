@@ -29,7 +29,7 @@
           "content": "サーモンのお寿司が好き",
           "source_kind": "user_statement",
           "action": "store",
-          "supported": true,
+          "supported": false,
           "confirmation": "unverified",
           "source_quote": "サーモンのお寿司が好き。訂正：猫は二匹ではなく三匹飼っている。",
           "source_revision": "turn:7"
@@ -39,7 +39,7 @@
           "content": "猫は二匹ではなく三匹飼っている",
           "source_kind": "user_correction",
           "action": "store",
-          "supported": true,
+          "supported": false,
           "confirmation": "unverified",
           "source_quote": "サーモンのお寿司が好き。訂正：猫は二匹ではなく三匹飼っている。",
           "source_revision": "turn:7"
@@ -140,7 +140,8 @@
           "origin": "model",
           "supported": true,
           "status": "active",
-          "confirmation": "unverified"
+          "confirmation": "unverified",
+          "source_quote": "紅茶が好き"
         }
       ],
       "user_text": "紅茶が好き",
@@ -207,7 +208,7 @@
           "content": "緑茶が 好き",
           "source_kind": "user_statement",
           "action": "store",
-          "supported": true,
+          "supported": false,
           "confirmation": "unverified",
           "source_quote": "緑茶が好き",
           "source_revision": "turn:7"
@@ -288,7 +289,7 @@
           "content": "林檎が好き",
           "source_kind": "user_statement",
           "action": "store",
-          "supported": true,
+          "supported": false,
           "confirmation": "unverified",
           "source_quote": "林檎が好き。葡萄が好き。",
           "source_revision": "turn:7"
@@ -313,7 +314,7 @@
       ]
     },
     {
-      "name": "story evidence needs two distinct bigrams but user validation stays unchanged",
+      "name": "story evidence stays lexical while user fragments are unsupported",
       "proposals": [
         {
           "type": "semantic",
@@ -351,7 +352,7 @@
           "content": "ab",
           "source_kind": "user_statement",
           "action": "store",
-          "supported": true,
+          "supported": false,
           "confirmation": "unverified",
           "source_quote": "猫犬 ab aaaa",
           "source_revision": "turn:7"
@@ -387,7 +388,7 @@
           "content": "寿司が好き",
           "source_kind": "user_statement",
           "action": "store",
-          "supported": true,
+          "supported": false,
           "confirmation": "unverified",
           "source_quote": "🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸𠮷",
           "source_revision": "revision:🌙"
@@ -454,6 +455,691 @@
       "reply": "",
       "source_revision": "turn:7",
       "expected": []
+    },
+    {
+      "name": "wrong topic shared request phrase is not grounding",
+      "proposals": [
+        {
+          "type": "semantic",
+          "content": "本棚の整理について一緒に考えてくれる？",
+          "source_kind": "user_statement"
+        }
+      ],
+      "existing": [],
+      "user_text": "近所のお店について、一緒に考えてくれる？",
+      "reply": "架空の応答",
+      "source_revision": "grounding:1",
+      "expected": [
+        {
+          "type": "semantic",
+          "content": "本棚の整理について一緒に考えてくれる？",
+          "source_kind": "user_statement",
+          "action": "store",
+          "supported": false,
+          "confirmation": "unverified",
+          "source_quote": "近所のお店について、一緒に考えてくれる？",
+          "source_revision": "grounding:1"
+        }
+      ]
+    },
+    {
+      "name": "negation cannot be replaced with an affirmative",
+      "proposals": [
+        {
+          "type": "semantic",
+          "content": "紅茶は好きです。",
+          "source_kind": "user_statement"
+        }
+      ],
+      "existing": [],
+      "user_text": "紅茶は好きではありません。",
+      "reply": "架空の応答",
+      "source_revision": "grounding:1",
+      "expected": [
+        {
+          "type": "semantic",
+          "content": "紅茶は好きです。",
+          "source_kind": "user_statement",
+          "action": "store",
+          "supported": false,
+          "confirmation": "unverified",
+          "source_quote": "紅茶は好きではありません。",
+          "source_revision": "grounding:1"
+        }
+      ]
+    },
+    {
+      "name": "quoted negation cannot support the quoted fragment",
+      "proposals": [
+        {
+          "type": "semantic",
+          "content": "紅茶が好き",
+          "source_kind": "user_statement"
+        }
+      ],
+      "existing": [],
+      "user_text": "「紅茶が好き」とは言っていません。",
+      "reply": "架空の応答",
+      "source_revision": "grounding:1",
+      "expected": [
+        {
+          "type": "semantic",
+          "content": "紅茶が好き",
+          "source_kind": "user_statement",
+          "action": "store",
+          "supported": false,
+          "confirmation": "unverified",
+          "source_quote": "「紅茶が好き」とは言っていません。",
+          "source_revision": "grounding:1"
+        }
+      ]
+    },
+    {
+      "name": "correction cannot restore the denied count",
+      "proposals": [
+        {
+          "type": "semantic",
+          "content": "猫は二匹飼っている。",
+          "source_kind": "user_correction"
+        }
+      ],
+      "existing": [],
+      "user_text": "訂正：猫は二匹ではなく三匹飼っている。",
+      "reply": "架空の応答",
+      "source_revision": "grounding:1",
+      "expected": [
+        {
+          "type": "semantic",
+          "content": "猫は二匹飼っている。",
+          "source_kind": "user_correction",
+          "action": "store",
+          "supported": false,
+          "confirmation": "unverified",
+          "source_quote": "訂正：猫は二匹ではなく三匹飼っている。",
+          "source_revision": "grounding:1"
+        }
+      ]
+    },
+    {
+      "name": "correction cannot discard its qualifier",
+      "proposals": [
+        {
+          "type": "semantic",
+          "content": "猫は三匹飼っている。",
+          "source_kind": "user_correction"
+        }
+      ],
+      "existing": [],
+      "user_text": "訂正：猫は二匹ではなく三匹飼っている。",
+      "reply": "架空の応答",
+      "source_revision": "grounding:1",
+      "expected": [
+        {
+          "type": "semantic",
+          "content": "猫は三匹飼っている。",
+          "source_kind": "user_correction",
+          "action": "store",
+          "supported": false,
+          "confirmation": "unverified",
+          "source_quote": "訂正：猫は二匹ではなく三匹飼っている。",
+          "source_revision": "grounding:1"
+        }
+      ]
+    },
+    {
+      "name": "translation is retained but not grounded",
+      "proposals": [
+        {
+          "type": "semantic",
+          "content": "My favorite flower is delphinium.",
+          "source_kind": "user_statement"
+        }
+      ],
+      "existing": [],
+      "user_text": "好きな花はデルフィニウムです。",
+      "reply": "架空の応答",
+      "source_revision": "grounding:1",
+      "expected": [
+        {
+          "type": "semantic",
+          "content": "My favorite flower is delphinium.",
+          "source_kind": "user_statement",
+          "action": "store",
+          "supported": false,
+          "confirmation": "unverified",
+          "source_quote": "好きな花はデルフィニウムです。",
+          "source_revision": "grounding:1"
+        }
+      ]
+    },
+    {
+      "name": "fact fragment in a mixed fact question is not grounded",
+      "proposals": [
+        {
+          "type": "semantic",
+          "content": "紅茶が好きです。",
+          "source_kind": "user_statement"
+        }
+      ],
+      "existing": [],
+      "user_text": "紅茶が好きです。明日は雨ですか？",
+      "reply": "架空の応答",
+      "source_revision": "grounding:1",
+      "expected": [
+        {
+          "type": "semantic",
+          "content": "紅茶が好きです。",
+          "source_kind": "user_statement",
+          "action": "store",
+          "supported": false,
+          "confirmation": "unverified",
+          "source_quote": "紅茶が好きです。明日は雨ですか？",
+          "source_revision": "grounding:1"
+        }
+      ]
+    },
+    {
+      "name": "question fragment in mixed utterance is not grounded",
+      "proposals": [
+        {
+          "type": "semantic",
+          "content": "明日は雨ですか？",
+          "source_kind": "user_statement"
+        }
+      ],
+      "existing": [],
+      "user_text": "紅茶が好きです。明日は雨ですか？",
+      "reply": "架空の応答",
+      "source_revision": "grounding:1",
+      "expected": [
+        {
+          "type": "semantic",
+          "content": "明日は雨ですか？",
+          "source_kind": "user_statement",
+          "action": "store",
+          "supported": false,
+          "confirmation": "unverified",
+          "source_quote": "紅茶が好きです。明日は雨ですか？",
+          "source_revision": "grounding:1"
+        }
+      ]
+    },
+    {
+      "name": "frequency qualifier cannot be discarded",
+      "proposals": [
+        {
+          "type": "semantic",
+          "content": "紅茶を飲みます。",
+          "source_kind": "user_statement"
+        }
+      ],
+      "existing": [],
+      "user_text": "たまに紅茶を飲みます。",
+      "reply": "架空の応答",
+      "source_revision": "grounding:1",
+      "expected": [
+        {
+          "type": "semantic",
+          "content": "紅茶を飲みます。",
+          "source_kind": "user_statement",
+          "action": "store",
+          "supported": false,
+          "confirmation": "unverified",
+          "source_quote": "たまに紅茶を飲みます。",
+          "source_revision": "grounding:1"
+        }
+      ]
+    },
+    {
+      "name": "case is preserved",
+      "proposals": [
+        {
+          "type": "semantic",
+          "content": "I like tea.",
+          "source_kind": "user_statement"
+        }
+      ],
+      "existing": [],
+      "user_text": "I like Tea.",
+      "reply": "架空の応答",
+      "source_revision": "grounding:1",
+      "expected": [
+        {
+          "type": "semantic",
+          "content": "I like tea.",
+          "source_kind": "user_statement",
+          "action": "store",
+          "supported": false,
+          "confirmation": "unverified",
+          "source_quote": "I like Tea.",
+          "source_revision": "grounding:1"
+        }
+      ]
+    },
+    {
+      "name": "punctuation is preserved",
+      "proposals": [
+        {
+          "type": "semantic",
+          "content": "I like Tea!",
+          "source_kind": "user_statement"
+        }
+      ],
+      "existing": [],
+      "user_text": "I like Tea.",
+      "reply": "架空の応答",
+      "source_revision": "grounding:1",
+      "expected": [
+        {
+          "type": "semantic",
+          "content": "I like Tea!",
+          "source_kind": "user_statement",
+          "action": "store",
+          "supported": false,
+          "confirmation": "unverified",
+          "source_quote": "I like Tea.",
+          "source_revision": "grounding:1"
+        }
+      ]
+    },
+    {
+      "name": "width normalization is not textual grounding",
+      "proposals": [
+        {
+          "type": "semantic",
+          "content": "ABCが好き。",
+          "source_kind": "user_statement"
+        }
+      ],
+      "existing": [],
+      "user_text": "ＡＢＣが好き。",
+      "reply": "架空の応答",
+      "source_revision": "grounding:1",
+      "expected": [
+        {
+          "type": "semantic",
+          "content": "ABCが好き。",
+          "source_kind": "user_statement",
+          "action": "store",
+          "supported": false,
+          "confirmation": "unverified",
+          "source_quote": "ＡＢＣが好き。",
+          "source_revision": "grounding:1"
+        }
+      ]
+    },
+    {
+      "name": "complete mixed fact question is correspondence not truth",
+      "proposals": [
+        {
+          "type": "semantic",
+          "content": "紅茶が好きです。明日は雨ですか？",
+          "source_kind": "user_statement"
+        }
+      ],
+      "existing": [],
+      "user_text": "紅茶が好きです。明日は雨ですか？",
+      "reply": "架空の応答",
+      "source_revision": "grounding:1",
+      "expected": [
+        {
+          "type": "semantic",
+          "content": "紅茶が好きです。明日は雨ですか？",
+          "source_kind": "user_statement",
+          "action": "store",
+          "supported": true,
+          "confirmation": "unverified",
+          "source_quote": "紅茶が好きです。明日は雨ですか？",
+          "source_revision": "grounding:1"
+        }
+      ]
+    },
+    {
+      "name": "complete correction retains negation and qualifier",
+      "proposals": [
+        {
+          "type": "semantic",
+          "content": "訂正：猫は二匹ではなく三匹飼っている。",
+          "source_kind": "user_correction"
+        }
+      ],
+      "existing": [],
+      "user_text": "訂正：猫は二匹ではなく三匹飼っている。",
+      "reply": "架空の応答",
+      "source_revision": "grounding:1",
+      "expected": [
+        {
+          "type": "semantic",
+          "content": "訂正：猫は二匹ではなく三匹飼っている。",
+          "source_kind": "user_correction",
+          "action": "store",
+          "supported": true,
+          "confirmation": "unverified",
+          "source_quote": "訂正：猫は二匹ではなく三匹飼っている。",
+          "source_revision": "grounding:1"
+        }
+      ]
+    },
+    {
+      "name": "complete quoted negation remains intact",
+      "proposals": [
+        {
+          "type": "semantic",
+          "content": "「紅茶が好き」とは言っていません。",
+          "source_kind": "user_statement"
+        }
+      ],
+      "existing": [],
+      "user_text": "「紅茶が好き」とは言っていません。",
+      "reply": "架空の応答",
+      "source_revision": "grounding:1",
+      "expected": [
+        {
+          "type": "semantic",
+          "content": "「紅茶が好き」とは言っていません。",
+          "source_kind": "user_statement",
+          "action": "store",
+          "supported": true,
+          "confirmation": "unverified",
+          "source_quote": "「紅茶が好き」とは言っていません。",
+          "source_revision": "grounding:1"
+        }
+      ]
+    },
+    {
+      "name": "Unicode whitespace collapses without changing words",
+      "proposals": [
+        {
+          "type": "semantic",
+          "content": "I like Tea.",
+          "source_kind": "user_statement"
+        }
+      ],
+      "existing": [],
+      "user_text": " I\tlike Tea.　",
+      "reply": "架空の応答",
+      "source_revision": "grounding:1",
+      "expected": [
+        {
+          "type": "semantic",
+          "content": "I like Tea.",
+          "source_kind": "user_statement",
+          "action": "store",
+          "supported": true,
+          "confirmation": "unverified",
+          "source_quote": " I\tlike Tea.　",
+          "source_revision": "grounding:1"
+        }
+      ]
+    },
+    {
+      "name": "empty evidence cannot ground content",
+      "proposals": [
+        {
+          "type": "semantic",
+          "content": "I like Tea.",
+          "source_kind": "user_statement"
+        }
+      ],
+      "existing": [],
+      "user_text": "",
+      "reply": "架空の応答",
+      "source_revision": "grounding:1",
+      "expected": [
+        {
+          "type": "semantic",
+          "content": "I like Tea.",
+          "source_kind": "user_statement",
+          "action": "store",
+          "supported": false,
+          "confirmation": "unverified",
+          "source_quote": "",
+          "source_revision": "grounding:1"
+        }
+      ]
+    },
+    {
+      "name": "zero width character cannot be removed",
+      "proposals": [
+        {
+          "type": "semantic",
+          "content": "Ilike Tea.",
+          "source_kind": "user_statement"
+        }
+      ],
+      "existing": [],
+      "user_text": "I​like Tea.",
+      "reply": "架空の応答",
+      "source_revision": "grounding:1",
+      "expected": [
+        {
+          "type": "semantic",
+          "content": "Ilike Tea.",
+          "source_kind": "user_statement",
+          "action": "store",
+          "supported": false,
+          "confirmation": "unverified",
+          "source_quote": "I​like Tea.",
+          "source_revision": "grounding:1"
+        }
+      ]
+    },
+    {
+      "name": "a complete question is only a textual correspondence",
+      "proposals": [
+        {
+          "type": "semantic",
+          "content": "近所のお店について、一緒に考えてくれる？",
+          "source_kind": "user_statement"
+        }
+      ],
+      "existing": [],
+      "user_text": "近所のお店について、一緒に考えてくれる？",
+      "reply": "架空の応答",
+      "source_revision": "grounding:1",
+      "expected": [
+        {
+          "type": "semantic",
+          "content": "近所のお店について、一緒に考えてくれる？",
+          "source_kind": "user_statement",
+          "action": "store",
+          "supported": true,
+          "confirmation": "unverified",
+          "source_quote": "近所のお店について、一緒に考えてくれる？",
+          "source_revision": "grounding:1"
+        }
+      ]
+    },
+    {
+      "name": "eligible English negation must not deduplicate",
+      "proposals": [
+        {
+          "type": "semantic",
+          "content": "I do not really like drinking warm tea with you every morning.",
+          "source_kind": "user_statement"
+        },
+        {
+          "type": "semantic",
+          "content": "I do not really like drinking warm tea with you every morning.",
+          "source_kind": "user_statement"
+        }
+      ],
+      "existing": [
+        {
+          "id": "old",
+          "type": "semantic",
+          "content": "I really like drinking warm tea with you every morning.",
+          "origin": "model",
+          "supported": true,
+          "status": "active",
+          "source_kind": "user_statement",
+          "source_quote": "I really like drinking warm tea with you every morning.",
+          "confirmation": "unverified"
+        }
+      ],
+      "user_text": "I do not really like drinking warm tea with you every morning.",
+      "reply": "架空の応答",
+      "source_revision": "dedup:1",
+      "expected": [
+        {
+          "type": "semantic",
+          "content": "I do not really like drinking warm tea with you every morning.",
+          "source_kind": "user_statement",
+          "action": "store",
+          "supported": true,
+          "confirmation": "unverified",
+          "source_quote": "I do not really like drinking warm tea with you every morning.",
+          "source_revision": "dedup:1"
+        },
+        {
+          "type": "semantic",
+          "content": "I do not really like drinking warm tea with you every morning.",
+          "source_kind": "user_statement",
+          "action": "skip",
+          "reason": "duplicate"
+        }
+      ]
+    },
+    {
+      "name": "eligible Japanese correction must preserve the reversal",
+      "proposals": [
+        {
+          "type": "semantic",
+          "content": "訂正：私は緑茶ではなく紅茶が好きです。",
+          "source_kind": "user_correction"
+        },
+        {
+          "type": "semantic",
+          "content": "訂正：私は緑茶ではなく紅茶が好きです。",
+          "source_kind": "user_correction"
+        }
+      ],
+      "existing": [
+        {
+          "id": "old",
+          "type": "semantic",
+          "content": "訂正：私は紅茶ではなく緑茶が好きです。",
+          "origin": "model",
+          "supported": true,
+          "status": "active",
+          "source_kind": "user_correction",
+          "source_quote": "訂正：私は紅茶ではなく緑茶が好きです。",
+          "confirmation": "unverified"
+        }
+      ],
+      "user_text": "訂正：私は緑茶ではなく紅茶が好きです。",
+      "reply": "架空の応答",
+      "source_revision": "dedup:1",
+      "expected": [
+        {
+          "type": "semantic",
+          "content": "訂正：私は緑茶ではなく紅茶が好きです。",
+          "source_kind": "user_correction",
+          "action": "store",
+          "supported": true,
+          "confirmation": "unverified",
+          "source_quote": "訂正：私は緑茶ではなく紅茶が好きです。",
+          "source_revision": "dedup:1"
+        },
+        {
+          "type": "semantic",
+          "content": "訂正：私は緑茶ではなく紅茶が好きです。",
+          "source_kind": "user_correction",
+          "action": "skip",
+          "reason": "duplicate"
+        }
+      ]
+    },
+    {
+      "name": "eligible wrong topic with shared long request is distinct",
+      "proposals": [
+        {
+          "type": "semantic",
+          "content": "本棚の整理について、週末に時間を取って一緒にゆっくり考えてくれる？",
+          "source_kind": "user_statement"
+        },
+        {
+          "type": "semantic",
+          "content": "本棚の整理について、週末に時間を取って一緒にゆっくり考えてくれる？",
+          "source_kind": "user_statement"
+        }
+      ],
+      "existing": [
+        {
+          "id": "old",
+          "type": "semantic",
+          "content": "近所のお店について、週末に時間を取って一緒にゆっくり考えてくれる？",
+          "origin": "model",
+          "supported": true,
+          "status": "active",
+          "source_kind": "user_statement",
+          "source_quote": "近所のお店について、週末に時間を取って一緒にゆっくり考えてくれる？",
+          "confirmation": "unverified"
+        }
+      ],
+      "user_text": "本棚の整理について、週末に時間を取って一緒にゆっくり考えてくれる？",
+      "reply": "架空の応答",
+      "source_revision": "dedup:1",
+      "expected": [
+        {
+          "type": "semantic",
+          "content": "本棚の整理について、週末に時間を取って一緒にゆっくり考えてくれる？",
+          "source_kind": "user_statement",
+          "action": "store",
+          "supported": true,
+          "confirmation": "unverified",
+          "source_quote": "本棚の整理について、週末に時間を取って一緒にゆっくり考えてくれる？",
+          "source_revision": "dedup:1"
+        },
+        {
+          "type": "semantic",
+          "content": "本棚の整理について、週末に時間を取って一緒にゆっくり考えてくれる？",
+          "source_kind": "user_statement",
+          "action": "skip",
+          "reason": "duplicate"
+        }
+      ]
+    },
+    {
+      "name": "within turn negation is not an exact duplicate",
+      "proposals": [
+        {
+          "type": "semantic",
+          "content": "I really like drinking warm tea with you every morning.",
+          "source_kind": "user_statement"
+        },
+        {
+          "type": "semantic",
+          "content": "I do not really like drinking warm tea with you every morning.",
+          "source_kind": "user_statement"
+        }
+      ],
+      "existing": [],
+      "user_text": "I do not really like drinking warm tea with you every morning.",
+      "reply": "架空の応答",
+      "source_revision": "dedup:1",
+      "expected": [
+        {
+          "type": "semantic",
+          "content": "I really like drinking warm tea with you every morning.",
+          "source_kind": "user_statement",
+          "action": "store",
+          "supported": false,
+          "confirmation": "unverified",
+          "source_quote": "I do not really like drinking warm tea with you every morning.",
+          "source_revision": "dedup:1"
+        },
+        {
+          "type": "semantic",
+          "content": "I do not really like drinking warm tea with you every morning.",
+          "source_kind": "user_statement",
+          "action": "store",
+          "supported": true,
+          "confirmation": "unverified",
+          "source_quote": "I do not really like drinking warm tea with you every morning.",
+          "source_revision": "dedup:1"
+        }
+      ]
     }
   ],
   "evidence": [
@@ -555,6 +1241,293 @@
         }
       ],
       "expected": "\nRelevant memory (remembered from earlier conversation; use it naturally when it fits, do not recite it, and never invent memories that are not listed):\n- [semantic] 猫を三匹飼っている (source: user_statement; story events are fictional, not user biography)\n- [episodic] 銀の鍵で扉を開けた (source: story_event; story events are fictional, not user biography)"
+    }
+  ],
+  "eligibility": [
+    {
+      "name": "exact legacy source",
+      "memory": {
+        "id": "legacy",
+        "type": "semantic",
+        "content": "紅茶が好きです。",
+        "source_kind": "user_statement",
+        "source_quote": "紅茶が好きです。",
+        "origin": "model",
+        "supported": true,
+        "status": "active",
+        "confirmation": "unverified"
+      },
+      "eligible": true
+    },
+    {
+      "name": "unknown support rechecked against exact source",
+      "memory": {
+        "id": "legacy",
+        "type": "semantic",
+        "content": "紅茶が好きです。",
+        "source_kind": "user_statement",
+        "source_quote": "紅茶が好きです。",
+        "origin": "model",
+        "supported": null,
+        "status": "active",
+        "confirmation": "unverified"
+      },
+      "eligible": true
+    },
+    {
+      "name": "legacy wrong topic true",
+      "memory": {
+        "id": "legacy",
+        "type": "semantic",
+        "content": "紅茶が好きです。",
+        "source_kind": "user_statement",
+        "source_quote": "本棚の整理が好きです。",
+        "origin": "model",
+        "supported": true,
+        "status": "active",
+        "confirmation": "unverified"
+      },
+      "eligible": false
+    },
+    {
+      "name": "legacy wrong topic null",
+      "memory": {
+        "id": "legacy",
+        "type": "semantic",
+        "content": "紅茶が好きです。",
+        "source_kind": "user_statement",
+        "source_quote": "本棚の整理が好きです。",
+        "origin": "model",
+        "supported": null,
+        "status": "active",
+        "confirmation": "unverified"
+      },
+      "eligible": false
+    },
+    {
+      "name": "legacy negation false positive",
+      "memory": {
+        "id": "legacy",
+        "type": "semantic",
+        "content": "紅茶が好きです。",
+        "source_kind": "user_statement",
+        "source_quote": "紅茶は好きではありません。",
+        "origin": "model",
+        "supported": true,
+        "status": "active",
+        "confirmation": "unverified"
+      },
+      "eligible": false
+    },
+    {
+      "name": "legacy missing source quote",
+      "memory": {
+        "id": "legacy",
+        "type": "semantic",
+        "content": "紅茶が好きです。",
+        "source_kind": "user_statement",
+        "source_quote": null,
+        "origin": "model",
+        "supported": true,
+        "status": "active",
+        "confirmation": "unverified"
+      },
+      "eligible": false
+    },
+    {
+      "name": "legacy empty source quote",
+      "memory": {
+        "id": "legacy",
+        "type": "semantic",
+        "content": "紅茶が好きです。",
+        "source_kind": "user_statement",
+        "source_quote": "",
+        "origin": "model",
+        "supported": true,
+        "status": "active",
+        "confirmation": "unverified"
+      },
+      "eligible": false
+    },
+    {
+      "name": "legacy missing explicit source kind",
+      "memory": {
+        "id": "legacy",
+        "type": "semantic",
+        "content": "紅茶が好きです。",
+        "source_kind": null,
+        "source_quote": "紅茶が好きです。",
+        "origin": "model",
+        "supported": true,
+        "status": "active",
+        "confirmation": "unverified"
+      },
+      "eligible": false
+    },
+    {
+      "name": "legacy partial mixed quote",
+      "memory": {
+        "id": "legacy",
+        "type": "semantic",
+        "content": "紅茶が好きです。",
+        "source_kind": "user_statement",
+        "source_quote": "紅茶が好きです。明日は雨ですか？",
+        "origin": "model",
+        "supported": true,
+        "status": "active",
+        "confirmation": "unverified"
+      },
+      "eligible": false
+    },
+    {
+      "name": "legacy translation",
+      "memory": {
+        "id": "legacy",
+        "type": "semantic",
+        "content": "I like tea.",
+        "source_kind": "user_statement",
+        "source_quote": "紅茶が好きです。",
+        "origin": "model",
+        "supported": true,
+        "status": "active",
+        "confirmation": "unverified"
+      },
+      "eligible": false
+    },
+    {
+      "name": "explicit unsupported is still quarantined",
+      "memory": {
+        "id": "legacy",
+        "type": "semantic",
+        "content": "紅茶が好きです。",
+        "source_kind": "user_statement",
+        "source_quote": "紅茶が好きです。",
+        "origin": "model",
+        "supported": false,
+        "status": "active",
+        "confirmation": "unverified"
+      },
+      "eligible": false
+    },
+    {
+      "name": "manual confirmation overrides stale support",
+      "memory": {
+        "id": "legacy",
+        "type": "semantic",
+        "content": "紅茶が好きです。",
+        "source_kind": "user_statement",
+        "source_quote": "",
+        "origin": "model",
+        "supported": false,
+        "status": "active",
+        "confirmation": "user_confirmed"
+      },
+      "eligible": true
+    },
+    {
+      "name": "manual edit is eligible",
+      "memory": {
+        "id": "legacy",
+        "type": "semantic",
+        "content": "紅茶が好きです。",
+        "source_kind": "user_statement",
+        "source_quote": "",
+        "origin": "model_edited",
+        "supported": false,
+        "status": "active",
+        "confirmation": "unverified"
+      },
+      "eligible": true
+    },
+    {
+      "name": "manual user row needs no model provenance",
+      "memory": {
+        "id": "legacy",
+        "type": "semantic",
+        "content": "紅茶が好きです。",
+        "source_kind": null,
+        "source_quote": null,
+        "origin": "user",
+        "supported": null,
+        "status": "active",
+        "confirmation": "unverified"
+      },
+      "eligible": true
+    },
+    {
+      "name": "unconfirmed work canon stays quarantined",
+      "memory": {
+        "id": "legacy",
+        "type": "semantic",
+        "content": "紅茶が好きです。",
+        "source_kind": "work_setting",
+        "source_quote": "紅茶が好きです。",
+        "origin": "model",
+        "supported": true,
+        "status": "active",
+        "confirmation": "unverified"
+      },
+      "eligible": false
+    },
+    {
+      "name": "story lexical evidence remains eligible",
+      "memory": {
+        "id": "legacy",
+        "type": "semantic",
+        "content": "紅茶が好きです。",
+        "source_kind": "story_event",
+        "source_quote": "紅茶が好きです。",
+        "origin": "model",
+        "supported": true,
+        "status": "active",
+        "confirmation": "unverified"
+      },
+      "eligible": true
+    },
+    {
+      "name": "unsupported fictional story stays quarantined",
+      "memory": {
+        "id": "legacy",
+        "type": "semantic",
+        "content": "紅茶が好きです。",
+        "source_kind": "story_event",
+        "source_quote": "紅茶が好きです。",
+        "origin": "model",
+        "supported": false,
+        "status": "active",
+        "confirmation": "unverified"
+      },
+      "eligible": false
+    },
+    {
+      "name": "exact complete correction legacy null",
+      "memory": {
+        "id": "legacy",
+        "type": "semantic",
+        "content": "紅茶が好きです。",
+        "source_kind": "user_correction",
+        "source_quote": "紅茶が好きです。",
+        "origin": "model",
+        "supported": null,
+        "status": "active",
+        "confirmation": "unverified"
+      },
+      "eligible": true
+    },
+    {
+      "name": "deleted rows cannot suppress proposals",
+      "memory": {
+        "id": "legacy",
+        "type": "semantic",
+        "content": "紅茶が好きです。",
+        "source_kind": "user_statement",
+        "source_quote": "紅茶が好きです。",
+        "origin": "model",
+        "supported": true,
+        "status": "deleted",
+        "confirmation": "unverified"
+      },
+      "eligible": false
     }
   ]
 }

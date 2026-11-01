@@ -163,7 +163,9 @@ it('stores only small pending/failed generation metadata and retains the experim
   expect(pending).toEqual({generation_id:'fictional-generation',session_id:'exp:'+id,status:'pending',assistant_id:null,user_id:1,user_content_sha256:hash('Fictional question'),execution_lock:deviceExecutionLockName(owner)});
   const next={...source,session:{...source.session,revision:2,payload:{...source.session.payload,pending_generation:null}}},before=snapshot();
   await expect(writeResearchExperiment(owner,id,next,{receipt:{...failed,compiled:{large:'forbidden'}}})).rejects.toThrow();expect(snapshot()).toEqual(before);
-  next.revision=await writeResearchExperiment(owner,id,next,{receipt:failed});expect(fixture.meta.get(generationKey())).toEqual(failed);
+  await expect(writeResearchExperiment(owner,id,next,{receipt:{...failed,attempts:[{raw:'茶'.repeat(30000)}]}})).rejects.toThrow();expect(snapshot()).toEqual(before);
+  const diagnostic={...failed,attempts:[{number:1,raw:'{"reply":',raw_truncated:false,raw_utf16_units:9}],telemetry:{outputTokens:256},validation:{ok:false,retries:0,errors:['Incomplete JSON']}};
+  next.revision=await writeResearchExperiment(owner,id,next,{receipt:diagnostic});expect(fixture.meta.get(generationKey())).toEqual(diagnostic);
   expect((await readResearchExperiment(owner,id))!.session.payload.pending_generation).toBeNull();
 });
 it('restores the full old detail for small canonical turns and streams self-contained experiment and per-turn exports',async()=>{
