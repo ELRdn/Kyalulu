@@ -12,7 +12,9 @@ launch, provider contracts, regional policies or real-device behavior.
   (`$env:VITE_RELAY_ORIGIN='https://relay.kyalulu.com'` in PowerShell).
   Unified production builds reject a missing/non-origin value; a development or
   legacy/Mobile build does not imply this configuration is present.
-  Run `pnpm --filter web build:app`, then
+  Prepare both pinned WASM variants and run `python scripts/mobile_wasm/build_sdk.py`
+  for their matching public SDK (see `docs/MOBILE.md`). Run
+  `pnpm --filter web build:app`, then
   `python scripts/prepare_cloud_bundle.py --unified --output .artifacts/unified-cloud`.
   Use a clean committed source tree, the existing locked dependencies and verified
   WASM inputs; do not package a dirty operator workspace.

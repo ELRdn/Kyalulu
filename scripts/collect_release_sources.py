@@ -155,6 +155,8 @@ FILES = (
     "docs/validation/2026-11-01-unified-generation-diagnostics.md",
     "docs/validation/2026-11-01-unified-diagnostics-ci.md",
     "docs/validation/2026-11-01-unified-gguf-admission.md",
+    "docs/validation/2026-11-01-native-chat-count-foundation.md",
+    "docs/validation/2026-11-01-unified-delivery-d0cb5a2.md",
     "tests/test_billing_price_history.py",
     "tests/test_unified_reward_acceptance.py",
     "docs/validation/2026-11-01-unified-browser-jsonl-ci.md",
@@ -443,11 +445,11 @@ def collect(destination):
     (destination / "BUILD.md").write_text(
         "# Corresponding source\n\nNode 22+, pnpm 10.30.1, uv 0.8.22.\n"
         "`pnpm install --frozen-lockfile` then `pnpm --filter web build`.\n"
-        "For the unified app, regenerate the catalog with `python scripts/build_app_catalog.py`, build pinned WASM using `scripts/mobile_wasm/bootstrap.py`, `prepare.py` and `build.sh`, set `VITE_RELAY_ORIGIN` to the exact managed HTTPS Relay origin, then run `pnpm --filter web build:app`. See `docs/MOBILE.md` and `docs/UNIFIED_APP.md`.\n"
-        "For the legacy Mobile app, use the same catalog/WASM preparation and `pnpm --filter web build:mobile`.\n"
+        "For the unified app, regenerate the catalog with `python scripts/build_app_catalog.py`, build pinned WASM using `scripts/mobile_wasm/bootstrap.py`, `prepare.py` and `build.sh`, then compile its matching public SDK with `python scripts/mobile_wasm/build_sdk.py`. Set `VITE_RELAY_ORIGIN` to the exact managed HTTPS Relay origin, then run `pnpm --filter web build:app`. See `docs/MOBILE.md` and `docs/UNIFIED_APP.md`.\n"
+        "For the legacy Mobile app, use the same catalog/WASM/SDK preparation and `pnpm --filter web build:mobile`. SDK output must be fresh; preserve existing build evidence and rebuild in a new isolated project/artifact directory rather than overwriting it.\n"
         "`uv sync --frozen --all-packages --all-extras --no-install-workspace` for Python.\n"
         "Runtime/Web checks and their order are in `.github/workflows/runtime-web.yml`. Run the Web tests before `scripts/verify_device_exports.py`, which reads their generated fixtures, and run `python -m pytest tests -q` for the Python suite. Chromium must be installed for the browser drivers.\n"
-        "For Native, keep the pinned WASM and Relay origin, run `pnpm --filter web build:native`, then on the native target `uv run --no-sync python scripts/build_local_bundle.py --output .artifacts/npm-beta --target win32-x64` (or darwin-arm64). The builder requires the Native UI marker and refuses a hosted-only UI.\n"
+        "For Native, keep the matching pinned WASM/public SDK and Relay origin, run `pnpm --filter web build:native`, then on the native target `uv run --no-sync python scripts/build_local_bundle.py --output .artifacts/npm-beta --target win32-x64` (or darwin-arm64). The builder requires the Native UI marker and refuses a hosted-only UI.\n"
         "Operator keys/data/model weights are excluded. Artifacts are not published by these steps.\n",
         encoding="utf-8",
     )
