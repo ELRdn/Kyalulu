@@ -636,3 +636,49 @@ and its in-progress log endpoint returns404. No process is declared hung or
 restarted on that observation alone. Whole-capacity/ONNX/Research, useful memory/
 response quality, CPU completion, physical devices, current Linux, signing,
 three primary grants, Auth/region/provider and production gates remain open.
+
+## Source-backed normal GGUF generation
+
+Normal Device/GGUF actor reads now retain at most1,001 projected messages plus
+the complete latest regeneration snapshot. Lore's existing maximum1,000-message
+scan and removal of the latest assistant keep the old compiler inputs. Default
+unbounded helper callers, ONNX, Research and old Mobile array paths retain their
+contracts; no original history is truncated in storage or canonical diagnostics.
+
+A verified pending-source pass computes complete summaries, original merged-run
+roles/UTF-8 sizes and the original per-message token estimate. Existing source-
+linked system summaries join the same contract. The original conservative
+window/native mandatory rescue policy selects descriptors; only mandatory and
+selected history bodies are reread. Each replay checks owner/id/revision/body
+token and the complete source before exposing a result. Worker model/revision/
+output reserve and final exact native count remain unchanged. Async stop/reset,
+duplicate counts and failed replays cannot send stale windows or retry.
+
+Static review found three async aliasing issues. Compiled order is now copied/
+frozen before the first await, prior summaries are cloned, and selected runs
+are copied before replay. Controlled read-time mutation regressions pass and
+the reviewer confirms all three corrections. Unit tests also check1,206-message
+normal/regenerated legacy/world API calls,2,050-message source reads, exact
+Lore boundary, full original diagnostics/summary/source IDs, corruption,
+revision/body/account/abort fences and unchanged originals.
+
+The complete working-source Web suite passes1,928 tests/103 files with341 input
+hashes unchanged; typecheck and source/fingerprint45 tests pass. The existing
+real Chromium84-case generation/fault/restart matrix plus forced overflow and
+native-count mock rescue pass with317 source inputs unchanged, no external/API
+requests or page errors, and owned cleanup. JA/EN target-switch and Research
+checks also pass. The browser observer deliberately replays all runs for comparison to the
+independent old original-history assembler; its full replay is not production
+memory evidence. Unmerged saved input bytes and selected Worker packets remain
+fully checked. The native-window100-poll guard and whole-run600-second deadline
+remain; the new asynchronous preparation explicitly rendezvous at its first
+Worker packet before the former native-window wait starts.
+
+Private evidence: `gguf-source-replay-20261101/{parent-web-result.json,source-tests.log,source-long-history-01.log,source-one-pass.log,browser/result.json,target-browser/results.json,research-browser/results.json}`.
+These browser calls use synthetic inference, not a new real-model/native-count
+acceptance. Full metadata/run catalogs and latest state still scale; ONNX whole-
+candidate tokenization, active Research/probe history, UI restoration, commercial
+aggregate capacity and real250MB/1GB/process memory gates remain open. The prior
+207ed85 packages/model bindings do not contain or prove this later API/runtime
+change. Fixed-source build, new-source real inference and current packages are
+separate evidence to collect before deployment; production remains held.

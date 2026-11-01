@@ -40,18 +40,36 @@ def assert_bounded_write_parsers(rows):
     readonly = [parser for parser in parsers if parser['mode'] == 'readonly']
     return {'write_parsers': len(writes), 'write_source_root_messages_max': 0,
             'readonly_source_parsers': len(readonly),
+            'readonly_test_full_replay_parsers': sum(parser['observer_phase'] == 'test-full-source-replay' for parser in readonly),
+            'readonly_test_actor_helper_parsers': sum(parser['observer_phase'] == 'test-actor-helper' for parser in readonly),
             'readonly_source_root_messages_max': max((parser['maximum_root_messages'] for parser in readonly), default=0),
             'full_actor_bounded': False, 'actor_context_retention_measured': True}
 
 
 def assert_actor_context(rows):
     projections = [item for row in rows for item in row['observation']['actor_projections']]
+    body_projections = [item for row in rows for item in row['observation']['actor_body_projections']]
+    sources = [item for row in rows for item in row['observation']['source_inputs']]
     preservation = [item for row in rows for item in row['observation']['historical_preservation']]
     inputs = [item for row in rows for item in row['observation']['worker_inputs']]
     assert projections and preservation and inputs, 'Missing direct projection, original byte or Worker evidence'
     assert all(item['older_snapshot_fields'] == 0 and item['latest_complete'] and item['metadata_complete'] and item['header_complete'] for item in projections)
     assert all(item['stored_bytes_equal'] and item['decoded_equal'] for item in preservation)
+    assert body_projections and all(item['direct_helper_probe'] and item['tail_equal'] and item['latest_complete']
+                                   and item['metadata_complete'] and item['header_complete']
+                                   and item['retained_messages'] <= item['limit'] and not item['full_actor_bounded']
+                                   and not item['api_call_retention_observed'] for item in body_projections)
+    assert {item['limit'] for item in body_projections} == {2, 1001}
+    assert all(item['cap_exercised'] and item['retained_messages'] == 2 for item in body_projections if item['limit'] == 2)
+    assert sources and len(sources) == len(inputs)
+    assert all(item['format'] == 'gguf-source@1' and item['output_tokens'] == 256
+               and item['descriptors_content_absent'] and item['original_descriptors_equal']
+               and item['full_original_runs_equal'] and item['observer_full_replay']
+               and not item['observer_replay_is_production_memory_evidence']
+               and all(set(run) == {'run', 'role', 'bytes'} for run in item['descriptors'])
+               and len(item['runtime_materializations']) == 2 for item in sources)
     assert all(item['fitted_original_reference_equal'] and item['mandatory_only_first_packet'] and item['bounded_history_after_mock_count']
+               and item['full_source_original_reference_equal'] and item['raw_prompt_reference_is_original_unmerged']
                and not item['native_count_proof'] and item['settings_equal'] and item['grammar_equal'] for item in inputs)
     successes = [row for row in rows if row.get('outcome') == 'success']
     assert len(successes) == 12 and all(row['observation']['worker_inputs'][0]['raw_prompt_equal'] for row in successes)
@@ -62,19 +80,26 @@ def assert_actor_context(rows):
     assert len(large) == 1 and max(item['historical_snapshot_bytes'] for item in large[0]['observation']['actor_projections']) >= 4 * 1024 * 1024
     assert len(rows) == 84, 'Original 36 normal + 36 fault + 12 reload matrix must remain'
     return {'direct_idb_helper_reads': len(projections), 'historical_byte_comparisons': len(preservation),
+            'actor_body_projection_evidence': {'direct_helper_reads': len(body_projections), 'api_limit': 1001,
+                                               'api_call_retention_observed': False, 'small_cap_exercised': True,
+                                               'matrix_1001_cap_exercised': False},
+            'source_descriptor_comparisons': len(sources), 'full_source_original_comparisons': len(sources),
+            'observer_full_replay_is_test_only': True, 'observer_replay_is_production_memory_evidence': False,
             'worker_fitted_original_comparisons': len(inputs), 'raw_prompt_exact_comparisons': len(successes),
             'public_completion_comparisons': len(completions),
             'public_completion_json_bytes': [item['event_json_bytes'] for item in completions],
             'saved_receipt_json_bytes': [item['saved_receipt_json_bytes'] for item in completions],
             'multiple_mib_snapshot_cases': len(large), 'maximum_historical_snapshot_bytes': max(item['historical_snapshot_bytes'] for item in projections),
-            'older_snapshots_retained': 0, 'latest_complete': True, 'peak_ram_measured': False}
+            'older_snapshots_retained': 0, 'latest_complete': True, 'peak_ram_measured': False, 'full_actor_bounded': False}
 
 
 async def main():
     report = {'ok': False, 'cases': [], 'blocked_requests': [], 'page_errors': [], 'native_workers': [],
-              'production_used': False, 'real_inference_attempts': 0, 'native_count_proof': False,
+              'production_used': False, 'real_inference_attempts': 0, 'native_count_proof': False, 'full_actor_bounded': False,
               'limits': ['Synthetic inference Worker and fictional OPFS metadata; no model/download/provider',
-                         'Actor keeps full role/content history and a complete latest message; no total peak-RAM bound is claimed',
+                         'Normal GGUF receives content-free source descriptors; the observer deliberately replays every run for independent old-history equivalence, not production memory evidence',
+                         'Bounded actor body helper is probed separately at limits 1001 and 2; the 80-message matrix does not reach the 1001 cap or observe the API caller retention directly',
+                         'ONNX/Research arrays, complete metadata/latest/UI and whole-capacity/peak-RAM bounds remain unproved; full_actor_bounded stays false',
                          'Injected receipt quota, not physical disk exhaustion; Chromium, not physical mobile hardware',
                          'GGUF matrix uses fictional counts; stock Mocha has forced-mock overflow and mock-rescue cases, neither is native count proof']}
     report['started_at'] = datetime.now(timezone.utc).isoformat()
@@ -137,8 +162,10 @@ async def main():
                 report['mandatory_overflow'] = await page.evaluate('window.__GENERATION_COMMITS__.mandatoryOverflow()')
                 assert report['mandatory_overflow']['synthetic_completion_calls'] == 0 and report['mandatory_overflow']['originals_retained']
                 assert not report['mandatory_overflow']['native_count_proof']
+                assert report['mandatory_overflow']['source_original_reference_equal']
                 report['mandatory_mock_rescue'] = await page.evaluate('window.__GENERATION_COMMITS__.mandatoryMockRescue()')
                 assert report['mandatory_mock_rescue']['mandatory_bytes_preserved'] and report['mandatory_mock_rescue']['raw_prompt_preserved']
+                assert report['mandatory_mock_rescue']['source_original_reference_equal'] and not report['mandatory_mock_rescue']['native_count_proof']
             finally:
                 await context.close()
                 report['context_closed'] = True

@@ -12,7 +12,7 @@ function contextBudget(outputTokens:number) {
   if(!Number.isInteger(outputTokens)||outputTokens<1||outputTokens>=CONTEXT_TOKENS)throw Error('Invalid output token reserve');
   return CONTEXT_TOKENS-outputTokens;
 }
-function selectConservative<T extends Pick<ChatTurn,'role'>>(turns:T[],bytes:(turn:T)=>number,budget:number,mandatoryTokens?:number) {
+function selectConservative<T extends Pick<ChatTurn,'role'>>(turns:readonly T[],bytes:(turn:T)=>number,budget:number,mandatoryTokens?:number) {
     let newest=-1;
     for(let i=0;i<turns.length;i++)if(turns[i].role==='user')newest=i;
     let tokens=mandatoryTokens??32,keepFrom=newest<0?0:newest;
@@ -43,7 +43,39 @@ export function validateTurns(turns:ChatTurn[]) {
   }
 }
 export type GGUFRun=ChatTurn&{run:number};
+export type GGUFSourceRun={run:number;role:ChatTurn['role'];bytes:number};
+export type GGUFSourceInput={format:'gguf-source@1';outputTokens:number;runs:GGUFSourceRun[];materialize:(runs:readonly GGUFSourceRun[])=>Promise<GGUFRun[]>};
 const tooLong=()=>Error('キャラ設定またはメッセージが長すぎます。短くして再送してください。');
+export function planGGUFSourceContext(source:GGUFSourceInput) {
+  if(!source||source.format!=='gguf-source@1'||!Array.isArray(source.runs)||typeof source.materialize!=='function')throw Error('Invalid GGUF source');
+  const budget=contextBudget(source.outputTokens),descriptors=source.runs,length=descriptors.length,runs:GGUFSourceRun[]=[];
+  for(let i=0;i<length;i++) {
+    const descriptor=descriptors[i];
+    if(!Object.hasOwn(descriptors,i)||!descriptor)throw Error('Invalid GGUF source runs');
+    const {run,role,bytes}=descriptor;
+    if(run!==i||!['system','user','assistant'].includes(role)
+      ||runs.at(-1)?.role===role||!Number.isSafeInteger(bytes)||bytes<0)throw Error('Invalid GGUF source runs');
+    runs.push(Object.freeze({run,role,bytes}));
+  }
+  Object.freeze(runs);
+  const replay=source.materialize.bind(source),bytes=(run:GGUFSourceRun)=>run.bytes;
+  let newestUserRun=-1;for(const run of runs)if(run.role==='user')newestUserRun=run.run;
+  const mandatory=Object.freeze(runs.filter(run=>run.role==='system'||newestUserRun<0||run.run>=newestUserRun));
+  const materialize=async(selected:readonly GGUFSourceRun[]):Promise<GGUFRun[]>=>{
+    const requested=Object.freeze([...selected]),result=await replay(requested);
+    if(!Array.isArray(result)||result.length!==requested.length)throw Error('Invalid GGUF materialization');
+    const encoder=new TextEncoder(),snapshot:GGUFRun[]=[];
+    for(let i=0;i<requested.length;i++) {
+      const run=result[i],expected=requested[i];
+      if(!Object.hasOwn(result,i)||!run)throw Error('Invalid GGUF materialization');
+      const {run:id,role,content}=run;
+      if(id!==expected.run||role!==expected.role||typeof content!=='string'||encoder.encode(content).length!==expected.bytes)throw Error('Invalid GGUF materialization');
+      snapshot.push({run:id,role,content});
+    }
+    return snapshot;
+  };
+  return {runs,bytes,budget,newestUserRun,mandatory,legacy:selectConservative(runs,bytes,budget),materialize};
+}
 export function planGGUFContext(turns:ChatTurn[],outputTokens=OUTPUT_TOKENS) {
   validateTurns(turns);
   const budget=contextBudget(outputTokens);
@@ -65,7 +97,7 @@ export function planGGUFContext(turns:ChatTurn[],outputTokens=OUTPUT_TOKENS) {
   const mandatory=runs.filter(run=>run.role==='system'||newestUserRun<0||run.run>=newestUserRun);
   return {turns,runs,bytes,budget,newestUserRun,mandatory,legacy:selectConservative(runs,bytes,budget)};
 }
-export function selectGGUFHistory(plan:ReturnType<typeof planGGUFContext>,mandatoryInputTokens?:number) {
+export function selectGGUFHistory<T extends Pick<GGUFRun,'run'|'role'>>(plan:{runs:readonly T[];bytes:(run:T)=>number;budget:number;newestUserRun:number;legacy:{messages:T[];omitted:number}|null},mandatoryInputTokens?:number) {
   // shortcut: bounded history may under-retain; revisit transport if maximum native history becomes required.
   let selected=plan.legacy;
   if(!selected){

@@ -21,12 +21,29 @@ const same=(left,right)=>canonical(left)===canonical(right);
 const hashBytes=async bytes=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(byte=>byte.toString(16).padStart(2,'0')).join('');
 const snapshotHash=value=>hashBytes(new TextEncoder().encode(canonical(value)));
 const clone=structuredClone;
-let active=false,caseId='',quota=null,worker=null,calls=0,callsAtSetup=0,held=null;
-let observation,latest=null,seeded,workerInput,workerWindow,prefitInput,mockMandatoryTokens=70,mockFinalTokens=70,completionCalls=0;
+let active=false,caseId='',quota=null,worker=null,calls=0,callsAtSetup=0,held=null,observerPhase='runtime',mandatoryObserved,resolveMandatoryObserved;
+let observation,latest=null,seeded,workerInput,workerWindow,prefitSource,prefitRuns,originalReferenceJSON,mockMandatoryTokens=70,mockFinalTokens=70,completionCalls=0;
 const {MobileRuntime}=await import('/src/mobile/runtime.ts'),generate=MobileRuntime.prototype.generate;
-MobileRuntime.prototype.generate=function(messages,...args){prefitInput=clone(messages);return generate.call(this,messages,...args);};
+const prefitDiagnostic=()=>JSON.stringify({format:prefitSource?.format??null,run_count:prefitSource?.runs?.length??null,
+  system_bytes:Array.isArray(prefitSource?.runs)?prefitSource.runs.filter(run=>run?.role==='system').map(run=>run.bytes):[]});
+MobileRuntime.prototype.generate=async function(source,...args){
+  prefitSource=source&&typeof source==='object'?{format:source.format,outputTokens:source.outputTokens,runs:clone(source.runs)}:null;
+  check(source?.format==='gguf-source@1'&&Array.isArray(source.runs)&&typeof source.materialize==='function','Normal GGUF receives source input: '+prefitDiagnostic());
+  check(same(Object.keys(source).sort(),['format','materialize','outputTokens','runs']),'Source carries descriptors and replay only');
+  check(source.outputTokens===256&&source.runs.every(run=>run&&same(Object.keys(run).sort(),['bytes','role','run'])),'Source descriptors contain no content');
+  const row={format:source.format,output_tokens:source.outputTokens,descriptors:clone(source.runs),descriptors_content_absent:true,
+    observer_full_replay:true,observer_replay_is_production_memory_evidence:false,runtime_materializations:[]};
+  observation.source_inputs.push(row);
+  // Test-only full replay proves equivalence; it deliberately retains full history and is not production memory evidence.
+  const phase=observerPhase;observerPhase='test-full-source-replay';
+  try{prefitRuns=clone(await source.materialize(source.runs));}finally{observerPhase=phase;}
+  check(same(prefitSource.runs,source.runs),'Observer full replay does not mutate source descriptors');
+  return generate.call(this,{...source,materialize:async selected=>{
+    row.runtime_materializations.push(clone(selected));return source.materialize(selected);
+  }},...args);
+};
 const requestKeys=new WeakMap(),parserSources=new WeakMap(),transactions=new WeakMap();
-const reset=()=>observation={part_reads:{readonly:0,readwrite:0},part_writes:0,parsers:[],transactions:[],quota_hits:0,actor_projections:[],historical_preservation:[],worker_inputs:[],public_completions:[]};
+const reset=()=>observation={part_reads:{readonly:0,readwrite:0},part_writes:0,parsers:[],transactions:[],quota_hits:0,actor_projections:[],actor_body_projections:[],source_inputs:[],historical_preservation:[],worker_inputs:[],public_completions:[]};
 reset();
 // Capture mode in the native result getter: feed/finish run synchronously before its microtask expires.
 const get=IDBObjectStore.prototype.get,result=Object.getOwnPropertyDescriptor(IDBRequest.prototype,'result');
@@ -34,7 +51,7 @@ IDBObjectStore.prototype.get=function(key){const request=get.call(this,key);requ
 Object.defineProperty(IDBRequest.prototype,'result',{...result,get(){
   const value=result.get.call(this),source=this.source,key=requestKeys.get(this);
   if(active&&source?.name==='parts'&&Array.isArray(key)){
-    const current={mode:source.transaction.mode,kind:key[1],id:key[2]};latest=current;
+    const current={mode:source.transaction.mode,kind:key[1],id:key[2],observer_phase:observerPhase};latest=current;
     observation.part_reads[current.mode]++;queueMicrotask(()=>{if(latest===current)latest=null;});
   }
   return value;
@@ -85,7 +102,7 @@ Object.defineProperty(globalThis,'Worker',{configurable:true,value:class{
   emit(data){queueMicrotask(()=>this.onmessage?.(new MessageEvent('message',{data})));}
   postMessage(data){
     if(data.type==='generate-admitted'){
-      calls++;held=data;workerInput=clone(data);this.emit({id:data.id,type:'admission-count',mandatoryInputTokens:mockMandatoryTokens});return;
+      calls++;held=data;workerInput=clone(data);resolveMandatoryObserved();this.emit({id:data.id,type:'admission-count',mandatoryInputTokens:mockMandatoryTokens});return;
     }
     if(data.type==='admission-window'){
       check(held?.id===data.id,'Matching held synthetic admission');workerWindow=clone(data);
@@ -144,7 +161,8 @@ async function snapshot(){
 const fixtureCharacter='admission-fixture-character';
 const identity=settings=>scopes.memoryIdentity(settings,{character_id:settings.character_id===fixtureCharacter?'1.0.1':catalog.characters.find(row=>row.id===settings.character_id)?.version??null,persona_id:null,world_id:null});
 async function setup(options){
-  active=false;quota=null;held=null;workerInput=null;workerWindow=null;mockMandatoryTokens=70;mockFinalTokens=70;callsAtSetup=calls;caseId=options.id;localStorage.setItem('kyalulu-execution-target','device');app.rememberOwner(caseId);
+  active=false;quota=null;held=null;workerInput=null;workerWindow=null;prefitSource=null;prefitRuns=null;originalReferenceJSON=null;mockMandatoryTokens=70;mockFinalTokens=70;callsAtSetup=calls;caseId=options.id;localStorage.setItem('kyalulu-execution-target','device');app.rememberOwner(caseId);
+  observerPhase='runtime';mandatoryObserved=new Promise(resolve=>{resolveMandatoryObserved=resolve;});
   const characterId=options.characterId??fixtureCharacter;
   if(characterId===fixtureCharacter){
     const document=PortableDocumentSchema.parse({name:'Admission fixture',data:{personality:'You are a helpful fictional character.'}});
@@ -198,8 +216,8 @@ async function setup(options){
   return {bytes:saved.header.payloadParts.size,parts:saved.header.payloadParts.chunks,messages:80,large_snapshots:!!options.largeSnapshots};
 }
 async function assertProjection(saved,stage){
-  const observing=active;active=true;
-  let context;try{context=await memory.readDeviceGenerationSource('actor',caseId);}finally{active=observing;}
+  const observing=active,phase=observerPhase;active=true;observerPhase='test-actor-helper';
+  let context;try{context=await memory.readDeviceGenerationSource('actor',caseId);}finally{active=observing;observerPhase=phase;}
   check(same(Object.keys(context).sort(),['header','latest','messages','source']),'Actual IDB helper returns only the new context shape');
   const rows=saved.actor.payload.messages;
   check(context.messages.length===rows.length,'Actual IDB projected message count');
@@ -218,6 +236,17 @@ async function assertProjection(saved,stage){
   observation.actor_projections.push({stage,messages:rows.length,projected_keys:['id','uuid','role','content','imported_state'],older_snapshot_fields:0,
     historical_snapshot_bytes:historicalSnapshotBytes,latest_bytes:new TextEncoder().encode(JSON.stringify(context.latest)).length,
     latest_sha256:await snapshotHash(context.latest),latest_complete:true,metadata_complete:true,header_complete:true});
+  if(stage==='seed')for(const limit of [1001,2]){
+    let bounded;active=true;observerPhase='test-actor-helper';
+    try{bounded=await memory.readDeviceGenerationSource('actor',caseId,limit);}finally{active=observing;observerPhase=phase;}
+    const expected=rows.slice(-limit).map(row=>Object.fromEntries(['id','uuid','role','content','imported_state'].map(key=>[key,row[key]])));
+    check(same(bounded.messages,expected),'Bounded helper preserves exact original projected tail at limit '+limit);
+    check(bounded.messages.length<=limit&&same(bounded.latest,rows.at(-1)),'Bounded helper retains complete latest separately');
+    check(same(bounded.source,context.source)&&same(bounded.header,context.header),'Bounded helper preserves verified stamp, header and complete metadata');
+    observation.actor_body_projections.push({stage,limit,retained_messages:bounded.messages.length,total_messages:rows.length,
+      direct_helper_probe:true,api_call_retention_observed:false,tail_equal:true,latest_complete:true,metadata_complete:true,
+      header_complete:true,cap_exercised:rows.length>limit,full_actor_bounded:false});
+  }
 }
 function referenceRuns(turns){
   const messages=[];
@@ -234,35 +263,49 @@ function referenceAdmission(turns,reserve){
   }
   return {messages:messages.map(({role,content})=>({role,content})),runs:messages,omitted};
 }
-async function assertWorkerInput(regenerate){
-  const p=seeded.actor.payload,history=regenerate?p.messages.slice(0,-1):[...p.messages,{role:'user',content:requestBody.messages.at(-1).content}];
+async function originalInput(regenerate,body=requestBody){
+  const p=seeded.actor.payload,history=regenerate?p.messages.slice(0,-1):[...p.messages,{role:'user',content:body.messages.at(-1).content}];
   // The compile endpoint and assembler are unchanged; the oracle uses full originals, never the actor projection.
   const response=await deviceFetch('/api/prompt/compile',{method:'POST',body:JSON.stringify(p.settings)});check(response.ok,'Reference prompt compilation');
   const prompt=await response.json(),state=regenerate?p.messages.at(-1).before.state:p.state;
   let recall=clone(p.memories);
   if(p.memory_scope_mode!=='legacy')recall=clone(seeded.domain.pools[scopes.memoryBinding(seeded.domain,'actor').scope].memories);
   if(regenerate)recall=recall.filter(row=>!(row.source_session_id==='actor'&&row.source_generation_id==='old'&&row.origin==='model'));
-  const trace=retrieveMemories(recall,requestBody.messages.at(-1).content),memories=trace.injected.map(id=>trace.candidates.find(row=>row.id===id));
+  const trace=retrieveMemories(recall,body.messages.at(-1).content),memories=trace.injected.map(id=>trace.candidates.find(row=>row.id===id));
   const story=Object.fromEntries(['location','time','mood','active_scene','relationship_state'].map(key=>[key,state[key]]));
   const contract="Never choose the user's thoughts, actions or speech."+'\nPrior conversation summary: Authored story summary'+renderMemoryBlock(memories,true)+
     '\nJSON only; continue current state: '+JSON.stringify({reply:'in-character reply',state_update:story,memory_proposals:[]})+
     '. Memories: <=3 {type:semantic|episodic|relationship,content,source_kind:user_statement|user_correction|work_setting|story_event}. Never invent user facts.';
-  const expected=assemblePortable(prompt,history.filter(row=>!['stopped','interrupted'].includes(row.imported_state)).map(({role,content})=>({role,content})),contract);
-  const actualJSON=JSON.stringify(prefitInput),expectedJSON=JSON.stringify(expected);
+  return assemblePortable(prompt,history.filter(row=>!['stopped','interrupted'].includes(row.imported_state)).map(({role,content})=>({role,content})),contract);
+}
+async function assertOriginalSource(expected){
+  originalReferenceJSON=JSON.stringify(expected);
+  const originalRuns=referenceRuns(expected),actualJSON=JSON.stringify(prefitRuns)??'null',expectedJSON=JSON.stringify(originalRuns);
   let difference=0;while(difference<Math.min(actualJSON.length,expectedJSON.length)&&actualJSON[difference]===expectedJSON[difference])difference++;
-  check(actualJSON===expectedJSON,'Exact original pre-fit input matches full stored-history reference; first difference '+difference+
+  check(actualJSON===expectedJSON,'Test-only full source replay matches independently merged original pre-fit reference; first difference '+difference+
     '; actual='+actualJSON.slice(difference,difference+180)+'; reference='+expectedJSON.slice(difference,difference+180));
+  const descriptors=originalRuns.map(({run,role,content})=>({run,role,bytes:new TextEncoder().encode(content).length}));
+  check(prefitSource?.format==='gguf-source@1'&&prefitSource.outputTokens===256&&same(prefitSource.runs,descriptors),'Every content-free source descriptor equals original run role/order/UTF-8 bytes');
+  const row=observation.source_inputs.at(-1);check(row,'Source observation exists');
+  row.full_original_runs_equal=true;row.original_descriptors_equal=true;row.full_replay_sha256=await snapshotHash(prefitRuns);
+  return originalRuns;
+}
+async function assertWorkerInput(regenerate){
+  const expected=await originalInput(regenerate),originalRuns=await assertOriginalSource(expected);
   const fitted=referenceAdmission(expected,256);
-  const originalRuns=referenceRuns(expected),newest=originalRuns.map(run=>run.role).lastIndexOf('user');
+  const newest=originalRuns.map(run=>run.role).lastIndexOf('user');
   check(workerInput.type==='generate-admitted'&&workerInput.admission.outputTokens===256&&workerInput.admission.originalRuns===originalRuns.length,'Admission pins original run count/reserve');
   check(same(workerInput.mandatory,originalRuns.filter(run=>run.role==='system'||run.run>=newest)),'First packet contains only mandatory original runs');
   check(same(workerWindow.history,fitted.runs.filter(run=>run.role!=='system'&&run.run<newest)),'Second packet contains only selected optional original runs');
+  const selections=observation.source_inputs.at(-1).runtime_materializations;
+  check(same(selections.map(runs=>runs.map(run=>run.run)),[workerInput.mandatory.map(run=>run.run),workerWindow.history.map(run=>run.run)]),'Runtime replays only mandatory then selected history, separate from observer full replay');
   const actual=[...workerInput.mandatory,...workerWindow.history].sort((a,b)=>a.run-b.run).map(({role,content})=>({role,content}));
   check(JSON.stringify(actual)===JSON.stringify(fitted.messages),'Synthetic Worker candidate equals independent legacy window');
   check(same(workerInput.settings,{temperature:.8})&&workerInput.responseGrammar===deviceResponseGrammar,'Worker real settings and response grammar');
   check(!JSON.stringify(actual).includes('Multiple MiB before'),'Historical snapshots never enter Worker input');
   observation.worker_inputs.push({messages:fitted.messages.length,bytes:new TextEncoder().encode(JSON.stringify(fitted.messages)).length,sha256:await snapshotHash(fitted.messages),
     prefit_messages:expected.length,prefit_bytes:new TextEncoder().encode(JSON.stringify(expected)).length,prefit_sha256:await snapshotHash(expected),omitted:fitted.omitted,
+    full_source_original_reference_equal:true,raw_prompt_reference_is_original_unmerged:true,
     fitted_original_reference_equal:true,mandatory_only_first_packet:true,bounded_history_after_mock_count:true,native_count_proof:false,
     imported_states_filtered:true,settings_equal:true,grammar_equal:true,regeneration_state:regenerate?'latest.before':'current'});
 }
@@ -273,9 +316,9 @@ async function start(regenerate=false){
   responsePromise=deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify(requestBody)});
   const response=await responsePromise;bodyPromise=response.text();
   if(!response.ok){const text=await bodyPromise;active=false;return {status:response.status,text};}
+  await Promise.race([mandatoryObserved,bodyPromise]);
   for(let i=0;i<100&&!workerWindow&&held;i++)await new Promise(resolve=>setTimeout(resolve,0));
-  if(held===null)throw Error('Actual API did not invoke synthetic Worker: '+(await bodyPromise).slice(0,2048)+'; pre-fit system bytes='+
-    prefitInput.filter(message=>message.role==='system').map(message=>new TextEncoder().encode(message.content).length).join(','));
+  if(held===null)throw Error('Actual API did not invoke synthetic Worker: '+(await bodyPromise).slice(0,2048)+'; source='+prefitDiagnostic());
   await assertWorkerInput(regenerate);return {status:response.status};
 }
 function invariant(before,after){
@@ -323,7 +366,7 @@ async function run(options){
     check(after.header.memoryReferences===null,'Canonical receipt never manufactures an empty memory-reference index');
     check(after.actor.payload.state.turn===41&&after.actor.payload.state.location==='library'&&after.actor.payload.state.last_summary==='Authored story summary','Explicit state update and authored summary preservation');
     check(same(reply.before.state,options.regenerate?before.actor.payload.messages.at(-1).before.state:before.actor.payload.state)&&same(reply.after.state,after.actor.payload.state),'Before/after state snapshots use latest regeneration origin');
-    check(after.receipt.raw_prompt===JSON.stringify(prefitInput),'Saved raw_prompt equals full original pre-fit input byte for byte');
+    check(originalReferenceJSON!==null&&after.receipt.raw_prompt===originalReferenceJSON,'Saved raw_prompt equals independent full original unmerged pre-fit reference byte for byte');
     check(same(after.receipt.compiled,(await (await deviceFetch('/api/prompt/compile',{method:'POST',body:JSON.stringify(before.actor.payload.settings)})).json())),'Saved compiled prompt equals original-settings reference');
     const completions=new SSEDecoder().feed(stream,true).filter(event=>event.event==='done');check(completions.length===1,'Exactly one public completion');
     const completed=JSON.parse(completions[0].data),expected=Object.fromEntries(Object.entries(after.receipt).filter(([key])=>!['attempts','compiled','raw_prompt'].includes(key)));
@@ -430,33 +473,39 @@ async function resume(){
 async function mandatoryOverflow(){
   const options={id:'mock-forced-mandatory-overflow',policy:'local',mode:'legacy',characterId:'mocha_sfw'};
   await setup(options);const before=await snapshot(),completionsBefore=completionCalls;active=true;mockMandatoryTokens=1793;mockFinalTokens=1793;
-  const response=await deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify({session_id:'actor',generation_id:'turn',model_id:'kyalulu-iq3m',
-    messages:[{role:'user',content:'鮭のお寿司が好きです。お茶が好きです'}]})});
+  const request={session_id:'actor',generation_id:'turn',model_id:'kyalulu-iq3m',messages:[{role:'user',content:'鮭のお寿司が好きです。お茶が好きです'}]};
+  const response=await deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify(request)});
   const stream=await response.text();active=false;
   check(response.ok&&stream.includes('キャラ設定またはメッセージが長すぎます'),'Forced synthetic count overflow returns context error');
   check(held===null&&calls===callsAtSetup+1&&completionCalls===completionsBefore,'Forced overflow counts mandatory without synthetic completion');
+  const runs=await assertOriginalSource(await originalInput(false,request)),newest=runs.map(run=>run.role).lastIndexOf('user');
+  check(same(workerInput.mandatory,runs.filter(run=>run.role==='system'||run.run>=newest)),'Overflow preserves all original mandatory bytes');
+  check(workerWindow?.error&&!workerWindow.history&&observation.source_inputs.at(-1).runtime_materializations.length===1,'Overflow rejects history replay before synthetic completion');
   const after=await snapshot();invariant(before,after);
   check(after.receipt.status==='failed'&&after.actor.payload.pending_generation===null,'Context failure resolves pending receipt');
   check(after.actor.payload.messages.length===before.actor.payload.messages.length+1,'Durable submitted user retained');
   check(same(after.actor.payload.messages.slice(0,-1),before.actor.payload.messages),'All old messages remain exact after context failure');
   check(same(after.actor.payload.state,before.actor.payload.state)&&same(after.actor.payload.memories,before.actor.payload.memories),'Context failure applies no story or memory output');
   return {ok:true,stock_character:'mocha_sfw',output_tokens:256,mock_mandatory_tokens:1793,native_count_proof:false,
-    worker_admission_operations:1,synthetic_completion_calls:0,originals_retained:true};
+    worker_admission_operations:1,synthetic_completion_calls:0,originals_retained:true,source_original_reference_equal:true,
+    observation:clone(observation)};
 }
 async function mandatoryMockRescue(){
   await setup({id:'mock-mocha-native-rescue',policy:'local',mode:'legacy',characterId:'mocha_sfw'});
   const before=await snapshot();active=true;
-  const response=await deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify({session_id:'actor',generation_id:'turn',model_id:'kyalulu-iq3m',
-    messages:[{role:'user',content:'鮭のお寿司が好きです。お茶が好きです'}]})});
-  const body=response.text();for(let i=0;i<100&&!workerWindow;i++)await new Promise(resolve=>setTimeout(resolve,0));
+  const request={session_id:'actor',generation_id:'turn',model_id:'kyalulu-iq3m',messages:[{role:'user',content:'鮭のお寿司が好きです。お茶が好きです'}]};
+  const response=await deviceFetch('/api/chat/stream',{method:'POST',body:JSON.stringify(request)});
+  const body=response.text();await Promise.race([mandatoryObserved,body]);
+  for(let i=0;i<100&&!workerWindow;i++)await new Promise(resolve=>setTimeout(resolve,0));
   check(held&&workerWindow&&!workerWindow.error,'Mock count rescues stock mandatory without shortening');
-  const runs=referenceRuns(prefitInput),newest=runs.map(run=>run.role).lastIndexOf('user');
+  const runs=await assertOriginalSource(await originalInput(false,request)),newest=runs.map(run=>run.role).lastIndexOf('user');
   check(same(workerInput.mandatory,runs.filter(run=>run.role==='system'||run.run>=newest)),'All original mandatory bytes preserved in mock rescue');
   check(32+workerInput.mandatory.reduce((n,run)=>n+128+new TextEncoder().encode(run.content).length,0)>1792,'Rescue actually exceeds former mandatory heuristic');
   terminal('success');const stream=await body;active=false;const after=await snapshot();
   invariant(before,after);check(stream.includes('event: done'),'Synthetic rescue completes');
-  check(after.receipt.raw_prompt===JSON.stringify(prefitInput),'Full original prompt diagnostic retained in rescue');
-  return {ok:true,stock_character:'mocha_sfw',mock_mandatory_tokens:70,native_count_proof:false,mandatory_bytes_preserved:true,raw_prompt_preserved:true};
+  check(originalReferenceJSON!==null&&after.receipt.raw_prompt===originalReferenceJSON,'Rescue raw_prompt equals independent full original unmerged reference');
+  return {ok:true,stock_character:'mocha_sfw',mock_mandatory_tokens:70,native_count_proof:false,mandatory_bytes_preserved:true,raw_prompt_preserved:true,
+    source_original_reference_equal:true,observation:clone(observation)};
 }
 window.__GENERATION_COMMITS__={run,fault,resume,mandatoryOverflow,mandatoryMockRescue};
 </script>
