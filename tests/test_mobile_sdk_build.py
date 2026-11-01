@@ -77,7 +77,7 @@ def test_sdk_uses_real_generators_then_compiler_and_records_assets(sdk):
         module.build(work)
 
 
-@pytest.mark.parametrize('fault', ['outside', 'missing-patch', 'bad-wasm', 'linked-source', 'old-wasm', 'diagnostic-source'])
+@pytest.mark.parametrize('fault', ['outside', 'missing-patch', 'bad-wasm', 'linked-source', 'old-wasm', 'diagnostic-source', 'diagnostic-standard', 'diagnostic-compat'])
 def test_sdk_rejects_bad_inputs_before_running_or_writing(sdk, monkeypatch, fault):
     module, work, calls = sdk
     message = 'workspace artifacts'
@@ -94,6 +94,9 @@ def test_sdk_rejects_bad_inputs_before_running_or_writing(sdk, monkeypatch, faul
         message = 'Rebuild both WASM'
     elif fault == 'diagnostic-source':
         (work / 'wllama/cpp/wllama-context.h').write_text('action_count_chat_tokens( count_probe_snapshot')
+        message = 'Diagnostic count probes'
+    elif fault.startswith('diagnostic-'):
+        (work / ('build-' + fault.removeprefix('diagnostic-')) / 'wllama.wasm').write_bytes(b'\0asmctok_req\0ctok_res\0countProbe')
         message = 'Diagnostic count probes'
     else:
         linked = work / 'wllama/src/wllama.ts'

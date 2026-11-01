@@ -91,7 +91,7 @@ describe('matched public SDK integration', () => {
     expect(aliases[0].replacement.replaceAll('\\', '/')).toMatch(/\.artifacts\/mobile-wasm\/sdk\/index.js$/);
   });
 
-  it.each(['missing-sdk', 'missing-manifest', 'sdk-hash', 'unhashed-output', 'standard-js', 'compat-wasm', 'missing-variant', 'extra-variant', 'old-wasm', 'escape', 'linked', 'bad-revision'])('rejects %s before production bundling', fault => {
+  it.each(['missing-sdk', 'missing-manifest', 'sdk-hash', 'unhashed-output', 'standard-js', 'compat-wasm', 'missing-variant', 'extra-variant', 'old-wasm', 'diagnostic-standard', 'diagnostic-compat', 'escape', 'linked', 'bad-revision'])('rejects %s before production bundling', fault => {
     vi.stubEnv('VITE_RELAY_ORIGIN', 'https://relay.kyalulu.com');
     const record = sdkRecord();
     if (fault === 'missing-sdk') fixture.files.delete('sdk/index.js');
@@ -106,6 +106,11 @@ describe('matched public SDK integration', () => {
       const old = Buffer.from('\0asmold runtime');
       fixture.files.set('build-standard/wllama.wasm', old);
       record.runtime_assets['standard/wllama.wasm'] = createHash('sha256').update(old).digest('hex');
+    }
+    if (fault.startsWith('diagnostic-')) {
+      const name = `${fault.slice('diagnostic-'.length)}/wllama.wasm`, bytes = Buffer.from('\0asmctok_req\0ctok_res\0countProbe');
+      fixture.files.set(`build-${name}`, bytes);
+      record.runtime_assets[name] = createHash('sha256').update(bytes).digest('hex');
     }
     if (fault === 'escape') record.sdk_files['../../outside'] = '0'.repeat(64);
     if (fault === 'linked') fixture.links.add('sdk');

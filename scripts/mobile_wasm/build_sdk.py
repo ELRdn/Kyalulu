@@ -72,6 +72,8 @@ def build(work):
             # shortcut: wire markers catch stale binaries, real model proof remains a separate gate.
             if name.endswith('.wasm') and not all(marker in data for marker in (b'ctok_req', b'ctok_res')):
                 raise ValueError('Rebuild both WASM variants with the native chat-count patch')
+            if name.endswith('.wasm') and b'countProbe' in data:
+                raise ValueError('Diagnostic count probes must not enter the application SDK')
             assets[f'{variant}/{name}'] = hashlib.sha256(data).hexdigest()
     node = shutil.which('node')
     compiler = ROOT / 'apps/web/node_modules/typescript/bin/tsc'
