@@ -71,6 +71,23 @@ it.each([true,false])('relabels successful sync enabled=%s without changing sele
   expect(renderToStaticMarkup(view())).toContain('原文の会話名');
 });
 
+it('relabels unnamed chats without changing authored names, selections or sync requests',async()=>{
+  vi.mocked(cloudFetch).mockResolvedValueOnce(Response.json({sessions:[
+    {session_id:'free-chat',character_name:null,count:2},
+    {session_id:'named-chat',character_name:'原文の会話名',count:3},
+  ]}));
+  await load();checkbox().props.onChange({target:{checked:true}});
+  const states=[...fixture.states];
+  switches('フリートーク','Free chat');
+  expect(renderToStaticMarkup(view())).toContain('原文の会話名');
+  expect(checkbox().props.checked).toBe(true);
+  fixture.states.forEach((value,index)=>expect(value).toBe(states[index]));
+  expect(runtimeConsent).toHaveBeenCalledExactlyOnceWith('fixture-owner');
+  expect(cloudFetch).toHaveBeenCalledOnce();
+  expect(setSyncConsent).not.toHaveBeenCalled();expect(syncNow).not.toHaveBeenCalled();
+  expect(fixture.confirm).not.toHaveBeenCalled();
+});
+
 it('uses the current language when an in-flight sync finishes, without repeating the request',async()=>{
   await load();checkbox().props.onChange({target:{checked:true}});
   let finish!:()=>void;
