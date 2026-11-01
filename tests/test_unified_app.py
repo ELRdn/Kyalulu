@@ -1,5 +1,6 @@
 """Unified contracts are tested without real ads, payments, identities or inference."""
 from dataclasses import replace
+from datetime import datetime
 import time
 from uuid import uuid4
 import json
@@ -107,6 +108,66 @@ def test_initial_grant_is_backed_for_thirty_days_and_cannot_repeat(service):
         assert lot[0] == fund[0] and lot[0] >= before + 30 * 86400
 
 
+def test_enrollment_without_free_budget_keeps_account_and_allows_purchase(service):
+    empty = UnifiedService(CloudStore(replace(service.store.config,
+        root=service.store.config.root / 'empty', monthly_subsidy_jpy=0)))
+    user = str(uuid4())
+    account = empty.store.account(user, consent='test', enroll=True)
+    assert account['plan'] == 'free' and account['trial_granted'] == 0
+    assert empty.store.balance(user) == 0
+    assert empty.store.trial(user) is False
+    with empty.store.transaction() as db:
+        for table in ('credit_lots', 'app_free_reserves', 'app_reward_reserves'):
+            assert db.execute(f'SELECT COUNT(*) FROM {table}').fetchone()[0] == 0
+        assert db.execute('SELECT COALESCE(SUM(remaining),0) FROM funds').fetchone()[0] == 0
+
+    empty.store.receipt(user, 'paid-without-trial', 'credits_5', 5_000_000_000,
+                        time.time() + 30 * 86400, event_id='paid-without-trial',
+                        event_hash='fixture', terms=purchase_terms('credits_5'))
+    assert empty.store.balance(user) == 37_500
+    with empty.store.transaction() as db:
+        before = {table: [tuple(row) for row in db.execute(f'SELECT * FROM {table} ORDER BY 1')]
+                  for table in ('accounts', 'credit_lots', 'funds', 'receipts',
+                                'app_free_reserves', 'app_reward_reserves')}
+    assert empty.store.trial(user) is False
+    assert empty.store.account(user, consent='test', enroll=True)['trial_granted'] == 0
+    assert empty.store.balance(user) == 37_500
+    with empty.store.transaction() as db:
+        for table, rows in before.items():
+            assert [tuple(row) for row in db.execute(f'SELECT * FROM {table} ORDER BY 1')] == rows
+
+
+def test_enrollment_without_free_budget_still_enforces_signup_limit(service):
+    empty = UnifiedService(CloudStore(replace(service.store.config,
+        root=service.store.config.root / 'empty', monthly_subsidy_jpy=0, signup_limit=0)))
+    with pytest.raises(CloudError, match='^cloud_registration_capacity_reached$'):
+        empty.store.account(str(uuid4()), consent='test', enroll=True)
+    with empty.store.transaction() as db:
+        for table in ('accounts', 'credit_lots', 'funds', 'app_free_reserves', 'app_reward_reserves'):
+            assert db.execute(f'SELECT COUNT(*) FROM {table}').fetchone()[0] == 0
+
+
+@pytest.mark.parametrize('error_type', [CloudError, RuntimeError])
+def test_enrollment_reservation_errors_roll_back_atomically(service, monkeypatch, error_type):
+    user = str(uuid4())
+    reserve = service._reserve_free
+
+    def fail_after_reservation(*args):
+        reserve(*args)
+        raise error_type('reservation_failed')
+
+    monkeypatch.setattr(service, '_reserve_free', fail_after_reservation)
+    with service.store.transaction() as db:
+        before = {table: [tuple(row) for row in db.execute(f'SELECT * FROM {table} ORDER BY 1')]
+                  for table in ('accounts', 'credit_lots', 'funds',
+                                'app_free_reserves', 'app_reward_reserves')}
+    with pytest.raises(error_type, match='^reservation_failed$'):
+        service.store.account(user, consent='test', enroll=True)
+    with service.store.transaction() as db:
+        for table, rows in before.items():
+            assert [tuple(row) for row in db.execute(f'SELECT * FROM {table} ORDER BY 1')] == rows
+
+
 def test_rewards_need_trusted_completion_and_replay_is_once(service, monkeypatch):
     user = owner(service)
     start = time.time()
@@ -136,6 +197,47 @@ def test_interrupted_ads_release_only_their_original_funds(service, monkeypatch)
     assert service.reward(user, offer["id"])["state"] == "expired"
     assert service.store.balance(user) == 0
     assert service.offer(user, {"seconds": 15})
+
+
+@pytest.mark.parametrize(("start_iso", "next_period", "next_expiry"), [
+    ("2026-01-31T12:00:00+09:00", "2026-02", "2026-03-01T00:00:00+09:00"),
+    ("2026-04-30T12:00:00+09:00", "2026-05", "2026-06-01T00:00:00+09:00"),
+    ("2024-02-29T12:00:00+09:00", "2024-03", "2024-04-01T00:00:00+09:00"),
+    ("2026-12-31T12:00:00+09:00", "2027-01", "2027-02-01T00:00:00+09:00"),
+])
+def test_expired_ad_reserve_crossing_month_keeps_original_fund_and_new_expiry(
+    service, monkeypatch, start_iso, next_period, next_expiry,
+):
+    from python.cloud import store as cloud_store
+    start = datetime.fromisoformat(start_iso).timestamp()
+    clock = [start]
+    monkeypatch.setattr(time, "time", lambda: clock[0])
+
+    class WallClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime.fromtimestamp(start, tz)
+
+    # Month identity and expiry must use the same captured funding clock.
+    monkeypatch.setattr(cloud_store, "datetime", WallClock)
+    user = owner(service)
+    offer = service.offer(user, {"seconds": 15})
+    with service.store.transaction() as db:
+        reserved = db.execute("SELECT fund,amount FROM app_reward_reserves WHERE offer=?", (offer["id"],)).fetchone()
+        original = db.execute("SELECT remaining FROM funds WHERE id=?", (reserved["fund"],)).fetchone()[0]
+    clock[0] += 86401
+    assert service.reward(user, offer["id"])["state"] == "expired"
+    assert service.store.balance(user) == 0
+    replacement = service.offer(user, {"seconds": 15})
+    with service.store.transaction() as db:
+        assert db.execute("SELECT remaining FROM funds WHERE id=?", (reserved["fund"],)).fetchone()[0] == original + reserved["amount"]
+        fund = db.execute("SELECT fund FROM app_reward_reserves WHERE offer=?", (replacement["id"],)).fetchone()[0]
+        assert fund == "subsidy:" + next_period and fund != reserved["fund"]
+        assert db.execute("SELECT expires FROM funds WHERE id=?", (fund,)).fetchone()[0] == datetime.fromisoformat(next_expiry).timestamp()
+        before = [tuple(row) for row in db.execute("SELECT * FROM funds ORDER BY id")]
+    assert service.reward(user, offer["id"])["state"] == "expired"
+    with service.store.transaction() as db:
+        assert [tuple(row) for row in db.execute("SELECT * FROM funds ORDER BY id")] == before
 
 
 def test_sync_conflicts_branch_and_deletions_never_resurrect(service):

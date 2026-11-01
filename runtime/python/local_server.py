@@ -2,6 +2,7 @@
 
 import hmac
 import os
+import sys
 from fastapi import Request
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -46,6 +47,9 @@ def main():
             port=int(os.environ.get("KYALULU_PORT", "8000")),
             access_log=False,
             log_level="warning",
+            # shortcut: Windows Select supports 512 sockets and no async subprocesses;
+            # revisit if Native needs either. Python 3.13 Proactor can hang after TCP reset.
+            loop="asyncio:SelectorEventLoop" if sys.platform == "win32" else "auto",
         )
     )
     server.run()

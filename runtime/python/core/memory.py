@@ -69,6 +69,28 @@ def overlap(a: set[str], b: set[str]) -> float:
     return len(a & b) / len(b) if b else 0.0
 
 
+def collapse_whitespace(text: str) -> str:
+    # Unicode White_Space, matching the browser's property escape.
+    return re.sub(r"[\t-\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+", " ", text).strip(" ")
+
+
+def user_grounded(content: str, quote: object) -> bool:
+    """Complete-utterance correspondence, not a truth or semantic verification."""
+    return isinstance(quote, str) and bool(collapse_whitespace(content)) and collapse_whitespace(content) == collapse_whitespace(quote)
+
+
+def memory_eligible(memory: dict) -> bool:
+    if memory.get("status") == "deleted":
+        return False
+    if memory.get("origin") != "model" or memory.get("confirmation") == "user_confirmed":
+        return True
+    if memory.get("supported") is False:
+        return False
+    if memory.get("source_kind") == "story_event":
+        return memory.get("supported") is True
+    return memory.get("source_kind") in ("user_statement", "user_correction") and user_grounded(memory["content"], memory.get("source_quote"))
+
+
 def score(query: set[str], memory: dict) -> float:
     grams = bigrams(memory["content"])
     if not grams:
@@ -101,12 +123,12 @@ def retrieve(memories: list[dict], query: str, *, top_k: int = DEFAULT_TOP_K,
                       "created_at": m.get("created_at"), "updated_at": m.get("updated_at"),
                       "origin": m.get("origin"), **{k: m.get(k) for k in
                           ("source_kind", "source_quote", "source_revision", "confirmation")}}
-                     for i, m in enumerate(memories)), key=lambda c: (-c["score"], c["recency"]))
+                     for i, m in enumerate(memories) if m.get("status", "active") == "active"), key=lambda c: (-c["score"], c["recency"]))
     used = 0
     injected: list[dict] = []
     for c in ranked:
         tokens = estimate_tokens(c["content"]) + 4
-        if c["supported"] is False and c["origin"] == "model":
+        if not memory_eligible(c):
             c["decision"] = "unverified"
         elif c["score"] < min_score:
             c["decision"] = "below_threshold"
@@ -142,7 +164,7 @@ def render_block(memories: list[dict]) -> str:
 
 
 PROPOSAL_INSTRUCTION = (
-    '\nAlso return "memory_proposals" (third key): at most 3 short memories worth keeping for future '
+    '\nAlso return "memory_proposals" (third key): at most 3 memories worth keeping for future '
     'conversations, each {"type": "semantic"|"episodic"|"relationship", "content": "..."}. '
     "semantic = stable facts or preferences the user stated; episodic = something that happened or was "
     "promised; relationship = a change in how the two relate. Only propose what was actually said in "
@@ -150,35 +172,40 @@ PROPOSAL_INSTRUCTION = (
     " Include source_kind: user_statement/user_correction for what the USER explicitly said; "
     "story_event only for fictional narrative events; work_setting only for explicit canon. "
     "Never promote the character's invented past, preferences or events into facts about the user."
+    " For user_statement/user_correction, copy the complete current user message verbatim into content; "
+    "do not summarize, translate or extract fragments. If it exceeds 200 characters, omit that proposal. "
+    "Use [] when nothing new is worth keeping."
 )
 
 
 def validate_proposals(proposals: list[MemoryProposal], existing: list[dict], evidence_text: str) -> list[dict]:
     """Decide for each proposal: store, or skip with a reason.
 
-    `evidence_text` is the conversation the proposal claims to come from; a proposal that shares
-    almost nothing with it is kept but flagged `unsupported` so an inspector can find candidates for
-    the Incorrectly Stored failure.
+    User proposals must quote the complete user utterance, collapsing whitespace only.
+    Other wording is retained as unsupported for inspection, never semantic proof.
     """
     out = []
-    seen = [(bigrams(m["content"]), m.get("source_kind", "user_statement")) for m in existing
-            if m.get("supported") is not False or m.get("confirmation") == "user_confirmed"]
+    seen = [(bigrams(m["content"]), m.get("source_kind") or "user_statement", collapse_whitespace(m["content"])) for m in existing
+            if memory_eligible(m)]
     evidence = bigrams(evidence_text)
     for p in proposals[:MAX_PROPOSALS]:
-        content = " ".join(p.content.split())
+        content = collapse_whitespace(p.content)
         grams = bigrams(content)
         decision = {"type": p.type, "content": content, "source_kind": p.source_kind}
+        user_source = p.source_kind in ("user_statement", "user_correction")
         if len(normalize(content)) < 2:
             decision["action"] = "skip"
             decision["reason"] = "too_short"
-        elif any(kind == p.source_kind and overlap(s, grams) >= DUPLICATE_OVERLAP and overlap(grams, s) >= DUPLICATE_OVERLAP
-                 for s, kind in seen):
+        elif any(kind == p.source_kind and (previous == content if user_source else
+                 overlap(s, grams) >= DUPLICATE_OVERLAP and overlap(grams, s) >= DUPLICATE_OVERLAP)
+                 for s, kind, previous in seen):
             decision["action"] = "skip"
             decision["reason"] = "duplicate"
         else:
             decision["action"] = "store"
-            decision["supported"] = overlap(evidence, grams) >= EVIDENCE_OVERLAP
-            seen.append((grams, p.source_kind))
+            decision["supported"] = (user_grounded(content, evidence_text) if user_source
+                                     else overlap(evidence, grams) >= EVIDENCE_OVERLAP)
+            seen.append((grams, p.source_kind, content))
         out.append(decision)
     return out
 

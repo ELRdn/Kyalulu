@@ -1,0 +1,149 @@
+<!doctype html><meta charset="utf-8"><title>Opt-in fictional storage capacity</title>
+<p>Independent fictional message strings. No production capacity claim.</p>
+<script type="module">
+import {appTransaction, newEntity, writeEntity, entity} from '/src/lib/appStore.ts';
+import {rememberOwner} from '/src/lib/appContext.ts';
+import {jsonChunks} from '/src/lib/appTransfers.ts';
+import {Sha256} from '/src/mobile/sha256.ts';
+
+const owner='capacity-fiction-only',id='one-fictional-conversation',limit=1048576;
+const encoder=new TextEncoder(),decoder=new TextDecoder('utf-8',{fatal:true});
+const check=(value,message)=>{if(!value)throw Error(message);};
+const progress=(stage,detail={})=>console.info('CAPACITY '+JSON.stringify({stage,...detail}));
+const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
+function bytes(value){let size=0;for(const chunk of jsonChunks(value))size+=chunk.length;return size;}
+function message(index){return {id:index+1,uuid:'fiction-'+index,role:index%2?'assistant':'user',content:'',state:'complete'};}
+function content(index,serializedBytes){
+  // Decode an independently filled buffer for every message; no shared repeated body string.
+  const prefix=encoder.encode('架空🙂"\\\n'+index.toString(16)+':');
+  const raw=new Uint8Array(serializedBytes-3); // quote, backslash and newline each add one JSON escape byte.
+  check(raw.length>=prefix.length,'Message budget too small');raw.set(prefix);
+  const alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';let state=(index+1)*2654435761>>>0;
+  for(let offset=prefix.length;offset<raw.length;offset++){
+    state^=state<<13;state^=state>>>17;state^=state<<5;raw[offset]=alphabet.charCodeAt(state&63);
+  }
+  return decoder.decode(raw);
+}
+function bodyUpdate(state,text){
+  state.messages++;state.utf16Units+=text.length;
+  for(let start=0;start<text.length;){
+    let end=Math.min(start+4096,text.length);
+    if(end<text.length&&/[\uD800-\uDBFF]/.test(text[end-1])&&/[\uDC00-\uDFFF]/.test(text[end]))end--;
+    const chunk=encoder.encode(text.slice(start,end));state.digest.update(chunk);state.utf8Bytes+=chunk.length;start=end;
+  }
+}
+const bodyState=()=>({digest:new Sha256(),messages:0,utf8Bytes:0,utf16Units:0});
+const bodyResult=({digest,...counts})=>({...counts,sha256:digest.digest()});
+async function generate(target){
+  const payload={title:'Fictional capacity acceptance',storage_policy:'local',messages:[]},body=bodyState();
+  let used=bytes(payload),index=0;
+  while(used<target){
+    const item=message(index),overhead=bytes(item)+(index?1:0),available=target-used-overhead;
+    let length=Math.min(65536,available);
+    if(available-length<256)length=available;
+    item.content=content(index,length);bodyUpdate(body,item.content);payload.messages.push(item);
+    used+=overhead+length;index++;
+    if(index%128===0){progress('generate',{bytes:used,messages:index});await tick();}
+  }
+  check(used===target,'Generator size accounting mismatch');
+  return {payload,body:bodyResult(body)};
+}
+async function fingerprint(payload,target){
+  let size=0,index=0;const digest=new Sha256(),parts=[];
+  for(const chunk of jsonChunks(payload)){
+    size+=chunk.length;digest.update(chunk);parts.push(new Sha256().update(chunk).digest());
+    if(++index%16===0){progress('fingerprint',{bytes:size,parts:index});await tick();}
+  }
+  check(size===target,'UTF-8 JSON bytes do not match requested exact size');
+  return {size,chunks:parts.length,sha256:digest.digest(),parts};
+}
+async function physical(expected){
+  let failure;
+  try{return await appTransaction(['entities','parts'],'readonly',(tx,done)=>{
+    const safe=action=>()=>{try{action();}catch(error){failure=error;tx.abort();}};
+    let index=0,size=0,maxPartBytes=0;const digest=new Sha256(),store=tx.objectStore('entities');
+    const count=store.count();count.onsuccess=safe(()=>check(count.result===1,'Not a single conversation'));
+    const header=store.get([owner,id]);header.onsuccess=safe(()=>{
+      const ref=header.result?.payloadParts;
+      check(!header.result?.payload&&ref?.size===expected.size&&ref?.chunks===expected.chunks&&ref?.sha256===expected.sha256,'Manifest mismatch');
+      const read=tx.objectStore('parts').openCursor();read.onsuccess=safe(()=>{
+        const cursor=read.result;
+        if(!cursor){
+          check(index===ref.chunks&&size===ref.size&&digest.digest()===ref.sha256,'Part count/stream checksum mismatch');
+          done({size,chunks:index,verifiedPartHashes:index,maxPartBytes,sha256:ref.sha256});return;
+        }
+        const key=cursor.key,chunk=cursor.value;
+        check(JSON.stringify(key)===JSON.stringify([owner,'entity',id,ref.token,index]),'Unexpected/missing part key');
+        check(chunk instanceof Uint8Array&&chunk.length===Math.min(limit,ref.size-size),'Part size mismatch');
+        check(new Sha256().update(chunk).digest()===expected.parts[index],'Per-part SHA-256 mismatch');
+        digest.update(chunk);size+=chunk.length;maxPartBytes=Math.max(maxPartBytes,chunk.length);index++;
+        if(index%16===0)progress('physical-verify',{bytes:size,parts:index});cursor.continue();
+      });
+    });
+  });}catch(error){throw failure??error;}
+}
+async function run(target,phase){
+  rememberOwner(owner);
+  check(new Sha256().update(encoder.encode('abc')).digest()==='ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad','SHA-256 self-check');
+  const probe={text:'架空🙂"\\\n',array:[1,null,true]};
+  check(bytes(probe)===encoder.encode(JSON.stringify(probe)).length,'JSON byte self-check');
+  check((await navigator.serviceWorker.getRegistrations()).length===0,'Service Worker present');
+  if(phase==='save'){
+    check(!localStorage.getItem('capacity-baseline'),'Profile was not fresh');
+    progress('generate',{target});let start=performance.now();
+    let generated=await generate(target);const generationMs=performance.now()-start;
+    progress('fingerprint');start=performance.now();const expected=await fingerprint(generated.payload,target);
+    const fingerprintMs=performance.now()-start;
+    localStorage.setItem('capacity-baseline',JSON.stringify({...expected,body:generated.body}));
+    let writes=0;const add=IDBObjectStore.prototype.add;
+    IDBObjectStore.prototype.add=function(value,key){
+      const request=add.call(this,value,key);
+      if(this.name==='parts')request.addEventListener('success',()=>{if(++writes%16===0)progress('save',{parts:writes});});
+      return request;
+    };
+    const requestErrors=[];
+    const capture=event=>{if(event.target?.error)requestErrors.push({name:event.target.error.name,message:event.target.error.message});};
+    progress('save');start=performance.now();
+    try{await appTransaction(['entities'],'readwrite',(tx,done)=>{
+      tx.addEventListener('error',capture,true);writeEntity(tx,newEntity('conversation',id,generated.payload,owner),'add',done);
+    });}
+    catch(error){error.message+='; IDB errors='+JSON.stringify(requestErrors.slice(0,8));throw error;}
+    finally{IDBObjectStore.prototype.add=add;}
+    const saveMs=performance.now()-start;generated=null;
+    return {ok:true,phase,target,generationMs,fingerprintMs,saveMs,body:JSON.parse(localStorage.getItem('capacity-baseline')).body,
+      size:expected.size,chunks:expected.chunks,sha256:expected.sha256};
+  }
+  const expected=JSON.parse(localStorage.getItem('capacity-baseline'));
+  check(expected?.size===target,'Missing baseline from previous browser process');
+  let parts,physicalVerifyMs,start;
+  if(phase!=='restore-first-diagnostic'){
+    progress('physical-verify');start=performance.now();parts=await physical(expected);physicalVerifyMs=performance.now()-start;
+    progress('physical-verified',{...parts,physicalVerifyMs});
+  }
+  progress('restore');start=performance.now();let restored=await entity(id,owner);const reloadMs=performance.now()-start;
+  progress('restore-complete',{reloadMs});
+  check(restored?.owner===owner&&restored.id===id&&restored.kind==='conversation','Entity header mismatch');
+  check(restored.payload.title==='Fictional capacity acceptance'&&restored.payload.storage_policy==='local','Payload header mismatch');
+  progress('body-verify');start=performance.now();const body=bodyState();
+  for(let index=0;index<restored.payload.messages.length;index++){
+    const item=restored.payload.messages[index],control=message(index);
+    check(item.id===control.id&&item.uuid===control.uuid&&item.role===control.role&&item.state===control.state,'Message metadata mismatch');
+    bodyUpdate(body,item.content);if(index%128===0){progress('body-verify',{messages:index});await tick();}
+  }
+  const actual=bodyResult(body);check(JSON.stringify(actual)===JSON.stringify(expected.body),'Restored body stream hash/count mismatch');
+  const bodyVerifyMs=performance.now()-start;progress('body-verified',{body:actual,bodyVerifyMs});
+  restored=null;
+  // Separate diagnostic only: default acceptance keeps physical verification before restoration.
+  if(phase==='restore-first-diagnostic'){
+    progress('physical-verify');start=performance.now();parts=await physical(expected);physicalVerifyMs=performance.now()-start;
+    progress('physical-verified',{...parts,physicalVerifyMs});
+  }
+  return {ok:true,phase,target,...parts,physicalVerifyMs,reloadMs,bodyVerifyMs,body:actual};
+}
+window.startCapacity=(target,phase)=>{
+  run(target,phase).then(result=>{window.__CAPACITY_RESULT__=result;},error=>{
+    window.__CAPACITY_RESULT__={ok:false,phase,target,error:{name:error.name,message:error.message,stack:error.stack?.slice(0,2000)}};
+  });
+};
+window.__CAPACITY_READY__=true;
+</script>

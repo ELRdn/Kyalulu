@@ -7,6 +7,13 @@ import Button from './ui/Button';
 import { useConfirm } from './ui/Dialog';
 import { Link } from 'react-router-dom';
 import RuntimeSyncSettings from './RuntimeSyncSettings';
+import { localTransferMessage } from '../lib/errors';
+
+const stages:Record<string,string>={'保存済みファイルを検証中':'verifying','保存済みファイルを再利用':'reusing','ダウンロード中':'downloading','検証・保存完了':'complete'};
+const stageLabels:Record<string,{ja:string;en:string}>={
+  verifying:{ja:'保存済みファイルを検証中',en:'Verifying saved files'},reusing:{ja:'保存済みファイルを再利用',en:'Reusing saved files'},
+  downloading:{ja:'ダウンロード中',en:'Downloading'},complete:{ja:'検証・保存完了',en:'Verified and saved'},
+};
 
 export default function DeviceSettings() {
   const target=useExecutionTarget(),language=useLanguage(),t=labels[language],en=language==='en',generation=useGenerationBusy();
@@ -25,17 +32,17 @@ export default function DeviceSettings() {
       <div><strong>{model.name}</strong><small>{formatBytes(modelBytes(model))} · {ready.has(model.id)?en?'Ready':'保存済み':model.runtime}</small></div>
       {busy===model.id?<Button variant="secondary" onClick={()=>abort.current?.abort()}>{en?'Cancel':'中止'}</Button>:<div className="k-unified-actions">
         <Button disabled={!!busy||generation||!model.files.length} onClick={async()=>{
-          if(!await confirm({title:en?'Download this model?':'モデルをダウンロードしますか？',description:`${model.name} · ${formatBytes(modelBytes(model))} · Hugging Face`,confirmLabel:en?'Download':'ダウンロード'}))return;
+          if(!await confirm({title:en?'Download this model?':'モデルをダウンロードしますか？',description:`${model.name} · ${formatBytes(modelBytes(model))} · Hugging Face`,confirmLabel:en?'Download':'ダウンロード',cancelLabel:en?'Cancel':'キャンセル'}))return;
           const controller=new AbortController();abort.current=controller;setBusy(model.id);setError('');
-          try{await downloadModel(model,controller.signal,(loaded,total,stage)=>setProgress({loaded,total,stage}));setReady(await readyModels());}
+          try{await downloadModel(model,controller.signal,(loaded,total,stage)=>setProgress({loaded,total,stage:Object.hasOwn(stages,stage)?stages[stage]:stage}));setReady(await readyModels());}
           catch(e){if(!controller.signal.aborted)setError(String(e));}finally{setBusy('');}
         }}>{en?'Download':'ダウンロード'}</Button>
         {ready.has(model.id)&&<Button variant="ghost" disabled={!!busy||generation} onClick={async()=>{
-          if(!await confirm({title:en?'Remove model?':'モデルを削除しますか？',description:en?'Conversations will be kept.':'会話は削除されません。',danger:true}))return;
+          if(!await confirm({title:en?'Remove model?':'モデルを削除しますか？',description:en?'Conversations will be kept.':'会話は削除されません。',confirmLabel:en?'Remove':'削除',cancelLabel:en?'Cancel':'キャンセル',danger:true}))return;
           setBusy(model.id);try{await removeModel(model);setReady(await readyModels());}catch(e){setError(String(e));}finally{setBusy('');}
         }}>{en?'Remove':'削除'}</Button>}</div>}
-      {busy===model.id&&<progress value={progress.loaded} max={progress.total} aria-label={progress.stage}/>}
+      {busy===model.id&&<progress value={progress.loaded} max={progress.total} aria-label={Object.hasOwn(stageLabels,progress.stage)?stageLabels[progress.stage][language]:progress.stage}/>}
     </div>)}</div></>}
-    {error&&<p role="alert">{error}</p>}
+    {error&&<p role="alert">{localTransferMessage(error,language)}</p>}
   </section>;
 }

@@ -1,10 +1,23 @@
 <!doctype html><meta charset="utf-8"><title>Disposable device export fixture</title>
 <p>Fake Library documents in a fresh browser context; no model or provider.</p>
+<script>window.__EXPORT_PROGRESS__={stage:'html-loaded',pending:{}};</script>
 <script type="module">
-import {deviceFetch} from '/src/lib/deviceApi.ts';
+import {deviceFetch as productDeviceFetch} from '/src/lib/deviceApi.ts';
 import {rememberOwner} from '/src/lib/appContext.ts';
 import {getMeta,setMeta,entity,saveEntity} from '/src/lib/appStore.ts';
 import {base64,fromBase64} from '/src/lib/portableBinary.ts';
+const progress=window.__EXPORT_PROGRESS__,stage=name=>{
+  progress.stage=name;console.info('[device-export] '+JSON.stringify(progress));
+};
+let requestId=0;
+const deviceFetch=async(path,options)=>{
+  const id=++requestId;progress.pending[id]={path,method:options?.method??'GET'};
+  try{
+    const response=await productDeviceFetch(path,options);
+    progress.last={...progress.pending[id],status:response.status};return response;
+  }finally{delete progress.pending[id];}
+};
+stage('module-ready');
 const check=(value,message)=>{if(!value)throw Error(message);};
 const owner='fixture-export-owner',text=' \n'+JSON.stringify({name:'原本',data:{description:'UNCHANGED ORIGINAL'}})+'\n';
 const encoder=new TextEncoder(),request=async(path,body,method=body?'POST':'GET')=>{
@@ -12,6 +25,7 @@ const encoder=new TextEncoder(),request=async(path,body,method=body?'POST':'GET'
   check(response.ok,JSON.stringify(value));return value;
 };
 async function verifySourceDuplicates(){
+  stage('source-duplicates');
   const source={source:'github',source_id:'fixture/card.json',sha256:'a'.repeat(64),document_index:0,content_rating:'sfw',transport:'browser'};
   const preview=async remote=>request('/api/imports/text/preview',{text:JSON.stringify({schema_version:1,name:'Source fixture',source:{remote}})});
   const body=(value,id,extra={})=>({request_id:id,selections:[{index:0,document:value.documents[0],...extra}]});
@@ -30,9 +44,11 @@ async function verifySourceDuplicates(){
   const updated=await commit(next,body(next,'source-update',{target_id:item.id,expected_revision:1}));
   check(updated.ok&&(await updated.json()).items[0].revision===2,'Explicit source update failed');
   const racingSource={...source,source_id:'fixture/race.json'},a=await preview(racingSource),b=await preview(racingSource);
+  stage('source-concurrent-import');
   const race=await Promise.all([commit(a,body(a,'source-race-a')),commit(b,body(b,'source-race-b'))]);
   check(race.map(response=>response.status).sort().join(',')==='200,409','Concurrent source imports bypassed transactional choice');
   const unknown=await preview({...source,source_id:'fixture/unknown.json',content_rating:'unknown'});
+  stage('source-rating-controls');
   check((await commit(unknown,body(unknown,'source-unknown'))).status===400,'Unclassified source saved without a rating');
   check((await commit(unknown,body(unknown,'source-adult',{content_rating:'nsfw'}))).status===403,'Adult source bypassed verification');
   check((await commit(unknown,body(unknown,'source-general',{content_rating:'sfw'}))).ok,'Explicit general rating failed');
@@ -41,11 +57,14 @@ async function verifySourceDuplicates(){
   rememberOwner(owner);
 }
 async function run(){
+  stage('initialize');
   rememberOwner(owner);localStorage.setItem('kyalulu-execution-target','device');
   const fixtureCases=await (await fetch(new URL('device-exports.json',location.href))).json(),assetCase=fixtureCases.find(item=>item.name==='png-and-audio-assets');
   const key='fixture-export-manifest';let manifest=JSON.parse(localStorage.getItem(key)||'null'),phase=manifest?'reload':'setup';
+  progress.phase=phase;
   if(!manifest){
     await verifySourceDuplicates();
+    stage('seed-library-assets');
     const first=await request('/api/library',{name:'Old 日本語',data:{description:'OLD'}});
     for(const [id,asset] of Object.entries(assetCase.assets))await setMeta('asset:'+owner+':'+id,{raw:fromBase64(asset.base64),mime:asset.mime});
     const assetLibrary=await request('/api/library',assetCase.document);
@@ -54,9 +73,11 @@ async function run(){
     const previewResponse=await deviceFetch('/api/imports/preview',{method:'POST',body:form}),preview=await previewResponse.json();
     check(previewResponse.ok,'File preview failed');
     const commitPath='/api/imports/'+preview.preview_id+'/commit',body={request_id:'fixture-original',selections:[{index:0,document:preview.documents[0]}]};
+    stage('original-concurrent-replay');
     const [saved,duplicate]=await Promise.all([request(commitPath,body),request(commitPath,body)]);
     check(JSON.stringify(saved)===JSON.stringify(duplicate),'Concurrent replay wrote twice');
     const replacement={request_id:'replace-one',selections:[{index:0,document:preview.documents[0],target_id:first.id,expected_revision:2}]};
+    stage('revision-conflict');
     const race=await Promise.all([replacement,{...replacement,request_id:'replace-two'}].map(async value=>{
       const response=await deviceFetch(commitPath,{method:'POST',body:JSON.stringify(value)});return response.status;
     }));
@@ -66,15 +87,17 @@ async function run(){
     const unsent=await entity('fixture-unsent',owner);unsent.payload.storage_policy='sync';await saveEntity(unsent,unsent.revision);
     const quotaPreview=await request('/api/imports/text/preview',{text:JSON.stringify({name:'Quota',histories:[{name:'fixture-quota',messages:[{role:'user',content:'First'},{role:'assistant',content:'Second'}]}]})});
     const quotaPath='/api/imports/'+quotaPreview.preview_id+'/commit',quotaBody={request_id:'quota-retry',selections:[{index:0,document:quotaPreview.documents[0],history_indices:[0]}]};
-    const before=(await request('/api/library')).items.map(item=>item.id).sort().join(','),originalPut=IDBObjectStore.prototype.put;
+    const before=(await request('/api/library')).items.map(item=>item.id).sort().join(','),originalAdd=IDBObjectStore.prototype.add;
+    stage('quota-rollback');
     let failed;
     try{
-      IDBObjectStore.prototype.put=function(value,...args){if(this.name==='entities'&&value.kind==='conversation'&&value.payload.title==='fixture-quota')throw new DOMException('Fixture quota','QuotaExceededError');return originalPut.call(this,value,...args);};
+      IDBObjectStore.prototype.add=function(value,...args){if(this.name==='entities'&&value.kind==='conversation')throw new DOMException('Fixture quota','QuotaExceededError');return originalAdd.call(this,value,...args);};
       failed=await deviceFetch(quotaPath,{method:'POST',body:JSON.stringify(quotaBody)});
-    }finally{IDBObjectStore.prototype.put=originalPut;}
+    }finally{IDBObjectStore.prototype.add=originalAdd;}
     check(!failed.ok&&(await request('/api/library')).items.map(item=>item.id).sort().join(',')===before,'Quota left a partial Library write');
     check(!await getMeta('import:'+owner+':quota-retry')&&!await getMeta('original:'+owner+':'+quotaPreview.source_hash),'Quota left a partial receipt/original');
     check((await entity('fixture-unsent',owner)).dirty,'Quota removed an unsent edit');
+    stage('quota-recovery-history');
     const recovered=await request(quotaPath,quotaBody),history=await entity(recovered.sessions[0].session_id,owner);
     check(history.payload.messages.length===2&&new Set(history.payload.messages.map(message=>message.id)).size===2,'History numeric IDs were not allocated');
     const replay=await request(quotaPath,quotaBody);check(replay.sessions[0].session_id===history.id,'History replay duplicated a conversation');
@@ -82,6 +105,7 @@ async function run(){
   }
   const results=[];
   for(const format of ['ccv2-json','ccv3-json','ccv2-png','ccv3-png','charx','backup']){
+    stage('export-'+format);
     const path='/api/library/'+manifest.library+'/export?revision=1&format='+format,preview=await request(path);
     check(Array.isArray(preview.notices)&&preview.filename.startsWith('Old_日本語.'),'Preview/version contract failed');
     const response=await deviceFetch(path+'&download=true'),raw=new Uint8Array(await response.arrayBuffer());
@@ -90,16 +114,20 @@ async function run(){
     else check(raw[0]===(format.endsWith('png')?137:80),'Container signature failed');
     results.push({format,bytes:raw.length});
   }
+  stage('original-bytes-history');
   const original=await deviceFetch('/api/library/'+manifest.original+'/export?format=original&download=true'),raw=new Uint8Array(await original.arrayBuffer()),expected=encoder.encode(text);
   check(original.ok&&raw.length===expected.length&&raw.every((byte,index)=>byte===expected[index]),'Original bytes changed');
   check(original.headers.get('Content-Disposition').includes('original%27s.json'),'RFC5987 filename failed');
   check((await entity(manifest.history,owner)).payload.messages.length===2&&(await entity('fixture-unsent',owner)).dirty,'Reload lost imported history or unsent data');
+  stage('asset-export');
   const assetResponse=await deviceFetch('/api/library/'+manifest.assetLibrary+'/export?format=charx&download=true'),assetRaw=new Uint8Array(await assetResponse.arrayBuffer());
   check(assetResponse.ok&&assetRaw[0]===80,'Real IndexedDB asset export failed');
+  stage('foreign-owner-controls');
   rememberOwner('fixture-unrelated-owner');
   check((await deviceFetch('/api/library/'+manifest.original+'/export?format=original&download=true')).status===404,'Another account could read the original');
   check((await deviceFetch('/api/library/'+manifest.library+'/export?download=true')).status===404,'Another account could read the Library');
   check((await deviceFetch('/api/library/'+manifest.assetLibrary+'/export?format=charx&download=true')).status===404,'Another account could export assets');
+  stage('complete');
   return {ok:true,phase,formats:results,originalBytes:raw.length,foreignReadsDenied:3,assetExportBase64:base64(assetRaw),atomicRollback:manifest.atomicRollback,concurrentReplay:manifest.concurrentReplay,revisionConflict:manifest.revisionConflict,sourceDuplicateChoice:manifest.sourceDuplicateChoice};
 }
 run().then(result=>{window.__EXPORT_RESULT__=result;document.body.innerText=JSON.stringify(result);}).catch(error=>window.__EXPORT_RESULT__={ok:false,error:String(error),stack:error.stack});

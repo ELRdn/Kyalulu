@@ -31,10 +31,13 @@ PLEを削除・再量子化せず、保存ファイルから必要なトーク�
 ダウンロード容量、重み用バッファ、WASMヒープ、GPU、KVキャッシュ、物理常駐量を区別します。
 取れない測定値はnullです。WASMヒープや重み用バッファは物理常駐量と同じではありません。
 1GB未満は重み常駐量の目標で、全候補・全端末の保証ではありません。ONNXは別の実行経路として測定します。
-GGUFの履歴予算は公開APIにトークナイザーがないため保守的なUTF-8上限を使います。履歴原本は削除せず、省略件数を表示します。
+GGUFはパッチ済み公開API `countChatTokens` で、モデルの会話templateを含む実token数を確認してから生成します。
+UTF-8の推定は送信する履歴候補の選択にだけ使い、最終候補は全体をnativeで再計数します。履歴原本は削除せず、省略件数を表示します。
 ONNXではモデルのトークナイザーを使います。コンテキスト2,048、最大出力256、同時生成1、Thinking OFFが初期設定です。
 
 ## 開発と再現
+
+`build:mobile` の前に、下記の両WASMと対応する公開SDKの準備が必要です。
 
 ```powershell
 pnpm --filter web dev:mobile
@@ -45,7 +48,15 @@ pnpm --filter web build:mobile
 
 WASMビルド入力はwllama 3.8.1、llama.cpp `46ca246de9bb1c35269722a6240d37d9dfd79cad`、Emscripten 4.0.20、Dawn `v20260317.182325`です。
 `scripts/mobile_wasm/bootstrap.py`で作業領域へ取得し、WSLでEmscriptenをinstall/activateしてから、
-`scripts/mobile_wasm/prepare.py`と`build.sh`を実行します。`ple.patch`が固定ソースとの差分です。
+`scripts/mobile_wasm/prepare.py`と`build.sh`を実行し、続けて `python scripts/mobile_wasm/build_sdk.py` で
+生成wire型と対応する公開SDKをビルドします。`ple.patch`と`chat-count.patch`が固定ソースとの差分です。
+SDKと標準/互換WASMのハッシュが一致しない場合、Mobile・統合App・NativeのUIビルドは停止します。
+SDK出力は新規作成に限ります。既存の成果物を保護して再ビルドする場合、`prepare.py`と`chat-count.patch`を
+隔離プロジェクトの`scripts/mobile_wasm/`へコピーして実行し、
+`build.sh <隔離root>/.artifacts/mobile-wasm <既存toolsのmobile-wasm root>`でソース・出力とツールを分けます。
+SDKも `python scripts/mobile_wasm/build_sdk.py <隔離root>/.artifacts/mobile-wasm` で同じ新規作業領域へ作成し、
+そのSDK/WASMを持つ隔離プロジェクト側からUIをビルドします。
+既定では従来の`.artifacts/mobile-wasm`を使います。`CMAKE_BUILD_PARALLEL_LEVEL`で並列数を指定できます。
 モデル準備は`python scripts/mobile_models.py --publish`。依存ツールはプロジェクト内`.artifacts/mobile-python`へ隔離します。
 元モデルは変更せず、生成した作業ファイルだけを公開先のハッシュ照合後に削除します。
 
@@ -63,6 +74,9 @@ PC上のChrome、スマホ幅の画面、模擬試験は、物理Android/iPhone�
 Pixel 9/ChromeとiOS 26以降のiPhone/Safariで、各候補の初回起動、20ターン会話、停止、再起動、オフライン、ロック復帰を別途実測します。
 実機で確認できない組合せを対応完了・省RAM認定と表示しません。最新の検証記録を参照してください。
 
-最新記録: [2026-10-23の実装・検証記録](validation/2026-10-23-mobile.md)。
+実装記録: [2026-10-23](validation/2026-10-23-mobile.md)。
+新規WASMビルドと実モデルの限定検証: [2026-10-30](validation/2026-10-30-unified-wasm.md)。
 実際の通常版・互換版・CPUの直接実行は、mobile開発サーバーと専用テストモデルを用意してから
 `.venv/Scripts/python scripts/mobile_wasm/verify_runtime.py`で検査します。これはChrome上の検査であり、iPhone実機結果ではありません。
+隔離成果物には`--runtime-root .artifacts/<作業名>/project/.artifacts/mobile-wasm --output .artifacts/<作業名>/runtime`を指定します。
+専用プロファイルに事前取得済みのモデルが必要です。全shardと実行資産のSHA-256を確認し、外部通信とAPIを遮断して実行します。

@@ -1,0 +1,100 @@
+<!doctype html><meta charset="utf-8"><title>Queued Worker native admission cancellation (fictional counts)</title>
+<script type="module">
+const check=(condition,label)=>{if(!condition)throw Error(label);};
+const source=await (await fetch('/src/mobile/runtime.worker.ts')).text();
+const blob=code=>URL.createObjectURL(new Blob([code],{type:'text/javascript'}));
+const models=blob(`
+export const MODELS=[{id:'fixture',runtime:'gguf',revision:'source-v1',distributionRevision:'distribution-v1',files:[],temperature:.7,topK:64,topP:.95}];
+export const readyModels=async()=>new Set(['fixture']);
+export const openModelFile=async()=>{throw Error('No model files permitted');};
+`);
+const engine=blob(`
+let call=0,release,lastOptions;
+self.addEventListener('message',({data})=>{
+  if(data.type!=='fixture-release')return;
+  if(!release)throw Error('No count pending');
+  const resolve=release;release=null;resolve(7);
+  // Let Main queue its next stop before the resolved count's microtasks resume.
+  const until=performance.now()+25;while(performance.now()<until){}
+});
+export class Wllama {
+  async loadModel(){} async exit(){}
+  async _getDebugInfo(){return {plePresent:false};}
+  async countChatTokens(options){
+    lastOptions=options;self.postMessage({type:'fixture-count',call:++call});
+    return new Promise(resolve=>{release=resolve;});
+  }
+  async createChatCompletion(options){
+    options.abortSignal.throwIfAborted();
+    self.postMessage({type:'fixture-completion',sameOptions:lastOptions===options,max_tokens:options.max_tokens});
+    return (async function*(){yield {choices:[{delta:{content:'fictional'}}],usage:{completion_tokens:1}};})();
+  }
+}
+`);
+// Execute the production Worker body; substitute only its model inventory/engine imports.
+const workerCode=source.replace(/((?:from|import)\s*|import\s*\()(["'])([^"']+)\2/g,(_match,prefix,quote,path)=>{
+  const target=path.includes('/mobile/models.ts')?models:path.includes('wllama')?engine:new URL(path,location.origin).href;
+  return prefix+quote+target+quote;
+});
+const workerURL=blob(workerCode);
+const admission={modelId:'fixture',modelRevision:'distribution-v1',outputTokens:256,originalRuns:1,newestUserRun:0};
+const request=id=>({id,type:'generate-admitted',mandatory:[{run:0,role:'user',content:'latest'}],admission,settings:{max_tokens:256}});
+async function run(phase,withoutCheckpoint=false){
+  const controlCode=workerCode.replaceAll('await checkpoint(signal);','signal.throwIfAborted();');
+  if(withoutCheckpoint)check(controlCode!==workerCode,'Checkpoint mutation actually applied');
+  const url=withoutCheckpoint?blob(controlCode):workerURL;
+  const worker=new Worker(url,{type:'module'}),events=[],errors=[];
+  worker.onmessage=({data})=>events.push(data);worker.onerror=event=>errors.push(event.message);
+  const wait=async predicate=>{
+    const end=performance.now()+10000;
+    while(!predicate()){
+      check(!errors.length,'Worker error: '+errors.join('; '));check(performance.now()<end,'Worker deadline at '+phase+'; '+JSON.stringify(events));
+      await new Promise(resolve=>setTimeout(resolve,5));
+    }
+  };
+  try {
+    worker.postMessage({id:1,type:'load',modelId:'fixture',cpu:true,base:location.origin+'/'});
+    await wait(()=>events.some(event=>event.id===1));check(events.find(event=>event.id===1).type==='done','Fictional engine load');
+    worker.postMessage(request(2));await wait(()=>events.some(event=>event.type==='fixture-count'&&event.call===1));
+    for(const [index,type] of ['load','unload','generate','generate-admitted'].entries())worker.postMessage({id:10+index,type});
+    await wait(()=>events.filter(event=>event.id>=10&&event.id<=13).length===4);
+    check(events.filter(event=>event.id>=10&&event.id<=13).every(event=>event.type==='error'),'Busy held during first count');
+    if(phase!=='mandatory'){
+      worker.postMessage({id:-1,type:'fixture-release'});
+      await wait(()=>events.some(event=>event.id===2&&event.type==='admission-count'));
+      if(phase==='final'){
+        worker.postMessage({id:2,type:'admission-window',admission,history:[]});
+        await wait(()=>events.some(event=>event.type==='fixture-count'&&event.call===2));
+      }
+    }
+    if(phase!=='window')worker.postMessage({id:-1,type:'fixture-release'});
+    // Distinct real queued messages: count resolves first; stop must run at the production task checkpoint.
+    worker.postMessage({id:2,type:'stop'});
+    await wait(()=>events.some(event=>event.id===2&&['done','error'].includes(event.type)));
+    if(withoutCheckpoint){
+      check(events.some(event=>event.type==='fixture-completion'),'Negative control must expose generation before queued stop');
+      return {ok:true,without_checkpoint:true,completion_escaped:true,native_count_proof:false};
+    }
+    check(events.filter(event=>event.id===2&&['done','error'].includes(event.type)).length===1,'One terminal result');
+    check(events.find(event=>event.id===2&&event.type==='done')?.stopped===true,'Stop acknowledged');
+    check(!events.some(event=>['fixture-completion','delta','context'].includes(event.type)),'No generation/context after admission stop');
+    const stoppedCounts=events.filter(event=>event.type==='fixture-count').length;
+    worker.postMessage({id:2,type:'admission-window',admission,history:[]});
+    worker.postMessage(request(3));
+    await wait(()=>events.some(event=>event.type==='fixture-count'&&event.call===stoppedCounts+1));
+    worker.postMessage({id:2,type:'stop'}); // stale stop cannot cancel request3
+    worker.postMessage({id:-1,type:'fixture-release'});
+    await wait(()=>events.some(event=>event.id===3&&event.type==='admission-count'));
+    worker.postMessage({id:3,type:'admission-window',admission,history:[]});
+    await wait(()=>events.some(event=>event.type==='fixture-count'&&event.call===stoppedCounts+2));
+    worker.postMessage({id:-1,type:'fixture-release'});
+    await wait(()=>events.some(event=>event.id===3&&['done','error'].includes(event.type)));
+    check(events.find(event=>event.id===3&&event.type==='done')?.stopped!==true,'Fresh request succeeds');
+    const completion=events.filter(event=>event.type==='fixture-completion');
+    check(completion.length===1&&completion[0].sameOptions&&completion[0].max_tokens===256,'Recovery counts/generates identical options');
+    return {phase,ok:true,real_worker_queue:true,fictional_engine:true,native_count_proof:false,
+      stopped_completion_calls:0,stopped_count_calls:stoppedCounts,recovery_completion_calls:completion.length,events};
+  }finally{worker.terminate();if(withoutCheckpoint)URL.revokeObjectURL(url);}
+}
+window.__NATIVE_ADMISSION__={run};
+</script>

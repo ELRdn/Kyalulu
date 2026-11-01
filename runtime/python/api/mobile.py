@@ -37,6 +37,11 @@ class Config:
     remote_mode: bool = False
     public_origin: str = ""
     web_dist: Path | None = None
+    region_policies: tuple = ()
+
+    def __post_init__(self):
+        from python.cloud.config import validate_region_policies
+        validate_region_policies(self.region_policies)
 
     @classmethod
     def from_env(cls):
@@ -67,7 +72,9 @@ class Config:
         directory = Path(dist).resolve() if dist else None
         if directory and not (directory / "index.html").is_file():
             raise ValueError("KYALULU_WEB_DIST must contain built index.html")
-        return cls(enabled == "1", origin, directory)
+        import json
+        policies = tuple(json.loads(os.getenv("KYALULU_REGION_POLICIES", "{}")).items())
+        return cls(enabled == "1", origin, directory, policies)
 
 
 class Devices:

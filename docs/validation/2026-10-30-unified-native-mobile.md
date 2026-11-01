@@ -1,0 +1,164 @@
+# Native and Mobile package validation — 2026-10-30
+
+Historical fixed code candidate: **`897737f`**. The a22984a packaging follow-up is recorded below, but fresh Native browser entry exposed a separate defect. Neither old packaging success nor green CI proves Native first-use acceptance; see the dedicated Native-entry record.
+
+The first, historical record below uses clean corresponding source from
+`232c2ee0afbef784791e6b07530d4291590e78d2`. That source passed 845 Web tests and
+the unified build. The later same-document target-switch defect makes these
+candidates **superseded**; successful packaging and recovery checks are not
+permission to publish them. New candidates must include the
+[routing correction](2026-10-29-unified-runtime-routing.md).
+The corrected fixed candidates are recorded at the end of this document.
+
+## Windows artifact and isolated CLI
+
+The existing native builder bundled managed CPython **3.13.7** and **33 locked
+Python dependencies**, the unified UI and corresponding application source.
+The tar has **8,705 regular, unique, safe members**, **217 product files**
+matched to the clean build/source, and **559 corresponding-source files** matched
+byte for byte to the committed Git export. All four general research scenarios
+load under the bundled interpreter. Its actual ASGI static server supplies
+main, isolated device and neutral migration documents with their expected
+headers, without importing developer Python packages.
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Windows runtime tar | 140,128,892 | `7f093472a5299fc39dbf995cad5083fe09360f8b0acb1cc9b3f3cd3a57ff711d` |
+| Unpublished packed CLI | See local audit | `434591330c8b85811abd4d5d924dbbdfb398857c37e08af561fa7aadb48202bd` |
+
+`scripts/verify_npm_beta.mjs` ran the packed CLI with an isolated home/data root,
+empty PATH and no developer Python configuration. Its fictional chat/memory
+survived start/restart, backup/restore and rollback. Invalid restore, failed
+update and failed startup preserved the correct data or owned process; an
+unrelated fixture HTTP process remained alive. All seven update/rollback pointer
+write/rename failures preserved the running instance. A successful update
+committed pointers before shutdown. The owned Runtime was stopped afterward.
+
+This is a development host with isolated data and PATH. `clean_os_accepted` and
+`first_download_verified` remain **false**. It does not prove a fresh machine,
+first public download, real model, physical device or production backup recovery.
+Native `device_accepted` and `license_reviewed` gates remain **false**.
+
+## Legacy Mobile candidate
+
+`build:mobile` and `scripts/mobile_release.py` produced **78 Pages files**,
+**77 hashed manifest entries** and **40 verified precache entries**. The largest
+file is **16,811,691 bytes**, below the 25 MiB Pages limit. The source ZIP has
+**784 safe, unique regular members**, including shared runtime/schema/renderer
+sources. Its SHA-256 is
+`a0c73cc76b9c805062f0bfff76180b13ae39859ac95c7e27a67340aca5d71a68`.
+Eight upstream license copies and migration/inference-worker policies matched.
+
+All 559 source files match the clean Git export byte for byte. Compared directly
+with Git blobs, 30 match and 529 differ only by UTF-8 text CRLF line endings;
+strict UTF-8 decoding and CRLF-to-LF normalization prove no other content change.
+The audit retains the raw-byte mismatch and its strict-audit failure separately
+from successful export/content verification. No package bytes were normalized.
+
+## Evidence and remaining work
+
+Local ignored records are `.artifacts/unified-native-232c2ee-audit.json` and
+`.artifacts/unified-mobile-232c2ee-audit.json`. Build outputs and CLI fixture data
+are in a new task-specific temporary source tree; old candidates were preserved.
+
+WASM uses existing pinned outputs and has not been rebuilt. macOS packaging,
+clean-OS/Node-only installation, signing, license acceptance, real model/device
+tests and public delivery remain open. No npm/GitHub release, Pages deployment,
+production DB change, provider connection or real-user restore occurred.
+
+## Corrected fixed candidates: b133ce0
+
+Clean corresponding source from
+`b133ce0cbcc02d168db444d1bc20c20379c1a3b8` includes the target-switch correction.
+Its **851 Web tests / 66 files** and unified build passed. The actual commercial
+fixture passed **24/24 cases, 472 checks**, including blocked unregistered PCs
+and explicit Cloud return with the original draft. These candidates replace the
+superseded artifacts above.
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Cloud tar | 65,973,573 | `d3a48e955b08d91dbae6b5d7d30a60306d15edf29432d5a760492842e57c980e` |
+| Windows runtime tar | 140,134,789 | `ea6f1d9fd133833c9475c75fbb8b50eabbd1670e6fca2f2cc48c47fa0ee5cc4f` |
+| Mobile corresponding-source ZIP | 16,396,388 | `4e886d11f492119241a7429e90d2766757927be1853d44b1ed227252bc60f9e7` |
+
+The Cloud archive passed **223 manifest**, **220 build/source** and **61 precache**
+comparisons. The Windows archive has **8,706 safe regular members**, **217 matched
+product files**, Python 3.13.7 and 33 locked dependencies. Its packed CLI was
+rerun with an empty PATH and isolated fictional data: start/restart, memory/chat
+persistence, backup/restore, rollback, all seven pointer failures and preservation
+checks passed. The owned Runtime was stopped; no process record remains. The
+bundled interpreter independently loaded all four scenarios and verified static
+main/device/migration headers.
+
+The Mobile candidate passed the same **78 Pages / 77 manifest / 40 precache**
+checks and the 25 MiB limit. Its safe source ZIP now has **785 members**. All
+**560 committed-source files** match the Git export exactly. The 530 raw Git
+differences are strictly verified UTF-8 CRLF-to-LF changes, while 30 files match
+raw bytes. Export/content acceptance and strict raw-byte equality remain separate.
+
+Local audit files are `.artifacts/unified-release-b133ce0-audit.json`,
+`.artifacts/unified-native-b133ce0-audit.json` and
+`.artifacts/unified-mobile-b133ce0-audit.json`. Build outputs remain in the
+task-specific temporary source tree. CI results are separate from these local
+checks; the `232c2ee` Ubuntu failure must not be described as a passing CI run.
+
+All gates and limits above remain: no fresh WASM build, macOS/clean-OS/physical
+device acceptance, signing, license acceptance, public download or production
+recovery is claimed. The latest Cloud tar has not been uploaded or built as a
+Linux image; `bf83d03` image evidence cannot validate its newer client code.
+
+## Current fixed candidate: 897737f, fresh WASM and browser DB v3
+
+Source: `897737fbe63e424f51b225467a81685ef0b7bccd`. The fixed clean corresponding-source tree passed **855 Web tests / 66 files**, App/Mobile builds and isolated packaging. Four fresh WASM files match the [separate build and real-model evidence](2026-10-30-unified-wasm.md). Earlier candidates do not contain these binaries or the v3 segmented browser client.
+
+| Candidate | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Cloud tar | See local manifest | `fb88a3d1bab219372e78f518bc082959678abd78ceee0aec55b72f1b49f15e52` |
+| Windows tar | 140242228 | `cbc74df39aaebef353612f6a85d57ec6fc6fdd81da4da1912749719b16366c89` |
+| Mobile source ZIP | See local manifest | `ee21658beb87e9b78b7fd44ed79c84d07b7273e639e34007a4f4458f33b45fa8` |
+| Unpublished packed CLI | 18518 | `434591330c8b85811abd4d5d924dbbdfb398857c37e08af561fa7aadb48202bd` |
+
+Cloud: **223** verified manifest entries, **220** matching product files and **61** precache assets. Mobile: **78** Pages files, **77** manifest entries, **40** precache assets, eight matched license copies and a safe **797**-file source ZIP. The largest Pages file is **16,811,691 bytes**. All **572** collected committed source files exactly match the fixed Git export. Raw Git blobs match 31 files; the other **541** differ only by strictly verified UTF-8 CRLF-to-LF conversion. The builder itself is LF in the Windows export. Source compatibility is reported separately from raw byte equality.
+
+Windows: **8,718** safe archive files, **217** matching product files, managed Python **3.13.7**, **33** locked Python dependencies. All extracted files and four fresh runtime hashes match the candidate. The actual packed CLI passed isolated start/restart, fictional memory/chat persistence, backup/restore, rollback, seven pointer-write/rename faults, failed-start/update preservation and unrelated-process protection. Empty PATH and isolated home/data were used. Owned processes remaining: **0**. Clean-OS and first-download acceptance remain false; signing and license acceptance remain open.
+
+Built PWA: **4/4** JA/EN, 393/1280, light/dark scenarios passed including explicit update, other-tab protection, draft/editor/uncertain-reply preservation and full-browser offline restart. Old Mobile direct migration passed separately at **393/light** and **1280/dark**, using the actual old worker, exact-origin loopback HTTPS and fictional history/OPFS markers. Each suite recorded zero API requests, external requests and page errors. See [segmented storage](2026-10-30-unified-segmented-storage.md) for details and v3 rollback requirements.
+
+Local evidence: `.artifacts/unified-release-897737f-audit.json`, `.artifacts/unified-mobile-897737f-audit.json`, `.artifacts/unified-native-897737f-audit.json`, `.artifacts/unified-native-897737f-report.md`. The dedicated clean build is `C:/Users/hiron/AppData/Local/Temp/kyalulu-release-897737f-me7wgynn`. Generated/private evidence remains outside Git.
+
+The operator subsequently authorized the fixed 897737f archive for a new isolated Linux image. Its 210 copied files, four fresh WASM outputs, twelve fictional-data checks, unmodified Uvicorn command and production preservation passed; see [current image verification](2026-10-30-unified-container.md). Production was not selected. Real-phone/long-model, large-capacity/RSS, macOS/clean-OS, signing/license, independent production-backup restore, canonical cutover and provider contracts remain separate gates. Physical-phone evidence was explicitly deferred. Returning a v3-upgraded browser to a v2-only UI is unsupported; preserve the stores and retain a v3-compatible recovery bundle.
+
+
+## a22984a packaging, and the missing browser gate
+
+The clean a22984a97c8fb30d94752d884bb9eeed454ad87e outputs were regenerated.
+
+| Candidate | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Cloud tar | 66,052,116 | `89a8b90efbee103e3fb22331b4dc654d374f64d9542cb2d2aa89ffb9147d2710` |
+| Windows tar | 140,294,804 | `8357308102192fea04e0496f3d0f552839d829e0faca38a48c02f51a86ccc0a7` |
+| Mobile source ZIP | See private audit | `01ca07ebc4d24c4bb2a04cff15b085ed811d230448e72fff7cfe2f6f0f67d49c` |
+
+The Windows archive has 8,727 safe members and 217 product files; 86 Web files
+match Cloud and all four WASM outputs match the fixed provenance. Python 3.13.7,
+33 locked dependencies, 61 precache hashes and packed CLI isolation/recovery/
+seven pointer faults passed. Test-owned Runtime processes were stopped.
+
+Mobile has 78 Pages files, 77 manifest entries, 40 precache assets, eight checked
+license copies and four checked WASM outputs. Its largest file remains 16,811,691
+bytes. Cloud, Windows and Mobile corresponding-source members compare equal:
+806 files, including the latest Vite config tests. **581 match the Git export**;
+against raw Git blobs only **31** match and **550** differ solely by strict UTF-8
+CRLF-to-LF normalization. Export equality is not raw Git-blob equality. The earlier
+Cloud report's raw-equality label has been corrected in its private evidence.
+
+The actual packed Native browser then contradicted first-use readiness: fresh
+entry called hosted `/api/cloud/app/eligibility` (404), defaulted to Cloud and
+omitted This PC. This candidate is therefore **not accepted for Native delivery**.
+The CLI/API check did not cover that UI. The [Native entry correction](2026-10-30-unified-native-entry.md)
+adds the missing build/first-use gate. a22984a CI passed both OS, independently of
+this defect. Do not equate that CI result with full product acceptance.
+
+Private evidence: `.artifacts/unified-{native,mobile}-a22984a-*`,
+`.artifacts/unified-native-a22984a-ui/result.json` and
+`.artifacts/unified-canonical-a22984a/cloud-verification.json`.

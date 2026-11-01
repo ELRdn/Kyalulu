@@ -11,7 +11,7 @@ import re
 import tempfile
 import zipfile
 
-from collect_release_sources import collect
+from collect_release_sources import collect, copy_runtime_licenses
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / '.artifacts/mobile-pages'
@@ -40,16 +40,7 @@ def main():
         raise RuntimeError('All four model distributions must be pinned before publication')
     if 'Kyalulu Mobile' not in (OUT/'index.html').read_text(encoding='utf-8'):
         raise RuntimeError('Wrong application entry point')
-    for name, origin in [('wllama-MIT.txt', ROOT/'.artifacts/mobile-wasm/wllama/LICENCE'),
-                         ('llama-MIT.txt',ROOT/'.artifacts/mobile-wasm/wllama/llama.cpp/LICENSE'),
-                         ('transformers-Apache-2.0.txt',ROOT/'apps/web/node_modules/@huggingface/transformers/LICENSE'),
-                         ('onnxruntime-MIT.txt',ROOT/'docs/licenses/onnxruntime-MIT.txt'),
-                         ('Dawn-WebGPU.txt',ROOT/'.artifacts/mobile-wasm/emdawn/emdawnwebgpu_pkg/webgpu/src/LICENSE'),
-                         ('Dawn-WebGPU-cpp.txt',ROOT/'.artifacts/mobile-wasm/emdawn/emdawnwebgpu_pkg/webgpu_cpp/LICENSE'),
-                         ('jsonhpp-MIT.txt',ROOT/'.artifacts/mobile-wasm/wllama/llama.cpp/licenses/LICENSE-jsonhpp'),
-                         ('AGPL-3.0.txt',ROOT/'LICENSE')]:
-        (OUT/'licenses').mkdir(exist_ok=True)
-        (OUT/'licenses'/name).write_bytes(origin.read_bytes())
+    copy_runtime_licenses(ROOT, OUT)
     (OUT/'source').mkdir(exist_ok=True)
     archive = OUT/'source/kyalulu-mobile-source.zip'
     with tempfile.TemporaryDirectory(dir=OUT) as temporary:

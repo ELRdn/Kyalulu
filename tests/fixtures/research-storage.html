@@ -1,0 +1,247 @@
+<!doctype html><meta charset="utf-8"><title>Disposable Research storage acceptance</title>
+<script type="module">
+import {appTransaction,newEntity,saveEntity,getMeta,setMeta,writeOutbox,restoreOutbox} from '/src/lib/appStore.ts';
+import {rememberOwner} from '/src/lib/appContext.ts';
+import {readResearchExperiment,writeResearchExperiment,listResearchExperiments} from '/src/lib/deviceResearchStore.ts';
+import {deviceFetch} from '/src/lib/deviceApi.ts';
+import {writeParts} from '/src/lib/segmentedStorage.ts';
+import {canonical} from '/src/lib/appSyncData.ts';
+import {Sha256} from '/src/mobile/sha256.ts';
+const owner='research-fiction:"a:',foreign='research-fiction:"a::foreign';
+const ids=['10000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000003'];
+const job='20000000-0000-4000-8000-000000000001',requestId='30000000-0000-4000-8000-000000000001';
+const encoder=new TextEncoder(),clone=structuredClone;
+const key=(who,id)=>'device-research:'+JSON.stringify(who)+':experiment:'+id;
+const control=(kind,id)=>'device-research:'+JSON.stringify(owner)+':'+kind+':'+id;
+const check=(yes,message)=>{if(!yes)throw Error(message);};
+const same=(a,b,message)=>check(canonical(a)===canonical(b),message);
+const hash=bytes=>new Sha256().update(bytes).digest();
+const digest=async bytes=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(x=>x.toString(16).padStart(2,'0')).join('');
+const bodyProof=async value=>{const bytes=encoder.encode(JSON.stringify(value));return {bytes:bytes.length,sha256:await digest(bytes)};};
+const checks=[],observations=[];
+let active=null,fault=null;
+const methods=['get','getAll','getAllKeys','openCursor','openKeyCursor','add','put','delete','clear'];
+const native=Object.fromEntries(methods.map(name=>[name,IDBObjectStore.prototype[name]]));
+for(const method of methods)IDBObjectStore.prototype[method]=function(...args){
+  const research=this.name==='parts'&&Array.isArray(args.at(-1))&&args.at(-1)[1]==='research';
+  const partKey=method==='get'?args[0]:args.at(-1);
+  if(active&&this.name==='parts'&&['get','getAll','getAllKeys','openCursor','openKeyCursor'].includes(method)){
+    check(method==='get','Research unexpectedly bulk-read parts');
+    active.reads.push({key:clone(args[0]),mode:this.transaction.mode});
+  }
+  if(active&&research&&['add','put'].includes(method))active.writes.push(clone(partKey));
+  if(fault&&this.transaction.mode==='readwrite'){
+    if(fault.kind==='quota-part'&&research&&['add','put'].includes(method)&&++fault.parts===2){fault.hits++;throw new DOMException('Fictional late part quota','QuotaExceededError');}
+    if(fault.kind==='quota-header'&&this.name==='meta'&&method==='put'&&args[1]===key(owner,ids[0])){fault.hits++;throw new DOMException('Fictional header quota','QuotaExceededError');}
+    if(fault.kind==='quota-cleanup'&&research&&method==='delete'&&++fault.deletes===2){fault.hits++;throw new DOMException('Fictional old-part cleanup quota','QuotaExceededError');}
+    if(fault.kind==='owner-write'&&research&&['add','put'].includes(method)&&++fault.parts===2){fault.hits++;rememberOwner(foreign);}
+  }
+  const result=native[method].apply(this,args);
+  if(fault?.kind==='owner-read'&&method==='get'&&research&&args[0][4]===fault.last){
+    result.addEventListener('success',()=>{fault.hits++;rememberOwner(foreign);},{once:true});
+  }
+  return result;
+};
+async function observe(label,action){
+  check(!active,'Nested observer');const current={label,reads:[],writes:[]};active=current;
+  try{return await action();}finally{active=null;observations.push(current);}
+}
+async function rejected(action,label){let error;try{await action();}catch(e){error=String(e);}check(error,label+' accepted');checks.push({rejected:label,error});}
+const header=(id=ids[0],who=owner)=>getMeta(key(who,id));
+const putHeader=(value,id=ids[0],who=owner)=>setMeta(key(who,id),value);
+const partKey=(ref,index,who=owner,id=ids[0])=>[who,'research',id,ref.token,index];
+const part=(ref,index)=>appTransaction(['parts'],'readonly',(tx,done)=>{const r=tx.objectStore('parts').get(partKey(ref,index));r.onsuccess=()=>done(r.result);});
+const changePart=(ref,index,value)=>appTransaction(['parts'],'readwrite',(tx,done)=>{const store=tx.objectStore('parts');if(value===undefined)store.delete(partKey(ref,index));else store.put(value,partKey(ref,index));done();});
+const physical=()=>appTransaction(['entities','meta','parts'],'readonly',(tx,done)=>{
+  const out={entities:[],meta:[],parts:[]};let at=0;const stores=Object.keys(out);
+  const next=()=>{const name=stores[at++];if(!name){done(out);return;}
+    const r=tx.objectStore(name).openCursor();r.onsuccess=()=>{const c=r.result;if(!c){next();return;}
+      const bytes=c.value instanceof Uint8Array?c.value:encoder.encode(canonical(c.value));
+      out[name].push([clone(c.key),bytes.length,hash(bytes)]);c.continue();};};next();
+});
+const fixedOutbox=()=>appTransaction(['meta','parts'],'readonly',(tx,done)=>{const r=tx.objectStore('meta').get('sync:'+owner+':outbox');r.onsuccess=()=>restoreOutbox(tx,owner,r.result,done);});
+async function api(path){const r=await deviceFetch(path);return {status:r.status,disposition:r.headers.get('Content-Disposition'),data:await r.json()};}
+const detail=value=>({meta:value.meta,turns:value.turns,raw_prompt:value.raw_prompt,ratings:{'1':{score:4,comment:'架空の評価',rater:'fictional',updated_at:'2026-10-31T00:00:00.000Z'}},metrics:value.meta.metrics});
+function experiment(id=ids[0],who=owner,large=true){
+  const text='架空🙂é\\"\n'.repeat(6000),turns=Array.from({length:20},(_,i)=>({turn:i+1,status:'completed',user:'Fictional '+i,
+    assistant:large?text+i:'Fictional reply '+i,unknown_turn:{quote:'保管🙂',index:i},compiled:{sections:{portable_snapshot:{extension:'Keep'}}}}));
+  const session=newEntity('conversation','exp:'+id,{storage_policy:'local',rating:'general',settings:{session_id:'exp:'+id,system_prompt:'Fictional',temperature:.73},
+    messages:turns.map((t,i)=>({id:i+1,role:'assistant',content:t.assistant,unknown_message:{keep:i}})),memories:[],summaries:[],
+    state:{session_id:'exp:'+id,turn:20},memory_enabled:false,unknown_payload:JSON.parse('{"__proto__":{"keep":true},"values":[null,true,0,"茶🙂"]}')},who);
+  session.opened=7;session.unknown_header={keep:'entity extension'};
+  return {meta:{experiment_id:id,model_id:'fictional-unused',scenario_id:'fictional-sfw',run_number:1,timestamp:'2026-10-31T00:00:00.000Z',turns:20,
+    status:'completed',official:true,generation_config:{requested:{temperature:.73}},metrics:{failure_rate:0,repetition_score:.1,avg_chars:30},
+    extension_meta:{keep:'metadata'}},turns,raw_prompt:'FICTIONAL PROMPT\n茶🙂',session,revision:7,job_id:job,
+    extension_record:JSON.parse('{"__proto__":{"keep":true},"extension":[null,true,0,{"escaped":"\\\\\\\"\\n茶🙂"}]}')};
+}
+async function seed(){
+  rememberOwner(owner);localStorage.setItem('kyalulu-execution-target','device');
+  const original=experiment();const proof=await bodyProof(original);check(proof.bytes>=3*1024*1024,'Fictional body smaller than 3 MiB');
+  await putHeader(original);
+  await setMeta(control('ratings',ids[0]),detail(original).ratings);
+  await setMeta(control('request',requestId),{id:requestId,revision:4,status:'completed',fingerprint:'Fictional fixed request',results:[{experiment_id:ids[0]}],extension:{keep:true}});
+  await setMeta(control('benchmark',job),{id:job,revision:5,status:'completed',created_at:'2026-10-31T00:00:00.000Z',results:[original.meta],extension:{keep:true}});
+  const sentinel=newEntity('preset','research-unrelated-sentinel',{storage_policy:'sync',text:'Unrelated fixed entity'},owner);
+  await saveEntity(sentinel);
+  const outbox={request_id:'fictional-fixed-outbox',changes:[{id:sentinel.id,kind:'preset',base_revision:0,payload:{text:'Unsent outbox 茶🙂'},deleted:false}]};
+  await appTransaction(['meta','parts'],'readwrite',(tx,done)=>writeOutbox(tx,owner,outbox,done));
+  same(await fixedOutbox(),outbox,'Real fixed-outbox serializer roundtrip differs');
+  return original;
+}
+async function migrate(value){const revision=await writeResearchExperiment(owner,value.meta.experiment_id,value);return {...value,revision};}
+async function checkedRewrite(value){
+  const previous=await header(value.meta.experiment_id),next=await observe('verified-atomic-replacement',()=>migrate(value));
+  const trace=observations.at(-1);
+  same(trace.reads.map(row=>row.key),Array.from({length:previous.bodyParts.chunks},(_,i)=>partKey(previous.bodyParts,i,owner,value.meta.experiment_id)),'Replacement did not verify every original part');
+  check(trace.reads.every(row=>row.mode==='readwrite'),'Old-body verification outside atomic write transaction');
+  check(trace.writes.length>0,'Replacement never wrote parts');return next;
+}
+async function verify(value){
+  const id=value.meta.experiment_id,who=value.session.owner,h=await header(id,who);
+  check(h.format==='device-research@1'&&h.bodyParts,'New header/manifest absent');
+  same(Object.keys(h).sort(),['format','meta','revision','bodyParts','catalog_sha256',...(value.job_id===undefined?[]:['job_id'])].sort(),'Header contains body/extensions');
+  same({meta:h.meta,revision:h.revision,job_id:h.job_id},{meta:value.meta,revision:value.revision,job_id:value.job_id},'Header metadata changed');
+  const catalogSummary={meta:h.meta,revision:h.revision,...(h.job_id===undefined?{}:{job_id:h.job_id})};
+  check(h.catalog_sha256===await digest(encoder.encode(canonical([who,id,catalogSummary,h.bodyParts]))),'Independent catalog binding differs');
+  const bytes=await appTransaction(['parts'],'readonly',(tx,done)=>{const chunks=[];let index=0;const next=()=>{
+    const r=tx.objectStore('parts').get(partKey(h.bodyParts,index,who,id));r.onsuccess=()=>{check(r.result instanceof Uint8Array,'Physical part missing');chunks.push(r.result);if(++index<h.bodyParts.chunks)next();else{
+      const joined=new Uint8Array(chunks.reduce((n,b)=>n+b.length,0));let offset=0;for(const b of chunks){joined.set(b,offset);offset+=b.length;}done(joined);}};};next();});
+  check(bytes.length===h.bodyParts.size,'Physical size differs');check(await digest(bytes)===h.bodyParts.sha256,'Independent WebCrypto checksum differs');
+  same(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes)),value,'Physical full Experiment differs from oracle');
+  const expectedBytes=encoder.encode(JSON.stringify(value));check(bytes.length===expectedBytes.length&&await digest(bytes)===await digest(expectedBytes),'Serializer bytes differ from JSON oracle');
+  same(await readResearchExperiment(who,id),value,'Public helper changed full Experiment');
+  const snapshot=await physical(),keys=snapshot.parts.filter(([k])=>k[0]===who&&k[1]==='research'&&k[2]===id).map(([k])=>k);
+  same(keys,Array.from({length:h.bodyParts.chunks},(_,i)=>partKey(h.bodyParts,i,who,id)),'Obsolete/unreferenced research parts remain');
+  checks.push({verified:id,revision:value.revision,bytes:bytes.length,chunks:h.bodyParts.chunks,sha256:h.bodyParts.sha256});return h;
+}
+async function unchangedControls(before){
+  const after=await physical();same(after.entities,before.entities,'Research saved into or rewrote synced entities');
+  same(after.meta.filter(([k])=>!String(k).startsWith(key(owner,''))&&!String(k).startsWith(key(foreign,''))),
+    before.meta.filter(([k])=>!String(k).startsWith(key(owner,''))&&!String(k).startsWith(key(foreign,''))),'Request/benchmark/ratings/fixed outbox mutated');
+  same(after.parts.filter(([k])=>k[1]!=='research'),before.parts.filter(([k])=>k[1]!=='research'),'Fixed outbox/unrelated parts mutated');
+}
+async function corruptBody(h,body){
+  // Keep the real writer's header; rehash deliberate body faults to reach semantic validation.
+  await appTransaction(['meta','parts'],'readwrite',(tx,done)=>writeParts(tx,[owner,'research',ids[0]],body,ref=>{
+    for(let i=0;i<h.bodyParts.chunks;i++)tx.objectStore('parts').delete(partKey(h.bodyParts,i));
+    const summary={meta:h.meta,revision:h.revision,job_id:h.job_id};
+    const catalog_sha256=hash(encoder.encode(canonical([owner,ids[0],summary,ref])));
+    tx.objectStore('meta').put({...h,bodyParts:ref,catalog_sha256},key(owner,ids[0]));done();}));
+}
+async function wire(value){
+  const expected=detail(value),id=value.meta.experiment_id;
+  for(const suffix of ['','/export']){const result=await api('/api/experiments/'+id+suffix);check(result.status===200,'GET detail/export rejected');same(result.data,expected,'GET detail/export independent payload oracle differs');
+    check(!('session' in result.data)&&!('revision' in result.data),'Wire API leaked private fields');if(suffix)check(result.disposition==='attachment; filename="experiment.json"','Export disposition changed');}
+}
+async function run(name){
+  const original=await seed(),baseline=await physical();let expected=clone(original),h;
+  window.__RESEARCH_PROGRESS__={name,stage:'seeded'};
+  if(name==='legacy-roundtrip'){
+    const before=await physical();same(await readResearchExperiment(owner,ids[0]),original,'Legacy read lost extensions');await wire(original);same(await physical(),before,'Legacy read unexpectedly migrated');
+    expected=await migrate(original);h=await verify(expected);check(h.bodyParts.chunks>=4,'Large experiment did not span >=4 parts');await wire(expected);
+  }else if(name==='optional-job'){
+    delete original.job_id;await putHeader(original);expected=await migrate(original);await verify(expected);
+    same(await listResearchExperiments(owner),[{meta:expected.meta,revision:expected.revision}],'Absent job_id became a value');
+  }else if(name==='repeated-write'){
+    expected=await migrate(original);const first=await verify(expected);
+    for(let i=0;i<2;i++){const next=clone(expected);next.turns[19].assistant+='\nEdit '+i;next.extension_record.extension.push(i);expected=await checkedRewrite(next);await verify(expected);}
+    check((await header()).bodyParts.token!==first.bodyParts.token,'Replacement kept obsolete token');
+  }else if(name==='owner-isolation'){
+    expected=await migrate(original);rememberOwner(foreign);
+    check(await readResearchExperiment(foreign,ids[0])===undefined,'Other owner can read experiment');same(await listResearchExperiments(foreign),[],'Other owner catalog leaked');
+    check((await api('/api/experiments/'+ids[0])).status===404,'Other owner Device detail leaked');
+    const other=experiment(ids[0],foreign,false);other.revision=0;const revision=await writeResearchExperiment(foreign,ids[0],other);await verify({...other,revision});
+    await rejected(()=>readResearchExperiment(owner,ids[0]),'Foreign owner read');await rejected(()=>listResearchExperiments(owner),'Foreign owner list');await rejected(()=>writeResearchExperiment(owner,ids[0],expected),'Foreign owner write');
+    rememberOwner(owner);await verify(expected);
+  }else if(name==='catalog-binding'){
+    expected=await migrate(original);const real=await header(),before=await physical();
+    for(const [who,id] of [[foreign,ids[0]],[owner,ids[1]]]){
+      await putHeader(real,id,who);rememberOwner(who);const copied=await physical();
+      await observe('transplanted-catalog',async()=>{
+        await rejected(()=>readResearchExperiment(who,id),'Transplanted owner/id header read');
+        await rejected(()=>listResearchExperiments(who),'Transplanted owner/id catalog list');
+        const next=experiment(id,who,false);next.revision=real.revision;
+        await rejected(()=>writeResearchExperiment(who,id,next),'Transplanted owner/id header rewrite');
+      });
+      check(observations.at(-1).reads.length===0&&observations.at(-1).writes.length===0,'Transplanted catalog reached payload');
+      same(await physical(),copied,'Transplanted catalog rejection changed physical stores');
+      await appTransaction(['meta'],'readwrite',(tx,done)=>{tx.objectStore('meta').delete(key(who,id));done();});rememberOwner(owner);
+    }
+    same(await physical(),before,'Catalog transplant did not retain original');await verify(expected);
+  }else if(name==='cas'){
+    expected=await migrate(original);const before=await physical();await rejected(()=>writeResearchExperiment(owner,ids[0],original),'Stale revision');same(await physical(),before,'Stale CAS changed storage');
+    const a=clone(expected),b=clone(expected);a.raw_prompt+='winner A';b.raw_prompt+='winner B';
+    const results=await Promise.allSettled([writeResearchExperiment(owner,ids[0],a),writeResearchExperiment(owner,ids[0],b)]);
+    check(results.filter(r=>r.status==='fulfilled').length===1,'Concurrent revision CAS did not select exactly one winner');
+    const winner=results[0].status==='fulfilled'?a:b;expected={...winner,revision:expected.revision+1};await verify(expected);checks.push({competing_results:results.map(r=>r.status)});
+  }else if(name==='catalog'||name==='recovery'){
+    expected=await migrate(original);const second=experiment(ids[1],owner,false);second.revision=0;second.meta.official=false;second.meta.timestamp='2026-10-31T01:00:00.000Z';
+    const two=await migrate(second),rows=[expected,two];
+    if(name==='recovery'){const running=experiment(ids[2],owner,false);running.revision=0;running.meta.status='running';await migrate(running);}
+    const observed=await observe(name,async()=>{
+      const catalog=await listResearchExperiments(owner);for(const row of catalog)same(Object.keys(row).sort(),['meta','revision','job_id'].sort(),'Catalog has payload');
+      if(name==='catalog')same(catalog,rows.map(({meta,revision,job_id})=>({meta,revision,job_id})),'Catalog differs from independent summary');
+      const listed=await api('/api/experiments');check(listed.status===200,'Device list failed');
+      same(listed.data.experiments.filter(m=>m.experiment_id!==ids[2]),[two.meta,expected.meta],'Device list oracle differs');
+      for(const scope of ['official','all']){const board=await api('/api/leaderboard?scope='+scope);check(board.status===200,'Leaderboard failed');
+        same(board.data.ranking,[{model_id:'fictional-unused',runs:scope==='all'?2:1,avg_human:4,auto_score:97,avg_chars:30,avg_failure_rate:0,avg_repetition:.1}],'Independent leaderboard oracle differs');
+        check(board.data.scope===scope&&board.data.total_experiments===(scope==='all'?2:1),'Leaderboard counts differ');}
+      return catalog;
+    });
+    const reads=observations.at(-1).reads;check(reads.every(row=>row.key[2]===ids[2]),'Catalog/recovery read completed experiment body');
+    if(name==='catalog')check(reads.length===0,'Catalog read parts');else{check(reads.length>0,'Recovery never read running experiment');const recovered=await readResearchExperiment(owner,ids[2]);check(recovered.meta.status==='interrupted'&&recovered.revision===2,'Running experiment not durably interrupted');}
+    checks.push({summary_rows:observed.length,completed_body_reads:0,part_reads:reads.length});await verify(expected);
+  }else if(name.startsWith('quota-')||name.startsWith('owner-')){
+    if(name!=='quota-legacy')expected=await migrate(original);
+    h=await header();const before=await physical(),next=clone(expected);next.raw_prompt+='failed replacement';
+    fault={kind:name==='quota-legacy'?'quota-header':name==='quota-rewrite'?'quota-part':name,last:h.bodyParts?.chunks-1,parts:0,deletes:0,hits:0};let injected;
+    try{await observe(name,()=>rejected(()=>writeResearchExperiment(owner,ids[0],next),'Injected '+name));injected=clone(fault);}finally{fault=null;rememberOwner(owner);}
+    check(injected.hits===1,'Fault injection not reached exactly once');same(await physical(),before,'Fault changed original physical stores');same(await readResearchExperiment(owner,ids[0]),expected,'Fault changed original payload');
+    if(h.bodyParts){same(observations.at(-1).reads.map(row=>row.key),Array.from({length:h.bodyParts.chunks},(_,i)=>partKey(h.bodyParts,i)),'Fault write did not scan complete original');}
+    checks.push({fault:injected,rollback:'all physical stores unchanged'});
+    // Persist the original after rejection; resume() proves it survives a fresh browser process too.
+  }else{
+    expected=await migrate(original);h=await header();
+    if(name==='late-missing')await changePart(h.bodyParts,h.bodyParts.chunks-1,undefined);
+    else if(name==='late-corrupt'){
+      const bytes=await part(h.bodyParts,h.bodyParts.chunks-1),needle=encoder.encode('extension_record');
+      let found=-1;for(let i=0;i<=bytes.length-needle.length;i++)if(needle.every((b,j)=>bytes[i+j]===b)){found=i;break;}
+      check(found>=0,'Late checksum target not present');bytes[found]=0x45;await changePart(h.bodyParts,h.bodyParts.chunks-1,bytes);
+    }
+    else if(name==='missing-manifest'){const broken=clone(h);delete broken.bodyParts;await putHeader(broken);}
+    else if(name==='manifest-tamper'){const broken=clone(h);broken.bodyParts.size++;await putHeader(broken);}
+    else if(name==='header-tamper'){const broken=clone(h);broken.meta.metrics.avg_chars=99;await putHeader(broken);}
+    else if(name==='body-tamper'){
+      for(const change of [b=>b.revision++,b=>b.job_id+='tampered',b=>b.meta.status='failed',b=>b.session.owner=foreign,b=>b.session.id='exp:'+ids[1],b=>b.session.kind='preset',b=>b.session.payload.storage_policy='sync']){
+        const body=clone(expected);change(body);await corruptBody(await header(),body);const before=await physical();
+        await observe('semantic-body-tamper',()=>rejected(()=>readResearchExperiment(owner,ids[0]),'Valid-checksum tampered body'));
+        check(observations.at(-1).reads.length===(await header()).bodyParts.chunks,'Semantic body fault never reached all verified parts');same(await physical(),before,'Tampered-body read changed storage');
+      }
+    }else throw Error('Unknown scenario '+name);
+    const before=await physical();await observe(name+' rejected read',()=>rejected(()=>readResearchExperiment(owner,ids[0]),name+' read'));
+    if(['missing-manifest','manifest-tamper','header-tamper'].includes(name)){
+      check(observations.at(-1).reads.length===0,'Broken catalog admitted body read');
+      await observe('broken-catalog-list',()=>rejected(()=>listResearchExperiments(owner),name+' list'));
+      check(observations.at(-1).reads.length===0,'Broken catalog listing read body');
+    }
+    if(name!=='body-tamper'){
+      await observe(name+' rejected replacement',()=>rejected(()=>writeResearchExperiment(owner,ids[0],expected),name+' replacement'));
+      check(observations.at(-1).writes.length===0,'Corrupt original admitted tentative replacement');
+    }
+    const failed=await api('/api/experiments/'+ids[0]);check(failed.status>=400,'Corrupt body exposed by Device detail');same(await physical(),before,'Corruption read/rewrite changed original');
+    checks.push({corruption:name,device_status:failed.status});
+    sessionStorage.setItem('research-reopen',JSON.stringify({name,physical:await physical(),corrupt:true}));
+    await unchangedControls(baseline);return {ok:true,checks,observations};
+  }
+  await unchangedControls(baseline);
+  sessionStorage.setItem('research-reopen',JSON.stringify({name,physical:await physical(),expectedProof:await bodyProof(expected),revision:expected.revision}));
+  return {ok:true,checks,observations};
+}
+async function resume(saved){
+  rememberOwner(owner);same(await physical(),saved.physical,'Reload/relaunch changed original physical stores');
+  if(saved.corrupt)await rejected(()=>readResearchExperiment(owner,ids[0]),'Corruption after reopen');
+  else{const value=await readResearchExperiment(owner,ids[0]);same(await bodyProof(value),saved.expectedProof,'Reload original body proof differs');check(value.revision===saved.revision,'Reload revision differs');}
+  return {ok:true,physical_sha256:await digest(encoder.encode(canonical(saved.physical))),original_preserved:true};
+}
+window.__RESEARCH_STORAGE__={run,resume,reopen:()=>JSON.parse(sessionStorage.getItem('research-reopen'))};
+</script>

@@ -1,4 +1,5 @@
 """Actual unified entry/settings against fictional server eligibility; no providers."""
+from browser_storage import READ_ENTITIES_JS
 import asyncio
 import json
 import os
@@ -129,12 +130,7 @@ async def main():
                         await page.locator('.k-plot-cta__main').click()
                         await page.locator('.k-composer textarea').wait_for()
                         assert '/device/#/chats/' in page.url and not await page.locator('.k-cloud-login').count()
-                        chats=await page.evaluate('''()=>new Promise((resolve,reject)=>{
-                          const open=indexedDB.open('kyalulu-app-v1',2);open.onerror=reject;open.onsuccess=()=>{
-                            const db=open.result,tx=db.transaction('entities'),read=tx.objectStore('entities').getAll();
-                            tx.oncomplete=()=>{db.close();resolve(read.result.filter(row=>row.kind==='conversation'));};tx.onerror=reject;
-                          };
-                        })''')
+                        chats=await page.evaluate(READ_ENTITIES_JS, ['conversation'])
                         assert len(chats)==1 and chats[0]['owner']=='guest' and chats[0]['payload']['storage_policy']=='local'
                         assert len(calls)==reads
                         await page.goto(origin+'/device/#/profile')

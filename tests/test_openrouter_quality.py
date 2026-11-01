@@ -163,7 +163,8 @@ def test_fixtures_use_multiple_repetitions_and_mark_history_reset():
 
 
 @pytest.mark.asyncio
-async def test_full_schema_control_resets_history_but_retrieves_actual_saved_memory(tmp_path, monkeypatch):
+@pytest.mark.parametrize("complete_utterance", [True, False])
+async def test_full_schema_control_resets_history_but_retrieves_actual_saved_memory(tmp_path, monkeypatch, complete_utterance):
     import verify_openrouter_quality_controls as controls
     from python.storage import db
     from python.storage.context import storage_context
@@ -173,7 +174,8 @@ async def test_full_schema_control_resets_history_but_retrieves_actual_saved_mem
         assert '"$defs"' in messages[0]["content"]  # Full Pydantic response contract, not just state.
         seen.append((metadata["turn"], messages, metadata))
         output = {"reply": "fixture", "state_update": metadata["state_before"], "memory_proposals": (
-            [{"type": "semantic", "content": "葵は真鍮の羅針盤をなくした。"}] if metadata["turn"] == 1 else [])}
+            [{"type": "semantic", "content": metadata["user"] if complete_utterance else "葵は真鍮の羅針盤をなくした。",
+              "source_kind": "user_statement"}] if metadata["turn"] == 1 else [])}
         record = {"label": label, **metadata, "status": "passed", "reply": output["reply"], "parsed_output": output}
         run.data["requests"].append(record)
         return record
@@ -183,7 +185,16 @@ async def test_full_schema_control_resets_history_but_retrieves_actual_saved_mem
         await controls.strict_dialogue(run, None, quality.PROFILES[0], "ja", 1)
     before, after = seen[14], seen[15]
     assert len(before[1]) > 20 and len(after[1]) == 2
-    assert "真鍮の羅針盤" in after[2]["memory_block"]
+    trace = after[2]["memory_trace"]
+    saved = trace["candidates"][0]
+    assert saved["source_quote"] == seen[0][2]["user"] and saved["supported"] is complete_utterance
+    if complete_utterance:
+        assert "真鍮の羅針盤" in after[2]["memory_block"]
+        assert seen[0][2]["user"] in after[2]["memory_block"]
+        assert trace["injected"] == [saved["id"]]
+    else:
+        assert after[2]["memory_block"] == "" and trace["injected"] == []
+        assert saved["decision"] == "unverified"
     assert after[2]["state_before"]["active_scene"] == "greeting"
     assert after[2]["memory_trace"]["stored_count"] >= 1
 

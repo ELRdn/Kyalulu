@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { streamChat, fetchGeneration, cancelGeneration, fetchSessions, fetchModels, fetchSettings, clearHistory, fetchHistory } from "./api";
+import { streamChat, fetchGeneration, cancelGeneration, fetchSessions, fetchModels, fetchSettings, clearHistory, fetchHistory,createMemory } from "./api";
 
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+it.each([undefined,'source-session'])('includes an explicit manual source only when supplied: %s',async source=>{
+  const fetch=vi.fn().mockResolvedValue(Response.json({id:'manual'}));vi.stubGlobal('fetch',fetch);
+  await createMemory('scope','semantic','fact',source);
+  expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({scope:'scope',type:'semantic',content:'fact',...(source?{source_session_id:source}:{})});
+});
 
 describe("chat stream lifecycle", () => {
   it('keeps official summaries from history and done events without resending display metadata', async () => {

@@ -1,4 +1,4 @@
-"""Real BenchmarkLab/App/IDB/Web Locks/BroadcastChannel; synthetic inference only."""
+"""Real BenchmarkLab/App/IDB/Web Locks/BroadcastChannel over synthetic ONNX inference, not tokenizer acceptance."""
 import asyncio
 import json
 import sys
@@ -33,6 +33,8 @@ async def main():
             for language, width, theme in [('ja', 393, 'light'), ('en', 1280, 'dark')]:
                 context = await browser.new_context(viewport={'width': width, 'height': 852})
                 try:
+                    # This driver verifies the browser-download fallback; the OPFS sink has its own driver.
+                    await context.add_init_script("Object.defineProperty(window,'showSaveFilePicker',{configurable:true,value:undefined});")
                     async def route(request):
                         url = urlsplit(request.request.url)
                         if url.hostname != '127.0.0.1' or url.port != urlsplit(origin).port or url.path.startswith('/api/'):
@@ -52,6 +54,8 @@ async def main():
                     page.on('pageerror', lambda error: errors.append(error.stack or str(error)))
                     await page.goto(address); await mount(page)
                     await page.get_by_role('checkbox', name='Kyalulu E2B JP Rolepaly beta · IQ3_M', exact=True).wait_for()
+                    await page.get_by_role('checkbox', name='Kyalulu E2B JP Rolepaly beta · IQ3_M', exact=True).uncheck()
+                    await page.get_by_role('checkbox', name='Google Gemma 4 E2B Mobile QAT · ONNX q2f16', exact=True).check()
                     await page.get_by_label('Scenario' if en else 'シナリオ', exact=True).select_option('mocha_memory_001')
                     await page.get_by_label('Runs' if en else '繰り返し', exact=True).fill('2')
                     await page.get_by_label('Seed' if en else 'シード', exact=True).fill('17')
@@ -59,11 +63,20 @@ async def main():
                     await page.get_by_label('Maximum memories' if en else '最大記憶数', exact=True).fill('1')
                     await page.get_by_label('Estimated memory token budget' if en else '記憶の推定トークン枠', exact=True).fill('80')
                     await page.get_by_label('Recent conversation turns (0 = all history)' if en else '直近の会話ターン数（0＝全履歴）', exact=True).fill('1')
+                    await page.evaluate('window.__DEVICE_RESEARCH__.holdAtCall(25)')
                     await page.get_by_role('button', name='Start benchmark' if en else '比較実験を開始', exact=True).click()
-                    await expect(page.locator('table tbody tr')).to_have_count(4)
+                    # The returned job card establishes acceptance; table rows are partial until completion.
+                    await page.get_by_role('button', name='Results JSON' if en else '結果JSON', exact=True).wait_for()
                     all_jobs = await page.evaluate('window.__DEVICE_RESEARCH__.api("/api/benchmarks")')
+                    assert all_jobs['status'] == 200 and len(all_jobs['data']['jobs']) == 1
                     first = all_jobs['data']['jobs'][0]
+                    await page.wait_for_function('window.__DEVICE_RESEARCH__.status().calls===25')
+                    partial = await job(page, first['id'], ['running'])
+                    assert len(partial['results']) == 3
+                    await expect(page.locator('table tbody tr')).to_have_count(3)
+                    await page.evaluate('window.__DEVICE_RESEARCH__.resume()')
                     first = await job(page, first['id'], ['completed'])
+                    await expect(page.locator('table tbody tr')).to_have_count(4)
                     assert first['planned_runs'] == 4 and first['planned_turns'] == 32
                     assert [[r['memory_enabled'], r['seed']] for r in first['results']] == [[False, 17], [True, 17], [True, 18], [False, 18]]
                     assert all(r['memory_options']['top_k'] == 1 and r['history_turn_limit'] == 1 for r in first['results'])
@@ -118,7 +131,7 @@ async def main():
                     if en:
                         # Exercise the actual MobileRuntime reset path when loading never replies.
                         await page.evaluate('window.__DEVICE_RESEARCH__.pauseLoad(true)')
-                        response = await page.evaluate('window.__DEVICE_RESEARCH__.api("/api/benchmarks",{model_ids:["kyalulu-iq3m"],scenarios:["mocha_memory_001"],memory:"off",run_timeout_seconds:10})')
+                        response = await page.evaluate('window.__DEVICE_RESEARCH__.api("/api/benchmarks",{model_ids:["google-mobile-onnx"],scenarios:["mocha_memory_001"],memory:"off",run_timeout_seconds:10})')
                         assert response['status'] == 202
                         await page.wait_for_function('window.__DEVICE_RESEARCH__.status().loading')
                         timed_out = await job(page, response['data']['id'], ['timed_out'])
@@ -126,7 +139,7 @@ async def main():
                         await page.wait_for_function('!window.__DEVICE_RESEARCH__.status().busy')
                         assert (await page.evaluate('window.__DEVICE_RESEARCH__.status()'))['terminations'] >= 1
                         await page.evaluate('window.__DEVICE_RESEARCH__.pauseLoad(false)')
-                        response = await page.evaluate('window.__DEVICE_RESEARCH__.api("/api/benchmarks",{model_ids:["kyalulu-iq3m"],scenarios:["advanced_mocha_sfw_100"],memory:"on",history_turn_limit:2,memory_options:{top_k:3,budget_tokens:200},seed:73})')
+                        response = await page.evaluate('window.__DEVICE_RESEARCH__.api("/api/benchmarks",{model_ids:["google-mobile-onnx"],scenarios:["advanced_mocha_sfw_100"],memory:"on",history_turn_limit:2,memory_options:{top_k:3,budget_tokens:200},seed:73})')
                         assert response['status'] == 202
                         long_run = await job(page, response['data']['id'], ['completed'])
                         assert long_run['planned_turns'] == 100 and long_run['current']['turns_completed'] == 100

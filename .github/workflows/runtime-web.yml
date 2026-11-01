@@ -37,18 +37,44 @@ jobs:
       - run: pnpm --filter web build
       - run: pnpm --filter desktop build
       - run: uv run --no-sync python -m pytest tests -q
+      - run: uv run --no-sync python -B tests/fixtures/unified-disaster-recovery.py --evidence-dir .artifacts/disaster-recovery-ci
       - run: uv run --no-sync python -m playwright install --with-deps chromium
       - run: uv run --no-sync python tests/e2e_outbox_guard.py
+      - run: uv run --no-sync python tests/e2e_segmented_storage.py
+      - run: uv run --no-sync python tests/e2e_device_history_pages.py
+      - run: uv run --no-sync python tests/e2e_sync_selection.py
+      - run: uv run --no-sync python tests/e2e_outbox_stream.py --accept-current-source
+      - run: uv run --no-sync python tests/e2e_sync_staging.py --accept-current-source
+      - run: uv run --no-sync python tests/e2e_sync_branch_ack.py --accept-current-source
+      - run: uv run --no-sync python tests/e2e_sync_receive_projection.py --accept-current-source
+      - run: uv run --no-sync python tests/e2e_sync_incoming.py --accept-current-source
+      - run: uv run --no-sync python tests/e2e_offline_cache.py
+      - run: uv run --no-sync python tests/e2e_device_quota.py
       - run: uv run --no-sync python tests/e2e_device_export.py
       - run: uv run --no-sync python tests/e2e_device_import.py
       - run: uv run --no-sync python tests/e2e_publications.py
       - run: uv run --no-sync python tests/e2e_unified_entry.py
       - run: uv run --no-sync python tests/e2e_cloud_login.py
+      - run: uv run --no-sync python tests/e2e_cloud_target_switch.py
+      - run: uv run --no-sync python tests/e2e_runtime_sync_language.py
+      - run: uv run --no-sync python tests/e2e_commercial_ui.py
       - run: uv run --no-sync python tests/e2e_memory_language.py
+      - run: uv run --no-sync python tests/e2e_device_memory.py
+      - run: uv run --no-sync python tests/e2e_device_generation_lock.py
+      - run: uv run --no-sync python tests/e2e_device_target_switch.py
+      - run: uv run --no-sync python tests/e2e_device_memory_scopes.py
+      - run: uv run --no-sync python tests/e2e_memory_source_projection.py
+      - run: uv run --no-sync python tests/e2e_history_mutations.py
+      - run: uv run --no-sync python tests/e2e_device_branches.py
+      - run: uv run --no-sync python tests/e2e_generation_commits.py
       - run: uv run --no-sync python tests/e2e_research_language.py
       - run: uv run --no-sync python tests/e2e_device_research.py
+      - run: uv run --no-sync python tests/e2e_runtime_download.py
       - run: uv run --no-sync python tests/e2e_device_benchmarks.py
+      - run: uv run --no-sync python tests/e2e_research_storage.py
       - run: uv run --no-sync python tests/e2e_native_restore.py
       - run: node scripts/remote_crypto_build_wrapper.mjs
       - run: uv run --no-sync python scripts/remote_crypto_wrapper_interop.py
       - run: uv run --no-sync python tests/e2e_remote.py
+      - run: uv run --no-sync python -m pytest tests/e2e_remote.py::test_two_device_management_permissions -q
+      - run: uv run --no-sync python tests/e2e_runtime_privacy.py

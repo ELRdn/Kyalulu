@@ -11,6 +11,7 @@ COPY characters ./characters
 COPY personas ./personas
 COPY worlds ./worlds
 COPY prompts ./prompts
+COPY scenarios ./scenarios
 COPY LICENSE ./LICENSE
 COPY scripts/cloud_admin.py ./scripts/cloud_admin.py
 COPY kyalulu-source.tar.gz ./kyalulu-source.tar.gz

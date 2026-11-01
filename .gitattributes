@@ -1,0 +1,5 @@
+/scripts/mobile_wasm/build.sh text eol=lf
+/scripts/mobile_wasm/chat-count.patch text eol=lf -whitespace
+/docs/licenses/** -text
+/docs/licenses/rollup-LICENSE.md -whitespace
+/docs/licenses/stackback-V8-notice.txt -whitespace

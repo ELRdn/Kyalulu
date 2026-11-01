@@ -26,7 +26,7 @@ export default function Dialog({ open, onClose, children, labelledBy, label, wid
   );
 }
 
-type ConfirmOptions = { title: string; description?: ReactNode; confirmLabel?: string; cancelLabel?: string; danger?: boolean };
+export type ConfirmOptions = { title: string; description?: ReactNode; confirmLabel?: string; cancelLabel?: string; danger?: boolean };
 
 /** window.confirm の置き換え。`await confirm({...})` で利用者の選択を受け取る。 */
 export function useConfirm(): [ReactNode, (options: ConfirmOptions) => Promise<boolean>] {

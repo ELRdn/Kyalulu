@@ -67,6 +67,8 @@ async def main():
                             value = request.post_data or ''
                             assert 'PRIVATE-' not in value, 'Private Library fields sent to publication API'
                             writes.append({'path': parsed.path, 'method': request.method})
+                        if request.method == 'PUT' and json.loads(request.post_data or '{}').get('decision') == 'hidden':
+                            await asyncio.sleep(.3)  # Typed confirmation text is not a committed moderation result.
                         response = await api.request(request.method, parsed.path + ('?' + parsed.query if parsed.query else ''), headers=headers, content=request.post_data_buffer)
                         await route.fulfill(status=response.status_code, headers={key: value for key, value in response.headers.items() if key.lower() in {'content-type', 'cache-control', 'x-content-type-options'}}, body=response.content)
                     await context.route('**/*', broker)
@@ -113,7 +115,7 @@ async def main():
                     await page.get_by_label('理由', exact=True).fill('Hidden for review')
                     await page.get_by_role('button', name='非表示にする', exact=True).click()
                     await page.get_by_role('dialog').get_by_role('button', name='判断を記録', exact=True).click()
-                    await page.get_by_text('Hidden for review', exact=True).wait_for()
+                    await page.get_by_text('非表示 · 一般 · 固定版', exact=False).wait_for()
                     assert not service.publications.catalog(reader)['works']
                     await identity(owner)
                     await page.get_by_label('理由', exact=True).fill('Please reconsider the fixed version')
@@ -177,13 +179,16 @@ async def main():
                     await settings.wait_for_function('window.__PUBLICATIONS_FIXTURE__ !== undefined')
                     async def preference(**changes):
                         await settings.evaluate('(value)=>window.__PUBLICATIONS_FIXTURE__.preference(value)', changes)
-                    for path in ('/published', '/recommendations'):
+                    for path, heading in (('/published', 'Approved works'), ('/recommendations', 'Public works')):
                         await preference(genres=[], moods=[], activities=[], favorites=[], dismissed=[])
+                        reads_before_navigation = len(catalog_reads)
                         await go(path)
+                        # The outgoing catalog has the same card; wait for the destination to commit first.
+                        await page.get_by_role('heading', name=heading, exact=True).wait_for()
                         await page.get_by_role('link', name='School suggestion', exact=True).wait_for()
                         first = page.locator('.k-card h3 a').first
                         reads = len(catalog_reads)
-                        assert reads > 0, 'Catalog traffic must be observed before checking for extra requests'
+                        assert reads > reads_before_navigation, 'Destination catalog must load before measuring preference changes'
                         await preference(moods=['healing'])
                         await expect(first).to_have_text('Comfort suggestion')
                         await preference(favorites=[suggestions['Plain suggestion']])

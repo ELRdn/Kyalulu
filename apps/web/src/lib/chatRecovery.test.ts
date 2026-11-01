@@ -65,6 +65,7 @@ describe("generation reconciliation", () => {
     const history = vi.fn().mockResolvedValue([{ id: 1 }, { id: 2 }]);
     const result = await reconcileGeneration(store, load, history, () => true);
     expect(load).toHaveBeenCalledWith("g1", "chat:a");
+    expect(history).toHaveBeenCalledWith("chat:a",status());
     expect(result?.outcome).toBe("committed");
     expect(store.read().pending).toBeNull();
   });

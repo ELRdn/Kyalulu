@@ -1,6 +1,7 @@
 """Do not accept mock, stale, altered or absent release evidence."""
 
 import hashlib
+import pytest
 from python.cloud.release_readiness import audit, evidence_status, source_fingerprint, CLOUD, SALES
 
 
@@ -81,6 +82,8 @@ def test_local_bundle_rejects_unsafe_release_wrong_host_and_existing_output(tmp_
         builder.build(output, "0.1.0", "darwin-arm64", web)
     with pytest.raises(ValueError, match="inside the workspace"):
         builder.build(output, "0.1.0", "win32-x64", tmp_path.parent)
+    with pytest.raises(ValueError, match="Build Native Web UI"):
+        builder.build(output, "0.1.0", "win32-x64", web)
     assert not output.exists()
     output.mkdir()
     artifact = output / "kyalulu-0.1.0-win32-x64.tar.gz"
@@ -88,6 +91,58 @@ def test_local_bundle_rejects_unsafe_release_wrong_host_and_existing_output(tmp_
     with pytest.raises(ValueError, match="already exists"):
         builder.build(output, "0.1.0", "win32-x64", web)
     assert artifact.read_bytes() == b"existing candidate"
+
+
+@pytest.mark.parametrize('escaped', [False, True])
+def test_local_bundle_ignores_outer_venv_and_retains_stage_guard(tmp_path, monkeypatch, escaped):
+    import importlib.util
+    import os
+    from pathlib import Path
+    from types import SimpleNamespace
+    import pytest
+
+    script = Path(__file__).resolve().parents[1] / 'scripts/build_local_bundle.py'
+    spec = importlib.util.spec_from_file_location('bundle_discovery', script)
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
+    outside = tmp_path / 'outer-venv/python.exe'
+    outside.parent.mkdir()
+    outside.write_bytes(b'foreign interpreter')
+    monkeypatch.setattr(builder, 'ROOT', tmp_path)
+    monkeypatch.setattr(builder, 'os', SimpleNamespace(name='nt', environ={
+        **os.environ, 'VIRTUAL_ENV': str(outside.parent), 'UV_PYTHON': builder.PYTHON_VERSION}))
+    monkeypatch.setattr(builder, 'platform', SimpleNamespace(machine=lambda: 'AMD64'))
+    web = tmp_path / 'web'
+    web.mkdir()
+    (web / 'index.html').write_text('<meta name="kyalulu-ui" content="native">')
+    installed = None
+    reached_export = False
+
+    class SelectedStagedInterpreter(Exception):
+        pass
+
+    def run(arguments, **options):
+        nonlocal installed, reached_export
+        if arguments[:3] == ['uv', 'python', 'install']:
+            installed = Path(options['env']['UV_PYTHON_INSTALL_DIR']) / 'python.exe'
+            installed.parent.mkdir(parents=True)
+            installed.write_bytes(b'fixture staged interpreter')
+        elif arguments[:3] == ['uv', 'python', 'find']:
+            assert options['env']['VIRTUAL_ENV'] == str(outside.parent)
+            assert '--system' in arguments and '--no-project' in arguments
+            return SimpleNamespace(stdout=str(outside if escaped else installed))
+        else:
+            assert arguments[:2] == ['uv', 'export']
+            reached_export = True
+            raise SelectedStagedInterpreter
+
+    monkeypatch.setattr(builder, 'run', run)
+    expected = ValueError if escaped else SelectedStagedInterpreter
+    with pytest.raises(expected):
+        builder.build(tmp_path / 'candidate', '0.1.0', 'win32-x64', web)
+    assert reached_export is not escaped
+    assert outside.read_bytes() == b'foreign interpreter'
+    assert not list((tmp_path / 'candidate').glob('*.tar.gz'))
 
 
 def test_bundle_copy_reuses_private_file_and_path_boundary_checks(tmp_path, monkeypatch):

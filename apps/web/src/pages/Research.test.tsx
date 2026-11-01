@@ -4,7 +4,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import ResearchPage from './Research';
 import { fetchExperiments, fetchModels, fetchScenarios, fetchLeaderboard, putRating, replayExperiment, runExperiments, type ExperimentDetail } from '../lib/api';
 
-const hooks = vi.hoisted(() => ({ language:'en', states:[] as unknown[], cursor:0, active:false, effects:[] as { effect:()=>void; deps:unknown[] }[] }));
+const hooks = vi.hoisted(() => ({ language:'en', target:'local', states:[] as unknown[], cursor:0, active:false, effects:[] as { effect:()=>void; deps:unknown[] }[] }));
 vi.mock('react', async original => ({ ...await original<typeof import('react')>(),
   useState:(initial:unknown)=>{
     if(!hooks.active)return [initial,()=>{}];
@@ -15,7 +15,7 @@ vi.mock('react', async original => ({ ...await original<typeof import('react')>(
   useEffect:(effect:()=>void,deps:unknown[])=>{if(hooks.active)hooks.effects.push({effect,deps});},
   useRef:(initial:unknown)=>({current:initial}),
 }));
-vi.mock('../lib/appContext',()=>({useLanguage:()=>hooks.language,useExecutionTarget:()=>'local',useGenerationBusy:()=>false}));
+vi.mock('../lib/appContext',()=>({useLanguage:()=>hooks.language,useExecutionTarget:()=>hooks.target,useGenerationBusy:()=>false}));
 vi.mock('../lib/title',()=>({useDocumentTitle:vi.fn()}));
 vi.mock('../lib/api',()=>({fetchExperiments:vi.fn(),fetchExperimentDetail:vi.fn(),putRating:vi.fn(),runExperiments:vi.fn(),fetchModels:vi.fn(),fetchScenarios:vi.fn(),fetchLeaderboard:vi.fn(),replayExperiment:vi.fn()}));
 vi.mock('react-router-dom',()=>({Link:({to,children}:{to:string;children:ReactNode})=><a href={to}>{children}</a>}));
@@ -47,7 +47,7 @@ function populated(){
 function column(){return named(populated(),'ExperimentColumn');}
 
 beforeEach(()=>{
-  hooks.language='en';hooks.states=[];hooks.effects=[];hooks.cursor=0;
+  hooks.language='en';hooks.target='local';hooks.states=[];hooks.effects=[];hooks.cursor=0;
   vi.mocked(fetchExperiments).mockReset().mockResolvedValue([]);
   vi.mocked(fetchModels).mockReset().mockResolvedValue([]);
   vi.mocked(fetchScenarios).mockReset().mockResolvedValue([]);
@@ -145,4 +145,24 @@ it('preserves inspector selection and labels estimated tokens accurately in both
   expect(button(tree,'トークン').props['aria-pressed']).toBe(true);
   button(tree,'生成設定').props.onClick();
   expect(renderToStaticMarkup(call(inspector))).toContain('unsupported: 未対応');
+});
+
+it.each(['stored','erased','corrupt','unavailable'] as const)('shows explicit %s diagnostics and complete runtime exports in both languages',state=>{
+  const node=column(),info={state,bytes:2400000,sha256:'f'.repeat(64),export_url:'/api/experiments/exp_original/turns/1/diagnostics'};
+  hooks.states=[{...detail,turns:[{...detail.turns[0],raw_prompt:undefined,compiled:undefined,state:undefined,device_diagnostics:info}]},false,false,null];
+  const inspector=named(call(node),'TurnInspector');hooks.states=[];
+  const messages={stored:['Complete diagnostics are saved','完全な診断データは保存済み'],erased:['Some original diagnostics were removed','診断データの一部が消去'],
+    corrupt:['Saved diagnostics could not be verified','診断データの整合性を確認できません'],unavailable:['Original diagnostics are unavailable','この端末では利用できません']};
+  for(const [i,language] of ['en','ja'].entries()){
+    hooks.language=language;const html=renderToStaticMarkup(call(inspector));
+    expect(html).toContain(messages[state][i]);expect(html).toContain('role="status"');expect(html).toContain(info.export_url);
+    expect(html).not.toContain('(none)');expect(html).not.toContain('(なし)');
+    button(call(inspector),language==='en'?'Settings':'生成設定').props.onClick();
+    expect(renderToStaticMarkup(call(inspector))).toContain(messages[state][i]);
+  }
+});
+it('keeps replay enabled for valid stored large diagnostics without an inline compiled prompt',()=>{
+  const node=column();hooks.target='device';
+  hooks.states=[{...detail,turns:[{...detail.turns[0],compiled:undefined,raw_prompt:undefined,device_diagnostics:{state:'stored',bytes:2400000}}]},false,false,null];
+  expect(button(call(node),'↻ Replay').props.disabled).toBe(false);
 });

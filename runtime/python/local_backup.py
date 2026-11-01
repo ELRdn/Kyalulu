@@ -1,6 +1,7 @@
 """Offline/online Core export; restore validates before touching current data."""
 
 import json
+import hashlib
 import re
 import sqlite3
 import tempfile
@@ -88,8 +89,42 @@ def preserve_sync(staged, current):
         staged.execute('DELETE FROM runtime.unified_local_links')
 
 
+def preserve_core_assets(restored, data, new_assets):
+    """Validate the union before publishing; never replace an existing media file."""
+    assets = data / 'library_assets'
+    for directory in (assets, new_assets):
+        if (directory.is_symlink() or directory.resolve() != directory.parent.resolve() / directory.name
+                or directory.exists() and not directory.is_dir()):
+            raise ValueError('backup_asset_directory_conflict')
+    incoming = list(new_assets.iterdir()) if new_assets.exists() else []
+    required = {path.name for path in incoming}
+    for path in (restored, data / 'data.db'):
+        if path.exists():
+            with closing(sqlite3.connect(path)) as db:
+                if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='library_assets'").fetchone():
+                    required.update(row[0] for row in db.execute('SELECT id FROM library_assets'))
+    for name in required:
+        if not isinstance(name, str) or not re.fullmatch('[0-9a-f]{64}', name):
+            raise ValueError('invalid_backup_asset')
+        candidates = [path for path in (new_assets / name, assets / name) if path.exists() or path.is_symlink()]
+        if not candidates:
+            raise ValueError('missing_backup_asset')
+        for path in candidates:
+            if path.is_symlink() or not path.is_file():
+                raise ValueError('invalid_backup_asset')
+            with path.open('rb') as stream:
+                if hashlib.file_digest(stream, 'sha256').hexdigest() != name:
+                    raise ValueError('backup_asset_checksum_conflict')
+    if incoming:
+        assets.mkdir(exist_ok=True)
+        for path in incoming:
+            target = assets / path.name
+            if not target.exists():
+                path.rename(target)
+
+
 def promote_core(restored, data, new_assets):
-    """Caller holds the runtime/tenant lock. DB copying is SQLite-atomic."""
+    """Caller holds the runtime/tenant lock. Media precede SQLite's atomic commit."""
     with closing(sqlite3.connect(':memory:')) as staged, staged:
         staged.execute('ATTACH DATABASE ? AS runtime', (str(restored),))
         erased = set()
@@ -104,28 +139,10 @@ def promote_core(restored, data, new_assets):
             erased.update(r[0] for r in staged.execute('SELECT session_id FROM runtime.session_deletions'))
         if erased:
             erase_conversations(staged, erased, schema='runtime')
-    old_assets = data / "library_assets"
-    previous = restored.parent / "previous-assets"
-    moved_old, moved_new = False, False
-    try:
-        if old_assets.exists():
-            old_assets.rename(previous)
-            moved_old = True
-        if new_assets.exists():
-            new_assets.rename(old_assets)
-            moved_new = True
-        source, destination = sqlite3.connect(restored), sqlite3.connect(data / "data.db")
-        try:
-            source.backup(destination)
-        finally:
-            source.close()
-            destination.close()
-    except BaseException:
-        if moved_new:
-            old_assets.rename(new_assets)
-        if moved_old:
-            previous.rename(old_assets)
-        raise
+    # Keep the immutable union even on error/kill: either DB may still reference it.
+    preserve_core_assets(restored, data, new_assets)
+    with closing(sqlite3.connect(restored)) as source, closing(sqlite3.connect(data / 'data.db')) as destination:
+        source.backup(destination)
 
 
 def backup(data, destination):

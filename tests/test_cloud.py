@@ -875,6 +875,7 @@ async def test_encrypted_disaster_restore_new_environment_keeps_retained_version
     import importlib.util
     from pathlib import Path
     from python.api.chat import _save_settings
+    from python.storage.runtime_lock import RuntimeLock
 
     spec = importlib.util.spec_from_file_location(
         "cloud_admin_test", Path(__file__).parents[1] / "scripts/cloud_admin.py"
@@ -893,8 +894,35 @@ async def test_encrypted_disaster_restore_new_environment_keeps_retained_version
         await storage.init_db()
         await _save_settings("a", "disaster-restored-memory", 0.8)
         version = Backups(source).create(owner, context.directory / "data.db")
+    retained = {
+        "past.kybackup": b"FICTIONAL HISTORICAL DISASTER ARCHIVE",
+        "audit.json": b'{"fictional":true}\n',
+        "inert.py": b"raise AssertionError('Backup bytes must never execute')\n",
+        "history arbitrary/chunk.bin": b"\x00\xffFICTIONAL NESTED BYTES",
+        "old.tmp": b"KEEP THIS PREEXISTING TEMP-NAMED FILE",
+    }
+    for name, raw in retained.items():
+        path = config.backup_root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(raw)
+    (config.backup_root / "history arbitrary" / "empty").mkdir()
+    with RuntimeLock(config.root):
+        pass
+
+    def inventory(root):
+        return {
+            path.relative_to(root).as_posix(): (
+                hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+            )
+            for path in root.rglob("*")
+            if path != destination
+        }
+
     destination = (config.backup_root if inside_backup_root else config.root.parent) / "disaster.kybackup"
+    source_before, backups_before = inventory(config.root), inventory(config.backup_root)
     admin.disaster_backup(source, destination)
+    assert inventory(config.root) == source_before
+    assert inventory(config.backup_root) == backups_before
     assert b"disaster-restored-memory" not in destination.read_bytes()
     target = CloudStore(
         replace(
@@ -904,6 +932,8 @@ async def test_encrypted_disaster_restore_new_environment_keeps_retained_version
         )
     )
     admin.disaster_restore(target, destination)
+    assert inventory(target.config.backup_root) == backups_before
+    assert not (target.config.backup_root / destination.name).exists()
     assert target.balance(owner) == 1000
     assert version in {r["id"] for r in Backups(target).list(owner)}
     assert "disaster-restored-memory" in json.dumps(
@@ -911,6 +941,194 @@ async def test_encrypted_disaster_restore_new_environment_keeps_retained_version
     )
     with pytest.raises(ValueError, match="empty"):
         admin.disaster_restore(target, destination)
+    restored_db = target.config.root / "tenants" / owner / "data.db"
+    Backups(target).restore(owner, version, restored_db)
+    assert "disaster-restored-memory" in json.dumps(export_snapshot(restored_db))
+    assert inventory(config.root) == source_before
+    assert inventory(config.backup_root) == backups_before
+
+
+@pytest.mark.parametrize("name,kind", [
+    ("backups/../../escape", "file"),
+    ("backups\\escape", "file"),
+    ("backups/a:alias", "file"),
+    ("backups//alias", "file"),
+    ("backups/./alias", "file"),
+    ("backups/safe.txt", "file"),
+    ("backups/unsafe", "symlink"),
+    ("backups/unsafe", "hardlink"),
+    ("backups/unsafe", "fifo"),
+    ("tenants/not-a-uuid/data.db", "file"),
+    ("transfers/not-a-uuid/data.db", "file"),
+    ("entity-transfers/not-a-uuid/data.db", "file"),
+])
+def test_disaster_restore_rejects_hostile_retained_members_before_adoption(config, monkeypatch, name, kind):
+    import importlib.util
+    import io
+    from pathlib import Path
+    import struct
+    import tarfile
+    from python.cloud.backups import MAGIC, CHUNK
+
+    spec = importlib.util.spec_from_file_location(
+        "cloud_admin_hostile_members", Path(__file__).parents[1] / "scripts/cloud_admin.py"
+    )
+    admin = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(admin)
+    source = CloudStore(config)
+    account(source)
+    source_before = hashlib.sha256(source.path.read_bytes()).digest()
+    content = io.BytesIO()
+    with tarfile.open(fileobj=content, mode="w") as archive:
+        for member_name, raw in (("control.db", source.path.read_bytes()),
+                                 ("backups/safe.txt", b"VALID INERT BYTES")):
+            member = tarfile.TarInfo(member_name)
+            member.size = len(raw)
+            archive.addfile(member, io.BytesIO(raw))
+        member = tarfile.TarInfo(name)
+        raw = b"HOSTILE FICTIONAL MEMBER"
+        if kind == "file":
+            member.size = len(raw)
+        else:
+            member.type = {"symlink": tarfile.SYMTYPE, "hardlink": tarfile.LNKTYPE,
+                           "fifo": tarfile.FIFOTYPE}[kind]
+            member.linkname = "../../escape" if kind == "symlink" else "backups/safe.txt"
+        archive.addfile(member, io.BytesIO(raw) if kind == "file" else None)
+    raw = content.getvalue()
+    encrypted = config.root.parent / "hostile.kybackup"
+    with encrypted.open("xb") as output:
+        output.write(MAGIC)
+        chunks = 0
+        for offset in range(0, len(raw), CHUNK):
+            token = source.cipher.encrypt(struct.pack("!Q", chunks) + raw[offset:offset + CHUNK])
+            output.write(struct.pack("!I", len(token)) + token)
+            chunks += 1
+        footer = source.cipher.encrypt(json.dumps({"kind": "disaster", "chunks": chunks}).encode())
+        output.write(struct.pack("!I", len(footer)) + footer)
+    encrypted_before = hashlib.sha256(encrypted.read_bytes()).digest()
+    target = CloudStore(replace(config, root=config.root.parent / "hostile-target",
+                                backup_root=config.root.parent / "hostile-target-backups"))
+    target_before = hashlib.sha256(target.path.read_bytes()).digest()
+
+    def refuse_extraction(*args, **kwargs):
+        raise AssertionError("Hostile archive reached extraction before rejection")
+
+    monkeypatch.setattr(tarfile.TarFile, "extractall", refuse_extraction)
+    with pytest.raises(ValueError):
+        admin.disaster_restore(target, encrypted)
+    assert hashlib.sha256(target.path.read_bytes()).digest() == target_before
+    assert hashlib.sha256(source.path.read_bytes()).digest() == source_before
+    assert hashlib.sha256(encrypted.read_bytes()).digest() == encrypted_before
+    assert not target.config.backup_root.exists()
+    assert not (target.config.root / "tenants").exists()
+    assert not (config.root.parent / "escape").exists()
+
+
+@pytest.mark.parametrize('occupied', ['funds', 'extension'])
+def test_disaster_restore_rejects_nonempty_control_without_accounts(config, occupied):
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        'cloud_admin_funded_destination', Path(__file__).parents[1] / 'scripts/cloud_admin.py'
+    )
+    admin = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(admin)
+    source = CloudStore(config)
+    archive = config.root.parent / 'fictional-empty.kybackup'
+    admin.disaster_backup(source, archive)
+    target = CloudStore(replace(config, root=config.root.parent / 'funded-control',
+                                backup_root=config.root.parent / 'funded-backups'))
+    if occupied == 'funds':
+        target.add_funds(1_000_000, 'fictional-funded-destination')
+    else:
+        with target.transaction() as db:
+            db.execute('CREATE TABLE "sqliteX""budget" (value TEXT)')
+            db.execute('INSERT INTO "sqliteX""budget" VALUES (?)', ('fixture-extension',))
+    with target.transaction() as db:
+        assert db.execute('SELECT COUNT(*) FROM accounts').fetchone()[0] == 0
+        before = tuple(db.iterdump())
+    with pytest.raises(ValueError, match='not empty'):
+        admin.disaster_restore(target, archive)
+    with target.transaction() as db:
+        assert tuple(db.iterdump()) == before
+
+
+@pytest.mark.parametrize('existing_root', ['community.db', 'transfers', 'entity-transfers'])
+def test_disaster_restore_rejects_existing_durable_root(config, existing_root):
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        'cloud_admin_existing_durable_root', Path(__file__).parents[1] / 'scripts/cloud_admin.py'
+    )
+    admin = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(admin)
+    source = CloudStore(config)
+    archive = config.root.parent / 'empty-durable.kybackup'
+    admin.disaster_backup(source, archive)
+    target = CloudStore(replace(config, root=config.root.parent / 'occupied-durable',
+                                backup_root=config.root.parent / 'occupied-durable-backups'))
+    sentinel = target.config.root / existing_root
+    if existing_root != 'community.db':
+        sentinel.mkdir()
+        sentinel = sentinel / 'fictional-original'
+    sentinel.write_bytes(b'preserve-existing-durable-root')
+    before = hashlib.sha256(target.path.read_bytes()).digest()
+    with pytest.raises(ValueError, match='empty'):
+        admin.disaster_restore(target, archive)
+    assert sentinel.read_bytes() == b'preserve-existing-durable-root'
+    assert hashlib.sha256(target.path.read_bytes()).digest() == before
+
+
+@pytest.mark.parametrize('wal', [False, True])
+def test_disaster_restore_preserves_community_and_unfinished_transfers(config, wal):
+    import importlib.util
+    import sqlite3
+    from pathlib import Path
+    from python.cloud.transfers import Transfers
+
+    spec = importlib.util.spec_from_file_location(
+        'cloud_admin_durable_roots', Path(__file__).parents[1] / 'scripts/cloud_admin.py'
+    )
+    admin = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(admin)
+    source = CloudStore(config)
+    owner = account(source)
+    with sqlite3.connect(config.root / 'community.db') as db:
+        if wal:
+            assert db.execute('PRAGMA journal_mode=WAL').fetchone()[0] == 'wal'
+        db.execute('CREATE TABLE legacy_works (payload TEXT)')
+        db.execute('INSERT INTO legacy_works VALUES (?)', ('fictional published work',))
+    pending, writers = [], []
+    for entity in (False, True):
+        transfers = Transfers(source, None, entity=entity)
+        transfer = transfers.create(owner, direction='upload', selected=['fictional-chat'],
+                                    revision=1, request_id='fictional-durable-'+str(entity))
+        metadata = transfers.inspect(owner, transfer)
+        if wal:
+            writer = sqlite3.connect(transfers.file(owner, transfer))
+            assert writer.execute('PRAGMA journal_mode=WAL').fetchone()[0] == 'wal'
+            with writer:
+                metadata['fixture_committed_wal'] = True
+                transfers.update_meta(writer, metadata)
+            writers.append(writer)
+        pending.append((entity, transfer, metadata))
+    archive = config.root.parent / 'durable-roots.kybackup'
+    try:
+        admin.disaster_backup(source, archive)
+    finally:
+        for writer in writers:
+            writer.close()
+    target = CloudStore(replace(config, root=config.root.parent / 'restored-durable',
+                                backup_root=config.root.parent / 'restored-durable-backups'))
+    admin.disaster_restore(target, archive)
+    assert (target.config.root / 'community.db').is_file()
+    with sqlite3.connect(target.config.root / 'community.db') as db:
+        assert db.execute('SELECT payload FROM legacy_works').fetchone()[0] == 'fictional published work'
+    for entity, transfer, metadata in pending:
+        transfers = Transfers(target, None, entity=entity)
+        assert transfers.inspect(owner, transfer) == metadata
 
 
 @pytest.mark.asyncio

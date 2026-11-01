@@ -49,6 +49,20 @@ CREATE TABLE IF NOT EXISTS app_publications(id TEXT PRIMARY KEY,owner TEXT,revis
 """
 
 
+def general_eligibility(regions, country, age, *, guardian=False):
+    if not isinstance(country, str) or len(country) != 2:
+        raise CloudError('region_policy_pending', 403)
+    policy = regions.get(country)
+    if not policy or policy.get("accepted") is not True:
+        raise CloudError("region_policy_pending", 403)
+    if type(age) is not int or not max(13, policy.get("minimum_age", 13)) <= age <= 120:
+        raise CloudError("minimum_age_required", 403)
+    if age < policy.get("guardian_below", 18) and not guardian:
+        raise CloudError("verified_guardian_consent_required", 403)
+    return {"country": country, "age_band": "adult" if age >= 18 else "teen",
+            "policy": policy["version"]}
+
+
 class UnifiedService:
     def __init__(self, store, *, region_policies=None, ad_provider=None):
         self.store = store
@@ -69,17 +83,7 @@ class UnifiedService:
             raise CloudError("unified_app_awaiting_acceptance", 503)
 
     def general_eligibility(self, country, age, *, guardian=False):
-        if not isinstance(country, str) or len(country) != 2:
-            raise CloudError('region_policy_pending', 403)
-        policy = self.regions.get(country)
-        if not policy or policy.get("accepted") is not True:
-            raise CloudError("region_policy_pending", 403)
-        if type(age) is not int or not max(13, policy.get("minimum_age", 13)) <= age <= 120:
-            raise CloudError("minimum_age_required", 403)
-        if age < policy.get("guardian_below", 18) and not guardian:
-            raise CloudError("verified_guardian_consent_required", 403)
-        return {"country": country, "age_band": "adult" if age >= 18 else "teen",
-                "policy": policy["version"]}
+        return general_eligibility(self.regions, country, age, guardian=guardian)
 
     def eligibility_ticket(self, country, age):
         result = self.general_eligibility(country, age)
@@ -537,13 +541,16 @@ class UnifiedService:
             self._grant_reserved(db, owner, source, 100, expires, "daily")
         return {"granted": True, "credits": 100, "expires": expires}
 
-    def offer(self, owner, inventory):
+    def _require_reward_offer(self, owner):
         self.available()
         if self.store.account(owner)['suspended']:
             raise CloudError('account_unavailable', 403)
         if (not self.store.config.ads_enabled or not self.ad_provider
                 or not self.store.config.legal_approved or self.store.config.private_test):
             raise CloudError("ad_provider_awaiting_acceptance", 503)
+
+    def offer(self, owner, inventory):
+        self._require_reward_offer(owner)
         seconds = inventory.get("seconds") if isinstance(inventory, dict) else None
         if type(seconds) is not int or not 1 <= seconds <= 30:
             raise CloudError("ad_duration_unavailable", 503)
@@ -585,15 +592,18 @@ class UnifiedService:
                 if old[0] != digest:
                     raise CloudError("ad_receipt_conflict", 409)
                 return {"granted": False}
+            now = time.time()
+            self._expire_offers(db, now)
             offer = db.execute("SELECT * FROM app_reward_offers WHERE id=?", (event["offer_id"],)).fetchone()
-            if (not offer or offer["state"] != "pending" or event["seconds"] != offer["seconds"]
-                    or not offer["created"] + offer["seconds"] <= event["completed_at"] <= min(time.time() + 5, offer["expires"])):
-                raise CloudError("ad_receipt_not_completed", 409)
-            expires = time.time() + 30 * 86400
-            self._grant_reserved(db, offer["owner"], offer["id"], offer["credits"], expires, "ad")
-            db.execute("UPDATE app_reward_offers SET state='granted',event=? WHERE id=?", (event["event_id"], offer["id"]))
-            db.execute("INSERT INTO app_reward_events VALUES(?,?)", (event["event_id"], digest))
-            return {"granted": True, "credits": offer["credits"]}
+            if (offer and offer["state"] == "pending" and event["seconds"] == offer["seconds"]
+                    and offer["created"] + offer["seconds"] <= event["completed_at"] <= min(now + 5, offer["expires"])):
+                expires = now + 30 * 86400
+                self._grant_reserved(db, offer["owner"], offer["id"], offer["credits"], expires, "ad")
+                db.execute("UPDATE app_reward_offers SET state='granted',event=? WHERE id=?", (event["event_id"], offer["id"]))
+                db.execute("INSERT INTO app_reward_events VALUES(?,?)", (event["event_id"], digest))
+                return {"granted": True, "credits": offer["credits"]}
+        # Reject after committing expiry so released reserves stay released.
+        raise CloudError("ad_receipt_not_completed", 409)
 
     def reward(self, owner, offer_id):
         with self.store.transaction() as db:
@@ -768,9 +778,7 @@ def install_routes(app, service):
 
     @app.post("/api/cloud/app/rewards")
     async def offer(request: Request):
-        service.available()
-        if not service.ad_provider:
-            raise CloudError("ad_provider_awaiting_acceptance", 503)
+        service._require_reward_offer(request.state.owner)
         inventory = await service.ad_provider.inventory()
         result = service.offer(request.state.owner, inventory)
         result["frame_url"] = service.ad_provider.frame_url(result["id"])

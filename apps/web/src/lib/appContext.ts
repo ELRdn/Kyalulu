@@ -1,4 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
+import { connectionScope } from './remoteStore';
+import { ChatRecovery } from './chatRecovery';
 
 export type ExecutionTarget = 'cloud' | 'device' | 'pc' | 'local';
 export type StoragePolicy = 'sync' | 'local';
@@ -10,14 +12,15 @@ const MODE = 'kyalulu-execution-target';
 const PREFS = 'kyalulu-app-preferences-v1';
 const OWNER = 'kyalulu-app-owner';
 export const isDesktop = () => typeof window !== 'undefined' && ('electronAPI' in window || /Electron\//.test(navigator.userAgent));
+export const hasLocalRuntime = () => import.meta.env.MODE === 'native' || isDesktop();
 export const isUnifiedEntry = () => typeof location !== 'undefined' &&
-  (import.meta.env.MODE === 'unified' || import.meta.env.VITE_UNIFIED_APP === '1' || /^(app|mobile)\.kyalulu\.com$/.test(location.hostname) || location.pathname.startsWith('/device/'));
+  (['unified','native'].includes(import.meta.env.MODE) || import.meta.env.VITE_UNIFIED_APP === '1' || /^(app|mobile)\.kyalulu\.com$/.test(location.hostname) || location.pathname.startsWith('/device/'));
 function read(key: string) { try { return localStorage.getItem(key); } catch { return null; } }
 export function executionTarget(): ExecutionTarget {
   if (typeof location !== 'undefined' && location.pathname.startsWith('/device/')) return 'device';
   const value = read(MODE);
   return value === 'cloud' || value === 'device' || value === 'pc' || value === 'local' ? value
-    : read('kyalulu-active-remote') ? 'pc' : isUnifiedEntry() && !isDesktop() ? 'cloud' : 'local';
+    : read('kyalulu-active-remote') ? 'pc' : isUnifiedEntry() && !hasLocalRuntime() ? 'cloud' : 'local';
 }
 export function deviceOwner() { return read(OWNER) || 'guest'; }
 export function rememberOwner(owner: string) {
@@ -50,13 +53,35 @@ export function savePreferences(value: AppPreferences) {
 }
 export function switchTarget(target: ExecutionTarget) {
   if (generationBusy()) throw Error('Stop generation and confirm its saved result before switching.');
+  if (target === 'cloud' && hasLocalRuntime()) {
+    window.open('https://app.kyalulu.com/', '_blank', 'noopener,noreferrer');
+    return;
+  }
   localStorage.setItem(MODE, target);
   const destination = target === 'device' ? '/device/' : '/';
   if (isDesktop() || location.protocol === 'file:') { location.reload(); return; }
+  if (location.pathname === destination && !location.search) {
+    location.hash = '/'; location.reload(); return;
+  }
   location.assign(destination + '#/');
 }
 let busy = 0;
-export function generationBusy() { return busy > 0; }
+export function pendingConversation(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith('kyalulu:chat-recovery:v1:')) continue;
+      const scope = connectionScope(), prefix = `kyalulu:chat-recovery:v1:${encodeURIComponent(scope)}:`;
+      if (!key?.startsWith(prefix)) continue;
+      const session = decodeURIComponent(key.slice(prefix.length)), recovery = new ChatRecovery(localStorage, scope, session);
+      if (recovery.key !== key) return '';
+      if (recovery.read().pending) return session;
+    }
+    return null;
+  } catch { return ''; } // An unreadable recovery record must not authorize a destination change.
+}
+export function generationBusy() { return busy > 0 || pendingConversation() !== null; }
 export function setGenerationBusy(value: boolean) {
   busy = Math.max(0, busy + (value ? 1 : -1));
   window.dispatchEvent(new Event(EVENT));
@@ -74,6 +99,7 @@ export function usePreferences() {
 }
 export function useLanguage() { return useSyncExternalStore(subscribe, () => preferences().language, () => 'ja' as const); }
 export function useGenerationBusy() { return useSyncExternalStore(subscribe, generationBusy, () => false); }
+export function usePendingConversation() { return useSyncExternalStore(subscribe, pendingConversation, () => null); }
 export const labels = {
   ja: { cloud:'Cloud', device:'この端末', pc:'自分のPC', local:'このPC', target:'実行先', model:'モデル',
     home:'ホーム', discover:'さがす', chats:'トーク', create:'つくる', profile:'設定', localOnly:'端末限定', sync:'アカウントに同期',

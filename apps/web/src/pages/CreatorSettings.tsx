@@ -99,7 +99,7 @@ export default function CreatorSettings() {
           {selected && <RuntimeDownload href={`/api/creator/${kind}/${selected.id}/export`} download={`${kind}.json`}>{en?'Export JSON':'JSONを書き出す'}</RuntimeDownload>}
         </div>
         <input ref={input} type="file" accept="application/json,.json" hidden onChange={e => { void importFile(e.target.files?.[0]); e.target.value = ""; }} />
-        {versions.length > 1 && <details><summary>{en?'Version history':'保存履歴'}</summary><ul className="k-lab-list">{versions.map(x => <li key={x.id}>{en?'Version ':'版'}{x.revision} · {x.display_name} <RuntimeDownload href={`/api/creator/${kind}/${x.id}/export`} download>{en?'Export':'書き出す'}</RuntimeDownload></li>)}</ul></details>}
+        {versions.length > 1 && <details><summary>{en?'Version history':'保存履歴'}</summary><ul className="k-lab-list">{versions.map(x => <li key={x.id}>{en?'Version ':'版'}{x.revision} · {x.display_name} <RuntimeDownload href={`/api/creator/${kind}/${x.id}/export`} download={`${kind}.json`}>{en?'Export':'書き出す'}</RuntimeDownload></li>)}</ul></details>}
       </form></Card>
     </div>
   </div>;

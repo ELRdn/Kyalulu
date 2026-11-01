@@ -1,0 +1,243 @@
+"""Real Chromium branch ACK/IDB acceptance against checksum-frozen f9c8d2c semantics."""
+import argparse
+import asyncio
+import base64
+from datetime import datetime, timezone
+import hashlib
+import json
+from pathlib import Path
+from urllib.parse import quote, urlsplit
+
+from playwright.async_api import async_playwright
+from browser_fixture_server import local_vite
+from e2e_sync_staging import check_oracle as check_receiver_oracle
+
+ROOT = Path(__file__).resolve().parents[1]
+ORACLE_SHA256 = '6cc86c59cf156957702ed473d18994861baa5b10d46f607c9a5c5fea9164cf45'
+OLD_ACK_SHA256 = 'f5114e8e366e0e3c264b56b50fd35151c41ffd841800325c5236aee535ed394b'
+OLD_RECEIVER_SHA256 = 'd5bbdcb2f055ee8d19b0b2b2f4ed3c06c8ace99bcbb886a8493d291add8f4c88'
+CRITICAL_SOURCES = (
+    'apps/web/src/lib/appSync.ts', 'apps/web/src/lib/appSyncBranch.ts', 'apps/web/src/lib/appStore.ts',
+    'apps/web/src/lib/segmentedStorage.ts', 'apps/web/src/lib/jsonStream.ts', 'apps/web/src/lib/appSyncStage.ts',
+    'apps/web/src/lib/appSyncData.ts', 'apps/web/src/lib/appOutbox.ts', 'apps/web/src/lib/appTransfers.ts',
+    'tests/e2e_sync_branch_ack.py', 'tests/fixtures/sync-branch-ack.html',
+    'tests/fixtures/sync-branch-ack-oracle.ts', 'tests/fixtures/sync-staging-oracle.ts',
+)
+SCENARIOS = (
+    'live', 'live-edited', 'payload-first', 'deleted', 'deleted-retained',
+    'legacy', 'legacy-source', 'legacy-outbox', 'mixed', 'seq-floor', 'header-floor',
+    'legacy-deleted', 'legacy-deleted-source', 'legacy-deleted-outbox', 'deleted-messages-first',
+    'transport', 'cached', 'withdrawn', 'withdrawn-renewed', 'reload',
+    'source-corrupt', 'source-missing', 'source-json', 'source-utf8', 'source-depth',
+    'outbox-corrupt', 'outbox-missing', 'outbox-json', 'outbox-utf8', 'outbox-depth',
+    'late-source-corrupt', 'late-outbox-corrupt', 'quota', 'atomic-two-ack',
+    'owner-body', 'busy-body', 'consent-body', 'owner-output', 'busy-output', 'consent-output',
+    'pending-local', 'pending-sync', 'collision', 'invalid-events', 'invalid-profile-branch', 'early-outbox-revision',
+)
+
+
+def digest(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def check_oracle():
+    """No Git/history dependency: pin the adapter, old receiver and schema inputs."""
+    check_receiver_oracle()
+    adapter = (ROOT / 'tests/fixtures/sync-branch-ack-oracle.ts').read_text(encoding='utf-8')
+    assert digest(adapter.encode()) == ORACLE_SHA256, 'Frozen branch ACK/event oracle modified'
+    ack = adapter.split('// BEGIN OLD ACK\n', 1)[1].split('// END OLD ACK', 1)[0]
+    assert digest(ack.encode()) == OLD_ACK_SHA256, 'Old acknowledgeEntity differs from f9c8d2c'
+    receiver = (ROOT / 'tests/fixtures/sync-staging-oracle.ts').read_text(encoding='utf-8')
+    receiver = receiver.split('\n', 1)[1].split('export function conversationSettings(', 1)[0]
+    receiver = receiver.replace("'../../packages/schemas/src/index.ts'", "'../../../../packages/schemas/src'")
+    receiver = receiver.replace('type AppEntity=any;', "import type { AppEntity } from './appStore';")
+    assert digest(receiver.encode()) == OLD_RECEIVER_SHA256, 'Old receiver/binder differs from f9c8d2c'
+    return {'branch_adapter': ORACLE_SHA256, 'f9_acknowledge_entity': OLD_ACK_SHA256,
+            'f9_receiver_binder_prefix': OLD_RECEIVER_SHA256}
+
+
+def fingerprint():
+    paths = set()
+    for folder in ('apps/web/src', 'packages/schemas/src', 'packages/ui/src'):
+        paths.update(p for p in (ROOT / folder).rglob('*') if p.is_file())
+    paths.update(ROOT / name for name in (
+        'apps/web/vite.config.ts', 'pnpm-lock.yaml', 'tests/browser_fixture_server.py',
+        'tests/e2e_sync_staging.py', 'tests/e2e_sync_branch_ack.py',
+        'tests/fixtures/sync-staging-oracle.ts', 'tests/fixtures/sync-branch-ack-oracle.ts',
+        'tests/fixtures/sync-branch-ack.html', 'tests/fixtures/unified-history.json',
+    ))
+    files = {p.relative_to(ROOT).as_posix(): digest(p.read_bytes()) for p in sorted(paths)}
+    return {'sha256': digest(json.dumps(files, sort_keys=True, separators=(',', ':')).encode()), 'files': files}
+
+
+def memory_rows(payload):
+    yield from payload.get('memories', [])
+    for message in payload.get('messages', []):
+        for name in ('before', 'after'):
+            yield from (message.get(name) or {}).get('memories', [])
+
+
+def normalize(target, events):
+    """Only fresh random memory allocation IDs vary; stable UUIDs and numeric IDs stay exact."""
+    target, events = json.loads(json.dumps([target, events], ensure_ascii=False))
+    mapping, stable = {}, {}
+    for memory in memory_rows(target['payload']):
+        identifier, uuid = memory['id'], memory['uuid']
+        assert identifier not in mapping or mapping[identifier] == uuid, 'Memory allocation aliases distinct UUIDs'
+        assert uuid not in stable or stable[uuid] == identifier, 'Memory allocation inconsistent across snapshots'
+        mapping[identifier], stable[uuid] = uuid, identifier
+    for memory in memory_rows(target['payload']):
+        memory['id'] = 'allocated:' + mapping[memory['id']]
+    for event in events:
+        if event.get('memory_id'):
+            event['memory_id'] = 'allocated:' + mapping[event['memory_id']]
+        for candidate in (event.get('detail') or {}).get('candidates', []):
+            if candidate.get('id'):
+                candidate['id'] = 'allocated:' + mapping[candidate['id']]
+    return {'target': target, 'events': events}
+
+
+def decode_evidence(evidence, output):
+    """Decode original IDB bytes with Python stdlib, independently of product parsers."""
+    header = evidence['header']
+    expected = json.loads(evidence['expected_json'])
+    actual_events = json.loads(evidence['actual_events_json'])
+    expected_events = json.loads(evidence['expected_events_json'])
+    ref = header.get('payloadParts')
+    if ref:
+        parts = sorted(evidence['parts'], key=lambda p: p['key'][4])
+        assert [p['key'][4] for p in parts] == list(range(ref['chunks']))
+        for p in parts:
+            assert p['key'][:4] == [header['owner'], 'entity', header['id'], ref['token']]
+        raw = b''.join(base64.b64decode(p['data'], validate=True) for p in parts)
+        assert len(raw) == ref['size'] and digest(raw) == ref['sha256'], 'Actual IDB manifest checksum differs'
+        payload = json.loads(raw.decode('utf-8', errors='strict'))
+    else:
+        payload = json.loads(evidence['inline_json'])
+        raw = json.dumps(payload, ensure_ascii=False).encode()
+    actual = {k: v for k, v in header.items() if k not in ('payloadParts', 'selection', 'memoryReferences', 'payload')}
+    actual['payload'] = payload
+    normalized_actual = normalize(actual, actual_events)
+    normalized_old = normalize(expected, expected_events)
+    assert normalized_actual == normalized_old, 'Independent Python full payload/event comparison differs from f9c8d2c'
+    output.mkdir(parents=True, exist_ok=True)
+    (output / 'actual-payload.json').write_bytes(raw)
+    for name, value in (('header', header), ('old-expected', expected),
+                        ('actual-events', actual_events), ('old-expected-events', expected_events)):
+        (output / (name + '.json')).write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding='utf-8')
+    return {'python_independent_decode': True, 'python_full_old_oracle': True,
+            'actual_payload_bytes': len(raw), 'actual_payload_sha256': digest(raw), 'idb_chunks': len(evidence['parts'])}
+
+
+async def main(args):
+    timestamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+    output = Path(args.output) if args.output else ROOT / '.artifacts/sync-branch-ack-browser' / timestamp
+    output.mkdir(parents=True, exist_ok=False)
+    stdout = (output / 'stdout.jsonl').open('w', encoding='utf-8')
+    def emit(value):
+        line = json.dumps(value, ensure_ascii=True)  # Windows console encodings must preserve every JSON value.
+        stdout.write(line + '\n'); stdout.flush()
+        print(line, flush=True)
+    before = fingerprint()
+    results, browser_version, contexts_closed, disconnected = [], None, 0, False
+    try:
+        oracle = check_oracle()
+        (output / 'source-before.json').write_text(json.dumps(before, indent=2), encoding='utf-8')
+        emit({'stage': 'source-locked', 'sha256': before['sha256'], 'files': len(before['files']), 'oracle': oracle,
+              'output': str(output)})
+        if args.frozen_source:
+            assert before['sha256'] == args.frozen_source, 'Current sources differ from coordinated approved freeze'
+        async with local_vite(output) as origin, async_playwright() as runtime:
+            port = urlsplit(origin).port
+            browser = await runtime.chromium.launch(headless=True)
+            browser_version = browser.version
+            try:
+                for scenario in args.scenario or SCENARIOS:
+                    emit({'scenario': scenario, 'stage': 'start'})
+                    context = await browser.new_context(service_workers='block', accept_downloads=False)
+                    blocked, errors, downloads = [], [], []
+                    async def local_only(route):
+                        parsed = urlsplit(route.request.url)
+                        forbidden = ('/api/', '/models/', '/model/', '/download/', '/weights/')
+                        if parsed.hostname == '127.0.0.1' and parsed.port == port and not parsed.path.startswith(forbidden):
+                            await route.continue_()
+                        else:
+                            blocked.append(route.request.url)
+                            await route.abort()
+                    async def socket_only(route):
+                        blocked.append(route.url)
+                        await route.close()
+                    await context.route('**/*', local_only)
+                    await context.route_web_socket('**/*', socket_only)
+                    try:
+                        page = await context.new_page()
+                        page.on('pageerror', lambda error: errors.append(str(error)))
+                        page.on('download', lambda download: downloads.append(download.suggested_filename))
+                        path = quote((ROOT / 'tests/fixtures/sync-branch-ack.html').as_posix(), safe='/:')
+                        url = origin + '/@fs/' + path + '?scenario=' + scenario
+                        for resumed in ([False, True] if scenario == 'reload' else [False]):
+                            case = scenario + ('-resumed' if resumed else '')
+                            await page.goto(url + ('&resume=1' if resumed else ''))
+                            await page.wait_for_function('window.__SYNC_BRANCH_ACK__ !== undefined', timeout=120000)
+                            result = await page.evaluate('window.__SYNC_BRANCH_ACK__')
+                            result.update(blocked_network_requests=blocked.copy(), page_errors=errors.copy(), downloads=downloads.copy())
+                            case_dir = output / case
+                            case_dir.mkdir(exist_ok=True)
+                            for key in ('physical_before_json', 'physical_after_json'):
+                                if key in result:
+                                    (case_dir / key.replace('_json', '.json')).write_text(result.pop(key), encoding='utf-8')
+                            evidence = result.pop('evidence', None)
+                            if evidence:
+                                try:
+                                    result.update(decode_evidence(evidence, case_dir))
+                                except Exception as error:
+                                    result.update(ok=False, python_error=str(error))
+                                    (case_dir / 'failed-evidence.json').write_text(json.dumps(evidence, ensure_ascii=False), encoding='utf-8')
+                            results.append(result); emit(result)
+                    except Exception as error:
+                        result = {'ok': False, 'scenario': scenario, 'exception': str(error), 'blocked_network_requests': blocked.copy(), 'page_errors': errors.copy()}
+                        results.append(result); emit(result)
+                    finally:
+                        await context.close(); contexts_closed += 1
+            finally:
+                await browser.close()
+                disconnected = not browser.is_connected()
+    except Exception as error:
+        emit({'stage': 'fatal', 'error': str(error)})
+        raise
+    finally:
+        after = fingerprint()
+        (output / 'source-after.json').write_text(json.dumps(after, indent=2), encoding='utf-8')
+        changed = sorted(p for p in before['files'].keys() | after['files'].keys() if before['files'].get(p) != after['files'].get(p))
+        passed = sum(bool(r['ok'] and not r.get('blocked_network_requests') and not r.get('page_errors') and not r.get('downloads')) for r in results)
+        report = {'baseline': 'f9c8d2c', 'browser': browser_version, 'passed': passed, 'total': len(results),
+                  'source_before_sha256': before['sha256'], 'source_after_sha256': after['sha256'],
+                  'critical_source_sha256': {p: {'before': before['files'].get(p), 'after': after['files'].get(p)} for p in CRITICAL_SOURCES},
+                  'changed_sources': changed, 'contexts_closed': contexts_closed,
+                  'owned_browser_disconnected': disconnected, 'owned_vite_stopped': browser_version is not None, 'results': results}
+        (output / 'result.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+        emit({k: v for k, v in report.items() if k != 'results'}); stdout.close()
+    assert not changed, 'Sources changed during run; exploratory evidence only, not immutable acceptance'
+    assert len(results) == len(args.scenario or SCENARIOS) + ('reload' in (args.scenario or SCENARIOS))
+    assert passed == len(results), 'Real browser assertions failed; inspect preserved stdout.jsonl and result.json'
+    assert disconnected and contexts_closed == len(args.scenario or SCENARIOS)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--scenario', action='append', choices=SCENARIOS)
+    freeze = parser.add_mutually_exclusive_group()
+    freeze.add_argument('--accept-current-source', action='store_true')
+    freeze.add_argument('--frozen-source')
+    parser.add_argument('--output', help='New artifact directory; existing results are never overwritten')
+    parser.add_argument('--print-source-hash', action='store_true')
+    parser.add_argument('--check-oracle', action='store_true')
+    args = parser.parse_args()
+    if args.check_oracle:
+        print(json.dumps(check_oracle()))
+    elif args.print_source_hash:
+        print(fingerprint()['sha256'])
+    else:
+        if not args.accept_current_source and not args.frozen_source:
+            parser.error('Choose --accept-current-source or --frozen-source SHA256')
+        asyncio.run(main(args))

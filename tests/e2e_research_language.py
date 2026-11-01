@@ -25,6 +25,8 @@ async def main():
                 context = await browser.new_context(viewport={'width': width, 'height': 852})
                 requests, writes, benchmark_posts = [], [], []
                 jobs = []
+                page, phase = None, 'setup'
+                console_errors, failed_requests = [], []
                 try:
                     async def route(request):
                         url = urlsplit(request.request.url)
@@ -64,8 +66,12 @@ async def main():
                     await context.route('**/*', route)
                     page = await context.new_page()
                     page.on('pageerror', lambda error: errors.append(str(error)))
+                    page.on('console', lambda message: console_errors.append(message.text) if message.type == 'error' else None)
+                    page.on('requestfailed', lambda request: failed_requests.append({'url': request.url, 'failure': request.failure}))
+                    phase = 'fixture-import'
                     await page.goto(origin + '/@fs/' + quote((ROOT / 'tests/fixtures/research-language.html').as_posix(), safe='/:'))
                     await page.wait_for_function('window.__RESEARCH_LANGUAGE__ !== undefined')
+                    phase = 'ui-assertions'
                     await page.evaluate('([language,theme])=>{window.__unmount=window.__RESEARCH_LANGUAGE__.mount(document.getElementById("root"),language,theme)}', [initial, theme])
                     column = page.locator('.k-research-col').first
                     comment = column.get_by_role('textbox', name='Comment (optional)' if initial == 'en' else 'コメント（任意）')
@@ -116,6 +122,14 @@ async def main():
                     results.append({'initial_language': initial, 'width': width, 'theme': theme, 'draft_retained_on_language_change': True,
                                     'no_automatic_request': True, 'explicit_rating_saved': True, 'draft_reset_on_experiment_change': True,
                                     'benchmark_conditions_retained': True, 'benchmark_explicit_request_only': True, 'overflow': False})
+                except Exception as error:
+                    failure = {'ok': False, 'initial_language': initial, 'width': width, 'theme': theme, 'phase': phase,
+                               'exception': str(error), 'page_url': page.url if page else None,
+                               'page_errors': list(errors), 'console_errors': console_errors,
+                               'failed_requests': failed_requests, 'blocked_requests': list(blocked)}
+                    (OUTPUT / f'failure-{initial}-{width}-{theme}.json').write_text(json.dumps(failure, indent=2), encoding='utf-8')
+                    print(json.dumps(failure), flush=True)
+                    raise
                 finally:
                     await context.close()
         finally:
