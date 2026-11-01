@@ -69,3 +69,46 @@ Whole actor history, root metadata/latest message, result arrays, Worker cloning
 merge/fitting, pre-fit raw prompts, SSE diagnostics and active Research records
 still retain whole paths. No peak RSS, total 1 GB generation, real model,
 physical-device, complete package or production acceptance is claimed.
+
+## Subsequent Lore history scan without a whole haystack
+
+`selectLore` no longer joins the selected message bodies into a whole scan
+string or folds that whole string. It walks references plus the original
+newline separators in at most4,096-UTF-16-unit source chunks, keeps sufficient
+boundary carry for the longest folded key, and computes matches once per
+sensitivity/pass. Unicode folding, valid surrogate pairs and key matches
+across chunks are preserved. Recursive additions become visible only on the
+next pass, including the leading newline when the original scan is empty.
+
+Candidate gathering reads only already-string keys and does not move key
+validation forward. Disabled entries, constants, unsupported conditions and
+inactive selective entries retain their old short circuits and error order.
+The existing public casefold helper, entry/depth/budget limits, priority and
+render/audit ordering, compile/assembly APIs and Python fixtures are unchanged.
+
+An independent copied old loop compares complete selected/audit results,
+render calls and exception class/message for250 deterministic mixed cases.
+Boundary/folding expansion, surrogate and long/multiline keys,5,001-key lists,
+empty scans/recursive passes, disabled/malformed aliases and budget errors
+have targeted coverage. Instrumented tests reject history slice/map/join and
+verify bounded source slices and equal source-fold work for two versus64
+entries.82 focused tests and TypeScript pass. Parent's complete Web suite
+passes1,864 tests/101 files with all337 Web/schema/UI source hashes unchanged;
+all five shared Python portable-prompt fixtures pass independently. Private
+evidence: `lore-stream-scan-20261101/{summary.json,parent-web.log,parent-web-result.json}`.
+
+Carry still scales with the longest input key; huge key-list CPU/memory has
+not received a separate acceptance. Original history is still held by the
+main actor, and canonical input, ONNX whole-candidate tokenization, active
+Research and full restoration remain separate paths. This eliminates a
+specific full-history temporary allocation; it does not prove250MB/1GB total
+capacity or a product RSS bound. The real4cd3673 model evidence predates this
+source change and is not relabelled as a run of the new selector.
+
+Parent also recompiles the portable snapshots and full saved histories from
+all40 actual4cd model turns with the new selector: the complete compiled
+objects match their frozen saved values. This is an offline compiler
+equivalence check, not40 new model generations. The actual Chromium
+generation matrix passes84 cases plus mock overflow/rescue with313 source
+inputs unchanged and owned-process cleanup. Evidence:
+`lore-stream-scan-20261101/{real-snapshot-compiler.json,browser/result.json}`.
