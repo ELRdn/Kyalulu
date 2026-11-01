@@ -815,3 +815,84 @@ was stopped and its lack of remaining children verified. Validation runs use
 `apps/web` as cwd. A missing parent temporary directory caused a Python setup
 failure; after creating the private artifact directory the unchanged102 tests
 pass. No failed attempt is counted as success.
+
+Fixed e31df3c06a0e46fbe45f1a427b7ab328223b08be subsequently passes typecheck,
+unified production build and all1,929 Web tests with the final explicit limit.
+All1,208 fixed sources and60 SDK/native inputs remain unchanged; four emitted
+runtime assets match. Final working-source Python generation/memory/provenance
+and source/fingerprint tests pass147 cases. Private evidence:
+`memory-proposal-contract-20261101/{python-results.xml,fixed-validation/result.json,fixed-validation/source-binding.json,fixed-validation/web-tests.log}`.
+Dependencies/compiler outputs are reused, not clean-installed/recompiled.
+Actual native admission and real-model quality are still separate gates.
+
+The actual fixed e31 Device API/source Runtime and production Worker/SDK/native
+subsequently complete the original two stock Librarian turns and one first-delta
+cancellation, without sampler/context/output edits or retries.72 fixture checks,
+two independent Python original-input/window comparisons and three exact
+read-only restart receipts pass. The exact shared instruction is present in
+all mandatory packets. Observed mandatory native input counts are290/306/318
+against the unchanged1,792-token input budget. These are mandatory counts, not
+the unexported final fitted count. Librarian byte estimates are1,543/1,592/1,624,
+so this cohort does not prove the separate Mocha/shared-memory heuristic-
+overflow regression fits natively. No such crossing is inferred from these
+Librarian results.
+
+All five cached shards totaling3,125,578,496 bytes, original model metadata and
+source/build/SDK/native inputs remain unchanged; parent independently verifies
+the before/after manifest equality. Both owned browser stages close and Vite
+exits, with no remaining owned runner/server process. No production/operator
+browser or unrelated DB is used. Prior useful-memory and JSON failures remain
+valid; this is protocol/admission/persistence evidence, not semantic quality.
+Private evidence: `real-memory-proposal-contract-20261101/run-bf264db1-7a31-42ad-bf38-b8090550f6be/{acceptance-summary.json,mandatory-count-audit.json,terminal-process-proof.json}`.
+
+A separate actual count-only check closes that narrower Mocha input-fit gap.
+It extracts the unchanged fixed regression's identity/source/seed/turn setup,
+removes TypeScript annotations only, and replaces mocked storage/API with the
+real source Device API in a fresh UUID DB. The full default Mocha, original
+shared salmon fact, repeated complete user run, new instruction and fixture
+temperature0.8 remain. Only the fixture model ID becomes the cached real GGUF.
+The complete captured input is mandatory: its byte heuristic is1,998, while
+the one actual production Worker native count is401, below1,792. No input,
+history, character or memory is shortened. The count listener invokes the real
+runtime stop before its admission-window handler; zero windows, generation
+contexts or native deltas are reached, with one real stop acknowledgement and
+no retry. This is not another semantic generation attempt or response-quality
+test. Model/source/build/native and original metadata remain unchanged; the
+owned browser closes and server exits. No final fitted-count export is invented.
+Private evidence: `real-memory-proposal-contract-20261101/count-only-b0ab3f84-b367-4625-8bb7-e2aba19fdba7/{native-count-audit.json,run-result.json,cleanup.json}`.
+
+## Current fixed e31 Native and Cloud candidates
+
+Both complete candidates now include the e31 instruction correction. Their
+independent immutable export has1,208 files; corresponding source offers are
+identical at1,123 files and cover all119 changed paths. Native has9,055 archive
+members and Cloud236. New Native/unified UI builds reuse hash-bound SDK/native,
+offline dependencies and CPython3.13.7; this is not clean installation or a new
+native compilation. SDK25 input/56 output files and the delivered source build
+recipe are verified. All30 packed-source tests pass, including the unchanged
+temporary-Git newline case; no real repository Git is modified by that test.
+The146 focused UI checks pass. Installed packed CLI restart/history/memory,
+fictional backup/restore/rollback and seven pointer-fault cases pass. Its
+fresh JA/EN browser checks preserve drafts, targets and receipts through restart
+and credential/referrer-free fictional Cloud handoff, with two mock generations,
+zero external requests/page errors and runtime process exit. This packaged
+browser test does not perform model inference or approve regional policy.
+
+| Fixed candidate | Bytes | SHA-256 |
+| --- | ---: | --- |
+|Windows Native|142,524,664|`4e7b502eda3b6144435e24e9cab71bbca5e9a8f41fd764862c48259c3e887df3`|
+|Unified Cloud|67,209,954|`037a697afa26a5baa14b303a8c2982bb45dd863c73d415514096472cf6b4e920`|
+
+Parent independently recomputes both sizes/hashes. Private evidence:
+`portable-delivery-e31df3c-20261101/{results.json,packed-cli-result.json,packed-browser-result.json,sdk-closure-console.log}`.
+The earlier a89 candidates remain separate and unchanged. Three primary grants,
+current Linux image, signing, clean OS/macOS, physical devices, whole capacity,
+semantic quality and production conditions remain open. The local Docker CLI
+is installed but its Linux engine pipe is unavailable; no daemon is started or
+VPS scope expanded. No package is published, signed or production-selected.
+
+Hosted e76d901 [run41277633819](https://github.com/ELRdn/Kyalulu/actions/runs/41277633819)
+and [run41277630503](https://github.com/ELRdn/Kyalulu/actions/runs/41277630503)
+are now successful. a89 and e31 runs remain in progress at the latest check;
+current-head aggregate success is not inferred. Draft and production holds
+remain in effect.
