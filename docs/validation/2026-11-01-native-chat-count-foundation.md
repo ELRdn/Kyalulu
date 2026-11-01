@@ -682,3 +682,12 @@ aggregate capacity and real250MB/1GB/process memory gates remain open. The prior
 207ed85 packages/model bindings do not contain or prove this later API/runtime
 change. Fixed-source build, new-source real inference and current packages are
 separate evidence to collect before deployment; production remains held.
+
+Fixed b88671c6d44a810d9cc923b6941f143077cdf1a5 export passes typecheck,
+unified production build and all1,928 Web tests without the unrelated working-
+tree harness edits. All1,208 source files and60 SDK/native inputs are unchanged;
+the four emitted runtime assets match, and the built Worker remains byte-equal
+to prior real4cd execution. Dependencies are reused, not clean-installed.
+Private evidence: `gguf-source-replay-20261101/fixed-validation/{result.json,source-binding.json,web-tests.log}`.
+This code/asset binding does not prove the new asynchronous Device API with
+actual inference; that scoped check is tracked separately and not yet accepted.
