@@ -969,3 +969,54 @@ after exact identity checks; Desktop/backend are not force-reset. Hosted Linux
 validation is used instead. ConoHa's supplied server-detail URL is retained, but
 the browser kernel failure and desktop USER_CONTROL still prevent reading its
 connection details. No ConoHa setting or authentication is changed.
+
+## Completed same-run hosted delivery and new e31 memory observations
+
+[Run41286381032](https://github.com/ELRdn/Kyalulu/actions/runs/41286381032)
+finishes successfully for exact1a0cb08c42f6f5228b107c12b00f348b5708d4c4:
+WASM, Linux Cloud, Windows x64 Native and macOS arm64 Native all pass. The parent
+downloads only Cloud check JSON/hash files, Native acceptance records/screenshots
+and manifests. Their cross-record hashes agree; the three reported CI/fixture/
+Dockerfile code hashes match exact committed Git bytes. The parent does not
+download or independently hash the executable archives, or execute downloaded code.
+
+Cloud checks227 copied files, all three official scenarios, UID10002/network
+none/read-only, closed unapproved Auth/region/billing/ads, and the unmodified
+default Uvicorn health/Device bytes and headers. The source-offer hash is
+`e7a2216c78f9d72c7bc521f5072ff210c4a1006d0dd949dc1d6fa07a562e98bd`.
+Native CLI acceptance on both development hosts verifies start/restart,
+fictional backup/restore/rollback and seven pointer faults with process exit.
+JA/EN browser entry checks retain draft/target/receipt/history over restart,
+with two mock generations and zero external requests/page errors per host.
+The reported Native archive hashes are Windows
+`6bfb4d02621ec5f778002526b80ab0f5c279e148387ba1602e18448814233567`
+and macOS `5f476e5b00f6bf8566acbd6ce2bfc9049cd390fe70f83f3ab9be1b8022988945`.
+This is actual hosted packaging/fictional-data acceptance, not clean OS,
+first public download, real inference, physical-device or production acceptance.
+Separate Runtime/Web CI is still tracked independently. Private retained evidence:
+`hosted-delivery-1a0cb08-20261101/{run.json,parent-audit.json}`.
+
+A separate real-model cohort reuses the immutable tested e31 source/build and
+original cached model, runs exactly the first20 stock Librarian30 turns once,
+and retains2048/256, stock sampling, no seed override/retry and the existing
+2400-second bound. All20 complete;460 fixture assertions,20 independent full
+original-input/window comparisons and20 exact fresh-read-only-restart receipts
+pass. All3,125,578,496 cached model bytes, original model metadata and source/
+build/native inputs remain unchanged. Owned browsers/server exit and the exact
+dedicated profile is free. Only the restart observer's old three-attempt
+cardinality is corrected to20 during the run; before/after hashes are retained
+in `observer-correction.json`. No generation input or comparison is changed.
+
+There are four native memory proposals. Two exact-source supported proposals
+occur at turns9/20, but both are general requests for suggestions. The explicit
+flower, drink, meeting plan and changed preference at turns1/2/3/15 produce no
+proposal. Two source-mismatched candidates remain unverified and are excluded
+from injection on12 candidate observations. Textual correspondence therefore
+works in this bounded sample; useful fact selection/recall and response quality
+remain unaccepted. Replies also include a changed meeting date and literal
+structured-output text inside an accepted reply string; valid outer JSON is not
+conversational quality. No seeded A/B, full30-turn recall or guarantee against
+earlier JSON failures is claimed. Private evidence:
+`real-memory-quality-e31-20261101/run-402f5e76-1ed6-44c3-bfb9-43b6d0628755/{acceptance-summary.json,memory-injection-audit.json}`.
+
+Draft/region/provider and production holds remain in effect.
