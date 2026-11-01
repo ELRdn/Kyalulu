@@ -5,6 +5,7 @@ import { deviceExecutionLockName } from './deviceExecution';
 import { eraseDeviceMemoryReferences } from './deviceMemoryScopes';
 import { Sha256 } from '../mobile/sha256';
 import { storageStep, readParts, writeParts, removeParts, validParts, type Parts } from './segmentedStorage';
+import { writeConversationGenerationInput, type ConversationGenerationInput, type GenerationInput } from './deviceGenerationInput';
 
 type Value = Record<string, any>;
 export type GenerationHolder = { kind:'conversation'|'research'; id:string };
@@ -55,12 +56,12 @@ export function generationSummary(header:GenerationHeader):Value {
 }
 
 /** Caller validates pending/source revision and publishes this result in the same transaction. */
-export function writeGenerationReceipt(tx:IDBTransaction,owner:string,holder:GenerationHolder,value:Value,input:readonly unknown[]|undefined,
+export function writeGenerationReceipt(tx:IDBTransaction,owner:string,holder:GenerationHolder,value:Value,input:GenerationInput|undefined,
   done:(header:GenerationHeader,summary:Value)=>void) {
   storageStep(tx,()=>{
     current(owner);
     if(!object(value)||value.status!=='completed'||value.device_diagnostics!==undefined||typeof value.reply!=='string'||value.full!==value.reply
-      ||input!==undefined&&(!Array.isArray(input)||value.raw_prompt!==undefined))throw Error('Invalid generation receipt');
+      ||input!==undefined&&(value.raw_prompt!==undefined||!Array.isArray(input)&&(holder.kind!=='conversation'||(input as ConversationGenerationInput)?.format!=='conversation-input@1')))throw Error('Invalid generation receipt');
     const {raw_prompt,compiled,memory,attempts,telemetry,...receipt}=value;
     const telemetryObject=object(telemetry),telemetryTrace=telemetryObject?telemetry.memory:undefined;
     const top=memory!==undefined,inside=telemetryTrace!==undefined;
@@ -81,7 +82,13 @@ export function writeGenerationReceipt(tx:IDBTransaction,owner:string,holder:Gen
     const names=sections.filter(name=>Object.hasOwn(values,name));let index=0;
     const next=()=>{
       const name=names[index++];
-      if(name){writeParts(tx,location(owner,header.generation_id),values[name],part=>{header.sections[name]=part;next();});return;}
+      if(name){
+        const save=(part:Parts)=>{header.sections[name]=part;next();};
+        if(name==='prompt'&&input!==undefined&&!Array.isArray(input))
+          writeConversationGenerationInput(tx,owner,holder.id,input as ConversationGenerationInput,location(owner,header.generation_id),save);
+        else writeParts(tx,location(owner,header.generation_id),values[name],save);
+        return;
+      }
       const {catalog_sha256:_,...unsigned}=header;header.catalog_sha256=signature(unsigned);
       validateGenerationHeader(header,owner,holder,header.generation_id);
       const saved=tx.objectStore('meta').put(header,key(owner,header.generation_id));saved.onsuccess=()=>storageStep(tx,()=>done(header,generationSummary(header)));

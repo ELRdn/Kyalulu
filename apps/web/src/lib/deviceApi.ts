@@ -22,6 +22,7 @@ import { scopedMemoryRoute } from './deviceScopedMemoryApi';
 import { storageStep } from './segmentedStorage';
 import { historyAffected,invalidHistoryMemory,detachHistoryMemories,type HistoryChange } from './deviceHistoryChange';
 import type { GenerationChange } from './deviceGenerationChange';
+import type { GenerationInput } from './deviceGenerationInput';
 import { generationReceiptChunks,readGenerationHeader,readGenerationReceipt,readGenerationSnapshot,generationSummary,isGenerationHeader } from './deviceGenerationStore';
 import { jsonChunks,SYNC_INLINE_BYTES } from './appTransfers';
 
@@ -262,8 +263,11 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
     if(p.pending_generation)throw fail('Reconcile the pending generation before sending again',409);
     const memoryContext:ScopedMemory|undefined=!scope&&['world','shared'].includes(p.memory_scope_mode)
       ?await scopedSourceMemory(generationSource!,settings=>memoryIdentityFor(settings,owner)):undefined;
-    const save=scope?async(value:AppEntity,_revision:number,metadata:Record<string,unknown>,input?:readonly unknown[])=>scope.save(value,metadata['generation:'+owner+':'+generationId] as Record<string,any>,input):
-      async(value:AppEntity,revision:number,extra:Record<string,unknown>,input?:readonly unknown[])=>{
+    const save=async(value:AppEntity,revision:number,extra:Record<string,unknown>,input?:GenerationInput)=>{
+        if(scope){
+          if(input!==undefined&&!Array.isArray(input))throw fail('Invalid Research generation input');
+          return scope.save(value,extra['generation:'+owner+':'+generationId] as Record<string,any>,input as readonly unknown[]|undefined);
+        }
         if(generationSource!.revision!==revision)throw fail('Generation source changed',409);
         const receipt=extra['generation:'+owner+':'+generationId] as Record<string,any>,{messages,...metadata}=value.payload;
         const change:GenerationChange={metadata,receipt,append:receipt.status==='completed'||receipt.status==='pending'&&!body.regenerate_message_id?[messages.at(-1)]:[],
@@ -352,7 +356,7 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
       void (async()=>{
         try {
           signal?.throwIfAborted();
-          const input=assemblePortable(prompt,messages.filter((m:any)=>!['stopped','interrupted'].includes(m.imported_state)).map((m:any)=>({role:m.role,content:m.content})),system);
+          let input=assemblePortable(prompt,messages.filter((m:any)=>!['stopped','interrupted'].includes(m.imported_state)).map((m:any)=>({role:m.role,content:m.content})),system);
           const result=await runtime!.generate(input as import('../mobile/types').ChatTurn[],event=>{
             if(event.type==='delta'){raw+=event.text??'';send('progress',{stage:'generation',elapsed_ms:0});}
           },requested,deviceResponseGrammar,signal);
@@ -389,6 +393,10 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
             generation_config:{...generationConfig,requested:{model_id:model.id,...generationConfig.requested},applied:{model_id:model.id,...generationConfig.applied}},validation:{ok:true,retries:0,errors:[]},
             compiled:prompt,state_before:baseState,memory,
             token_budget:{total_prompt_tokens:input.reduce((sum,m)=>sum+estimateTokens(m.content),0),estimated:true}};
+          const savedInput:GenerationInput=scope?input:{format:'conversation-input@1',
+            source:{id,owner,revision:generationSource!.revision,bodyToken:generationSource!.bodyToken},
+            contract:input[0].content,ordered:prompt.ordered_messages,...(body.regenerate_message_id?{regenerate:body.regenerate_message_id}:{})};
+          input=[];
           if(memoryContext&&workingMemory&&admittedMemory){
             const pool=workingMemory.domain.pools[workingMemory.scope],ownIds=new Set(baseMemories.map((m:DeviceMemory)=>m.id));
             for(const row of pool.memories)if(!ownIds.has(row.id)&&trace?.injected.includes(row.id)){row.access_count=(row.access_count??0)+1;row.last_accessed=now;}
@@ -398,7 +406,7 @@ async function generateTurn(body:Record<string,any>,signal?:AbortSignal,scope?:R
           }
           current=await save({...current,payload:{...current.payload,messages,memories:stored,state,last_generation:done,pending_generation:null,
             summaries:summaries.finish()}},current.revision,{['generation:'+owner+':'+generationId]:done,
-              ...(!scope&&!memoryContext&&trace?{[memoryEventsKey(owner,id)]:events}:{})},input);
+              ...(!scope&&!memoryContext&&trace?{[memoryEventsKey(owner,id)]:events}:{})},savedInput);
           send('done',Object.fromEntries(Object.entries(done).filter(([key])=>!['attempts','compiled','raw_prompt'].includes(key))));
         } catch(error) {
           let saveError='';const message=error instanceof Error?error.message:String(error);

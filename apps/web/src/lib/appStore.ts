@@ -220,6 +220,7 @@ export function writeConversationGeneration(tx:IDBTransaction,header:StoredEntit
       });
     }};
     if(change.receipt.status==='completed'&&change.input!==undefined){
+      if(!Array.isArray(change.input)&&(change.input as import('./deviceGenerationInput').ConversationGenerationInput).regenerate!==change.regenerate)throw Error('Generation input replacement changed');
       const holder={kind:'conversation' as const,id:header.id};
       const preserve=(payload:Record<string,any>)=>preserveLegacyGeneration(tx,header.owner,holder,payload.last_generation,
         ()=>writeGenerationReceipt(tx,header.owner,holder,change.receipt,change.input,(_header,projection)=>write(projection)));

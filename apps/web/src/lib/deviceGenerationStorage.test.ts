@@ -19,6 +19,8 @@ import { deviceFetch } from './deviceApi';
 import { scrubGenerationRecords } from './appStore';
 import { readGenerationReceipt } from './deviceGenerationStore';
 import * as generationStore from './deviceGenerationStore';
+import { assemblePortable } from './devicePrompt';
+import { writeConversationGenerationInput, type ConversationGenerationInput } from './deviceGenerationInput';
 
 const user={id:100,uuid:'new-user',role:'user',content:'New input 茶🙂'};
 const reply={id:101,uuid:'new-reply',role:'assistant',content:'New reply'};
@@ -40,6 +42,91 @@ async function seed(policy:string){
 }
 const change=(source:any,status:string):GenerationChange=>({metadata:{...source.metadata,pending_generation:status==='pending'?'gen':null},
   receipt:receipt(status),append:status==='pending'?[user]:status==='completed'?[reply]:[]});
+
+it.each(['segmented','inline'])('replays full pre-fit bytes from the pinned %s source without passing an input array',async format=>{
+  await seed('local');const original=body();
+  original.payload.messages=original.payload.messages.map((message:any,index:number)=>({...message,
+    content:`Original ${index} 茶🙂\\"\n\u0000\ud800 `+'本文🙂'.repeat(14000),
+    imported_state:index===1?'stopped':index===2?'interrupted':undefined,
+    before:{state:{turn:index}},after:{state:{turn:index+1}},unknown:{keep:index}}));
+  original.payload.messages[3]={...original.payload.messages[3],role:'system',content:'Conversation source-linked summary'};
+  if(format==='inline')fixture.records.set(JSON.stringify(['owner','chat']),original);
+  else await appTransaction<void>(['entities','meta','parts'],'readwrite',(tx,done)=>writeEntity(tx,original,'put',done));
+  let source=(await readMemorySource('chat','owner'))!;
+  source=await commitDeviceGeneration(source,change(source,'pending'));
+  const stored=body(),ordered=[{role:'system',content:'Before'},
+    {role:'system',content:'',slot:'history'},{role:'user',content:'Between'},
+    {role:'system',content:'',slot:'history'},{role:'assistant',content:'After'}];
+  const expected=assemblePortable({ordered_messages:ordered} as any,
+    stored.payload.messages.filter((m:any)=>!['stopped','interrupted'].includes(m.imported_state)), 'Contract');
+  const input:ConversationGenerationInput={format:'conversation-input@1',source,contract:expected[0].content,ordered};
+  const completed=change(source,'completed');completed.input=input;
+  completed.receipt={...completed.receipt,compiled:{ordered_messages:ordered},memory:null,telemetry:{memory:null}};
+  const before=snapshot(),stringify=JSON.stringify;
+  const aggregate=vi.spyOn(JSON,'stringify').mockImplementation(((value:any,...args:any[])=>{
+    if(value===input||value===expected||value===stored.payload.messages)throw Error('Aggregate generation input');
+    return stringify(value,...args);
+  }) as typeof JSON.stringify);
+  const finish=JsonStream.prototype.finish,retained:number[]=[];
+  const read=vi.spyOn(JsonStream.prototype,'finish').mockImplementation(function(this:JsonStream){
+    const result=finish.call(this);if(Array.isArray(result?.messages))retained.push(result.messages.length);return result;
+  });
+  try{await commitDeviceGeneration(source,completed);}finally{aggregate.mockRestore();read.mockRestore();}
+  expect(retained.length).toBeGreaterThanOrEqual(4);expect(retained.every(count=>count===0)).toBe(true);
+  const manifest=fixture.meta.get('generation:owner:gen'),ref=manifest.sections.prompt;
+  const bytes=Array.from({length:ref.chunks},(_,index)=>fixture.parts.get(JSON.stringify(['owner','generation','gen',ref.token,index])));
+  const raw=await new Blob(bytes.map(bytes=>new Uint8Array(bytes))).text();
+  expect(raw).toBe(JSON.stringify(expected));expect(ref.size).toBeGreaterThan(2*1024*1024);
+  expect(bytes.every(bytes=>bytes.length<=1024*1024)).toBe(true);
+  const chunks:Uint8Array[]=[];for await(const part of generationStore.generationReceiptChunks('owner',{kind:'conversation',id:'chat'},'gen'))chunks.push(part);
+  expect(JSON.parse(await new Blob(chunks.map(part=>new Uint8Array(part))).text())).toEqual({...completed.receipt,raw_prompt:raw});
+  expect(body().payload.messages).toEqual([...stored.payload.messages,reply]);
+  for(const name of ['draft','unknown','settings','state','memories','summaries'])expect(body().payload[name]).toEqual(stored.payload[name]);
+  expect([...fixture.meta].find(([key])=>key==='sync:owner:outbox')).toEqual(before.meta.find(([key])=>key==='sync:owner:outbox'));
+});
+
+it('replays regeneration without the replaced reply and preserves a no-history compiler input',async()=>{
+  let source=await seed('local');const original=body();
+  original.payload.messages.push(user,{...reply,content:'Old assistant',before:{state:{turn:0},memories:[]}});
+  await appTransaction<void>(['entities','meta','parts'],'readwrite',(tx,done)=>writeEntity(tx,original,'put',done));
+  source=(await readMemorySource('chat','owner'))!;
+  const pending=change(source,'pending');pending.append=[];pending.regenerate=reply.id;
+  source=await commitDeviceGeneration(source,pending);
+  const completed=change(source,'completed');completed.regenerate=reply.id;
+  completed.append=[{...reply,id:102}];completed.receipt.assistant_id=102;
+  completed.input={format:'conversation-input@1',source,contract:'Contract',regenerate:reply.id,
+    ordered:[{role:'system',content:'',slot:'history'}]};
+  await commitDeviceGeneration(source,completed);
+  const saved=await readGenerationReceipt('owner',{kind:'conversation',id:'chat'},'gen');
+  expect(saved.state).toBe('inline');if(saved.state!=='inline')throw Error('Expected small receipt');
+  expect(JSON.parse(saved.value.raw_prompt)).toEqual([{role:'system',content:'Contract'},
+    ...original.payload.messages.slice(0,-1).map(({role,content}:any)=>({role,content}))]);
+  expect(body().payload.messages).toEqual([...original.payload.messages.slice(0,-1),{...reply,id:102}]);
+  const current=(await readMemorySource('chat','owner'))!,parts=await appTransaction<any>(['entities','parts'],'readwrite',(tx,done)=>
+    writeConversationGenerationInput(tx,'owner','chat',{format:'conversation-input@1',source:current,contract:'Only',ordered:[]},['owner','test','no-history'],done));
+  expect(new TextDecoder().decode(fixture.parts.get(JSON.stringify(['owner','test','no-history',parts.token,0])))).toBe('[{"role":"system","content":"Only"}]');
+});
+
+it.each(['owner','id','revision','bodyToken','replacement','quota','checksum','no-history-checksum'])('rejects %s replay atomically and keeps originals/pending/outbox',async fault=>{
+  let source=await seed('sync');source=await commitDeviceGeneration(source,change(source,'pending'));
+  const completed=change(source,'completed'),input:ConversationGenerationInput={format:'conversation-input@1',source:{...source},contract:'Contract',ordered:[{role:'system',content:'',slot:'history'}]};
+  completed.input=input;
+  if(fault==='owner')input.source.owner='foreign';if(fault==='id')input.source.id='foreign';
+  if(fault==='revision')input.source.revision++;if(fault==='bodyToken')input.source.bodyToken=crypto.randomUUID();
+  if(fault==='replacement')input.regenerate=20;
+  if(fault==='quota')fixture.failAt=3;
+  if(fault.endsWith('checksum')){
+    const header=fixture.records.get(JSON.stringify(['owner','chat'])),ref=header.payloadParts;
+    const key=JSON.stringify(['owner','entity','chat',ref.token,ref.chunks-1]),bytes=fixture.parts.get(key).slice();
+    bytes[bytes.length-1]^=1;fixture.parts.set(key,bytes);
+    if(fault==='no-history-checksum')input.ordered=[];
+  }
+  const before=snapshot();
+  if(fault.endsWith('checksum'))await expect(appTransaction<void>(['entities','parts'],'readwrite',(tx,done)=>
+    writeConversationGenerationInput(tx,'owner','chat',input,['owner','test','corrupt'],()=>done()))).rejects.toThrow();
+  else await expect(commitDeviceGeneration(source,completed)).rejects.toThrow();
+  expect(snapshot()).toEqual(before);expect(fixture.meta.get('generation:owner:gen').status).toBe('pending');
+});
 
 it.each(['local','sync'])('commits admission and completion with complete prefix/outbox preservation (%s)',async policy=>{
   let source=await seed(policy);const original=body(),outbox=structuredClone(fixture.meta.get('sync:owner:outbox'));

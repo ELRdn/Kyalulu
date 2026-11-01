@@ -1,8 +1,9 @@
 import { Sha256 } from '../mobile/sha256';
 import { deviceExecutionLockName } from './deviceExecution';
 import { jsonChunks } from './appTransfers';
+import type { GenerationInput } from './deviceGenerationInput';
 
-export type GenerationChange={metadata:Record<string,any>;append:any[];regenerate?:number;receipt:Record<string,any>;input?:readonly unknown[];projection?:Record<string,any>};
+export type GenerationChange={metadata:Record<string,any>;append:any[];regenerate?:number;receipt:Record<string,any>;input?:GenerationInput;projection?:Record<string,any>};
 const hash=(text:string)=>new Sha256().update(new TextEncoder().encode(text)).digest();
 export function validateSmallGenerationReceipt(receipt:Record<string,any>) {
   const fields=['generation_id','session_id','status','assistant_id','user_id','user_content_sha256','execution_lock',

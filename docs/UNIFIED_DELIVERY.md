@@ -37,6 +37,8 @@ Python Researchの根拠を現在発言へ揃え、3ターン/リセット/出�
 同版の新Native/Cloud・同一source1,119件・変更113pathを監査し、実梱包CLI/日英UIも成功。
 新配布物のWorker/SDK/native6点は実4cd実行コードと同一。Hosted CI・実品質・実容量・実機・本番条件は残る。
 後続のtarget切替試験は、停止receiptの診断項目を欠いた古い完全一致期待を修正。元の失敗を再現後、日英2ケースが成功し、保存結果・下書き・切替保護・再起動・外部送信なしを維持した。製品コードは変更せず、固定d097配布物とは区別する。Hosted CI全体の合格は未確認。
+続いて通常Deviceの完全pre-fit診断を、pending原本のowner/id/revision/bodyTokenを固定して同一txで再読取・断片保存する経路へ変更。反復history slot・要約契約文・再生成・旧Research/array/string互換と原子的拒否を維持した。
+関連91・Web全1,875/101file・型検査・source45件、314入力不変の実Chromium84＋mock境界/救済・日英Research2件が成功。推論中の全文保持、ONNX/Research/UIと250MB/1GB/RSS全体、同変更を含む新配布物・本番受入れは残る。
 
 | 必須範囲 | 現時点 | 完了を証明するもの |
 |---|---|---|
