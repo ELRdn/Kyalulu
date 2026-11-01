@@ -595,5 +595,44 @@ without the unrelated working-tree harness changes. All1,205 source files and
 their pinned inputs. Installed dependencies are reused through explicit
 junctions, not reinstalled. Private evidence:
 `conversation-input-replay-20261101/fixed-validation/{result.json,source-binding.json,web-tests.log}`.
-This is a built UI, not a fresh complete Native/Cloud archive or a new real-model
-run. Existing d09742f archives and real4cd evidence remain separately pinned.
+This fixed-export UI build is separate from the complete packages below and
+from real4cd model evidence; it does not constitute a new real-model run.
+
+## Complete207ed85 packages and installed acceptance
+
+New Native/unified UI builds from the exact207ed85 source are packaged with
+hash-bound reused SDK/native outputs, offline dependencies and CPython. SDK
+input/output25/56 and the broader152-source/config proof match; no new native
+compilation or clean dependency installation is claimed. Both archives offer
+the same1,120 source files, including every one of115 changed paths, and pass
+the existing manifest/precache/license/vendor/wrapper/RECORD/interpreter guards.
+Native has9,052 members; Cloud236. Prior7,188 input files and root9 baseline
+files remain hash-identical. Transient sidecar copy/offline-install setup
+failures are retained, and final recovery stays inside the new artifact root.
+
+| Candidate | Bytes | SHA-256 |
+|---|---:|---|
+| Windows Native | 142,476,516 | `ba59252f847486ec8c0012196007a6feb2628528e5686e366596d17297e47f3f` |
+| Unified Cloud | 67,181,425 | `e14b871d42bd10aec7ed39bb1034d9c620c46f77d6544365b621c6f9d3653125` |
+
+Packed-source tests pass29 cases; one Git fixture case was deselected by the
+delivery agent's narrow no-Git scope. Parent separately executes that unchanged
+case against the extracted source with a new fictional temporary repository:
+one pass, without altering the real repository. Parent independently rehashes
+both archives, then verifies actual installed CLI restart/history/memory,
+fictional backup/restore/rollback, seven pointer faults and process exit. Fresh
+JA/EN packed browser draft/target/receipt/restart and credential/referrer-free
+fictional Cloud handoff pass with two mock generations and zero external/page
+errors. Six installed Worker/SDK/native files match prior real4cd execution
+bytes. The Device API has changed since that model run: no new inference or
+quality acceptance is inferred from this binding.
+
+Private evidence: `portable-delivery-207ed85-20261101/results.json` and
+`packed-acceptance-207ed85-20261101/{result.json,commands.json,source-git-fixture.log,packed-model-code-binding.json}`.
+At recording,9788's Ubuntu CI has passed the corrected target-switch check and
+progressed to Remote, while d00c232's CI is still running; neither whole-run
+nor current-head aggregate success is claimed. Windows full Python is live,
+and its in-progress log endpoint returns404. No process is declared hung or
+restarted on that observation alone. Whole-capacity/ONNX/Research, useful memory/
+response quality, CPU completion, physical devices, current Linux, signing,
+three primary grants, Auth/region/provider and production gates remain open.

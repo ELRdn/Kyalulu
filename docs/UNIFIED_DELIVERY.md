@@ -38,8 +38,9 @@ Python Researchの根拠を現在発言へ揃え、3ターン/リセット/出�
 新配布物のWorker/SDK/native6点は実4cd実行コードと同一。Hosted CI・実品質・実容量・実機・本番条件は残る。
 後続のtarget切替試験は、停止receiptの診断項目を欠いた古い完全一致期待を修正。元の失敗を再現後、日英2ケースが成功し、保存結果・下書き・切替保護・再起動・外部送信なしを維持した。製品コードは変更せず、固定d097配布物とは区別する。Hosted CI全体の合格は未確認。
 続いて通常Deviceの完全pre-fit診断を、pending原本のowner/id/revision/bodyTokenを固定して同一txで再読取・断片保存する経路へ変更。反復history slot・要約契約文・再生成・旧Research/array/string互換と原子的拒否を維持した。
-関連91・Web全1,875/101file・型検査・source45件、314入力不変の実Chromium84＋mock境界/救済・日英Research2件が成功。推論中の全文保持、ONNX/Research/UIと250MB/1GB/RSS全体、同変更を含む新配布物・本番受入れは残る。
-固定207ed85の隔離exportでも型・統合production build・Web全1,875件が成功し、1,205source/SDK-native60入力不変と配信runtime4点一致を確認。無関係な作業tree変更を含めず、依存は再利用。全Native/Cloudの新梱包・実推論・実機・本番受入れとは分ける。
+関連91・Web全1,875/101file・型検査・source45件、314入力不変の実Chromium84＋mock境界/救済・日英Research2件が成功。推論中の全文保持、ONNX/Research/UIと250MB/1GB/RSS全体、本番受入れは残る。
+固定207ed85の隔離exportでも型・統合production build・Web全1,875件が成功し、1,205source/SDK-native60入力不変と配信runtime4点一致を確認。無関係な作業tree変更を含めず、依存は再利用。実推論・実機・本番受入れとは分ける。
+同207のNative/統合Cloudも新規UI buildから梱包し、同一source1,120件・変更115pathすべてとSDK/WASM/依存/interpreterの再利用証拠を照合。梱包source29件＋除外されていた架空Git改行試験1件、実梱包CLIの復元/rollback・pointer故障7件・PID終了と日英UI再起動が成功。実モデルコード6点は旧4cd実行と同一だが、新Device APIの実推論証拠へ代用しない。
 
 | 必須範囲 | 現時点 | 完了を証明するもの |
 |---|---|---|
@@ -67,7 +68,7 @@ Python Researchの根拠を現在発言へ揃え、3ターン/リセット/出�
 | 固定公開snapshot、区分/審査、不明保留、人手/通報/非表示/異議申立て | 固定hash・審査revision、人手確認、公開API、地域/成人/ブロックの先行制限、日英画面と通報→非表示→異議→再承認をASGI/Chromiumで検証。旧Communityは封鎖し元DB保持 | 自動分類・公開媒体adapter、運用規模/旧データ移行、実OAuth/実機/本番の証拠 |
 | 日本の個人事業/未成年/成人AI/投稿/地域への提供元適合 | 外部条件未確定 | 本人の契約・適合確認。代理申込みや購入は行わない |
 | 日英の全画面、アクセシビリティ、日本語IME | Cloud設定/旧同期、記憶・出典・検査・要約訂正、共通エラー、モデル開示/見積同意/公式推論要約、プリセット/Lorebook/表情、研究の実行・比較・採点・検査・ランキング、長ターン比較実験の条件・状態・結果表、会話開始・初回案内・入力/待機・モデル準備・既知mood/日時・共通ナビ・探索/検索・Hub表示を日英対応。393/1280pxの実端末DB操作と同意の撤回、架空Runtimeでの研究下書き・比較条件の保持をChromiumで確認。他にJA中心の画面・提供元の生文が残る | 対象画面一覧を埋めた日英・幅・テーマ・IME確認 |
-| 配布物、対応ソース、移行/復旧手順、接続待ち一覧 | 固定d09742fのNative/統合Cloudをfresh build。Native9,051/Cloud236 member・同一対応source1,119件・全変更113path、SDKの25入力/56出力・WASM4点・license/precacheを照合。実梱包CLIの架空復元/rollback・pointer故障7件・PID終了、日英下書き/履歴再起動、実モデル実行Worker/SDK/native6点とのhash一致と新selectorの実40 compiled値一致を確認。Python3.13.7はhash確認済みinterpreterの再利用 | 現行Linux image・署名・最終license審査（3 grant未確認）・clean OS/初回公開取得・macOS・実機・実容量・返信/記憶品質・本番復旧/切替の受入れは残る。旧Linux/macOS証拠を現行版へ流用しない |
+| 配布物、対応ソース、移行/復旧手順、接続待ち一覧 | 固定207ed85のNative/統合Cloudを新規UI buildから梱包。Native9,052/Cloud236 member・同一対応source1,120件・全変更115path、SDK25入力/56出力・WASM4点・license/precacheを照合。SDK/native/依存/Python3.13.7はhash確認済みの再利用。実梱包CLIの架空復元/rollback・pointer故障7件・PID終了、日英下書き/履歴再起動と、旧4cd実モデル実行Worker/SDK/native6点とのhash一致を確認。新Device APIでの実推論とは分ける | 現行Linux image・署名・最終license審査（3 grant未確認）・clean OS/初回公開取得・macOS・実機・実容量・返信/記憶品質・本番復旧/切替の受入れは残る。旧Linux/macOS証拠を現行版へ流用しない |
 | Android/iPhone実機20ターン、ロック復帰、回線切替 | 未実施 | 実機に基づく個別証拠。PCブラウザで代用しない |
 | 本番反映、残高/台帳/予算維持、旧環境への復旧 | 未実施 | バックアップの隔離復元、反映前後照合、実配信hashと正常性 |
 
