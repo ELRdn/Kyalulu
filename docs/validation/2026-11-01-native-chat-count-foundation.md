@@ -518,3 +518,30 @@ Current Hosted CI, useful user-fact/response quality, JSON termination,
 CPU stock completion, whole-capacity/ONNX/Research paths, physical devices,
 primary grants/signing/clean OS/current Linux and Auth/region/provider/
 production gates remain separate. Full objective completion is not claimed.
+
+## Target-switch failed receipt fixture
+
+Hosted d09742f PR run41271016167 reaches the Device target-switch driver on
+Ubuntu, then fails its exact terminal-receipt comparison. The same failure
+is reproduced locally: the old expected object omits the bounded failed-output
+diagnostics already written by the product. Only that fixture expectation is
+updated, adding the complete validation, empty telemetry and single empty
+attempt (including truncation and UTF-16 length). The exact full-object check
+and all identity, revision, stop/verification lock, saved-history, draft,
+restart and no-network/no-resend assertions remain intact.
+
+Actual Chromium151 passes both JA393px/light and EN1280px/dark cases after
+the correction, with one Worker generation per case, one persisted failed
+receipt and no external/API requests or page errors. This is a synthetic
+Worker test, without model/provider or production use. Private evidence:
+`device-target-switch-receipt-20261101/{results.json,source-sha256.json}`.
+The d09742f full-suite/package evidence above stays pinned to that commit;
+those archives do not contain this later test-only correction. Hosted
+current-head aggregate CI remains unaccepted.
+
+The user has authenticated Supabase in the right-side browser. A fresh CUA
+reset and exact-project URL-configuration navigation still fail before UI
+access with missing kernel assets; the desktop alternative returns
+USER_CONTROL. Site URL/Redirect URLs remain unread and settings unchanged.
+This is an automation failure, not evidence of a login problem or approval
+to change Auth, region/provider conditions or production deployment.
