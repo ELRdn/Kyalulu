@@ -358,6 +358,7 @@ FILES = (
     "tests/test_docs_public_response.py",
     "tests/test_entity_transfer_cleanup.py",
     "tests/test_experiments.py",
+    "tests/test_experiment_user_evidence.py",
     "tests/test_generation.py",
     "tests/test_hubs.py",
     "tests/test_kyalulu_bridge.py",

@@ -34,28 +34,59 @@ export function unsupportedLoreCondition(entry:RecordValue) {
     ||![0,false,null,undefined].includes(entry.selectiveLogic)||!['before_char','after_char'].includes(entry.position===undefined?'after_char':entry.position)
     ||keys(entry,'keys','keys').some(k=>/^\/.+\/[a-z]*$/.test(k));
 }
+function scanLore(parts:string[],candidates:Set<string>,sensitive:boolean) {
+  // shortcut: carry scales with the longest folded key; use a prefix matcher if key memory needs its own bound.
+  const needles=new Map<string,string>(),found=new Set<string>();let maximum=0,carry='';
+  for(const key of candidates){const needle=sensitive?key:casefold(key);needles.set(key,needle);maximum=Math.max(maximum,needle.length);}
+  if(!maximum)return found;
+  for(const part of parts)for(let start=0;start<part.length;){
+    let end=Math.min(part.length,start+4096);
+    if(end<part.length&&part.charCodeAt(end-1)>=0xd800&&part.charCodeAt(end-1)<=0xdbff&&part.charCodeAt(end)>=0xdc00&&part.charCodeAt(end)<=0xdfff)end--;
+    const chunk=part.slice(start,end);start=end;
+    const window=carry+(sensitive?chunk:casefold(chunk));
+    for(const [key,needle] of needles)if(window.includes(needle))found.add(key);
+    carry=maximum>1?window.slice(-(maximum-1)):'';
+  }
+  return found;
+}
 export function selectLore(books:RecordValue[],history:Message[],render=(value:string)=>value) {
   const selected:RecordValue[]=[],audit:RecordValue[]=[];
   books.forEach((book,bookIndex)=>{
     if(!book||typeof book!=='object'||Array.isArray(book))return;
     const depth=Math.max(0,Math.min(1000,integer(book.scan_depth===undefined?2:book.scan_depth))),budget=Math.max(0,integer(book.token_budget===undefined?1024:book.token_budget));
-    let remaining=budget,scan=depth?history.slice(-depth).map(m=>m.content).join('\n'):'';
+    let remaining=budget;const scan:string[]=[];
+    if(depth)for(let end=history.length,i=Math.max(0,end-depth);i<end;i++){if(scan.length)scan.push('\n');scan.push(history[i].content);}
     const pending=entries(book).map((entry,index)=>({entry,index})).sort((a,b)=>integer(b.entry.priority)-integer(a.entry.priority)||integer(a.entry.insertion_order===undefined?a.index:a.entry.insertion_order)-integer(b.entry.insertion_order===undefined?b.index:b.entry.insertion_order)||a.index-b.index),visited=new Set<number>();
     while(true){
-      const additions:string[]=[];let folded:string|undefined;
+      const additions:string[]=[],matched=new Map<boolean,Set<string>>();
+      const matches=(values:string[],sensitive:boolean)=>values.some(key=>{
+        if(!key)return false;
+        let found=matched.get(sensitive);
+        if(!found){
+          const candidates=new Set<string>();
+          for(const {entry,index} of pending){
+            if(visited.has(index)||!portableTruthy(entry.enabled===undefined?true:entry.enabled)||portableTruthy(entry.constant)||!!portableTruthy(entry.case_sensitive)!==sensitive)continue;
+            // Collect strings only; keys() still rejects malformed arrays when the old loop reaches them.
+            for(const list of [entry.keys??entry.key,portableTruthy(entry.selective)?entry.secondary_keys??entry.keysecondary:undefined])
+              if(Array.isArray(list))for(const candidate of list)if(typeof candidate==='string'&&candidate)candidates.add(candidate);
+          }
+          found=scanLore(scan,candidates,sensitive);matched.set(sensitive,found);
+        }
+        return found.has(key);
+      });
       for(const {entry,index} of pending){
         if(visited.has(index))continue;
         const reason=!portableTruthy(entry.enabled===undefined?true:entry.enabled)?'disabled':unsupportedLoreCondition(entry)?'unsupported condition':null;
         if(reason){audit.push({book:bookIndex,entry:index,selected:false,reason});visited.add(index);continue;}
-        const sensitive=portableTruthy(entry.case_sensitive),constant=portableTruthy(entry.constant),haystack=sensitive?scan:(folded??=casefold(scan)),matches=(values:string[])=>values.some(k=>k&&haystack.includes(sensitive?k:casefold(k)));
-        let active=constant||matches(keys(entry,'keys','key'));
-        if(portableTruthy(entry.selective)&&!constant)active=active&&matches(keys(entry,'secondary_keys','keysecondary'));
+        const sensitive=!!portableTruthy(entry.case_sensitive),constant=portableTruthy(entry.constant);
+        let active=constant||matches(keys(entry,'keys','key'),sensitive);
+        if(portableTruthy(entry.selective)&&!constant)active=active&&matches(keys(entry,'secondary_keys','keysecondary'),sensitive);
         if(!active)continue;
         visited.add(index);const content=render(text(entry.content)),size=estimate(content),fits=size<=remaining;
         audit.push({book:bookIndex,entry:index,selected:fits,estimated_tokens:size,reason:fits?constant?'constant':'keyword':'budget exceeded'});
         if(fits){remaining-=size;selected.push({...entry,content,_book:bookIndex,_entry:index});additions.push(content);}
       }
-      if(!additions.length||!portableTruthy(book.recursive_scanning))break;scan+='\n'+additions.join('\n');
+      if(!additions.length||!portableTruthy(book.recursive_scanning))break;for(const content of additions)scan.push('\n',content);
     }
     for(const {index} of pending)if(!visited.has(index))audit.push({book:bookIndex,entry:index,selected:false,reason:'no keyword match'});
   });

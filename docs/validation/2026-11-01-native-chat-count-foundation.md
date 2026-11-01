@@ -383,3 +383,88 @@ This is an exact-source UI build, not a new full Native/Cloud package or an
 execution attestation for the newly compiled Worker.
 New real-model quality, a new fixed-source distribution and production are
 not inferred from these unit tests or the earlier7bae72f package.
+
+## Actual4cd3673 Device API and newly built Worker
+
+A subsequent desktop GPU run uses the immutable4cd3673 source and its actual
+compiled production Worker/SDK/native assets, with no engine/model/output
+replacement. The transparent Worker bootstrap adds storage guards and imports
+that built module. Both stock Librarian scenarios complete20/20, preserving
+the original authored inputs and unchanged2,048/256 context/output and
+0.85/64/0.95/0.05/1.1 sampling settings. No fixed seed or paired A/B is claimed.
+They retain the normal shared world scope; the second run can see the first
+run's stored candidates and is not an independent empty baseline.
+
+The browser checks647 saved-data assertions. A separate offline audit checks
+all40 canonical pre-fit prompts against complete original role/content
+history plus the new user, exact source hashes and single user/assistant/state
+advancement. Each proposed user memory is independently checked using the
+complete-whitespace-normalized source utterance; ungrounded candidates are
+excluded from injection192 times.30 stores six unsupported user candidates;
+100 stores one unsupported user candidate and one supported fictional story
+event. **No newly proposed user fact is supported in this sample.** Incorrect
+topics, translations and invented details remain inspectable but are not
+accepted user facts. This validates quarantine, not useful long-term recall
+or response quality. The prior incomplete-JSON failure remains valid; no
+new incomplete JSON happened in this40-turn sample, so it is not a termination
+fix or a guarantee.
+
+A separate single-generation test uses stock Mocha references, observes the
+first real native delta and stops through the normal generation-cancel API.
+The failed receipt preserves its actual two UTF-16 units, stop reason and
+available returned measurement, with no assistant, state/memory advancement
+or retry. Its14 assertions and read-after-save checks pass. Two fresh browser
+launches then read only the exact retained UUID DBs: all40 success receipts
+and the one stopped receipt match completely. No model executes during that
+read-only inspection. The earlier failed source, model and receipts are kept.
+
+All1,203 immutable source files,86 built files and60 SDK/native inputs remain
+unchanged. The five cached GGUF shards (3,125,578,496 bytes) match their exact
+catalog hashes before/after each actual model run. Existing model metadata
+is read-only; only new UUID probe app DBs are writable. Original conversation
+DBs and real local/session storage are never delegated to. External/API HTTP
+is blocked, WebSockets are closed, owned browsers/helpers exit, and evidence
+DBs are retained. The helper uses a separate ephemeral port and fulfills the
+owned test origin; it neither binds nor reuses an owner's5187 server.
+
+Initial harness attempts are retained: navigation stalled before any routed
+request until the owned page explicitly bypassed its existing Service Worker;
+then missing script-destination headers made Vite return raw JSON rather than
+a module. Correcting those headers fixes only the test proxy. The first
+cancellation setup also correctly rejected a guessed missing persona before
+inference; the completed test uses actual public `mocha_memory_001` references.
+No registration/cache/DB deletion or timeout extension was used.
+
+Private evidence: `real-device-memory-4cd3673-20261101/acceptance-summary.json`,
+`run-03`, `cancel-02`, `restart-run-03`, `restart-cancel-02` and independent
+`audit_results.py`.40 completions plus one deliberate stop are separate from
+the earlier77 natural failure and from later source changes. These desktop
+API checks do not establish complete rendered UI, physical phones, CPU
+completion, whole-capacity or current full-package/production acceptance.
+
+## Python Research caller and the next CI fixture correction
+
+The1b79f06 PR run41267562242 fails the same Python test on both OSes; Windows
+otherwise passes1,498 tests and seven subtests, Ubuntu1,495 with its additional
+platform skips. The quality-control fixture proposed a paraphrase of one part
+of a multi-sentence user utterance and assumed it would be injected after a
+history reset. That contradicts the new complete-utterance rule. Parent
+reproduces the failure, then tests both complete-source retrieval and
+unsupported-paraphrase quarantine. Existing reset/schema/state/stored-count
+assertions remain, with exact source quote, eligibility and injection checks
+added. All24 mocked quality-control tests pass; no paid request is made.
+
+The caller audit also finds that Python Research passed concatenated user
+history to memory commit while normal Python and Device pass the current user
+utterance. Research now passes `turn.user`; generation history and recall
+probe context are unchanged. A synthetic three-turn test reproduces the old
+failure, then proves current-only support and quote, old-topic quarantine,
+exact turn/generation/session provenance, reset behavior, retained history
+and shared experiment scope. Four related tests pass. Its new test path is
+explicitly added to corresponding-source collection after reproducing a
+missing-source failure; all16 collector tests then pass.
+
+Evidence: `openrouter-grounding-ci-20261101`,
+`research-user-evidence-20261101/summary.json`, and the retained public CI log
+`lore-stream-scan-20261101/ci-1b79f06-failed.log`. This closes the caller/fixture
+gap, not a real external-provider or Research model-quality acceptance.

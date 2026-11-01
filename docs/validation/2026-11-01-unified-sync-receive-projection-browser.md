@@ -61,3 +61,32 @@ Unselected/foreign source headers and physical parts are protected; unchanged pa
 ## Limits
 
 The remote input payload and saved receive result remain fully materialized, as explicitly scoped. Individual message strings are still parsed transiently; root metadata and identity arrays are retained. Deletion recovery and inline/non-conversation routes deliberately retain full payloads. These bounded local browser checks do not establish 1GB capacity, peak heap/RSS, real-provider behavior, production release or device acceptance. No product, unit, CI, collector or Git state was changed by this independent validation task.
+
+## Later hosted Windows navigation failure
+
+The7bae72f PR run41264122892 passes Ubuntu but fails Windows navigating the
+`skip-corrupt` fixture with `net::ERR_NO_BUFFER_SPACE`, before its assertions.
+The other cases pass; source hashes and owned-browser/server cleanup remain
+unchanged. The log alone does not establish the cause of resource exhaustion.
+
+The driver now records its failure phase, bounded request/HTTP/console events,
+pending-request counts, crash/connectivity/context/page state, up to16 owned
+browser process records and the last8,000 bytes of its Vite log. Diagnostic
+process lookup has a3-second bound and cannot replace the original failure.
+All14 existing assertions, scenarios, navigation/wait/context arguments,
+frozen oracles, independent full-output decode and fingerprint checks remain.
+
+Local Windows baseline and final each pass26/26. A separate navigation-error
+injection fails exactly `skip-corrupt`, preserves `Page.goto: net::ERR_FAILED`
+and precise stdout diagnostics, and lets the other25 cases pass. Each run
+closes25 contexts, disconnects the owned browser, stops its dedicated Vite and
+keeps source bytes unchanged. Parent reruns the independent AST/evidence
+checks. Private evidence: `sync-receive-resource-20261101/summary.json` and
+its baseline/final/injected-navigation results.
+
+The actual hosted buffer failure was not reproduced. Resource observations
+cover only owned processes and their dedicated TCP port; they prove neither
+a cumulative leak nor its absence. Local triage uses a private native-loader
+Vite cache and reused dependencies. Shared launcher/workflow/fixture, product
+logic, deadlines and retries are unchanged. This is diagnostic improvement,
+not a verified root-cause fix or production acceptance.

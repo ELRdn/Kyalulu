@@ -150,6 +150,16 @@ async def main(args):
                     emit({'scenario': scenario, 'stage': 'start'})
                     context = await browser.new_context(service_workers='block', accept_downloads=False)
                     blocked, errors, downloads = [], [], []
+                    diagnostics = {'phase': 'new-page', 'requests': 0, 'finished': 0, 'failed': 0,
+                                   'request_failed': [], 'http_errors': [], 'console': [], 'crashed': False}
+                    def count(key):
+                        diagnostics[key] += 1
+                    def record(key, value):
+                        if len(diagnostics[key]) < 10:
+                            diagnostics[key].append(value)
+                    def request_failed(request):
+                        count('failed')
+                        record('request_failed', {'url': request.url[:1000], 'error': str(request.failure)[:1000]})
                     async def local_only(route):
                         parsed = urlsplit(route.request.url)
                         forbidden = ('/api/', '/models/', '/model/', '/download/', '/weights/')
@@ -167,12 +177,23 @@ async def main(args):
                         page = await context.new_page()
                         page.on('pageerror', lambda error: errors.append(str(error)))
                         page.on('download', lambda download: downloads.append(download.suggested_filename))
+                        page.on('request', lambda request: count('requests'))
+                        page.on('requestfinished', lambda request: count('finished'))
+                        page.on('requestfailed', request_failed)
+                        page.on('response', lambda response: record('http_errors', {
+                            'url': response.url[:1000], 'status': response.status}) if response.status >= 400 else None)
+                        page.on('console', lambda message: record('console', {
+                            'type': message.type, 'text': message.text[:2000]}) if message.type in ('error', 'warning') else None)
+                        page.on('crash', lambda: diagnostics.update(crashed=True))
                         path = quote((ROOT / 'tests/fixtures/sync-receive-projection.html').as_posix(), safe='/:')
                         url = origin + '/@fs/' + path + '?scenario=' + scenario
                         for resumed in ([False, True] if scenario == 'reload' else [False]):
                             case = scenario + ('-resumed' if resumed else '')
+                            diagnostics['phase'] = 'navigate:' + case
                             await page.goto(url + ('&resume=1' if resumed else ''))
+                            diagnostics['phase'] = 'wait-fixture:' + case
                             await page.wait_for_function('window.__SYNC_RECEIVE_PROJECTION__ !== undefined', timeout=120000)
+                            diagnostics['phase'] = 'evaluate:' + case
                             result = await page.evaluate('window.__SYNC_RECEIVE_PROJECTION__')
                             result.update(blocked_network_requests=blocked.copy(), page_errors=errors.copy(), downloads=downloads.copy())
                             case_dir = output / case
@@ -190,6 +211,28 @@ async def main(args):
                             results.append(result); emit(result)
                     except Exception as error:
                         result = {'ok': False, 'scenario': scenario, 'exception': str(error), 'blocked_network_requests': blocked.copy(), 'page_errors': errors.copy()}
+                        async def process_info():
+                            session = await browser.new_browser_cdp_session()
+                            try:
+                                processes = (await session.send('SystemInfo.getProcessInfo'))['processInfo']
+                                return {'count': len(processes), 'processes': processes[:16]}
+                            finally:
+                                await session.detach()
+                        try:
+                            diagnostics['browser_processes'] = await asyncio.wait_for(process_info(), timeout=3)
+                        except Exception as diagnostic_error:
+                            diagnostics['process_info_error'] = str(diagnostic_error)[:1000]
+                        diagnostics.update(browser_connected=browser.is_connected(), contexts_open=len(browser.contexts),
+                                           pages_open=sum(len(c.pages) for c in browser.contexts),
+                                           pending_requests=diagnostics['requests']-diagnostics['finished']-diagnostics['failed'])
+                        try:
+                            with (output / 'vite.log').open('rb') as log:
+                                log.seek(0, 2)
+                                log.seek(max(0, log.tell() - 8000))
+                                diagnostics['vite_log_tail'] = log.read(8000).decode('utf-8', errors='replace')
+                        except OSError as diagnostic_error:
+                            diagnostics['vite_log_error'] = str(diagnostic_error)[:1000]
+                        result['diagnostics'] = json.loads(json.dumps(diagnostics))
                         results.append(result); emit(result)
                     finally:
                         await context.close(); contexts_closed += 1
