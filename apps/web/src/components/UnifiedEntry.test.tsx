@@ -16,6 +16,7 @@ vi.mock('react', async original => ({ ...await original<typeof import('react')>(
   useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot(),
 }));
 vi.mock('../lib/transport', () => ({ cloudFetch: fixture.request }));
+vi.mock('react-router-dom', () => ({ Link: ({ to, children }: { to: string; children: ReactNode }) => <a href={to}>{children}</a> }));
 vi.mock('./ui/Dialog', () => ({ useConfirm: () => [null, fixture.confirm] }));
 
 let stored: Map<string, string>;
@@ -56,7 +57,7 @@ it('offers a scoped JA/EN return path without changing or resending pending work
     const before=[...stored], picker=ExecutionPicker(), html=renderToStaticMarkup(picker);
     expect(find(picker, node=>node.type==='select').props.disabled).toBe(true);
     expect(html).toContain(language==='en'?'Check send result':'送信結果を確認');
-    expect(find(picker, node=>node.type==='a').props.href).toBe('#/chats/pending%3A%E8%8C%B6');
+    expect(find(picker, node=>node.props.to!==undefined).props.to).toBe('/chats/pending%3A%E8%8C%B6');
     expect([...stored]).toEqual(before); expect(fixture.request).not.toHaveBeenCalled();
   }
 });

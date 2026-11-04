@@ -557,6 +557,11 @@ async def mobile_models():
     }
 
 
+# Top-level segments of the routes in apps/web/src/App.tsx; keep in sync.
+APP_ROUTES = frozenset({'', 'discover', 'published', 'publications', 'works', 'authors', 'chats', 'characters',
+                        'create', 'research', 'profile', 'migration', 'studio', 'status'})
+
+
 class WebDist(StaticFiles):
     """SPA fallback only for extensionless HTML navigations, never API or missing assets."""
 
@@ -584,6 +589,9 @@ class WebDist(StaticFiles):
             ):
                 raise
             response = await super().get_response("index.html", scope)
+            # The shell still renders its NotFound page; crawlers get the real status.
+            if path.split('/')[0] not in APP_ROUTES:
+                response.status_code = 404
         response.headers["Cache-Control"] = "no-cache"
         inference_worker = re.fullmatch(r'assets/runtime\.worker-[a-zA-Z0-9_-]+\.js', path) is not None
         if document == 'device' or inference_worker:

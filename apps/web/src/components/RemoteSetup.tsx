@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { activeRemote, deleteRemote, remoteDevices, restoreRemote, selectRemote, type RemoteDevice } from '../lib/remoteStore';
 import { type PairingLink } from '../lib/remotePairing';
 import Button from './ui/Button';
@@ -69,5 +70,5 @@ export function RemoteBanner() {
     return () => window.removeEventListener('kyalulu-remote-status', update);
   }, []);
   if (!activeRemote() || executionTarget() !== 'pc') return null;
-  return <div className="k-remote-banner" role="status"><a href="#/profile">{activeRemote()?.hostName || (en?'Home PC':'自宅PC')} · {connected ? (en?'Encrypted connection':'暗号化接続中') : (en?'Unable to connect':'接続できません')}</a><span>{en?'Conversations saved on PC':'会話はPCに保存'}</span></div>;
+  return <div className="k-remote-banner" role="status"><Link to="/profile">{activeRemote()?.hostName || (en?'Home PC':'自宅PC')} · {connected ? (en?'Encrypted connection':'暗号化接続中') : (en?'Unable to connect':'接続できません')}</Link><span>{en?'Conversations saved on PC':'会話はPCに保存'}</span></div>;
 }

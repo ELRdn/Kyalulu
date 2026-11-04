@@ -200,7 +200,8 @@ export default defineConfig(({ mode, command }) => {
     }
   }
   return {
-  base: "./",
+  // History routes need root-absolute assets; the mobile Pages shell stays relative.
+  base: mode === 'mobile' ? "./" : "/",
   resolve: { alias: preparedSdk(command === 'build' && (unified || mode === 'mobile')) },
   plugins: [react(), ...(mode === 'mobile' ? [{ name: 'kyalulu-mobile-entry', transformIndexHtml: { order: 'pre' as const, handler: (html: string) => html.replace('/src/main.tsx', '/src/mobile/main.tsx').replace('<title>Kyalulu — キャラクターと物語をつむぐ場所</title>', '<title>Kyalulu Mobile — スマホで動くキャラクターAI</title>') } }] : []),
     ...(mode === 'native' ? [{ name: 'kyalulu-native-entry', transformIndexHtml: { order: 'pre' as const, handler: (html: string) => html.replace('<head>', '<head><meta name="kyalulu-ui" content="native">') } }] : []),

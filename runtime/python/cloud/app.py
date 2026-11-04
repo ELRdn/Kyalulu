@@ -9,7 +9,7 @@ from dataclasses import asdict
 from uuid import uuid4
 from urllib.parse import urlsplit
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, RedirectResponse, FileResponse
+from fastapi.responses import JSONResponse, RedirectResponse, FileResponse, HTMLResponse
 from fastapi.routing import APIRoute
 from sse_starlette.sse import EventSourceResponse
 from python.storage.context import CloudStorageContext, storage_context, get_db_path
@@ -1015,6 +1015,7 @@ def create_app(config=None, *, transport=None, ad_provider=None):
 
     if config.web_dist:
         from python.api.mobile import WebDist
+        from python.cloud.public_pages import render
         static = WebDist(directory=str(config.web_dist), html=True)
 
         @app.get("/{path:path}")
@@ -1022,6 +1023,9 @@ def create_app(config=None, *, transport=None, ad_provider=None):
             for document in ('device', 'migration'):
                 if path in {document, document + '/', document + '/index.html'} and not (config.web_dist / document / 'index.html').is_file():
                     raise CloudError(document + '_shell_not_built', 503)
-            return await static.get_response(path, request.scope)
+            response = await static.get_response(path, request.scope)
+            if response.status_code == 200 and (page := render(path, (config.web_dist / 'index.html').read_text(encoding='utf-8'), config.origin)):
+                return HTMLResponse(page, headers={'Cache-Control': response.headers['Cache-Control']})
+            return response
 
     return app

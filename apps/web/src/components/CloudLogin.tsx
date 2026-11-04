@@ -35,7 +35,7 @@ export default function CloudLogin({ returnTo = '/' }: { returnTo?: string }) {
     const refresh=()=>setRetry(value=>value+1);
     window.addEventListener('online',refresh);
     window.addEventListener('focus',refresh);
-    const params=new URLSearchParams(location.hash.split('?')[1] || '');
+    const params=new URLSearchParams(location.search || location.hash.split('?')[1] || '');
     const error=params.get('login_error');
     if(error) setMessage({cause:error});
     void cloudJson('status').then(status=>{

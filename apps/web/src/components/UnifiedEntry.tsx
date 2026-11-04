@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { deviceOwner, preferences, savePreferences, useLanguage, useDeviceOwner, labels, isUnifiedEntry, hasLocalRuntime, useExecutionTarget,
   generationBusy, useGenerationBusy, usePendingConversation, switchTarget, type AppPreferences, type ExecutionTarget } from '../lib/appContext';
 import { cloudFetch } from '../lib/transport';
@@ -44,7 +45,7 @@ export function ExecutionPicker() {
     <select aria-label={t.target} value={target} disabled={busy} onChange={e=>choose(e.target.value as ExecutionTarget)}>
       {(['cloud','device','pc',...(hasLocalRuntime()?['local']:[])] as ExecutionTarget[]).map(v=><option key={v} value={v}>{t[v]}</option>)}
     </select></label>{hasLocalRuntime()&&target==='cloud'&&<Button disabled={busy} onClick={()=>choose('cloud')}>{language==='ja'?'Cloudを開く':'Open Cloud'}</Button>}
-    {pending!==null&&<p role="status">{pending?<a href={`#/chats/${encodeURIComponent(pending)}`}>{en?'Check send result':'送信結果を確認'}</a>:(en?'Draft recovery could not be read. Check browser storage before switching.':'下書きの復旧記録を読み込めません。切替前にブラウザーの保存状態を確認してください。')}</p>}</div>;
+    {pending!==null&&<p role="status">{pending?<Link to={`/chats/${encodeURIComponent(pending)}`}>{en?'Check send result':'送信結果を確認'}</Link>:(en?'Draft recovery could not be read. Check browser storage before switching.':'下書きの復旧記録を読み込めません。切替前にブラウザーの保存状態を確認してください。')}</p>}</div>;
 }
 
 export default function UnifiedEntry({children}:{children:ReactNode}) {
