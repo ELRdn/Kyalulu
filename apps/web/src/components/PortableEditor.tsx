@@ -13,6 +13,7 @@ import { useCapabilities } from '../lib/capabilities';
 import { connectionScope } from '../lib/remoteStore';
 import { useLanguage } from '../lib/appContext';
 import { friendlyMessage } from '../lib/errors';
+import { MAX_HOOK_LENGTH, MAX_OPENING_REPLIES, MAX_REPLY_LENGTH, MAX_TAGS, MAX_TAG_LENGTH, cleanTag, tagProblem, type TagProblem } from '../lib/authorFields';
 
 const tabs = [
   { key: 'plot', label: ['プロット', 'Plot'] },
@@ -72,6 +73,7 @@ export default function PortableEditor({ document: doc, onChange, onValidity, li
   const [assetError, setAssetError] = useState<Error | string>('');
   const [uploading, setUploading] = useState(false);
   const [tagDraft, setTagDraft] = useState('');
+  const [tagError, setTagError] = useState<TagProblem | null>(null);
   const [previewIndex, setPreviewIndex] = useState(-1);
   const latest = useRef({ doc, onChange, cloud }); latest.current = { doc, onChange, cloud };
   const mounted = useRef(true);
@@ -103,7 +105,19 @@ export default function PortableEditor({ document: doc, onChange, onValidity, li
   const greetings: unknown[] = Array.isArray(doc.data.alternate_greetings) ? doc.data.alternate_greetings : [];
   const tags: unknown[] = Array.isArray(doc.data.tags) ? doc.data.tags : [];
   const invalid = (key: string) => (ok: boolean) => setErrors(x => x[key] === !ok ? x : ({ ...x, [key]: !ok }));
-  const addTag = () => { const tag = tagDraft.trim(); if (!tag) return; if (!tags.includes(tag)) data('tags', [...tags, tag]); setTagDraft(''); };
+  const addTag = () => {
+    const problem = tagProblem(tagDraft, tags);
+    if (problem === 'empty') return;
+    setTagError(problem);
+    if (problem) return;
+    data('tags', [...tags, cleanTag(tagDraft)]); setTagDraft('');
+  };
+  const tagMessage: Record<TagProblem, [string, string]> = {
+    empty: ['', ''], long: [`タグは${MAX_TAG_LENGTH}文字までです。`, `Tags can be up to ${MAX_TAG_LENGTH} characters.`],
+    banned: ['このタグは使えません。', 'This tag is not allowed.'], duplicate: ['同じタグがすでにあります。', 'This tag is already added.'],
+    full: [`タグは${MAX_TAGS}個までです。`, `You can add up to ${MAX_TAGS} tags.`],
+  };
+  const replies: string[] = Array.isArray(doc.data.opening_replies) ? doc.data.opening_replies.map(r => typeof r === 'string' ? r : '') : [];
   const portrait = assetUrl(doc.assets.find(a => a.type === 'icon' && !/^(audio|video)\//.test(a.media_type))?.asset_id ?? doc.assets.find(a => a.media_type.startsWith('image/'))?.asset_id);
   const previewGreeting = previewIndex >= 0 && typeof greetings[previewIndex] === 'string' ? greetings[previewIndex] as string : text('first_mes');
   const panelHidden = (tab: Tab) => doc.kind === 'character' ? activeTab !== tab : tab === 'plot' ? false : tab === 'lore' ? doc.kind !== 'lorebook' : tab === 'details' ? false : true;
@@ -136,6 +150,7 @@ export default function PortableEditor({ document: doc, onChange, onValidity, li
       <Panel title={doc.kind === 'character' ? (en ? "Character basics" : "キャラクターの基本") : doc.kind === 'lorebook' ? (en ? "Lorebook basics" : "設定集の基本") : (en ? "Preset basics" : "プリセットの基本")} hint={doc.kind === 'character' ? (en ? "Who will you meet, and what story will begin?" : "誰と、どんな物語をはじめる？") : (en ? "Choose a name you can find again later." : "あとから見つけやすい名前をつけましょう。")}>
         <label className="k-create-field"><span className="k-plot-editor__field-head"><span>{en ? "Name" : "名前"} <span className="k-plot-editor__required">{en ? "Required" : "必須"}</span></span><span className="k-plot-editor__count">{count(doc.name, en)}</span></span><Input aria-label={en ? "Name" : "名前"} value={doc.name} placeholder={doc.kind === 'character' ? (en ? "Character or story name" : "キャラクターや物語の名前") : (en ? "Enter a name" : "名前を入力")} onChange={e => set({ name: e.target.value })} required /></label>
         {doc.kind === 'character' && field('nickname', (en ? "Name used in conversation" : "会話中の呼び名"), 1, (en ? "Uses the work name if left blank." : "未入力なら名前を使います。"), (en ? "Example: Cyan" : "例：シアン"))}
+        {doc.kind === 'character' && <label className="k-create-field"><span className="k-plot-editor__field-head"><span>{en ? "Scene line" : "場面の一言"}</span><span className="k-plot-editor__count">{text('hook').length}/{MAX_HOOK_LENGTH}</span></span><Input aria-label={en ? "Scene line" : "場面の一言"} value={text('hook')} maxLength={MAX_HOOK_LENGTH} placeholder={en ? "Example: Waiting for you with tea on a rainy night" : "例：雨の夜、紅茶を淹れて君の帰りを待っている"} onChange={e => data('hook', e.target.value)} /><small>{en ? "Shown under the name on character cards." : "キャラカードの名前の下に表示します。"}</small></label>}
         {!cloud && <label className="k-plot-editor__check"><input type="checkbox" checked={doc.nsfw} onChange={e => set({ nsfw: e.target.checked })} /> {en ? "Contains adult content" : "成人向けの内容を含む"}</label>}
         {cloud && <p className="k-plot-editor__status">{en ? "Cloud creation currently supports general-audience content." : "クラウドでは全年齢向けの内容を作成できます。"}</p>}
       </Panel>
@@ -171,6 +186,9 @@ export default function PortableEditor({ document: doc, onChange, onValidity, li
       <Panel title={en ? "Opening scene" : "物語のはじまり"} hint={en ? "The first scene shown when a conversation opens." : "会話を開いたときに表示する、最初のシーンです。"}>
         {field('first_mes', (en ? "First greeting" : "最初の挨拶"), 8, (en ? "Write narration like *looks up at the stars* to display it separately from dialogue." : "地の文は *星空を見上げる* のように書くと、セリフと分けて表示されます。"), (en ? "*A familiar voice came from beyond the door.*\n\n“You came.”" : "*扉の向こうから、聞き覚えのある声がした。*\n\n「来てくれたんだね。」"))}
       </Panel>
+      <Panel title={en ? "First reply suggestions" : "最初の一言の候補"} hint={en ? `Up to ${MAX_OPENING_REPLIES} replies shown as buttons above the input before the first message.` : `最初の送信の前に、入力欄の上にボタンで並べます。${MAX_OPENING_REPLIES}つまで。`}>
+        {Array.from({ length: MAX_OPENING_REPLIES }, (_, index) => <label key={index} className="k-create-field">{en ? `Suggestion ${index + 1}` : `候補 ${index + 1}`}<Input aria-label={en ? `Reply suggestion ${index + 1}` : `最初の一言の候補 ${index + 1}`} value={replies[index] ?? ''} maxLength={MAX_REPLY_LENGTH} placeholder={index === 0 ? (en ? "Example: I'm home." : "例：ただいま") : undefined} onChange={e => { const next = Array.from({ length: MAX_OPENING_REPLIES }, (_, i) => i === index ? e.target.value : replies[i] ?? ''); while (next.length && !next[next.length - 1]) next.pop(); data('opening_replies', next); }} /></label>)}
+      </Panel>
       <Panel title={en ? "Intro preview" : "イントロのプレビュー"} hint={en ? "Preview your text as it will appear in chat." : "入力した文章を、チャットと同じ見た目で確認できます。"}>
         {greetings.length > 0 && <label className="k-create-field">{en ? "Greeting to display" : "表示する挨拶"}<select aria-label={en ? "Greeting to preview" : "プレビューする挨拶"} value={previewIndex >= 0 && typeof greetings[previewIndex] === 'string' ? previewIndex : -1} onChange={e => setPreviewIndex(Number(e.target.value))}><option value={-1}>{en ? "First greeting" : "最初の挨拶"}</option>{greetings.map((greeting, index) => typeof greeting === 'string' && <option key={index} value={index}>{en ? `Alternative greeting ${index + 1}` : `挨拶候補 ${index + 1}`}</option>)}</select></label>}
         <div className="k-plot-editor__preview">{previewGreeting.trim() ? <ScenePreview name={doc.name || (en ? "Untitled" : "名前未設定")} seed={id} portrait={portrait} content={previewGreeting} /> : <div className="k-plot-editor__empty"><span aria-hidden="true">✦</span><p>{en ? "Write a greeting to preview the opening scene here." : "挨拶を書くと、ここに最初のシーンが表示されます。"}</p></div>}</div>
@@ -184,7 +202,8 @@ export default function PortableEditor({ document: doc, onChange, onValidity, li
       <Panel title={en ? "Creator and introduction" : "作者と紹介"} hint={en ? "Creator notes are not used to generate conversations." : "作者コメントは会話の生成には使われません。"}><div className="k-create-grid">{field('creator', (en ? "Creator" : "作者"), 1)}{field('character_version', (en ? "Character version (creator-defined)" : "キャラのバージョン（作者指定）"), 1)}</div>{field('creator_notes', (en ? "Creator notes (not used for generation)" : "作者コメント（会話の生成には使いません）"), 5)}</Panel>
       <Panel title={en ? "Tags" : "タグ"} hint={en ? "Add your own words for moods, genres and more." : "雰囲気やジャンルなどを、自由な言葉でまとめましょう。"} count={items(tags.filter(tag => typeof tag === 'string').length)}>
         <div className="k-plot-editor__tags">{tags.map((tag, index) => typeof tag === 'string' && <span className="k-plot-editor__tag" key={index}>{tag}<button type="button" aria-label={(en ? `Remove tag “${tag}”` : `タグ「${tag}」を外す`)} onClick={() => data('tags', tags.filter((_, i) => i !== index))}>×</button></span>)}</div>
-        <div className="k-plot-editor__tag-input"><Input aria-label={en ? "Tag to add" : "追加するタグ"} value={tagDraft} placeholder={en ? "Example: fantasy" : "例：ファンタジー"} onChange={e => setTagDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) { e.preventDefault(); addTag(); } }} /><Button type="button" variant="secondary" disabled={!tagDraft.trim()} onClick={addTag}>{en ? "Add" : "追加"}</Button></div>
+        <div className="k-plot-editor__tag-input"><Input aria-label={en ? "Tag to add" : "追加するタグ"} value={tagDraft} placeholder={en ? "Example: fantasy" : "例：ファンタジー"} onChange={e => { setTagDraft(e.target.value); setTagError(null); }} onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) { e.preventDefault(); addTag(); } }} /><Button type="button" variant="secondary" disabled={!tagDraft.trim()} onClick={addTag}>{en ? "Add" : "追加"}</Button></div>
+        {tagError && <p className="k-plot-editor__status" role="alert">{tagMessage[tagError][en ? 1 : 0]}</p>}
       </Panel>
       <Panel title={en ? "Images, expressions, backgrounds, audio and video" : "画像・表情・背景・音声・動画"} hint={en ? "Name imported media and choose how it is used in conversations." : "持ち込み媒体の名前と、会話での用途を設定します。"} count={items(doc.assets.length)}>
         <div className="k-create-assets">{doc.assets.map((asset, index) => {

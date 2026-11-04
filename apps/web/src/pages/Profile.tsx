@@ -168,7 +168,7 @@ export default function Profile() {
           </h2>
           <div className="k-grid k-grid--characters">
             {savedCharacters.map((c) => (
-              <CharacterCard key={c.id} id={c.id} displayName={c.display_name} hook={c.description} creator={c.official ? "Kyalulu Official" : (en?'My library':'マイライブラリ')} tags={c.tags ?? []} portraitUrl={c.portrait_url} />
+              <CharacterCard key={c.id} id={c.id} displayName={c.display_name} hook={c.hook || c.description} creator={c.official ? "Kyalulu Official" : (en?'My library':'マイライブラリ')} tags={c.tags ?? []} portraitUrl={c.portrait_url} />
             ))}
           </div>
         </section>

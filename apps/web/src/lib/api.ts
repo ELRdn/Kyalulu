@@ -323,7 +323,7 @@ export async function saveSettings(s: SessionSettings): Promise<void> {
   }
 }
 
-export type CharacterInfo = { official?: boolean; id: string; display_name: string; version: string; description: string; intro?: string; difficulty?: string; tags?: string[]; portrait_url?: string | null; library_revision?: number; alternate_greetings?: string[]; recommended_generation?: Record<string, unknown> };
+export type CharacterInfo = { official?: boolean; id: string; display_name: string; version: string; description: string; hook?: string; opening_replies?: string[]; intro?: string; difficulty?: string; tags?: string[]; portrait_url?: string | null; library_revision?: number; alternate_greetings?: string[]; recommended_generation?: Record<string, unknown> };
 export type PersonaInfo = { id: string; display_name: string; version: string; description: string };
 export type WorldInfo = { id: string; display_name: string; version: string; description: string };
 

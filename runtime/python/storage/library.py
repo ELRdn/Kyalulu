@@ -7,6 +7,7 @@ import re
 import sqlite3
 from contextlib import contextmanager
 from uuid import uuid4
+from python.core.author_fields import clean_author_fields
 from python.core.portable_schema import ImportCommit, LibraryItem, PortableDocument
 from . import db as database
 
@@ -120,6 +121,8 @@ def _write(con, document, original_id=None, target_id=None, expected_revision=No
     # Source IDs and official flags cannot replace bundled characters.
     document = document.model_copy(deep=True)
     document.data.pop('official', None)
+    if document.kind == 'character':
+        document.data.update(clean_author_fields(document.data))
     if not document.name.strip():
         raise ValueError('name is required')
     document.data['name'] = document.name
@@ -245,7 +248,8 @@ def character_info(item):
     return dict(id=item.id, version=f'1.0.{item.revision}', display_name=doc.name,
                 description=doc.data.get('description', ''), personality=doc.data.get('personality', ''),
                 speaking_style=doc.speaking_style, intro=doc.data.get('first_mes', ''),
-                tags=doc.data.get('tags', []), recommended_generation=doc.profile.settings,
+                tags=doc.data.get('tags', []), hook=doc.data.get('hook', ''),
+                opening_replies=doc.data.get('opening_replies', []), recommended_generation=doc.profile.settings,
                 nsfw=doc.nsfw, official=False, library_revision=item.revision,
                 alternate_greetings=doc.data.get('alternate_greetings', []),
                 portrait_url=next((f'/api/library/assets/{a.asset_id}' for a in doc.assets if a.type == 'icon' and a.asset_id), None))

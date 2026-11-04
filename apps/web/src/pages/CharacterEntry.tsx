@@ -408,7 +408,7 @@ export default function CharacterEntry() {
             <h2 className="k-plot-section__title">{en ? `If you like ${name}` : `${name}が気に入ったなら？`}</h2>
             <div className="k-plot-recs">
               {recommendations.map((c) => (
-                <CharacterCard key={c.id} id={c.id} displayName={c.display_name} hook={c.description} creator={c.official ? "Kyalulu Official" : en ? 'My library' : 'マイライブラリ'} tags={c.tags ?? []} portraitUrl={c.portrait_url} />
+                <CharacterCard key={c.id} id={c.id} displayName={c.display_name} hook={c.hook || c.description} creator={c.official ? "Kyalulu Official" : en ? 'My library' : 'マイライブラリ'} tags={c.tags ?? []} portraitUrl={c.portrait_url} />
               ))}
             </div>
           </section>

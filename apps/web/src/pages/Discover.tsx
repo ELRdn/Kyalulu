@@ -226,7 +226,7 @@ export default function Discover() {
         ) : (
           <div className="k-grid k-grid--characters">
             {filteredCharacters.map((c) => (
-              <CharacterCard key={c.id} id={c.id} displayName={c.display_name} hook={c.description} creator={c.official ? "Kyalulu Official" : en ? 'My library' : 'マイライブラリ'} tags={c.tags ?? []} portraitUrl={c.portrait_url} talks={talks.get(c.id)} />
+              <CharacterCard key={c.id} id={c.id} displayName={c.display_name} hook={c.hook || c.description} creator={c.official ? "Kyalulu Official" : en ? 'My library' : 'マイライブラリ'} tags={c.tags ?? []} portraitUrl={c.portrait_url} talks={talks.get(c.id)} />
             ))}
           </div>
         )}

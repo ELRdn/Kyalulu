@@ -42,7 +42,7 @@ export default function Home() {
       <div className="k-section__head"><h2 id="home-recommendations" className="k-section__title">{t.recommended}</h2><Link to="/discover">{t.discover}</Link></div>
       {loading?<div className="k-grid k-grid--characters" aria-busy="true">{[0,1,2,3].map(i=><div className="k-skeleton-card" key={i}/>)}</div>:
         <div className="k-grid k-grid--characters">{featured.map(c=><div key={c.id}>
-          <CharacterCard id={c.id} displayName={c.display_name} hook={c.description} tags={c.tags??[]} creator={c.official?'Kyalulu Official':en?'My library':'マイライブラリ'} portraitUrl={c.portrait_url}/>
+          <CharacterCard id={c.id} displayName={c.display_name} hook={c.hook || c.description} tags={c.tags??[]} creator={c.official?'Kyalulu Official':en?'My library':'マイライブラリ'} portraitUrl={c.portrait_url}/>
           <div className="k-unified-actions"><IconButton label={en?'Favorite':'お気に入り'} aria-pressed={favorites.includes(c.id)} onClick={()=>toggleSaved(c.id)}><Icon name="heart"/></IconButton>
             <IconButton label={en?'Not interested':'興味なし'} onClick={()=>choose(c.id,'dismissed')}><Icon name="close"/></IconButton></div>
         </div>)}</div>}

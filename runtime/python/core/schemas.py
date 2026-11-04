@@ -20,7 +20,9 @@ class CharacterCard(BaseModel):
     personality: str = ""  # 箇条書きや自由記述
     speaking_style: str = ""  # 口調
     intro: str = ""  # 初回挨拶 / 導入（空なら無し）
-    tags: list[str] = Field(default_factory=list)
+    hook: str = Field(default="", max_length=60)  # カードに出す場面の一言
+    opening_replies: list[str] = Field(default_factory=list, max_length=3)  # 最初の一言の候補
+    tags: list[str] = Field(default_factory=list, max_length=10)
     difficulty: Difficulty = "easy"
     recommended_generation: dict = Field(default_factory=dict)  # {temperature, top_p}
     notes: str = ""
