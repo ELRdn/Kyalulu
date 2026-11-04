@@ -12,12 +12,11 @@ export default function NotFound() {
   return (
     <div className="k-page">
       <EmptyState
-        mascot="shy"
-        title={en ? 'This page seems to have wandered into another world' : 'このページは、別の世界に迷いこんだみたい'}
-        description={en ? 'The URL may be incorrect, or the page may have moved.' : 'URLが間違っているか、ページが移動した可能性があります。'}
+        mascot="cry"
+        title={en ? "We couldn't find that page…" : 'そのページは見当たらないみたい…'}
         action={
           <Button variant="primary" onClick={() => navigate("/")}>
-            {en ? 'Back to home' : 'ホームへもどる'}
+            {en ? 'Back to home' : 'ホームにもどる'}
           </Button>
         }
       />

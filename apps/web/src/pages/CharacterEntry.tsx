@@ -114,7 +114,7 @@ export default function CharacterEntry() {
     return (
       <div className="k-page">
         <EmptyState
-          mascot="shy"
+          mascot="cry"
           title={en ? 'Could not load character' : 'キャラクターを読み込めませんでした'}
           description={friendlyMessage(loadError.cause, language)}
           action={<Button variant="secondary" onClick={() => setReload((value) => value + 1)}>{en ? 'Retry' : '再読み込み'}</Button>}
@@ -127,7 +127,7 @@ export default function CharacterEntry() {
     return (
       <div className="k-page">
         <EmptyState
-          mascot="shy"
+          mascot="cry"
           title={en ? 'Character not found' : 'キャラクターが見つかりません'}
           description={en ? 'The character may have been deleted, or the URL may be incorrect.' : '削除されたか、URLが間違っている可能性があります。'}
           action={

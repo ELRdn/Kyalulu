@@ -54,7 +54,7 @@ export default function UnifiedEntry({children}:{children:ReactNode}) {
   const target=useExecutionTarget(),hostedCloud=hasLocalRuntime()&&target==='cloud';
   if((!isUnifiedEntry()||stage==='ready')&&!hostedCloud)return <>{children}</>;
   const en=language==='en',t=labels[language];
-  return <main className="k-unified-entry" lang={language}><header><img src="/mascot/v1.2/face-default.png" alt="" width={56} height={56}/><h1>Kyalulu</h1></header>
+  return <main className="k-unified-entry" lang={language}><header><img src="/mascot/v2/face-default.webp" alt="" width={56} height={56}/><h1>Kyalulu</h1></header>
     <ExecutionPicker/>
     {hostedCloud?<p>{en?'Cloud runs at app.kyalulu.com. Open Cloud or select another execution target.':'Cloudは app.kyalulu.com で利用します。Cloudを開くか、別の実行先を選んでください。'}</p>:stage==='interests'?<Interests onDone={()=>setStage('ready')}/>:<form onSubmit={async e=>{
       e.preventDefault();if(busy)return;const owner=deviceOwner();setBusy(true);setError('');

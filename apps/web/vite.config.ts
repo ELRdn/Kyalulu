@@ -166,7 +166,7 @@ function shellPrecache(mobile = false, device = false): Plugin {
       const files = ["index.html", "theme-init.js", "manifest.webmanifest", "apple-touch-icon.png", "favicon.ico", "favicon-32.png", "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png",
         ...(runtime ? ['migration/index.html'] : []),
         ...(device ? ['icons/rei-senpai.png', 'icons/shion-butler-1.png', 'icons/mocha-1.png'] : []),
-        ...["sit", "guide", "nap", "face-default", "face-wink", "face-curious"].map(name => `mascot/v1.2/${name}.png`),
+        ...["face-default", "face-excited", "face-shy", "face-sleep", "face-smile", "pose-cry", "pose-float", "pose-wave"].map(name => `mascot/v2/${name}.webp`),
         ...Object.keys(bundle).filter((name) => /\.(js|css|wasm)$/.test(name)),
         ...runtimeFiles,
       ].sort();

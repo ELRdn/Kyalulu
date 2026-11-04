@@ -155,7 +155,7 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
         <div className="k-cmd__list" id="k-cmd-list" role="listbox" tabIndex={-1} ref={listRef}>
           {items.length === 0 && (
             <div className="k-cmd__empty">
-              <img src={`${import.meta.env.BASE_URL}mascot/v1.2/face-curious.png`} alt="" />
+              <img src={`${import.meta.env.BASE_URL}mascot/v2/face-default.webp`} alt="" />
               {en ? 'No results found…' : '見つからなかったみたい…'}
             </div>
           )}

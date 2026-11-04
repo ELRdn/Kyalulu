@@ -46,7 +46,7 @@ describe('Kyalulu waiting display', () => {
     const html = renderToStaticMarkup(<KyaluluWaiting progress={null} researcher />);
     expect(html).toContain('aria-live="polite" aria-atomic="true"');
     expect(html).toContain('class="k-reply-wait__art" aria-hidden="true"');
-    expect(html).toContain('mascot/v1.2/face-curious.png');
+    expect(html).toContain('mascot/v2/face-default.webp');
     expect(html).toContain('alt=""');
     expect(html).not.toContain('k-reply-wait__diagnostic');
   });

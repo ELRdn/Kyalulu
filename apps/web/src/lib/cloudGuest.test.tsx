@@ -41,6 +41,10 @@ it.each(['/chats', '/chats/private', '/create', '/profile', '/studio', '/works/p
   const html = renderToStaticMarkup(<MemoryRouter initialEntries={[path]}><CloudRouteChoice authenticated={false}><span>private-page</span></CloudRouteChoice></MemoryRouter>);
   expect(html).toContain('login:'); expect(html).not.toContain('private-page');
 });
+it.each(['/no-such-page', '/conversation/old'])('lets guests reach the 404 page for unknown path %s', path => {
+  const html = renderToStaticMarkup(<MemoryRouter initialEntries={[path]}><CloudRouteChoice authenticated={false}><span>not-found-page</span></CloudRouteChoice></MemoryRouter>);
+  expect(html).toContain('not-found-page'); expect(html).not.toContain('login:');
+});
 it('renders authenticated chat without changing the local/BYOK requirement', () => {
   const html = renderToStaticMarkup(<MemoryRouter initialEntries={['/chats/private']}><CloudRouteChoice authenticated><span>private-page</span></CloudRouteChoice></MemoryRouter>);
   expect(html).toContain('private-page');

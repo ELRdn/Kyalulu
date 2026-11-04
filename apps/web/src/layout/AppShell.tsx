@@ -92,7 +92,7 @@ export default function AppShell() {
     <div className={`k-shell ${inChat ? "k-shell--chat" : ""} ${location.pathname.startsWith("/characters/") ? "k-shell--immersive" : ""}`}>
       <header className="k-shell__header">
         <Link to="/" className="k-shell__logo" aria-label={en ? 'Kyalulu Home' : 'Kyalulu ホーム'}>
-          <img className="k-shell__logo-mark" src={`${import.meta.env.BASE_URL}mascot/v1.2/face-default.png`} alt="" aria-hidden="true" width={34} height={34} />
+          <img className="k-shell__logo-mark" src={`${import.meta.env.BASE_URL}mascot/v2/face-default.webp`} alt="" aria-hidden="true" width={34} height={34} />
           <span className="k-shell__wordmark">
             Kyalulu<span aria-hidden="true">✦</span>
           </span>
@@ -131,7 +131,7 @@ export default function AppShell() {
 
           {!rail && (
             <div className="k-shell__companion">
-              <img src={`${import.meta.env.BASE_URL}mascot/v1.2/nap.png`} alt="" className="k-shell__companion-art" width={160} height={160} decoding="async" />
+              <img src={`${import.meta.env.BASE_URL}mascot/v2/pose-float.webp`} alt="" className="k-shell__companion-art" width={160} height={160} decoding="async" />
               <div className="k-shell__daily">
                 <div className="k-shell__daily-title">✦ {en ? 'A thought for today' : '今日のひとこと'}</div>
                 <p>{dailyWord}</p>
