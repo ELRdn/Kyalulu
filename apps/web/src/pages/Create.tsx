@@ -100,7 +100,7 @@ function CreateWorkspace() {
     :message.kind==='saved'?(en?`Saved to ${storageLabel}. Existing conversations keep the settings they started with.`:`${storageLabel}に保存しました。これまでの会話は、はじめた時点の設定のまま続きます。`)
     :message.kind==='draft'?(en?'A temporary draft was saved in this browser. Use Save to store it in your library.':'一時下書きをこのブラウザーに保存しました。ライブラリへの保存は「保存」ボタンで行います。')
     :(en?`Reviewed version ${message.revision}. Use Save as a new version to save this draft.`:`版${message.revision}を確認しました。「新しい版として保存」でこの下書きを保存できます。`);
-  useDocumentTitle(en?'Create':'クリエイト');
+  useDocumentTitle(en?'Create':'つくる');
   useEffect(() => { if (!adult) setIncludeNsfw(false); }, [adult]);
   // 編集・確認モードへ切り替わったら画面の先頭から見せる（下に追加されて気づけない問題の対策）
   useEffect(() => { window.document.getElementById('main')?.scrollTo({ top: 0, behavior: 'smooth' }); }, [!!previewId, query.get('edit')]);
@@ -297,7 +297,7 @@ function CreateWorkspace() {
   </div>;
 
   return <div className="k-page k-create">
-    <div className="k-page-head"><div><p className="k-studio-kicker">{en?'My library':'マイライブラリ'}</p><h1 className="k-page-title">{en?'Create':'クリエイト'}</h1><p className="k-page-sub">{en?'Bring characters and worlds together in a plot.':'キャラクターと世界を、ひとつのプロットに。'}</p></div>
+    <div className="k-page-head"><div><p className="k-studio-kicker">{en?'My library':'マイライブラリ'}</p><h1 className="k-page-title">{en?'Create':'つくる'}</h1><p className="k-page-sub">{en?'Bring characters and worlds together in a plot.':'キャラクターと世界を、ひとつのプロットに。'}</p></div>
       <Button onClick={() => setChooserOpen(true)}><Icon name="plus" size={16} /> {en?'Create new':'新しく作る'}</Button></div>
     {banners}
     <div className="k-create-storage" role="note"><Icon name={cloud ? 'lock' : 'library'} size={15} /><span>{en?'Library location: ':'ライブラリの保存先：'}{storageLabel}{cloud ? (en?' · Shared within your account · General content':' · アカウント内で共有 · 全年齢の内容') : ''}</span><Link to="/create/settings">{en?'Persona and world settings':'ペルソナ・世界観の設定'}</Link></div>

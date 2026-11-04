@@ -55,7 +55,7 @@ export default function Discover() {
   const [recent, setRecent] = useState<string[]>(readRecent);
 
   const [adult] = useAdultContent();
-  useDocumentTitle(en ? 'Explore' : 'ディスカバー');
+  useDocumentTitle(en ? 'Explore' : 'さがす');
   const activeMood = params.get("mood");
   const activeWorld = params.get("world");
 
@@ -126,7 +126,7 @@ export default function Discover() {
     <div className="k-page">
       <div className="k-page-head">
         <div>
-          <h1 className="k-page-title">{en ? 'Explore' : 'ディスカバー'}</h1>
+          <h1 className="k-page-title">{en ? 'Explore' : 'さがす'}</h1>
           <p className="k-page-sub">{en ? 'Find someone new through moods and worlds.' : '気分やワールドから、まだ知らない誰かに出会おう。'}</p>
         </div>
       </div>

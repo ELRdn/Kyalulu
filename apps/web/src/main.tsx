@@ -24,7 +24,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <AppErrorBoundary><ThemeProvider>
       <Router>
-        <div className="k-pwa-root"><MobileAppStatus local={executionTarget()==='device'} /><UnifiedEntry><ExecutionPicker /><RemoteSetup entry={remoteEntry}><RemoteBanner /><RuntimeGate><App /></RuntimeGate></RemoteSetup></UnifiedEntry></div>
+        <div className="k-pwa-root"><MobileAppStatus local={executionTarget()==='device'} quiet /><UnifiedEntry><ExecutionPicker /><RemoteSetup entry={remoteEntry}><RemoteBanner /><RuntimeGate><App /></RuntimeGate></RemoteSetup></UnifiedEntry></div>
       </Router>
     </ThemeProvider></AppErrorBoundary>
   </React.StrictMode>,

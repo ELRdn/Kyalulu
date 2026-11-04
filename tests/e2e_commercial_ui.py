@@ -216,7 +216,7 @@ async def run_case(browser, origin, output, language, width, theme, scenario):
         await banner('home')
         await page.screenshot(path=str(output / (name + '-home.png')), full_page=True, animations='disabled')
         await page.goto(origin + ('/device/' if scenario == 'device' else '/') + '#/discover')
-        await page.get_by_role('heading', name='Explore' if language == 'en' else 'ディスカバー', exact=True).wait_for()
+        await page.get_by_role('heading', name='Explore' if language == 'en' else 'さがす', exact=True).wait_for()
         await page.wait_for_load_state('networkidle')
         await banner('discover')
         await page.screenshot(path=str(output / (name + '-discover.png')), full_page=True, animations='disabled')

@@ -17,20 +17,13 @@ import { UnifiedSync } from '../components/SessionPolicy';
 
 const LS_SIDEBAR_COMPACT = "kyalulu-sidebar-compact";
 
-const MOBILE_NAV: { to: string; icon: IconName; label: string }[] = [
-  { to: "/", icon: "home", label: "ホーム" },
-  { to: "/chats", icon: "chat", label: "トーク" },
-  { to: "/discover", icon: "compass", label: "キャラクター" },
-  { to: "/create", icon: "pen", label: "つくる" },
-  { to: "/profile", icon: "settings", label: "設定" },
-];
-
-const CONSUMER_NAV: { to: string; icon: IconName; label: string; end?: boolean }[] = [
-  { to: "/", icon: "home", label: "ホーム", end: true },
-  { to: "/discover", icon: "compass", label: "ディスカバー" },
-  { to: "/chats", icon: "chat", label: "チャット" },
-  { to: "/create", icon: "pen", label: "クリエイト" },
-  { to: "/profile", icon: "user", label: "プロフィール" },
+// Same five tabs, names and order in the sidebar and the bottom bar (docs/MOBILE_UX_SPEC.md §4).
+const NAV: { to: string; icon: IconName; end?: boolean }[] = [
+  { to: "/", icon: "home", end: true },
+  { to: "/discover", icon: "compass" },
+  { to: "/chats", icon: "chat" },
+  { to: "/create", icon: "pen" },
+  { to: "/profile", icon: "user" },
 ];
 
 const DAILY_WORDS = [
@@ -47,7 +40,7 @@ const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigat
 
 export default function AppShell() {
   const language=useLanguage(),t=labels[language],en=language==='en';
-  const navLabel=(path:string)=>({'/':t.home,'/chats':t.chats,'/discover':t.discover,'/create':t.create,'/profile':t.profile}[path]);
+  const navLabel=(path:string):string=>({'/':t.home,'/chats':t.chats,'/discover':t.discover,'/create':t.create,'/profile':t.profile}[path] ?? path);
   const administrative = useAdministrative();
   const target = useExecutionTarget();
   const guest = isCloudGuest(useRuntimeAccess());
@@ -119,8 +112,8 @@ export default function AppShell() {
       <div className="k-shell__body">
         <nav className={`k-shell__sidebar ${rail ? "k-shell__sidebar--compact" : ""}`} aria-label={en ? 'Main navigation' : 'メインナビゲーション'}>
           <div className="k-shell__nav-group">
-            {CONSUMER_NAV.map((item) => (
-              <NavItem key={item.to} to={item.to} icon={<Icon name={item.icon} size={19} />} label={navLabel(item.to)||item.label} compact={rail} end={item.end} />
+            {NAV.map((item) => (
+              <NavItem key={item.to} to={item.to} icon={<Icon name={item.icon} size={19} />} label={navLabel(item.to)} compact={rail} end={item.end} />
             ))}
           </div>
           {target==='device'&&<div className="k-shell__nav-group"><NavItem to="/research" icon={<Icon name="sparkle" size={17} />} label={language==='en'?'Research':'研究'} secondary compact={rail} /></div>}
@@ -148,20 +141,20 @@ export default function AppShell() {
 
         <main className="k-shell__main" id="main" ref={mainRef}>
           {['/','/discover'].includes(location.pathname)&&<AdBanner/>}
-          {accountSync.error && location.pathname!=='/profile' && <div className="k-shell__sync-alert" role="alert">{accountSync.error} <Link to="/profile">{en ? 'Review in Settings' : 'プロフィールで確認'}</Link></div>}
+          {accountSync.error && location.pathname!=='/profile' && <div className="k-shell__sync-alert" role="alert">{accountSync.error} <Link to="/profile">{en ? 'Review in My page' : 'マイページで確認'}</Link></div>}
           <Outlet />
         </main>
       </div>
 
       <nav className="k-shell__bottomnav" aria-label={en ? 'Mobile navigation' : 'モバイルナビゲーション'}>
         <div className="k-shell__bottomnav-row">
-          {MOBILE_NAV.map((item) => {
+          {NAV.map((item) => {
             const active = location.pathname === item.to || location.pathname.startsWith(`${item.to}/`) ||
               (item.to === "/discover" && location.pathname.startsWith("/characters/"));
             return (
               <Link key={item.to} to={item.to} aria-current={active ? "page" : undefined} className={`k-shell__bottomnav-item ${active ? "active" : ""}`}>
                 <Icon name={item.icon} size={21} />
-                <span>{navLabel(item.to)||item.label}</span>
+                <span>{navLabel(item.to)}</span>
               </Link>
             );
           })}

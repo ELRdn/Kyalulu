@@ -132,7 +132,7 @@ export default function CharacterEntry() {
           description={en ? 'The character may have been deleted, or the URL may be incorrect.' : '削除されたか、URLが間違っている可能性があります。'}
           action={
             <Button variant="secondary" onClick={() => navigate("/discover")}>
-              {en ? 'Back to Explore' : 'ディスカバーへ戻る'}
+              {en ? 'Back to Explore' : 'さがすに戻る'}
             </Button>
           }
         />
@@ -153,7 +153,7 @@ export default function CharacterEntry() {
                 <Icon name="lock" size={15} /> {en ? 'Open Settings' : '設定をひらく'}
               </Button>
               <Button variant="ghost" onClick={() => navigate("/discover")}>
-                {en ? 'Back to Explore' : 'ディスカバーへ戻る'}
+                {en ? 'Back to Explore' : 'さがすに戻る'}
               </Button>
             </div>
           }

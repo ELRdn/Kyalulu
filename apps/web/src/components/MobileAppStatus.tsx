@@ -3,11 +3,12 @@ import { applyPwaUpdate, checkPwaUpdate, installPwa, startPwa, usePwa, pwaMessag
 import { useLanguage } from '../lib/appContext';
 import "./MobileAppStatus.css";
 
-export default function MobileAppStatus({ local = false }: { local?: boolean }) {
+/** `quiet` shows the bar only when offline or when an update is waiting. */
+export default function MobileAppStatus({ local = false, quiet = false }: { local?: boolean; quiet?: boolean }) {
   const pwa = usePwa();
   const language = useLanguage(), en = language === 'en';
   useEffect(() => { void startPwa(); }, []);
-  if (!pwa.enabled) return null;
+  if (!pwa.enabled || quiet && pwa.online && !pwa.updateAvailable) return null;
 
   return (
     <aside className="k-mobile-status" aria-label={en ? 'App and connection status' : 'アプリと接続の状態'}>

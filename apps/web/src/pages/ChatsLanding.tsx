@@ -148,7 +148,7 @@ export default function ChatsLanding() {
         <EmptyState
           mascot={query ? "shy" : "default"}
           title={query ? (en ? 'No matching chats' : '見つからなかったみたい') : (en ? 'No chats yet' : 'まだチャットがありません')}
-          description={query ? (en ? 'Try another search.' : '別のことばで探してみよう。') : (en ? 'Find a character in Explore and start your first conversation.' : 'ディスカバーでキャラクターを見つけて、最初の会話を始めよう。')}
+          description={query ? (en ? 'Try another search.' : '別のことばで探してみよう。') : (en ? 'Find a character in Explore and start your first conversation.' : '「さがす」でキャラクターを見つけて、最初の会話を始めよう。')}
           action={
             !query && (
               <Button variant="secondary" onClick={() => navigate("/discover")}>

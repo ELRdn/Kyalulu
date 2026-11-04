@@ -48,7 +48,7 @@ export default function Profile() {
   const [retry, setRetry] = useState(0);
   const [confirmDialog, confirm] = useConfirm();
   const location = useLocation();
-  useDocumentTitle(en ? 'Profile' : 'プロフィール');
+  useDocumentTitle(en ? 'My page' : 'マイページ');
 
   useEffect(() => {
     if (location.hash !== "#adult") return;
