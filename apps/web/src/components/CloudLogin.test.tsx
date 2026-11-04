@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import CloudLogin from './CloudLogin';
 
 const fixture=vi.hoisted(()=>({language:'en',states:[] as any[],refs:[] as {current:any}[],effects:[] as (()=>(()=>void)|void)[],
-  next:0,ref:0,request:vi.fn(),analytics:vi.fn(),navigate:vi.fn(),assign:vi.fn(),remember:vi.fn()}));
+  unified:false,next:0,ref:0,request:vi.fn(),analytics:vi.fn(),navigate:vi.fn(),assign:vi.fn(),remember:vi.fn()}));
 vi.mock('react',async original=>({...await original<typeof import('react')>(),
   useState:(initial:any)=>{const index=fixture.next++;if(fixture.states[index]===undefined)fixture.states[index]=typeof initial==='function'?initial():initial;return [fixture.states[index],(value:any)=>{fixture.states[index]=typeof value==='function'?value(fixture.states[index]):value;}];},
   useRef:(value:any)=>{const index=fixture.ref++;return fixture.refs[index]??(fixture.refs[index]={current:value});},
@@ -14,7 +14,7 @@ vi.mock('react-router-dom',()=>({useNavigate:()=>fixture.navigate}));
 vi.mock('../lib/cloud',()=>({cloudJson:fixture.request}));
 vi.mock('../lib/analytics',()=>({analyticsConsent:fixture.analytics}));
 vi.mock('../lib/cloudGuest',()=>({clearLoginReturn:vi.fn(),rememberLoginReturn:fixture.remember}));
-vi.mock('../lib/appContext',()=>({useLanguage:()=>fixture.language,preferences:()=>({language:fixture.language}),
+vi.mock('../lib/appContext',()=>({isUnifiedEntry:()=>fixture.unified,useLanguage:()=>fixture.language,preferences:()=>({language:fixture.language}),
   savePreferences:(value:{language:string})=>{fixture.language=value.language;}}));
 
 function find(tree:ReactNode,predicate:(node:ReactElement<any>)=>boolean):ReactElement<any>{
@@ -27,9 +27,9 @@ function find(tree:ReactNode,predicate:(node:ReactElement<any>)=>boolean):ReactE
 }
 function view(){fixture.next=fixture.ref=0;return CloudLogin({returnTo:'/chats/selected'});}
 function submit(tree:ReactNode){find(tree,node=>node.type==='form').props.onSubmit({preventDefault:vi.fn()});}
-function analytics(tree:ReactNode){return find(find(tree,node=>node.type==='label'&&Children.toArray(node.props.children).some(child=>typeof child==='string'&&child.includes('Enable usage analytics'))),node=>node.type==='input');}
+function analytics(tree:ReactNode){return find(find(tree,node=>node.type==='label'&&renderToStaticMarkup(node).includes('Share usage analytics')),node=>node.type==='input');}
 beforeEach(()=>{
-  vi.clearAllMocks();fixture.language='en';fixture.refs=[];fixture.effects=[];
+  vi.clearAllMocks();fixture.unified=false;fixture.language='en';fixture.refs=[];fixture.effects=[];
   fixture.states=['fixture@example.test',true,'JP',true,false,null,'deepseek',{provider:'deepseek',safety:{enabled:false}},
     '2026-10-03-provider-routing-v2-deepseek-direct-generation',true,false,true,0,['JP','GB']];
   vi.stubGlobal('location',{hash:'',assign:fixture.assign});
@@ -39,12 +39,12 @@ afterEach(()=>vi.unstubAllGlobals());
 
 it('renders both languages without changing the entered email, country or consent',()=>{
   let tree=view(),html=renderToStaticMarkup(tree);
-  expect(html).toContain('Sign in / Create an account');expect(html).toContain('DeepSeek V4.1 Flash');
+  expect(html).toContain('Sign in to save your conversations');expect(html).toContain('DeepSeek V4.1 Flash');
   expect(html.replace('>日本語<','><')).not.toMatch(/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u);
   find(tree,node=>node.type==='select'&&node.props['aria-label']==='Language').props.onChange({target:{value:'ja'}});
-  tree=view();html=renderToStaticMarkup(tree);expect(html).toContain('ログイン / 新規登録');
+  tree=view();html=renderToStaticMarkup(tree);expect(html).toContain('ログインして会話を保存しよう');
   expect(find(tree,node=>node.type==='input'&&node.props.type==='email').props.value).toBe('fixture@example.test');
-  expect(find(tree,node=>node.type==='select'&&node.props['aria-label']==='居住国').props.value).toBe('JP');
+  expect(find(tree,node=>node.type==='select'&&node.props['aria-label']==='地域').props.value).toBe('JP');
   expect(fixture.states[1]).toBe(true);expect(fixture.request).not.toHaveBeenCalled();
 });
 it('does not start authentication while provider confirmation is unavailable',()=>{
@@ -87,4 +87,14 @@ it('ignores an authentication reply after the login page is left',async()=>{
   const tree=view(),cleanup=fixture.effects[0]();submit(tree);cleanup?.();resolve({url:'https://oauth.fixture.test/authorize'});
   await Promise.resolve();await Promise.resolve();
   expect(fixture.analytics).not.toHaveBeenCalled();expect(fixture.assign).not.toHaveBeenCalled();expect(fixture.states[5]).toBeNull();
+});
+it('issues the region and age ticket inside the sheet before unified login',async()=>{
+  fixture.unified=true;const stored:Record<string,string>={};
+  vi.stubGlobal('localStorage',{getItem:(key:string)=>stored[key]??null,setItem:(key:string,value:string)=>{stored[key]=value;}});
+  submit(view());expect(fixture.request).not.toHaveBeenCalled();
+  fixture.states[14]=20;fixture.request.mockResolvedValueOnce({ticket:'issued-ticket',country:'JP'}).mockResolvedValueOnce({});
+  fixture.effects[0]();submit(view());
+  await vi.waitFor(()=>expect(fixture.request).toHaveBeenCalledTimes(2));
+  expect(fixture.request.mock.calls[0][0]).toBe('app/eligibility');expect(JSON.parse(fixture.request.mock.calls[0][1].body)).toEqual({country:'JP',age:20});
+  expect(fixture.request.mock.calls[1][0]).toBe('auth/login');expect(JSON.parse(fixture.request.mock.calls[1][1].body).eligibility_ticket).toBe('issued-ticket');
 });

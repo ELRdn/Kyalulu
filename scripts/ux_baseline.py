@@ -51,38 +51,22 @@ async def first_run(browser, origin):
 
     started = time.perf_counter()
     await page.goto(origin)
-    entry = page.locator('.k-unified-entry')
-    await entry.get_by_role('button', name='次へ', exact=True).wait_for()
-    screens.append('entry-form')
-    report['entry-form'] = await axe(page)
-    await page.screenshot(path=str(OUTPUT / 'first-run-1-entry-form.png'), full_page=True, animations='disabled')
-    await tap(entry.get_by_role('textbox'))
-    await entry.get_by_role('textbox').fill('JP')
-    await tap(entry.get_by_role('spinbutton'))
-    await entry.get_by_role('spinbutton').fill('20')
-    await tap(entry.get_by_role('checkbox'))
-    await tap(entry.get_by_role('button', name='次へ', exact=True))
-    interests = page.locator('.k-interests')
-    for step in range(3):
-        await interests.get_by_role('button', name='スキップ', exact=True).wait_for()
-        screens.append(f'interests-{step + 1}')
-        if step == 0:
-            report['interests'] = await axe(page)
-            await page.screenshot(path=str(OUTPUT / 'first-run-2-interests.png'), full_page=True, animations='disabled')
-        await tap(interests.get_by_role('button', name='スキップ', exact=True))
     card = page.locator('.k-char-card').first
     await card.wait_for()
     screens.append('home')
     await tap(card)
-    start = page.get_by_role('button', name='ログインして会話をはじめる', exact=False)
+    # Pick an author-written first reply when the character has one, otherwise the start button.
+    start = page.locator('.k-plot-replies .k-starter, .k-plot-cta__main').first
     await start.wait_for()
     screens.append('character')
+    report['character-preview'] = await axe(page)
+    await page.screenshot(path=str(OUTPUT / 'first-run-1-character.png'), full_page=False, animations='disabled')
     await tap(start)
     await page.locator('.k-cloud-login').wait_for()
     screens.append('login')
     seconds = round(time.perf_counter() - started, 2)
     report['login'] = await axe(page)
-    await page.screenshot(path=str(OUTPUT / 'first-run-3-login.png'), full_page=True, animations='disabled')
+    await page.screenshot(path=str(OUTPUT / 'first-run-2-login.png'), full_page=False, animations='disabled')
     storage = await context.storage_state()
     await context.close()
     return {'taps_to_login_wall': taps, 'screens_before_login': screens[:-1], 'automation_seconds': seconds}, report, storage

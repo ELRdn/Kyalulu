@@ -106,15 +106,19 @@ it.each(['file:', 'app:'])('preserves legacy Electron entry consent assumptions 
   expect(executionTarget()).toBe('local');
   expect(fixture.request).not.toHaveBeenCalled(); expect(stored.size).toBe(0);
 });
-it.each(['native', 'unified'])('posts %s first-run eligibility only to its own endpoint', async mode => {
-  vi.stubEnv('MODE', mode);
+it('leaves Cloud region, age and consent to the login sheet', () => {
+  vi.stubEnv('MODE', 'unified');
+  expect(renderToStaticMarkup(view())).toBe('<p>Runtime content</p>');
+  expect(fixture.request).not.toHaveBeenCalled();
+});
+it('posts native first-run eligibility only to its own endpoint and skips the interest screens', async () => {
   await form().props.onSubmit({ preventDefault: vi.fn() });
-  expect(fixture.request).toHaveBeenCalledExactlyOnceWith(mode === 'native' ? '/api/local/eligibility' : '/api/cloud/app/eligibility', {
+  expect(fixture.request).toHaveBeenCalledExactlyOnceWith('/api/local/eligibility', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ country: 'ZZ', age: 22 }),
   });
   expect(preferences()).toMatchObject({ country: 'ZZ', age: 22, accepted: true });
   expect(stored.get('kyalulu-eligibility-ticket')).toBe('native:fictional');
-  expect(fixture.states[1]).toBe('interests');
+  expect(fixture.states[1]).toBe('ready');
 });
 it('keeps native device onboarding on the local eligibility service', async () => {
   location.pathname = '/device/';

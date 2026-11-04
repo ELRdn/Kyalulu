@@ -279,6 +279,10 @@
 .k-plot-cta .k-btn { height: 52px; border-radius: 14px; }
 .k-plot-cta__main { flex: 1; font-size: 16px; font-weight: 800; }
 .k-plot-cta__sub { flex-shrink: 0; }
+/* First reply suggestions sit above the start button and scroll sideways (docs/MOBILE_UX_SPEC.md §2). */
+.k-plot-cta { flex-wrap: wrap; }
+.k-plot-replies { flex-basis: 100%; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+.k-plot-replies .k-starter { flex-shrink: 0; min-height: 44px; white-space: nowrap; }
 
 .k-back-link {
   width: fit-content;

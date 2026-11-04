@@ -1,7 +1,7 @@
 import { connectionScope } from '../lib/remoteStore';
 import { chatCompletedAnalytics, chatReopenedAnalytics } from '../lib/analytics';
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   fetchHistory,
   fetchHistoryPage,
@@ -890,6 +890,20 @@ function ActiveChatSession() {
       setError(String(e));
     }
   };
+  // A first reply picked on the character page (possibly before login) is sent once the chat is ready (docs/MOBILE_UX_SPEC.md §2).
+  const location = useLocation();
+  const queuedSend = useRef<string | null>(typeof location.state?.send === 'string' && location.state.send.trim() ? location.state.send : null);
+  useEffect(() => {
+    if (!queuedSend.current) return;
+    setInput(queuedSend.current);
+    navigate(location.pathname, { replace: true, state: null });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!queuedSend.current || input !== queuedSend.current || streaming || !modelAvailable || !settingsReady || !historyReady || !capabilities) return;
+    queuedSend.current = null;
+    void send();
+  });
+
   const submitDirective = () => {
     const req = directive.trim();
     const id = lastMsg?.id;

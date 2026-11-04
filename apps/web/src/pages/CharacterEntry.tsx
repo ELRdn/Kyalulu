@@ -19,10 +19,17 @@ import { useDocumentTitle } from "../lib/title";
 import "./pages.css";
 import "./characterEntry.css";
 import { useRuntimeAccess } from '../components/RuntimeGate';
-import { fetchBrowseCatalog, isCloudGuest, loginPath } from '../lib/cloudGuest';
+import { fetchBrowseCatalog, isCloudGuest } from '../lib/cloudGuest';
+import CloudLogin from '../components/CloudLogin';
 import { useLanguage } from '../lib/appContext';
 
 type Character = CharacterInfo & { nsfw?: boolean; species?: string; age?: string; personality?: string; speaking_style?: string; portrait_urls?: string[] };
+
+// Survives the OAuth round trip so the same chat starts after login (docs/MOBILE_UX_SPEC.md §2).
+const PENDING = 'kyalulu-pending-start';
+const readPending = (): { character: string; text: string } | null => {
+  try { const value = JSON.parse(sessionStorage.getItem(PENDING) ?? 'null'); return typeof value?.character === 'string' && typeof value.text === 'string' ? value : null; } catch { return null; }
+};
 
 /** 最初の一文をキャッチコピー、残りを紹介文として分ける */
 function splitDescription(text: string): [string, string] {
@@ -48,6 +55,7 @@ export default function CharacterEntry() {
   const [portraitIndex, setPortraitIndex] = useState(0);
   const [profileOpen, setProfileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
   const [adult] = useAdultContent();
   const saved = useSavedCharacters();
   const heroRef = useRef<HTMLDivElement>(null);
@@ -84,6 +92,33 @@ export default function CharacterEntry() {
   }, [loading, characterId]);
 
   const character = characters.find((c) => c.id === characterId);
+
+  const start = async (text = '') => {
+    if (!character) return;
+    if (guest) {
+      try { sessionStorage.setItem(PENDING, JSON.stringify({ character: character.id, text })); } catch { /* Login still works; the pick is lost. */ }
+      setLoginOpen(true);
+      return;
+    }
+    setStarting(true);
+    setError(null);
+    try {
+      const temperature = character.recommended_generation?.temperature;
+      const intro = [character.intro ?? "", ...(character.alternate_greetings ?? [])].filter((g) => g.trim())[greetingIndex] ?? "";
+      const sessionId = await startNewSession({ characterId: character.id, intro, temperature: typeof temperature === "number" ? temperature : undefined });
+      navigate(`/chats/${encodeURIComponent(sessionId)}`, { state: text ? { send: text } : undefined });
+    } catch (e) {
+      setError({ cause: e });
+      setStarting(false);
+    }
+  };
+  // Back from login: start the chat the guest asked for, once.
+  useEffect(() => {
+    const pending = readPending();
+    if (guest || !character || pending?.character !== character.id) return;
+    sessionStorage.removeItem(PENDING);
+    void start(pending.text);
+  }, [guest, character?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useDocumentTitle(loading ? null : loadError ? (en ? 'Could not load character' : 'キャラクターを読み込めませんでした') : character?.display_name ?? (en ? 'Character not found' : 'キャラクターが見つかりません'));
 
   const recommendations = useMemo(() => {
@@ -183,19 +218,6 @@ export default function CharacterEntry() {
   const profileLong = (personality + speaking).length > 220;
   const creator = character.official ? "Kyalulu Official" : en ? 'My library' : 'マイライブラリ';
 
-  const handleStart = async () => {
-    if (guest) { navigate(loginPath(`/characters/${encodeURIComponent(character.id)}`)); return; }
-    setStarting(true);
-    setError(null);
-    try {
-      const temperature = character.recommended_generation?.temperature;
-      const sessionId = await startNewSession({ characterId: character.id, intro: greeting, temperature: typeof temperature === "number" ? temperature : undefined });
-      navigate(`/chats/${encodeURIComponent(sessionId)}`);
-    } catch (e) {
-      setError({ cause: e });
-      setStarting(false);
-    }
-  };
   const resume = () => pastSessions[0] && navigate(`/chats/${encodeURIComponent(pastSessions[0].session_id)}`);
   const save = () => toggleSaved(character.id);
   const back = () => (window.history.length > 1 ? navigate(-1) : navigate("/discover"));
@@ -415,14 +437,22 @@ export default function CharacterEntry() {
         )}
       </div>
 
+      {loginOpen && <CloudLogin returnTo={`/characters/${encodeURIComponent(character.id)}`} characterName={name} onClose={() => { sessionStorage.removeItem(PENDING); setLoginOpen(false); }} />}
       <div className="k-plot-cta">
+        {(character.opening_replies?.length ?? 0) > 0 && (
+          <div className="k-plot-replies" role="group" aria-label={en ? 'First reply suggestions' : '最初の一言の候補'}>
+            {character.opening_replies!.map((reply) => (
+              <button key={reply} type="button" className="k-starter" onClick={() => void start(reply)} disabled={starting}>{reply}</button>
+            ))}
+          </div>
+        )}
         {pastSessions[0] && (
           <Button variant="secondary" size="lg" onClick={resume} className="k-plot-cta__sub">
             {en ? 'Resume conversation' : 'つづきから'}
           </Button>
         )}
-        <Button variant="primary" size="lg" className="k-plot-cta__main k-btn--glow" onClick={handleStart} disabled={starting}>
-          {starting ? (en ? 'Preparing…' : '準備中…') : guest ? (en ? 'Sign in to start a conversation' : 'ログインして会話をはじめる') : pastSessions[0] ? (en ? 'Start a new conversation' : '新しくはじめる') : (en ? 'Start conversation' : '会話をはじめる')} <Icon name="sparkle" size={16} />
+        <Button variant="primary" size="lg" className="k-plot-cta__main k-btn--glow" onClick={() => void start()} disabled={starting}>
+          {starting ? (en ? 'Preparing…' : '準備中…') : pastSessions[0] ? (en ? 'Start a new conversation' : '新しくはじめる') : (en ? 'Start conversation' : '会話をはじめる')} <Icon name="sparkle" size={16} />
         </Button>
       </div>
     </div>
