@@ -21,6 +21,7 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import urlsplit
+from browser_fixture_server import mount_execution_picker
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "runtime"))
@@ -292,6 +293,7 @@ async def run():
                             localStorage.setItem('kyalulu-execution-target','pc');
                         }
                     ''')
+                        await mount_execution_picker(context)
                         return context
 
                     context = await remote_context()
@@ -347,7 +349,7 @@ async def run():
                         "button", name="会話を開く", exact=True
                     ).click()
                     await expect(
-                        page.get_by_role("heading", name="チャット", exact=True)
+                        page.get_by_role("heading", name="トーク", exact=True)
                     ).to_be_visible(timeout=30000)
                     report["checks"].append(
                         "QR fragment erased; Noise pinned pairing; PC approval; persisted reconnect"
@@ -355,7 +357,8 @@ async def run():
                     report['checks'].append('JA/EN pairing preserves name, one pending approval, confirmation code and persisted device-key fingerprint')
                     await language_in_place(page, 'en')
                     await expect(page.locator('.k-remote-banner')).to_contain_text('Encrypted connection')
-                    await page.goto(web_origin + '/#/profile')
+                    await page.goto(web_origin + '/profile')
+                    await page.locator('.k-profile-settings > summary').first.click()  # Connection settings fold under Settings.
                     destinations=page.get_by_role('region',name='Remote destinations',exact=True)
                     # A named section uses the region role and must appear only once.
                     await expect(destinations).to_have_count(1)
@@ -374,7 +377,8 @@ async def run():
                     }''',keys_before)
                     assert len(host.status()['devices'])==1
                     report['checks'].append('unified PC settings have one destination list; JA/EN review cancellation retains registered keys')
-                    await page.goto(web_origin + '/#/chats')
+                    await page.goto(web_origin + '/chats')
+                    await expect(page.get_by_role('heading', name='トーク', exact=True)).to_be_visible(timeout=30000)
 
                     async def api(path, method="GET", body=None, *, target=page):
                         return await target.evaluate(
@@ -394,7 +398,7 @@ async def run():
                     await page.get_by_role(
                         "button", name="新しいチャット", exact=True
                     ).click()
-                    await page.wait_for_url("**/#/chats/*")
+                    await page.wait_for_url("**/chats/*")
                     diagnostic = await api(
                         "/api/chat/settings?session_id=" + page.url.rsplit("/", 1)[1]
                     )
@@ -564,7 +568,7 @@ async def run():
                     await host.approve(second_device, await second.locator('form [role="status"] strong').inner_text())
                     await expect(second.get_by_role('heading', name='登録できました', exact=True)).to_be_visible()
                     await second.get_by_role('button', name='会話を開く', exact=True).click()
-                    await expect(second.get_by_role('heading', name='チャット', exact=True)).to_be_visible(timeout=30000)
+                    await expect(second.get_by_role('heading', name='トーク', exact=True)).to_be_visible(timeout=30000)
                     second_keys = await second.evaluate('''async()=>{
                         const {remoteDevices}=await import('/src/lib/remoteStore.ts');
                         return JSON.stringify(await remoteDevices());
@@ -735,7 +739,7 @@ async def run():
                     MockProvider.stream_events = held_stream
                     generations.status = held_status
                     try:
-                        await page.goto(web_origin + '/#/chats/' + cancel_sid)
+                        await page.goto(web_origin + '/chats/' + cancel_sid)
                         composer = page.locator('.k-composer__input')
                         await expect(composer).to_be_enabled()
                         await composer.fill('REMOTE_STOP_keep_input')
@@ -767,7 +771,7 @@ async def run():
                             catch(error){return String(error).includes('Stop generation and confirm its saved result');}
                         }''')
                         for controlled_failure in (False, True):
-                            await page.evaluate('location.hash="/profile"')
+                            await page.evaluate('history.pushState(null,"","/profile");dispatchEvent(new PopStateEvent("popstate"))')
                             await expect(composer).to_have_count(0)
                             await expect(picker).to_be_disabled()
                             recovery_phase = 'controlled_reload' if controlled_failure else 'normal_reload'
@@ -839,14 +843,14 @@ async def run():
                     }''', cancel_sid), 'Switching must not copy the PC conversation to Device'
                     await page.get_by_role('combobox', name='実行先', exact=True).select_option('pc')
                     await page.get_by_role('dialog').get_by_role('button', name='次へ', exact=True).click()
-                    await page.wait_for_url(web_origin + '/#/')
-                    await page.goto(web_origin + '/#/chats/' + cancel_sid)
+                    await page.wait_for_url(web_origin + '/')
+                    await page.goto(web_origin + '/chats/' + cancel_sid)
                     retries = await runtime_ready(page, page.locator('.k-composer__input'))
                     report['runtime_recoveries'].append({'phase': 'pc_device_pc_reload', 'ui_retries': retries})
                     await expect(page.locator('.k-composer__input')).to_have_value('REMOTE_UNSENT_after_stop', timeout=30000)
                     assert json.loads((await api('/api/chat/history?session_id=' + cancel_sid))['body'])['history'] == stopped_history
                     report['checks'].append('review cancellation and PC/Device roundtrip preserve scoped draft, keys and authoritative history without copying or resending')
-                    await page.goto(web_origin + '/#/chats/' + sid)
+                    await page.goto(web_origin + '/chats/' + sid)
                     await expect(page.locator('.k-composer__input')).to_be_enabled()
                     from PIL import Image
 

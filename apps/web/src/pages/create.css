@@ -169,3 +169,10 @@
   .k-create-savebar__hint { flex-basis: 100%; }
   .k-create-savebar .k-btn { flex: 1; }
 }
+
+/* docs/MOBILE_UX_SPEC.md §5.7 */
+.k-create-import-line > summary { cursor: pointer; display: flex; align-items: center; gap: 8px; min-height: 44px; font-weight: 800; }
+.k-create-guest { display: grid; gap: var(--space-3); padding: var(--space-5); border-radius: 18px; background: var(--bg-surface-soft); }
+.k-create-guest h2 { margin: 0; font-size: 18px; }
+.k-create-guest ol { margin: 0; padding-left: 1.4em; display: grid; gap: 6px; font-weight: 700; }
+.k-create-guest .k-btn { justify-self: start; }

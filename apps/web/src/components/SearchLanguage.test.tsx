@@ -11,7 +11,7 @@ import { friendlyMessage } from '../lib/errors';
 import ChatsLanding from '../pages/ChatsLanding';
 import StoryControls from './StoryControls';
 import { applyStory, readStory } from '../lib/story';
-import Profile from '../pages/Profile';
+import { MemberProfile } from '../pages/Profile';
 import ConnectionSettings from './ConnectionSettings';
 
 const fixture = vi.hoisted(() => ({ language: 'en', administrative: false, guest: false,
@@ -74,7 +74,7 @@ function nodes(tree: ReactNode, match: (node: ReactElement<any>) => boolean): Re
     [...(match(node) ? [node] : []), ...nodes(node.props.children, match)]);
 }
 function discover(query: string, error: unknown = null) {
-  return view(Discover, [characters, [], new Map(), false, error, 0, query, null, []]);
+  return view(Discover, [characters, [], new Map(), false, error, 0, query, []]);
 }
 function palette(query: string) {
   return view(() => CommandPalette({ open: true, onClose: fixture.close }), [query, 0, characters, [], []]);
@@ -95,7 +95,7 @@ it('keeps Japanese and English mood searches and stable filter IDs across langua
       const html = renderToStaticMarkup(discover(query));
       expect(html).toContain('/characters/hero');
       expect(html).not.toContain('/characters/school');
-      expect(html).toContain(language === 'en' ? 'Filter by mood' : '気分で絞り込む');
+      expect(html).toContain(language === 'en' ? 'Filter by tag' : 'タグで絞り込む');
       if (language === 'en') expect(html).toContain('>1 character</span>');
       expect(fixture.params.get('mood')).toBe('butler');
     }
@@ -110,7 +110,7 @@ it('localizes navigation and exploration without granting management actions', (
   expect(shell).not.toContain('href="/studio"');
   expect(shell).not.toMatch(/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u);
   const explore = renderToStaticMarkup(discover(''));
-  expect(explore).toContain('PC with management access');
+  expect(explore).not.toContain('External Hubs');
   expect(explore).not.toContain('role="tab"');
   expect(explore).not.toMatch(/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u);
   expect(fixture.hub).not.toHaveBeenCalled();
@@ -236,19 +236,19 @@ it('keeps story drafts and original prompt instructions when language changes', 
 });
 
 function profile(error: unknown = null) {
-  return view(Profile, ['入力中の名前 · draft', [{ session_id: 'chat-one', count: 3, character_id: 'hero', character_name: 'Original character' }],
+  return view(MemberProfile, ['入力中の名前 · draft', [{ session_id: 'chat-one', count: 3, character_id: 'hero', character_name: 'Original character' }],
     characters, error, false, 0]);
 }
 
-it('keeps profile drafts, saved characters and pinned links without exposing unified adult shortcuts', () => {
+it('keeps profile drafts and saved characters without exposing unified adult shortcuts', () => {
   fixture.saved = ['hero']; fixture.pinned = ['chat-one'];
   for (const language of ['ja', 'en']) {
     fixture.language = language;
     // Nested controls use their defaults after the page's six state entries.
     const html = renderToStaticMarkup(profile());
     expect(html).toContain('入力中の名前 · draft');
-    expect(html).toContain('href="/chats/chat-one"'); expect(html).toContain('Original character');
-    expect(html).toContain(language === 'en' ? 'Saved characters' : '保存したキャラクター');
+    expect(html).toContain('href="/characters/hero"');
+    expect(html).toContain(language === 'en' ? 'Saved characters' : '保存したキャラ');
     expect(html).toContain(language === 'en' ? 'Your display name is saved on this device.' : '表示名はこのデバイスに保存されます。');
     expect(html).not.toContain(language === 'en' ? 'Show adult content' : '成人向けコンテンツを表示');
     expect(html).not.toContain('href="/studio"');

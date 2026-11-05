@@ -15,7 +15,7 @@ import httpx
 import uvicorn
 from playwright.async_api import async_playwright, expect
 
-from browser_fixture_server import local_vite
+from browser_fixture_server import local_vite, mount_execution_picker
 from e2e_remote import port
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -151,6 +151,7 @@ async def run_case(browser, vite, directory, language, width, theme):
             await context.route_web_socket('**/*', close_socket)
             await context.add_cookies([{'name': SESSION_COOKIE, 'value': 'browser', 'url': ORIGIN,
                                        'secure': True, 'httpOnly': True, 'sameSite': 'Lax'}])
+            await mount_execution_picker(context)
             await context.add_init_script('''(() => {
               if(localStorage.getItem('cloud-switch-seeded'))return;
               localStorage.setItem('cloud-switch-seeded','1');
@@ -164,7 +165,7 @@ async def run_case(browser, vite, directory, language, width, theme):
             page = await context.new_page()
             page.on('pageerror', lambda error: errors.append(str(error)))
             page.set_default_timeout(15000)
-            await page.goto(ORIGIN + '/#/chats/' + SESSION)
+            await page.goto(ORIGIN + '/chats/' + SESSION)
             picker = page.get_by_role('combobox', name='Run on' if en else '実行先', exact=True)
             composer = page.locator('.k-composer__input')
             await expect(page.locator('html')).to_have_attribute('data-theme', theme)
@@ -198,7 +199,7 @@ async def run_case(browser, vite, directory, language, width, theme):
             print(json.dumps({'language': language, 'stage': 'cancelled-result-held'}), flush=True)
             await expect(picker).to_be_disabled()
             await reject_switches()
-            await page.evaluate('location.hash="/profile"')
+            await page.evaluate('history.pushState(null,"","/profile");dispatchEvent(new PopStateEvent("popstate"))')
             await expect(composer).to_have_count(0)
             await page.reload()
             await page.get_by_role('link', name='Check send result' if en else '送信結果を確認', exact=True).wait_for()
@@ -228,8 +229,8 @@ async def run_case(browser, vite, directory, language, width, theme):
             }''', SESSION)
             await picker.select_option('cloud')
             await page.get_by_role('dialog').get_by_role('button', name='Next' if en else '次へ', exact=True).click()
-            await page.wait_for_url(ORIGIN + '/#/')
-            await page.goto(ORIGIN + '/#/chats/' + SESSION)
+            await page.wait_for_url(ORIGIN + '/')
+            await page.goto(ORIGIN + '/chats/' + SESSION)
             await expect(composer).to_have_value(DRAFT)
             await page.wait_for_load_state('networkidle')
             await asyncio.wait_for(routes_idle.wait(), 15)

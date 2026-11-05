@@ -10,7 +10,7 @@ import { useDisplayName } from "../lib/profile";
 import { useAccountProfile } from '../lib/accountProfile';
 import "./shell.css";
 import { useAdministrative, useRuntimeAccess } from '../components/RuntimeGate';
-import { isCloudGuest, loginPath } from '../lib/cloudGuest';
+import { isCloudGuest } from '../lib/cloudGuest';
 import CreditOptions, { AdBanner } from '../components/CreditOptions';
 import { labels, useLanguage, useExecutionTarget } from '../lib/appContext';
 import { UnifiedSync } from '../components/SessionPolicy';
@@ -102,7 +102,7 @@ export default function AppShell() {
           <IconButton label={theme === "dark" ? (en ? 'Switch to light mode' : 'ライトモードに切替') : (en ? 'Switch to dark mode' : 'ダークモードに切替')} onClick={toggle} size="sm">
             <Icon name={theme === "dark" ? "sun" : "moon"} size={16} />
           </IconButton>
-          <Link to={guest ? loginPath(location.pathname + location.search) : '/profile'} className="k-shell__profile-chip">
+          <Link to="/profile" className="k-shell__profile-chip">
             <Avatar name={guest ? (en ? 'Guest' : 'ゲスト') : displayName} size="sm" />
             <span className="k-shell__profile-name">{guest ? (en ? 'Sign in / Sign up' : 'ログイン / 新規登録') : displayName}</span>
           </Link>

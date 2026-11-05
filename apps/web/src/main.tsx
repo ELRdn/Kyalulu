@@ -9,7 +9,7 @@ import AppErrorBoundary from './components/AppErrorBoundary';
 import MobileAppStatus from './components/MobileAppStatus';
 import RemoteSetup, { RemoteBanner } from './components/RemoteSetup';
 import { takePairing } from './lib/remotePairing';
-import UnifiedEntry, { ExecutionPicker } from './components/UnifiedEntry';
+import UnifiedEntry from './components/UnifiedEntry';
 import { executionTarget, isDesktop } from './lib/appContext';
 
 const remoteEntry = takePairing();
@@ -24,7 +24,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <AppErrorBoundary><ThemeProvider>
       <Router>
-        <div className="k-pwa-root"><MobileAppStatus local={executionTarget()==='device'} quiet /><UnifiedEntry><ExecutionPicker /><RemoteSetup entry={remoteEntry}><RemoteBanner /><RuntimeGate><App /></RuntimeGate></RemoteSetup></UnifiedEntry></div>
+        <div className="k-pwa-root"><MobileAppStatus local={executionTarget()==='device'} quiet /><UnifiedEntry><RemoteSetup entry={remoteEntry}><RemoteBanner /><RuntimeGate><App /></RuntimeGate></RemoteSetup></UnifiedEntry></div>
       </Router>
     </ThemeProvider></AppErrorBoundary>
   </React.StrictMode>,

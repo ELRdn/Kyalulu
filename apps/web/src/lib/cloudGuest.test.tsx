@@ -32,11 +32,11 @@ it('authenticated and local browsing still loads sessions', async () => {
   expect(isCloudGuest({ cloud_mode: true, authenticated: true })).toBe(false);
   expect(isCloudGuest({ cloud_mode: true, authenticated: false })).toBe(true);
 });
-it.each(['/', '/discover', '/characters/mocha', '/works/public', '/authors/creator'])('renders public guest route %s', path => {
+it.each(['/', '/discover', '/chats', '/create', '/profile', '/characters/mocha', '/works/public', '/authors/creator'])('renders public guest route %s', path => {
   const html = renderToStaticMarkup(<MemoryRouter initialEntries={[path]}><CloudRouteChoice authenticated={false}><span>public-page</span></CloudRouteChoice></MemoryRouter>);
   expect(html).toContain('public-page'); expect(html).not.toContain('login:');
 });
-it.each(['/chats', '/chats/private', '/create', '/profile', '/studio', '/works/public/edit'])('requires login for guest private route %s', path => {
+it.each(['/chats/private', '/create/settings', '/studio', '/works/public/edit'])('requires login for guest private route %s', path => {
   expect(guestReadableRoute(path)).toBe(false);
   const html = renderToStaticMarkup(<MemoryRouter initialEntries={[path]}><CloudRouteChoice authenticated={false}><span>private-page</span></CloudRouteChoice></MemoryRouter>);
   expect(html).toContain('login:'); expect(html).not.toContain('private-page');

@@ -1,9 +1,11 @@
-import { RuntimeImage } from '../components/RuntimeMedia';
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { fetchCharacters, fetchSessions, fetchWorlds, sessionTitle, type CharacterInfo, type SessionInfo, type WorldInfo } from "../lib/api";
-import { gradientFor } from "../components/ui/Avatar";
-import { useSavedCharacters } from "../lib/saved";
+import CharacterCard from "../components/ui/CharacterCard";
+import CloudLogin from "../components/CloudLogin";
+import { useRuntimeAccess } from "../components/RuntimeGate";
+import { fetchBrowseCatalog, isCloudGuest } from "../lib/cloudGuest";
+import { recommend } from "../lib/recommendations";
 import { useAdultContent } from "../lib/adult";
 import { Input } from "../components/ui/Input";
 import SessionRow from "../components/ui/SessionRow";
@@ -16,9 +18,51 @@ import { cleanPreview } from "../lib/text";
 import { useDocumentTitle } from "../lib/title";
 import "./pages.css";
 import { friendlyMessage } from '../lib/errors';
-import { useLanguage } from '../lib/appContext';
+import { useLanguage, usePreferences } from '../lib/appContext';
+
+/** Two picks for someone with nothing (or one chat) in the list (docs/MOBILE_UX_SPEC.md §5.4). */
+function Suggestions({ characters, skip = [], title }: { characters: CharacterInfo[]; skip?: (string | null | undefined)[]; title?: string }) {
+  const en = useLanguage() === 'en', prefs = usePreferences(), [adult] = useAdultContent();
+  const picks = recommend(characters.filter((c) => !skip.includes(c.id)), prefs, adult).slice(0, 2);
+  if (!picks.length) return null;
+  return (
+    <section className="k-section" aria-label={title ?? (en ? 'Suggested characters' : 'おすすめ')}>
+      {title && <h2 className="k-section__title k-section__title--sm">{title}</h2>}
+      <div className="k-grid k-grid--characters">
+        {picks.map((c) => <CharacterCard key={c.id} id={c.id} displayName={c.display_name} hook={c.hook || c.description} tags={c.tags ?? []} creator={c.official ? "Kyalulu Official" : en ? 'My library' : 'マイライブラリ'} portraitUrl={c.portrait_url} />)}
+      </div>
+    </section>
+  );
+}
 
 export default function ChatsLanding() {
+  const en = useLanguage() === 'en';
+  useDocumentTitle(en ? 'Chats' : 'トーク');
+  return isCloudGuest(useRuntimeAccess()) ? <GuestChats /> : <MemberChats />;
+}
+
+function GuestChats() {
+  const language = useLanguage(), en = language === 'en';
+  const [characters, setCharacters] = useState<CharacterInfo[]>([]);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [adult] = useAdultContent();
+  useEffect(() => {
+    let active = true;
+    fetchBrowseCatalog(true, adult).then(([c]) => { if (active) setCharacters(c); }).catch(() => { /* Suggestions are optional. */ });
+    return () => { active = false; };
+  }, [adult]);
+  return (
+    <div className="k-page" style={{ maxWidth: 780 }}>
+      <h1 className="k-page-title">{en ? 'Chats' : 'トーク'}</h1>
+      <EmptyState mascot="default" title={en ? 'The characters you talk with will appear here.' : '話した相手がここに並びます'}
+        action={<button type="button" className="k-text-link" onClick={() => setLoginOpen(true)}>{en ? 'Already have an account? Sign in' : 'ログインして続きを見る'}</button>} />
+      <Suggestions characters={characters} />
+      {loginOpen && <CloudLogin returnTo="/chats" onClose={() => setLoginOpen(false)} />}
+    </div>
+  );
+}
+
+function MemberChats() {
   const language = useLanguage(), en = language === 'en';
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [worlds, setWorlds] = useState<WorldInfo[]>([]);
@@ -30,10 +74,8 @@ export default function ChatsLanding() {
   const [oldestFirst, setOldestFirst] = useState(false);
   const [characters, setCharacters] = useState<CharacterInfo[]>([]);
   const [adult] = useAdultContent();
-  const savedIds = useSavedCharacters();
   const pinned = usePinnedSessions();
   const navigate = useNavigate();
-  useDocumentTitle(en ? 'Chats' : 'チャット');
 
   useEffect(() => {
     let active = true;
@@ -58,11 +100,6 @@ export default function ChatsLanding() {
     fetchCharacters(adult).then(value => { if (active) setCharacters(value); }).catch(error => { if (active) setCatalogError({cause:error}); });
     return () => { active = false; };
   }, [adult, retry]);
-
-  const saved = useMemo(() => {
-    const byId = new Map(characters.map((c) => [c.id, c]));
-    return savedIds.map((id) => byId.get(id)).filter((c): c is CharacterInfo => !!c);
-  }, [characters, savedIds]);
 
   const worldName = (id?: string | null) => worlds.find((w) => w.id === id)?.display_name;
 
@@ -94,7 +131,7 @@ export default function ChatsLanding() {
     <div className="k-page" style={{ maxWidth: 780 }}>
       <div className="k-page-head">
         <div>
-          <h1 className="k-page-title">{en ? 'Chats' : 'チャット'}</h1>
+          <h1 className="k-page-title">{en ? 'Chats' : 'トーク'}</h1>
           <p className="k-page-sub">{en ? 'Pick up your conversations where you left off.' : 'これまでの会話を、いつでも続きから。'}</p>
         </div>
         <Button variant="primary" onClick={handleNew}>
@@ -102,30 +139,7 @@ export default function ChatsLanding() {
         </Button>
       </div>
 
-      {catalogError && <p role="alert">{friendlyMessage(catalogError.cause,language)}<Button size="sm" variant="ghost" onClick={() => setRetry(value => value + 1)}>{en ? 'Reload saved characters' : '保存キャラを再読込'}</Button></p>}
-      {saved.length > 0 && !query && (
-        <section className="k-section k-saved-strip" aria-labelledby="k-saved-title">
-          <div className="k-section__head">
-            <h2 id="k-saved-title" className="k-section__title k-section__title--sm">
-              <Icon name="heart" size={15} /> {en ? 'Saved characters' : '保存したキャラクター'}
-            </h2>
-            <Link to="/profile" className="k-section__more">
-              {en ? 'View all' : 'すべて見る'} <Icon name="chevron" size={13} />
-            </Link>
-          </div>
-          <div className="k-saved-strip__row">
-            {saved.map((c) => (
-              <Link key={c.id} to={`/characters/${encodeURIComponent(c.id)}`} className="k-saved-strip__item" title={c.display_name}>
-                <span className="k-saved-strip__art" style={c.portrait_url ? undefined : { background: gradientFor(c.id) }}>
-                  {c.portrait_url ? <RuntimeImage src={c.portrait_url} alt="" loading="lazy" /> : <span aria-hidden="true">{c.display_name.trim().charAt(0)}</span>}
-                </span>
-                <span className="k-saved-strip__name">{c.display_name}</span>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
+      {catalogError && <p role="alert">{friendlyMessage(catalogError.cause,language)}<Button size="sm" variant="ghost" onClick={() => setRetry(value => value + 1)}>{en ? 'Reload' : '再読込'}</Button></p>}
       <div className="k-chats-tools">
         <div className="k-search-field">
           <Icon name="search" size={17} />
@@ -145,18 +159,21 @@ export default function ChatsLanding() {
       ) : loadError ? (
         <div role="alert"><EmptyState title={en ? 'Could not load conversations' : '会話を読み込めませんでした'} description={friendlyMessage(loadError.cause,language)} action={<Button variant="secondary" onClick={() => setRetry(n => n + 1)}>{en ? 'Retry' : 'もう一度読み込む'}</Button>} /></div>
       ) : empty ? (
-        <EmptyState
-          mascot={query ? "shy" : "default"}
-          title={query ? (en ? 'No matching chats' : '見つからなかったみたい') : (en ? 'No chats yet' : 'まだチャットがありません')}
-          description={query ? (en ? 'Try another search.' : '別のことばで探してみよう。') : (en ? 'Find a character in Explore and start your first conversation.' : '「さがす」でキャラクターを見つけて、最初の会話を始めよう。')}
-          action={
-            !query && (
-              <Button variant="secondary" onClick={() => navigate("/discover")}>
-                {en ? 'Explore characters' : 'キャラクターを探す'}
-              </Button>
-            )
-          }
-        />
+        <>
+          <EmptyState
+            mascot={query ? "shy" : "default"}
+            title={query ? (en ? 'No matching chats' : '見つからなかったみたい') : (en ? "You haven't talked with anyone yet." : 'まだ誰とも話していません。')}
+            description={query ? (en ? 'Try another search.' : '別のことばで探してみよう。') : undefined}
+            action={
+              !query && (
+                <Button variant="secondary" onClick={() => navigate("/discover")}>
+                  {en ? 'Find characters' : 'キャラをさがす'}
+                </Button>
+              )
+            }
+          />
+          {!query && <Suggestions characters={characters} />}
+        </>
       ) : (
         <>
           {pinnedList.length > 0 && (
@@ -175,6 +192,7 @@ export default function ChatsLanding() {
               {rows(recentList)}
             </section>
           )}
+          {!query && pinnedList.length + recentList.length === 1 && <Suggestions characters={characters} skip={[...pinnedList, ...recentList].map((s) => s.character_id)} title={en ? 'Who to talk to next' : '次に話すなら'} />}
         </>
       )}
     </div>

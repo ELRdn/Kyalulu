@@ -18,6 +18,7 @@ vi.mock('../lib/appContext',async original=>({...await original<typeof import('.
 vi.mock('../lib/remoteStore',()=>({activeRemote:()=>fixture.active,remoteDevices:fixture.devices,deleteRemote:fixture.remove,
   restoreRemote:vi.fn(),selectRemote:fixture.select,connectionScope:()=> 'fixture-scope'}));
 vi.mock('../lib/transport',()=>({apiFetch:fixture.api}));
+vi.mock('./UnifiedEntry',()=>({ExecutionPicker:()=>null}));
 vi.mock('../lib/cloud',()=>({setCloud:vi.fn(),setCloudOwner:vi.fn()}));
 vi.mock('../lib/accountProfile',()=>({refreshAccountProfile:fixture.refresh}));
 vi.mock('react-router-dom',()=>({useLocation:()=>({pathname:'/chats/fixture',search:''}),useNavigate:()=>fixture.navigate,

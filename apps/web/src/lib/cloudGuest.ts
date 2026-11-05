@@ -2,7 +2,8 @@ import { fetchCharacters, fetchSessions, fetchWorlds } from './api';
 
 type Access = { cloud_mode?: boolean; authenticated: boolean };
 export const isCloudGuest = (access: Access) => access.cloud_mode === true && !access.authenticated;
-export const guestReadableRoute = (path: string) => path === '/' || path === '/discover' || path === '/published' ||
+// The tab roots render a guest view with the login sheet instead of the full-screen login (docs/MOBILE_UX_SPEC.md §5.4-5.7).
+export const guestReadableRoute = (path: string) => ['/', '/discover', '/published', '/chats', '/create', '/profile'].includes(path) ||
   /^\/(?:characters|works|authors|published)\/[^/]+$/.test(path);
 // Top-level segments of the routes in App.tsx (same list as APP_ROUTES in runtime/python/api/mobile.py).
 const APP_SEGMENTS = new Set(['', 'discover', 'published', 'publications', 'works', 'authors', 'chats', 'characters',

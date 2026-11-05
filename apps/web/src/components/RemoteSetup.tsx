@@ -5,6 +5,7 @@ import { type PairingLink } from '../lib/remotePairing';
 import Button from './ui/Button';
 import { executionTarget, useLanguage } from '../lib/appContext';
 import { friendlyMessage } from '../lib/errors';
+import { ExecutionPicker } from './UnifiedEntry';
 
 export function RemoteConnections() {
   const language=useLanguage(),en=language==='en';
@@ -44,7 +45,7 @@ export default function RemoteSetup({ entry, children }: { entry: { invitation?:
   if (!loaded) return <main className="k-connect-screen" aria-busy="true"><p>{en?'Checking the destination…':'接続先を確認しています…'}</p></main>;
   if (!pairing && (!error || executionTarget() !== 'pc') && (executionTarget() !== 'pc' || !managed || activeRemote())) return <>{children}</>;
   return <main className="k-connect-screen"><div className="k-connect-screen__body">
-    <div className="k-connect-screen__brand">Kyalulu ✦</div><h1>{en?'Connect to your PC.':'いつものPCと、つながる。'}</h1>
+    <div className="k-connect-screen__brand">Kyalulu ✦</div><ExecutionPicker/><h1>{en?'Connect to your PC.':'いつものPCと、つながる。'}</h1>
     <p>{en?'Conversations are saved on the PC. Only this device and the PC decrypt the connection.':'会話はPCに保存。通信は、この端末とPCだけで復号します。'}</p>
     {pairing && !paired && <form className="k-connection__form" onSubmit={async e => {
       e.preventDefault(); if (busy) return; setBusy(true); setError('');

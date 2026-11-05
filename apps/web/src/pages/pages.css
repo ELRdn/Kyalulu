@@ -252,6 +252,9 @@
 }
 
 .k-chip-row { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.k-chip-row--scroll { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-inline: calc(-1 * var(--space-4)); padding-inline: var(--space-4); }
+.k-chip-row--scroll::-webkit-scrollbar { display: none; }
+.k-chip-row--scroll .k-chip { flex-shrink: 0; }
 .k-chip {
   display: inline-flex;
   align-items: center;
@@ -423,3 +426,21 @@
   .k-section__title { font-size: 17px; }
   .k-page-title { font-size: 24px; }
 }
+
+/* My page (docs/MOBILE_UX_SPEC.md §5.6) */
+.k-profile-links { display: grid; gap: var(--space-2); }
+.k-profile-settings { border-top: 1px solid var(--border-subtle); padding-top: var(--space-3); display: grid; gap: var(--space-3); }
+.k-profile-settings > summary { cursor: pointer; font-size: 15px; font-weight: 800; display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.k-profile-settings--advanced > summary { font-size: 14px; color: var(--text-muted); }
+.k-profile-settings__links { display: flex; flex-wrap: wrap; gap: var(--space-4); font-size: 13px; margin: 0; }
+.k-profile-settings select { font: inherit; color: inherit; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 6px 10px; }
+.k-profile-card--guest .k-page-title { margin: 0; }
+button.k-text-link { display: inline-flex; gap: 6px; align-items: center; min-height: 44px; padding: 0 4px; background: none; border: 0; font: inherit; font-size: 13px; font-weight: 700; color: var(--accent-primary); text-decoration: underline; cursor: pointer; }
+
+/* Home: today's pick (docs/MOBILE_UX_SPEC.md §5.1) */
+.k-home-today { display: grid; gap: var(--space-2); margin-bottom: var(--space-3); }
+.k-home-today__label { margin: 0; font-size: 13px; font-weight: 800; color: var(--accent-primary); }
+.k-home-today .k-char-card { display: grid; }
+.k-home-today .k-media-card__art { aspect-ratio: 4 / 3; }
+.k-home-today .k-media-card__title { font-size: 20px; }
+@media (min-width: 768px) { .k-home-today .k-char-card { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); } .k-home-today .k-media-card__art { aspect-ratio: 4 / 5; } }

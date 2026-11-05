@@ -70,6 +70,25 @@ async def main():
                         page=await context.new_page()
                         page.on('pageerror',lambda error:errors.append(str(error)))
                         await page.goto(origin)
+                        # Cloud skips the entry form: region, age and consent move to the login sheet (docs/MOBILE_UX_SPEC.md §2).
+                        await page.get_by_role('heading',name='Recommended for you' if en else 'あなたへのおすすめ',exact=True).wait_for()
+                        assert not await page.locator('.k-unified-entry').count()
+                        await page.locator('.k-char-card').first.click()
+                        await page.locator('.k-plot-cta__main').click()
+                        sheet=page.locator('.k-cloud-login__sheet')
+                        await sheet.wait_for()
+                        await sheet.get_by_role('button',name='Not now' if en else 'あとで',exact=True).click()
+                        await expect(sheet).to_have_count(0)
+                        # The execution target lives in My page › Settings › Advanced.
+                        await page.goto(origin+'/profile')
+                        await page.locator('.k-profile-settings > summary').first.click()
+                        await page.locator('.k-profile-settings--advanced > summary').click()
+                        target=page.get_by_role('combobox',name='Run on' if en else '実行先',exact=True)
+                        await expect(target).to_have_value('cloud')
+                        async with page.expect_navigation(wait_until='domcontentloaded'):
+                            await target.select_option('device')
+                            await page.locator('dialog[open]').get_by_role('button',name='Next' if en else '次へ',exact=True).click()
+                        assert '/device/' in page.url
                         entry=page.locator('.k-unified-entry')
                         await entry.get_by_role('heading',name='Before you begin' if en else 'はじめに',exact=True).wait_for()
                         country=entry.get_by_role('textbox')
@@ -96,12 +115,27 @@ async def main():
                         assert not (await prefs(page)).get('accepted') and not await page.evaluate("localStorage.getItem('kyalulu-eligibility-ticket')")
                         await page.evaluate("localStorage.removeItem('kyalulu-app-owner');window.dispatchEvent(new Event('kyalulu-app-context'))")
                         await age.fill('20'); await next_button.click()
-                        interests=page.locator('.k-interests')
-                        await interests.get_by_role('heading',name='Your genres' if en else '好きなジャンル',exact=True).wait_for()
-                        await expect(interests).to_have_attribute('lang',language)
-                        await page.screenshot(path=str(OUTPUT/f'entry-genres-{language}-{width}-{theme}.png'),full_page=True,animations='disabled')
+                        # No interest screens: the form leads straight to Home.
+                        await page.get_by_role('heading',name='Recommended for you' if en else 'あなたへのおすすめ',exact=True).wait_for()
+                        await page.screenshot(path=str(OUTPUT/f'entry-home-{language}-{width}-{theme}.png'),full_page=True,animations='disabled')
                         ticket=await page.evaluate("localStorage.getItem('kyalulu-eligibility-ticket')")
                         assert app.state.store.unified_service.verify_eligibility_ticket(ticket,'JP')['age_band']=='adult'
+                        assert not await page.locator('.k-cloud-login').count()
+                        reads=len(calls)
+                        await page.locator('.k-char-card').first.click()
+                        await page.locator('.k-plot-cta__main').click()
+                        await page.locator('.k-composer textarea').wait_for()
+                        assert '/device/#/chats/' in page.url and not await page.locator('.k-cloud-login').count()
+                        chats=await page.evaluate(READ_ENTITIES_JS, ['conversation'])
+                        assert len(chats)==1 and chats[0]['owner']=='guest' and chats[0]['payload']['storage_policy']=='local'
+                        assert len(calls)==reads
+                        await page.goto(origin+'/device/#/profile')
+                        await page.locator('.k-profile-settings > summary').first.click()
+                        settings=page.locator('.k-profile-settings').first
+                        interests=page.locator('.k-interests')
+                        await settings.get_by_role('button',name='Your interests' if en else '好みの設定',exact=True).click()
+                        await interests.get_by_role('heading',name='Your genres' if en else '好きなジャンル',exact=True).wait_for()
+                        await expect(interests).to_have_attribute('lang',language)
                         await interests.get_by_role('checkbox',name='School' if en else '学園',exact=True).check()
                         await interests.get_by_role('button',name='Next' if en else '次へ',exact=True).click()
                         await interests.get_by_role('checkbox',name='Cool' if en else 'クール',exact=True).check()
@@ -114,27 +148,7 @@ async def main():
                         await interests.get_by_role('button',name='Start' if en else 'はじめる',exact=True).click()
                         current=await prefs(page)
                         assert current['genres']==['school'] and current['moods']==['cool'] and current['activities']==['healing']
-                        await page.get_by_role('heading',name='Recommended for you' if en else 'あなたへのおすすめ',exact=True).wait_for()
-                        target=page.get_by_role('combobox',name='Run on' if en else '実行先',exact=True)
-                        await expect(target).to_have_value('cloud')
-                        await page.locator('.k-char-card').first.click()
-                        await page.get_by_role('button',name='Sign in to start a conversation' if en else 'ログインして会話をはじめる',exact=False).click()
-                        await page.locator('.k-cloud-login').wait_for()
-                        async with page.expect_navigation(wait_until='domcontentloaded'):
-                            await target.select_option('device')
-                            await page.locator('dialog[open]').get_by_role('button',name='Next' if en else '次へ',exact=True).click()
-                        await page.locator('.k-char-card').first.wait_for()
-                        assert '/device/' in page.url and not await page.locator('.k-cloud-login').count()
-                        reads=len(calls)
-                        await page.locator('.k-char-card').first.click()
-                        await page.locator('.k-plot-cta__main').click()
-                        await page.locator('.k-composer textarea').wait_for()
-                        assert '/device/#/chats/' in page.url and not await page.locator('.k-cloud-login').count()
-                        chats=await page.evaluate(READ_ENTITIES_JS, ['conversation'])
-                        assert len(chats)==1 and chats[0]['owner']=='guest' and chats[0]['payload']['storage_policy']=='local'
-                        assert len(calls)==reads
-                        await page.goto(origin+'/device/#/profile')
-                        settings=page.locator('.k-page > .k-section').first
+                        assert len(calls)==reads, 'Device-only preferences must not call Cloud'
                         await settings.get_by_role('button',name='Your interests' if en else '好みの設定',exact=True).click()
                         await expect(interests.get_by_role('checkbox',name='School' if en else '学園',exact=True)).to_be_checked()
                         await interests.get_by_role('checkbox',name='School' if en else '学園',exact=True).uncheck()
@@ -173,7 +187,7 @@ async def main():
                         assert await page.evaluate('document.documentElement.scrollWidth<=innerWidth')
                         await page.screenshot(path=str(OUTPUT/f'entry-settings-{language}-{width}-{theme}.png'),full_page=True,animations='disabled')
                         results.append({'language':language,'width':width,'theme':theme,'server_region_age_guardian_and_terms':True,
-                            'three_screens_back_skip_and_later_edit':True,'cloud_default_login_on_chat_device_without_login':True,
+                            'cloud_skips_form_and_opens_login_sheet':True,'picker_in_my_page_advanced':True,'interests_back_skip_and_later_edit':True,'device_without_login':True,
                             'invalid_success_response_and_late_owner_response_rejected':True,
                             'guest_creates_real_device_only_chat_without_cloud_requests':True,
                             'live_language_and_other_preferences_preserved':True,'owner_change_resets_draft':True,'device_preferences_send_nothing':True})
