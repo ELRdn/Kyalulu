@@ -138,16 +138,14 @@
 
 .k-chat-messages { flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-6) var(--space-5) var(--space-3); scroll-behavior: smooth; }
 .k-chat-messages__inner {
-  max-width: 920px;
+  max-width: 720px;
   min-width: 0;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
 }
-@media (min-width: 2200px) {
-  .k-chat-messages__inner { max-width: 1040px; }
-}
+
 @media (max-width: 767px) {
   .k-chat-messages { padding: var(--space-4) var(--space-3) var(--space-2); }
   .k-msg__avatar .k-avatar--md { width: 32px; height: 32px; }
@@ -229,7 +227,7 @@
 .k-starter:hover { transform: translateY(-2px); border-color: var(--accent-secondary); color: var(--accent-primary); }
 
 .k-chat-error {
-  max-width: 920px;
+  max-width: 720px;
   width: calc(100% - 32px);
   margin: 0 auto var(--space-2);
   display: flex;
@@ -249,7 +247,7 @@
 .k-chat-error__action { flex-shrink: 0; font-weight: 800; color: inherit; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
 .k-chat-error__action:hover { opacity: 0.8; }
 .k-chat-error button { border: none; background: transparent; color: inherit; cursor: pointer; padding: 2px; border-radius: 6px; }
-.k-chat-composer-wrap { max-width: 960px; width: 100%; margin: 0 auto; }
+.k-chat-composer-wrap { max-width: 760px; width: 100%; margin: 0 auto; }
 
 /* --- 返事の候補 --- */
 .k-suggest { display: grid; gap: 6px; padding: 0 var(--space-4); animation: k-fade-in 0.2s var(--ease-kyalulu); }
@@ -361,5 +359,5 @@
 /* docs/MOBILE_UX_SPEC.md §5.3: tools moved out of the header, failed replies as a character action */
 .k-context-tools { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: 0 var(--space-4) var(--space-3); }
 .k-context-panel .k-session-policy { margin: 0 var(--space-4) var(--space-3); }
-.k-chat-failed { max-width: 920px; width: calc(100% - 32px); margin: 0 auto var(--space-2); display: flex; align-items: center; gap: var(--space-3); }
+.k-chat-failed { max-width: 720px; width: calc(100% - 32px); margin: 0 auto var(--space-2); display: flex; align-items: center; gap: var(--space-3); }
 .k-chat-failed__action { margin: 0; font-style: italic; color: var(--text-secondary); }

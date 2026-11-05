@@ -103,7 +103,7 @@
 /* --- Body --- */
 .k-shell__body { flex: 1; min-height: 0; display: flex; padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
 .k-shell__sidebar {
-  width: 224px;
+  width: 216px;
   flex-shrink: 0;
   border-right: 1px solid var(--border-subtle);
   background: var(--bg-surface);
@@ -192,8 +192,8 @@
 .k-shell__bottomnav-item:focus-visible { outline: 3px solid var(--accent-primary); outline-offset: -3px; }
 .k-shell__bottomnav-item.active svg { filter: drop-shadow(0 2px 6px rgba(108, 92, 231, 0.35)); }
 
-/* tablet: keep navigation reachable as an icon rail */
-@media (max-width: 1023px) {
+/* tablet and small PC: keep navigation reachable as an icon rail (docs/MOBILE_UX_SPEC.md §5.9) */
+@media (max-width: 1199px) {
   .k-shell__sidebar { width: 72px; align-items: center; padding: var(--space-4) var(--space-2); }
   .k-shell__sidebar .k-nav-item { justify-content: center; padding: 11px; width: 48px; }
   .k-shell__sidebar .k-nav-item__label, .k-shell__sidebar .k-nav-item__badge, .k-shell__companion, .k-shell__sidebar-collapse { display: none; }

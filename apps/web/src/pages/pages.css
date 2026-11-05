@@ -1,5 +1,5 @@
 .k-page {
-  max-width: 1280px;
+  max-width: 1200px;
   width: 100%;
   margin: 0 auto;
   padding: var(--space-6) var(--space-8) var(--space-16);
@@ -244,8 +244,9 @@
 .k-grid { display: grid; gap: var(--space-4); }
 .k-grid--characters { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
 .k-grid--worlds { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
-@media (min-width: 1800px) {
-  .k-grid--characters { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
+/* 4 columns around 1200px, 5 at the 1200px content cap (docs/MOBILE_UX_SPEC.md §5.9) */
+@media (min-width: 768px) {
+  .k-grid--characters { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
 }
 @media (max-width: 767px) {
   .k-grid--characters { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }

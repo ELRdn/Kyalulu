@@ -317,3 +317,13 @@
   .k-plot-hero__art { border-radius: inherit; overflow: hidden; }
 }
 .k-plot-cta .k-btn { min-width: 0; }
+
+/* PC: an ordinary page with the portrait on the left and the intro and CTA on the right (docs/MOBILE_UX_SPEC.md §5.9) */
+@media (min-width: 1200px) {
+  .k-plot { --plot-w: 1120px; display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); column-gap: var(--space-8); align-items: start; }
+  .k-plot-bar { grid-column: 1 / -1; }
+  .k-plot-hero { grid-column: 1; grid-row: 2 / span 3; position: sticky; top: 68px; border-radius: 28px; }
+  .k-plot-hero__art { -webkit-mask-image: none; mask-image: none; }
+  .k-plot-body { grid-column: 2; margin-top: 0; padding-top: var(--space-8); }
+  .k-plot-cta { grid-column: 2; }
+}
