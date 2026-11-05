@@ -292,6 +292,9 @@ async def check_profile_settings(page, language, before, draft, output):
     chat_url = page.url
     await page.goto(chat_url.rsplit('/chats/', 1)[0] + '/profile')
     await page.get_by_role('textbox', name='Display name' if en else '表示名', exact=True).wait_for()
+    # Theme and connection settings fold under My page › Settings › Advanced (docs/MOBILE_UX_SPEC.md §5.6).
+    await page.locator('.k-profile-settings > summary').first.click()
+    await page.locator('.k-profile-settings--advanced > summary').click()
     name = page.locator('#k-profile-name')
     old_name = await page.evaluate("localStorage.getItem('kyalulu-display-name')")
     old_servers = await page.evaluate("localStorage.getItem('kyalulu-server-bookmarks-v1')")
@@ -327,7 +330,8 @@ async def check_profile_settings(page, language, before, draft, output):
     assert not await page.evaluate('document.documentElement.scrollWidth > innerWidth')
     await page.locator('.k-profile-card').screenshot(path=str(output / f'{language}-{page.viewport_size["width"]}-profile.png'), animations='disabled')
     await connection.screenshot(path=str(output / f'{language}-{page.viewport_size["width"]}-server-settings.png'), animations='disabled')
-    await page.locator('.k-session-row__link').click()
+    await page.goto(chat_url.rsplit('/chats/', 1)[0] + '/chats')
+    await page.locator('.k-session-row__link').first.click()
     await page.locator('.k-composer textarea').wait_for()
     assert page.url == chat_url and await page.locator('.k-composer textarea').input_value() == draft
     assert without_open_times(await conversations(page)) == without_open_times(before)
@@ -354,7 +358,7 @@ async def check_chat_management(page, language, before, draft, output):
         await confirm.get_by_role('button', name='Cancel' if en else 'キャンセル', exact=True).click()
         assert await conversations(page) == before
         assert await composer.input_value() == draft
-    await page.get_by_role('button', name='Open information panel' if en else '情報パネルを開く', exact=True).click()
+    await page.get_by_role('button', name='Conversation settings' if en else '会話設定', exact=True).click()
     panel = page.get_by_role('dialog', name='Conversation information' if en else '会話の情報', exact=True)
     await panel.wait_for()
     for button, fragments in [
@@ -503,7 +507,7 @@ async def check(dist, output):
                         page = await context.new_page()
                         page.on('pageerror', lambda error: errors.append(str(error)))
                         await page.goto(origin)
-                        await page.locator('.k-unified-entry').wait_for()
+                        await page.locator('.k-pwa-root > *').first.wait_for()  # The app rendered; Cloud no longer shows an entry form.
                         assert not await page.evaluate('crossOriginIsolated')
                         await page.wait_for_function('navigator.serviceWorker.controller !== null', timeout=120000)
                         await page.evaluate('''([language,theme])=>{
@@ -513,11 +517,13 @@ async def check(dist, output):
                             localStorage.setItem('kyalulu-execution-target','device');
                             localStorage.setItem('my-zeta-theme',theme);
                         }''', [language, theme])
-                        await page.goto(origin + '/device/#/')
-                        await page.locator('.k-char-card').first.wait_for()
+                        await page.goto(origin + '/device/#/profile')
+                        await page.locator('.k-profile-settings > summary').first.click()
+                        await page.locator('.k-profile-settings--advanced > summary').click()
                         await page.locator('.k-mobile-status summary').click()
                         await page.get_by_role('button', name='Check for updates' if language == 'en' else '更新を確認', exact=True).wait_for()
-                        await page.locator('.k-mobile-status summary').click()
+                        await page.goto(origin + '/device/#/')
+                        await page.locator('.k-char-card').first.wait_for()
                         await page.get_by_role('button', name='Search characters and worlds' if language == 'en' else 'キャラクターやワールドを検索', exact=True).click()
                         palette_input = page.locator('.k-cmd input')
                         palette_options = page.locator('.k-cmd').get_by_role('option')
@@ -539,11 +545,11 @@ async def check(dist, output):
                         search = page.locator('.k-discover-search input')
                         await search.wait_for()
                         assert await search.input_value() == 'butler'
-                        await page.get_by_role('group', name='Filter by mood' if alternate_language == 'en' else '気分で絞り込む').get_by_role('button', name='Butler' if alternate_language == 'en' else '執事', exact=True).click()
-                        mood_group = page.get_by_role('group', name='Filter by mood' if alternate_language == 'en' else '気分で絞り込む')
-                        await expect(mood_group.get_by_role('button', name='All' if alternate_language == 'en' else 'すべて', exact=True)).to_have_attribute('aria-pressed', 'false')
-                        await expect(mood_group.get_by_role('button', name='Butler' if alternate_language == 'en' else '執事', exact=True)).to_have_attribute('aria-pressed', 'true')
-                        assert 'mood=butler' in page.url and 'q=butler' in page.url
+                        # Explore filters by the most-used author tags (docs/MOBILE_UX_SPEC.md §5.5).
+                        tag_group = page.get_by_role('group', name='Filter by tag' if alternate_language == 'en' else 'タグで絞り込む')
+                        await tag_group.get_by_role('button', name='#執事', exact=True).click()
+                        await expect(tag_group.get_by_role('button', name='#執事', exact=True)).to_have_attribute('aria-pressed', 'true')
+                        assert 'tag=' in page.url and 'q=butler' in page.url
                         links = await page.locator('.k-char-card').evaluate_all('(cards)=>cards.map(c=>c.getAttribute("href"))')
                         assert len(links) == 1 and 'butler' in links[0]
                         previous_url = page.url
@@ -604,6 +610,7 @@ async def check(dist, output):
                         assert await tutorial.get_by_role('button', name='Open Inspector' if language == 'en' else 'Inspectorを開く', exact=True).is_disabled()
                         await tutorial.get_by_role('button', name='Finish guide' if language == 'en' else '案内を完了', exact=True).click()
                         assert await page.evaluate("localStorage.getItem('kyalulu-first-chat-tutorial-v1')") == 'completed'
+                        await page.get_by_role('button', name='Conversation settings' if language == 'en' else '会話設定', exact=True).click()
                         await page.get_by_role('button', name='First chat guide' if language == 'en' else '初トークの案内', exact=True).click()
                         await tutorial.get_by_role('button', name='Skip' if language == 'en' else 'スキップ', exact=True).click()
                         assert await page.evaluate("localStorage.getItem('kyalulu-first-chat-tutorial-v1')") == 'skipped'

@@ -143,7 +143,7 @@ def main():
                     page.get_by_role('button', name='会話をはじめる', exact=True).click()
                     expect(page.locator('.k-chat-header__name')).to_have_text('モカちゃん（日常）')
                     expect(composer).to_be_enabled()
-                    page.get_by_role('button', name='情報パネルを開く', exact=True).click()
+                    page.get_by_role('button', name='会話設定', exact=True).click()
                     page.get_by_role('button', name='ミニマル', exact=True).click()
                     with page.expect_response(lambda r: r.url.endswith('/api/chat/settings') and r.request.method == 'PUT'):
                         page.wait_for_timeout(1000)

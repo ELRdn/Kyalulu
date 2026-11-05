@@ -21,6 +21,7 @@ export default function Composer({
   placeholder,
   tools,
   commands,
+  onAdvance,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -37,6 +38,8 @@ export default function Composer({
   tools?: ReactNode;
   /** 指定すると「/」入力でスラッシュコマンドの候補を出す */
   commands?: SlashCommand[];
+  /** With an empty input the send button becomes "Go on" and calls this instead. */
+  onAdvance?: () => void;
 }) {
   const en = useLanguage() === 'en';
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -156,6 +159,10 @@ export default function Composer({
           {streaming && onStop ? (
             <Button variant="secondary" size="md" className="k-composer__send" onClick={onStop}>
               <Icon name="stop" size={14} /> {en ? 'Stop' : '停止'}
+            </Button>
+          ) : onAdvance && !value.trim() ? (
+            <Button variant="primary" size="md" className="k-composer__send" onClick={onAdvance} disabled={locked}>
+              <Icon name="chevron" size={15} /> {en ? 'Go on' : '進む'}
             </Button>
           ) : (
             <Button variant="primary" size="md" className="k-composer__send" onClick={onSend} disabled={locked || !value.trim()}>

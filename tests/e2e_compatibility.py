@@ -85,6 +85,7 @@ def main():
                 page.keyboard.press('Control+Shift+D')
                 expect(page.get_by_text('互換設定・Loreの採用結果', exact=True)).to_be_visible()
                 page.keyboard.press('Control+Shift+D')
+                page.get_by_role('button', name='会話設定', exact=True).click()
                 page.get_by_role('button', name='キャラ・プリセット', exact=True).click()
                 happy = next(a for a in item['document']['assets'] if a['type'] == 'emotion')
                 with page.expect_response(lambda r: '/api/chat/settings' in r.url and r.request.method == 'PUT') as saved:

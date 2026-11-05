@@ -118,7 +118,7 @@ export default function FirstChatTutorial({ step, cloud, device = false, languag
       <Button type="button" variant="ghost" size="sm" disabled={step === 0} onClick={onBack}>{en ? 'Back' : '戻る'}</Button>
       <Button type="button" variant="primary" size="sm" onClick={step === 3 ? onComplete : onNext}>{step === 3 ? (en ? 'Finish guide' : '案内を完了') : (en ? 'Next' : '次へ')}</Button>
     </div>
-    <p className="k-first-chat-tutorial__note">{en ? 'Completion or skipping is recorded in this browser. Reopen the guide anytime using “First chat guide” above.' : '完了・スキップはこのブラウザーに記録します。上部の「初トークの案内」からいつでも再表示できます。'}</p>
+    <p className="k-first-chat-tutorial__note">{en ? 'Completion or skipping is recorded in this browser. Reopen the guide anytime from “First chat guide” in conversation settings.' : '完了・スキップはこのブラウザーに記録します。会話設定の「初トークの案内」からいつでも再表示できます。'}</p>
     {storageFailed && <p role="status" className="k-first-chat-tutorial__note">{en ? 'Your browser could not save this status, so the guide may appear again next time.' : 'ブラウザーに記録できないため、次回また案内が出る場合があります。'}</p>}
   </section>;
 }

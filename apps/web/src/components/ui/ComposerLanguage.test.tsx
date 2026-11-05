@@ -30,3 +30,13 @@ it('preserves authored drafts and explicit placeholder/disabled text', () => {
   const disabled = renderToStaticMarkup(<Composer value="" onChange={vi.fn()} onSend={vi.fn()} disabled disabledText="特別な状態" />);
   expect(disabled).toContain('特別な状態');
 });
+
+it.each(['ja', 'en'])('turns an empty send into "go on" only when the chat allows it (%s)', language => {
+  fixture.language = language;
+  const go = language === 'en' ? 'Go on' : '進む', send = language === 'en' ? 'Send' : '送信';
+  const empty = renderToStaticMarkup(<Composer value="" onChange={vi.fn()} onSend={vi.fn()} onAdvance={vi.fn()} />);
+  expect(empty).toContain(go);
+  expect(empty).not.toMatch(/<button[^>]*disabled=""[^>]*>.*?(Go on|進む)/);
+  expect(renderToStaticMarkup(<Composer value="hi" onChange={vi.fn()} onSend={vi.fn()} onAdvance={vi.fn()} />)).not.toContain(go);
+  expect(renderToStaticMarkup(<Composer value="" onChange={vi.fn()} onSend={vi.fn()} />)).toContain(send);
+});
