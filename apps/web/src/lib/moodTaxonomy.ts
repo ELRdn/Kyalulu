@@ -59,13 +59,16 @@ const ALIASES: Record<string, string> = {
   "獣人": "beastkin",
 };
 
+/** 作者が日本語で書いたタグ（クール、学園…）も同じ mood キーに寄せる */
+const LABEL_KEYS: Record<string, string> = Object.fromEntries(Object.entries(MOODS).map(([key, { label }]) => [label, key]));
+
 /** consumer 向けに出さない技術的・評価用の tag */
 const HIDDEN = new Set(["easy", "normal", "medium", "hard", "benchmark", "test", "sfw", "nsfw", "official"]);
 
 function moodKey(tag: string): string | null {
   const t = tag.trim().toLowerCase();
   if (!t || HIDDEN.has(t)) return null;
-  return ALIASES[t] ?? t;
+  return ALIASES[t] ?? LABEL_KEYS[t] ?? t;
 }
 
 /** 未知の tag は ASCII の技術語なら隠し、それ以外（日本語タグ等）はそのまま出す */

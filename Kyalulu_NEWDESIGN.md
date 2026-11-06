@@ -4,7 +4,7 @@
 > **Product:** Kyalulu — Character AI Platform  
 > **Audience:** Claude Code / Codex / human contributors  
 > **Version:** 2.0  
-> **Reference lock:** `reference/kyalulu_mascot_character_sheet.png`, `reference/kyalulu_official_color_palette.png`, `reference/kyalulu_home_mock.png`, `reference/kyalulu_chat_mock.png`
+> **Reference lock:** `reference/kyalulu_mascot_character_sheet_E2.png`（2026-11-05 にE2へ変更。アプリ用の絵は `apps/web/public/mascot/v2/`、原画は `mascot/e2-v2/`）, `reference/kyalulu_official_color_palette.png`, `reference/kyalulu_home_mock.png`, `reference/kyalulu_chat_mock.png`
 
 ---
 
@@ -526,6 +526,8 @@ Active state:
 Do not use a giant saturated purple slab.
 
 Studio entry should look visibly secondary / advanced.
+
+Superseded for consumer web (2026-11-03): Studio is not in the sidebar; it lives under My page › Settings › Advanced. See [docs/MOBILE_UX_SPEC.md](docs/MOBILE_UX_SPEC.md) §5.9.
 
 ---
 
@@ -1271,6 +1273,8 @@ Do not silently lock these:
 8. advanced motion identity
 9. final mobile Home composition
 10. exact per-character chat appearance customization
+
+Items 1, 3 and 9 are resolved for mobile web in [docs/MOBILE_UX_SPEC.md](docs/MOBILE_UX_SPEC.md) (agreed 2026-11-02, not yet implemented). The same document also covers PC web layout, empty/error/404 states and the adult age-verification policy (added 2026-11-03).
 
 ---
 

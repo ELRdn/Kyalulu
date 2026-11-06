@@ -118,6 +118,7 @@ async def check(args):
                 await page.get_by_role('paragraph').filter(has_text='Mock: FICTIONAL-BROWSER-SEND').wait_for(timeout=10000)
                 await page.get_by_role('textbox').last.fill('FICTIONAL-UNSENT-DRAFT')
                 await page.wait_for_timeout(150)
+                await page.get_by_role('button', name='Conversation settings', exact=True).click()
                 await page.get_by_role('button', name='Visual novel', exact=True).click()
                 scene = page.get_by_role('region', name='Visual novel', exact=True)
                 await scene.get_by_role('button', name='Previous scene', exact=True).click()

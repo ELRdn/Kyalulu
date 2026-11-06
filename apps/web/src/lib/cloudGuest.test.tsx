@@ -32,14 +32,18 @@ it('authenticated and local browsing still loads sessions', async () => {
   expect(isCloudGuest({ cloud_mode: true, authenticated: true })).toBe(false);
   expect(isCloudGuest({ cloud_mode: true, authenticated: false })).toBe(true);
 });
-it.each(['/', '/discover', '/characters/mocha', '/works/public', '/authors/creator'])('renders public guest route %s', path => {
+it.each(['/', '/discover', '/chats', '/create', '/profile', '/characters/mocha', '/works/public', '/authors/creator'])('renders public guest route %s', path => {
   const html = renderToStaticMarkup(<MemoryRouter initialEntries={[path]}><CloudRouteChoice authenticated={false}><span>public-page</span></CloudRouteChoice></MemoryRouter>);
   expect(html).toContain('public-page'); expect(html).not.toContain('login:');
 });
-it.each(['/chats', '/chats/private', '/create', '/profile', '/studio', '/works/public/edit'])('requires login for guest private route %s', path => {
+it.each(['/chats/private', '/create/settings', '/studio', '/works/public/edit'])('requires login for guest private route %s', path => {
   expect(guestReadableRoute(path)).toBe(false);
   const html = renderToStaticMarkup(<MemoryRouter initialEntries={[path]}><CloudRouteChoice authenticated={false}><span>private-page</span></CloudRouteChoice></MemoryRouter>);
   expect(html).toContain('login:'); expect(html).not.toContain('private-page');
+});
+it.each(['/no-such-page', '/conversation/old'])('lets guests reach the 404 page for unknown path %s', path => {
+  const html = renderToStaticMarkup(<MemoryRouter initialEntries={[path]}><CloudRouteChoice authenticated={false}><span>not-found-page</span></CloudRouteChoice></MemoryRouter>);
+  expect(html).toContain('not-found-page'); expect(html).not.toContain('login:');
 });
 it('renders authenticated chat without changing the local/BYOK requirement', () => {
   const html = renderToStaticMarkup(<MemoryRouter initialEntries={['/chats/private']}><CloudRouteChoice authenticated><span>private-page</span></CloudRouteChoice></MemoryRouter>);

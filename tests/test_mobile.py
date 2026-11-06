@@ -289,9 +289,11 @@ async def test_static_same_origin_spa_api_and_sw_headers(tmp_path):
     (tmp_path / ".env").write_text("never serve")
     app = make_app(mobile.Config(True, ORIGIN), tmp_path)
     async with client(app) as remote:
-        for path in ("/", "/chat/session"):
+        for path in ("/", "/chats/session"):
             response = await remote.get(path, headers={"Accept": "text/html"})
             assert response.status_code == 200 and "<html>app" in response.text
+        unknown = await remote.get("/no-such-page", headers={"Accept": "text/html"})
+        assert unknown.status_code == 404 and "<html>app" in unknown.text
         sw = await remote.get("/sw.js")
         assert sw.headers["cache-control"] == "no-store"
         assert sw.headers["service-worker-allowed"] == "/"

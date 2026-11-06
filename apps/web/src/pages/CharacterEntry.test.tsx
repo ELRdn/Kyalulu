@@ -70,7 +70,21 @@ it('translates controls and display helpers without changing the selected origin
   expect(fixture.start).not.toHaveBeenCalled();
   await find(tree, node => node.props.className?.includes('k-plot-cta__main')).props.onClick();
   expect(fixture.start).toHaveBeenCalledExactlyOnceWith({ characterId: 'hero', intro: 'SECOND_ORIGINAL', temperature: .63 });
-  expect(fixture.navigate).toHaveBeenCalledWith('/chats/created-chat');
+  expect(fixture.navigate).toHaveBeenCalledWith('/chats/created-chat', { state: undefined });
+});
+
+it('sends a picked first reply after starting, and keeps a guest pick for after login', async () => {
+  fixture.characters[0].opening_replies = ['Good evening'];
+  const stored = new Map<string, string>();
+  vi.stubGlobal('sessionStorage', { setItem: (key: string, value: string) => stored.set(key, value), getItem: (key: string) => stored.get(key) ?? null, removeItem: (key: string) => stored.delete(key) });
+  const chip = (tree: ReactNode) => find(tree, node => node.type === 'button' && node.props.className === 'k-starter');
+  await chip(view()).props.onClick();
+  expect(fixture.navigate).toHaveBeenCalledWith('/chats/created-chat', { state: { send: 'Good evening' } });
+  fixture.navigate.mockClear(); fixture.guest = true;
+  await chip(view()).props.onClick();
+  expect(fixture.navigate).not.toHaveBeenCalled();
+  expect(JSON.parse(stored.get('kyalulu-pending-start')!)).toEqual({ character: 'hero', text: 'Good evening' });
+  vi.unstubAllGlobals();
 });
 
 it('rerenders stored failures in the current language without retrying or starting a chat', () => {
@@ -89,12 +103,12 @@ it('rerenders stored failures in the current language without retrying or starti
 it('preserves guest login and adult-view restrictions in both languages', async () => {
   fixture.guest = true;
   let tree = view();
-  expect(renderToStaticMarkup(tree)).toContain('Sign in to start a conversation');
+  expect(renderToStaticMarkup(tree)).not.toContain('Sign in to start a conversation');
   await find(tree, node => node.props['aria-label'] === 'Save in this browser').props.onClick();
   expect(fixture.save).toHaveBeenCalledExactlyOnceWith('hero');
   expect(fixture.navigate).not.toHaveBeenCalled();
   await find(tree, node => node.props.className?.includes('k-plot-cta__main')).props.onClick();
-  expect(fixture.navigate).toHaveBeenCalledWith('/login?next=%2Fcharacters%2Fhero');
+  expect(fixture.navigate).not.toHaveBeenCalled();
   expect(fixture.start).not.toHaveBeenCalled();
   fixture.characters[0].nsfw = true;
   for (const language of ['ja', 'en']) {

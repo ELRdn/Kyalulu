@@ -27,7 +27,7 @@
   width: 48px;
   height: 48px;
   border-radius: 12px;
-  background: url('/mascot/face-default.webp') center / contain no-repeat;
+  background: url('/mascot/v2/face-default.webp') center / contain no-repeat;
 }
 .k-cloud-login h1 {
   margin: 0 0 26px;
@@ -86,4 +86,20 @@
 @media (max-width: 520px) {
   .k-connect-screen.k-cloud-login { padding: 24px 12px max(24px, env(safe-area-inset-bottom)); }
   .k-cloud-login .k-connect-screen__body { padding: 24px 20px; border-radius: 18px; }
+}
+/* Login sheet: centered 420px dialog on wide screens, bottom sheet on phones (docs/MOBILE_UX_SPEC.md §3, §5.9). */
+.k-cloud-login__sheet { width: min(420px, 100%); max-height: calc(100dvh - 32px); overflow-y: auto; animation: k-dialog-in 0.22s var(--ease-kyalulu); }
+.k-cloud-login--sheet .k-connect-screen__body { max-width: none; padding: 24px; }
+.k-cloud-login .k-connect-screen__body > h2 { text-align: center; text-wrap: balance; }
+.k-cloud-login__row { display: grid; grid-template-columns: 1fr 96px; gap: 12px; }
+.k-cloud-login .k-connection__form .k-cloud-login__row label { display: grid; gap: 6px; font-weight: 600; }
+.k-cloud-login__row select, .k-cloud-login__row input { width: 100%; min-height: 44px; padding: 8px 10px; font: inherit; font-size: 16px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--bg-canvas); color: var(--text-primary); box-sizing: border-box; }
+.k-cloud-login__email summary { display: flex; align-items: center; justify-content: center; min-height: 44px; color: var(--text-secondary); font-size: 13px; cursor: pointer; }
+.k-cloud-login__email[open] { display: grid; gap: 12px; }
+.k-cloud-login__email .k-btn { min-height: 48px; }
+.k-cloud-login .k-connect-screen__body > .k-btn { width: 100%; margin-top: 8px; }
+@media (max-width: 767px) {
+  .k-cloud-login--sheet { align-items: flex-end; padding: 0; }
+  .k-cloud-login__sheet { width: 100%; max-height: 92dvh; }
+  .k-cloud-login--sheet .k-connect-screen__body { border-radius: 20px 20px 0 0; padding-bottom: max(24px, env(safe-area-inset-bottom)); }
 }

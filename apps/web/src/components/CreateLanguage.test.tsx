@@ -29,6 +29,8 @@ vi.mock('react-router-dom',()=>({useSearchParams:()=>[fixture.params,fixture.que
 vi.mock('./ui/Dialog',()=>({default:({open,children}:any)=>open?<div>{children}</div>:null,useConfirm:()=>[null,fixture.confirm]}));
 vi.mock('./PortableEditor',()=>({default:({document}:any)=><p>{document.name}</p>}));
 vi.mock('./HubLinks',()=>({default:()=>null}));
+vi.mock('../lib/cloudGuest',()=>({isCloudGuest:()=>false,fetchBrowseCatalog:vi.fn()}));
+vi.mock('./CloudLogin',()=>({default:()=>null}));
 vi.mock('./PublishWorkButton',()=>({default:()=>null}));
 vi.mock('./PublicationSubmit',()=>({default:()=>null}));
 vi.mock('./RuntimeMedia',()=>({RuntimeDownload:({href,children}:any)=><a data-runtime-download={href}>{children}</a>}));

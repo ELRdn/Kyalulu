@@ -67,7 +67,7 @@ export default function PublicWork() {
     const item = await saveLibraryItem(work!.document, undefined, importRequest.current);
     if (current(id, scope)) navigate(`/characters/${encodeURIComponent(item.id)}`);
   });
-  return <div className="k-page" style={{ maxWidth: 900 }}>{dialog}<Link to="/discover">{en ? '← Discover' : '← ディスカバー'}</Link>
+  return <div className="k-page" style={{ maxWidth: 900 }}>{dialog}<Link to="/discover">{en ? '← Discover' : '← さがす'}</Link>
     {capabilityError ? <p role="alert">{friendlyMessage(capabilityError, language)}<Button onClick={reload}>{en ? 'Reload' : '再読込'}</Button></p> : !capabilities ? <p role="status">{en ? 'Checking feature availability…' : '対応状況を確認中…'}</p> : !capabilities.features.community ? <p>{en ? 'Public works and community features are not available at this connection.' : 'この接続先では公開作品・交流を提供していません。'}</p> : <>
       {error && <p role="alert">{friendlyMessage(error.cause, language)}<Button size="sm" variant="ghost" onClick={() => setRetry(value => value + 1)}>{en ? 'Reload' : '再読込'}</Button></p>}
       {!work && !error && <p role="status">{en ? 'Loading work…' : '作品を読み込んでいます…'}</p>}

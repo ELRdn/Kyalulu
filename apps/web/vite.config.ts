@@ -166,7 +166,7 @@ function shellPrecache(mobile = false, device = false): Plugin {
       const files = ["index.html", "theme-init.js", "manifest.webmanifest", "apple-touch-icon.png", "favicon.ico", "favicon-32.png", "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png",
         ...(runtime ? ['migration/index.html'] : []),
         ...(device ? ['icons/rei-senpai.png', 'icons/shion-butler-1.png', 'icons/mocha-1.png'] : []),
-        ...["sit", "guide", "nap", "face-default", "face-wink", "face-curious"].map(name => `mascot/v1.2/${name}.png`),
+        ...["face-default", "face-excited", "face-shy", "face-sleep", "face-smile", "pose-cry", "pose-float", "pose-wave"].map(name => `mascot/v2/${name}.webp`),
         ...Object.keys(bundle).filter((name) => /\.(js|css|wasm)$/.test(name)),
         ...runtimeFiles,
       ].sort();
@@ -200,7 +200,8 @@ export default defineConfig(({ mode, command }) => {
     }
   }
   return {
-  base: "./",
+  // History routes need root-absolute assets; the mobile Pages shell stays relative.
+  base: mode === 'mobile' ? "./" : "/",
   resolve: { alias: preparedSdk(command === 'build' && (unified || mode === 'mobile')) },
   plugins: [react(), ...(mode === 'mobile' ? [{ name: 'kyalulu-mobile-entry', transformIndexHtml: { order: 'pre' as const, handler: (html: string) => html.replace('/src/main.tsx', '/src/mobile/main.tsx').replace('<title>Kyalulu — キャラクターと物語をつむぐ場所</title>', '<title>Kyalulu Mobile — スマホで動くキャラクターAI</title>') } }] : []),
     ...(mode === 'native' ? [{ name: 'kyalulu-native-entry', transformIndexHtml: { order: 'pre' as const, handler: (html: string) => html.replace('<head>', '<head><meta name="kyalulu-ui" content="native">') } }] : []),

@@ -24,7 +24,7 @@ export default function KyaluluWaiting({ progress, researcher = false, language 
   return (
     <div className="k-reply-wait">
       <div className="k-reply-wait__art" aria-hidden="true">
-        <img src={`${import.meta.env.BASE_URL}mascot/v1.2/face-curious.png`} alt="" width={40} height={40} />
+        <img src={`${import.meta.env.BASE_URL}mascot/v2/face-default.webp`} alt="" width={40} height={40} />
         <span className="k-reply-wait__dots"><i /><i /><i /></span>
       </div>
       <div className="k-reply-wait__text">

@@ -38,3 +38,21 @@ async def local_vite(output):
                 except subprocess.TimeoutExpired:
                     server.kill()
                     await asyncio.to_thread(server.wait)
+
+
+# The execution picker now lives in My page › Settings › Advanced (docs/MOBILE_UX_SPEC.md §4).
+# Fixtures that check its generation guard from other screens mount the real component in its own
+# root on every page, and the copy inside blocking screens is hidden so one picker stays addressable.
+EXECUTION_PICKER_SCRIPT = '''addEventListener('DOMContentLoaded', async () => {
+  if (window.top !== window) return;  // Not inside ad or media frames.
+  const {mountExecutionPicker} = await import('/src/components/ExecutionPicker.browser-fixture.tsx');
+  const style = document.createElement('style');
+  style.textContent = '.k-connect-screen .k-execution-picker{display:none}';
+  const node = document.createElement('div'); node.id = 'acceptance-picker';
+  document.head.append(style); document.body.prepend(node);
+  mountExecutionPicker(node);
+});'''
+
+
+async def mount_execution_picker(context):
+    await context.add_init_script(EXECUTION_PICKER_SCRIPT)

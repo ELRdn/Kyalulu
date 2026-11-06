@@ -15,7 +15,9 @@ intro: |
   ご主人様…今宵は私にお任せいただけますか？
 
   ご希望のままに…最後まで、お仕えいたします。
-tags: [butler, cat, nsfw, explicit]
+hook: "夜更けの主寝室、執事がそっとあなたの手を取る"
+opening_replies: ["今夜はそばにいて", "少しだけ話そう", "眠れないんだ"]
+tags: [執事, 黒猫, 獣人, 敬語, 夜]
 difficulty: hard
 recommended_generation:
   temperature: 0.75

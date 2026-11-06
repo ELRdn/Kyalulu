@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 
 from playwright.async_api import async_playwright, expect
 
-from browser_fixture_server import local_vite
+from browser_fixture_server import local_vite, mount_execution_picker
 
 SESSION = 'commercial-fixture'
 DRAFT = '未送信の下書き / Keep this draft — commercial fixture'
@@ -157,6 +157,7 @@ async def run_case(browser, origin, output, language, width, theme, scenario):
     await context.route_web_socket('**/*', block_socket)
     # Playwright's service_workers='block' injects a script which itself throws
     # inside opaque ad frames. Deny registration in the fresh top-level app instead.
+    await mount_execution_picker(context)
     await context.add_init_script('''(() => {
         if (window !== window.top || location.origin !== ORIGIN) return;
         window.__commercialServiceWorkerAttempts = 0;
@@ -215,15 +216,15 @@ async def run_case(browser, origin, output, language, width, theme, scenario):
 
         await banner('home')
         await page.screenshot(path=str(output / (name + '-home.png')), full_page=True, animations='disabled')
-        await page.goto(origin + ('/device/' if scenario == 'device' else '/') + '#/discover')
-        await page.get_by_role('heading', name='Explore' if language == 'en' else 'ディスカバー', exact=True).wait_for()
+        await page.goto(origin + {'device': '/device/#/discover', 'local': '/#/discover'}.get(scenario, '/discover'))
+        await page.get_by_role('heading', name='Explore' if language == 'en' else 'さがす', exact=True).wait_for()
         await page.wait_for_load_state('networkidle')
         await banner('discover')
         await page.screenshot(path=str(output / (name + '-discover.png')), full_page=True, animations='disabled')
         check('browsing makes no writes', not api.writes(), api.writes())
         if scenario == 'free':
             api.banner = AD_ORIGIN + '/banner'
-            await page.goto(origin + '/#/chats/' + SESSION)
+            await page.goto(origin + '/chats/' + SESSION)
             composer = page.locator('.k-composer textarea')
             send = page.get_by_role('button', name=t['send'], exact=True)
             await composer.fill(DRAFT)
@@ -326,7 +327,7 @@ async def run_case(browser, origin, output, language, width, theme, scenario):
                 async with page.expect_navigation(wait_until='domcontentloaded'):
                     await page.locator('dialog[open]').get_by_role('button', name=t['next'], exact=True).click()
                 await page.locator('.k-page--home').wait_for()
-                await page.goto(origin + '/#/chats/' + SESSION)
+                await page.goto(origin + '/chats/' + SESSION)
                 await composer.wait_for()
                 await expect(composer).to_have_value(DRAFT)
                 await page.wait_for_load_state('networkidle')

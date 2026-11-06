@@ -101,7 +101,7 @@ it('localizes the full page while retaining actual model and researcher state wi
       : ['上級者向け', 'スタジオ', '制作と検証のための機能', '接続を再確認', 'つながるものへ自動で切り替わります', 'テスト用（オウム返し）',
         'Ollama（ローカル）', 'LM Studio（ローカル）', 'LE（ローカル）', 'OpenAI互換API', 'モデル未準備', 'オフライン', 'Researcherモード',
         '詳細設定（歯車）', 'ペルソナ・世界観', '人物像と舞台の作成・保存', '比較実験', '記憶の比較・30/50/100ターン', 'チャットで試す',
-        '設定を会話で確認', 'A/B/C比較・リーダーボード', 'プロバイダの稼働状況', 'クリエイト', '取り込み・編集・書き出し']) expect(html).toContain(label);
+        '設定を会話で確認', 'A/B/C比較・リーダーボード', 'プロバイダの稼働状況', 'つくる', '取り込み・編集・書き出し']) expect(html).toContain(label);
     for (const href of ['/create/settings', '/research/benchmarks', '/chats', '/research', '/status', '/create']) expect(html).toContain(`href="${href}"`);
     if (language === 'en') expect(models.reduce((text, model) => text.replaceAll(model.display_name, ''), html).replaceAll('独自提供元', '')).not.toMatch(/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u);
     expect(localStorage.getItem('my-zeta-model')).toBe(models[0].id); expect(localStorage.getItem('my-zeta-researcher')).toBe('1');

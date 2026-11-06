@@ -49,7 +49,7 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
     const q = query.trim();
     const list: Item[] = [];
     if (q) {
-      list.push({ id: "search", group: en ? 'Search' : '検索', label: en ? `Search Explore for “${q}”` : `「${q}」をディスカバーで探す`, keywords: q, leading: icon("search"), run: go(`/discover?q=${encodeURIComponent(q)}`) });
+      list.push({ id: "search", group: en ? 'Search' : '検索', label: en ? `Search Explore for “${q}”` : `「${q}」をさがす`, keywords: q, leading: icon("search"), run: go(`/discover?q=${encodeURIComponent(q)}`) });
     }
     for (const c of q ? characters : characters.slice(0, 6)) {
       const moods = [...moodsOf(c.tags, 'ja'), ...moodsOf(c.tags, 'en')].map(m => m.label);
@@ -81,9 +81,9 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
     }
     const pages: [string, string, string, IconName, string][] = [
       ["ホーム", 'Home', "/", "home", "home"],
-      ["ディスカバー", 'Explore', "/discover", "compass", "discover"],
+      ["さがす", 'Explore', "/discover", "compass", "discover"],
       ["チャット", 'Chats', "/chats", "chat", "chats"],
-      ["クリエイト（取り込み・編集）", 'Create (import & edit)', "/create", "pen", "create import"],
+      ["つくる（取り込み・編集）", 'Create (import & edit)', "/create", "pen", "create import"],
       ["プロフィール", 'Settings', "/profile", "user", "profile settings"],
       ["スタジオ（上級者向け）", 'Studio (advanced)', "/studio", "settings", "studio research status"],
     ];
@@ -155,7 +155,7 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
         <div className="k-cmd__list" id="k-cmd-list" role="listbox" tabIndex={-1} ref={listRef}>
           {items.length === 0 && (
             <div className="k-cmd__empty">
-              <img src={`${import.meta.env.BASE_URL}mascot/v1.2/face-curious.png`} alt="" />
+              <img src={`${import.meta.env.BASE_URL}mascot/v2/face-default.webp`} alt="" />
               {en ? 'No results found…' : '見つからなかったみたい…'}
             </div>
           )}

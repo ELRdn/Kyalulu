@@ -6,6 +6,13 @@
       "url": "http://localhost:5173"
     },
     {
+      "name": "unified-preview",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["scripts/unified_preview.py"],
+      "port": 5187,
+      "url": "http://127.0.0.1:5187"
+    },
+    {
       "name": "kyalulu-api",
       "runtimeExecutable": "uv",
       "runtimeArgs": ["run", "--directory", "runtime", "uvicorn", "python.api.main:app", "--port", "8010"],

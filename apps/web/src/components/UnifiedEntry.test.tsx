@@ -16,6 +16,7 @@ vi.mock('react', async original => ({ ...await original<typeof import('react')>(
   useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot(),
 }));
 vi.mock('../lib/transport', () => ({ cloudFetch: fixture.request }));
+vi.mock('react-router-dom', () => ({ Link: ({ to, children }: { to: string; children: ReactNode }) => <a href={to}>{children}</a> }));
 vi.mock('./ui/Dialog', () => ({ useConfirm: () => [null, fixture.confirm] }));
 
 let stored: Map<string, string>;
@@ -56,7 +57,7 @@ it('offers a scoped JA/EN return path without changing or resending pending work
     const before=[...stored], picker=ExecutionPicker(), html=renderToStaticMarkup(picker);
     expect(find(picker, node=>node.type==='select').props.disabled).toBe(true);
     expect(html).toContain(language==='en'?'Check send result':'送信結果を確認');
-    expect(find(picker, node=>node.type==='a').props.href).toBe('#/chats/pending%3A%E8%8C%B6');
+    expect(find(picker, node=>node.props.to!==undefined).props.to).toBe('/chats/pending%3A%E8%8C%B6');
     expect([...stored]).toEqual(before); expect(fixture.request).not.toHaveBeenCalled();
   }
 });
@@ -105,15 +106,19 @@ it.each(['file:', 'app:'])('preserves legacy Electron entry consent assumptions 
   expect(executionTarget()).toBe('local');
   expect(fixture.request).not.toHaveBeenCalled(); expect(stored.size).toBe(0);
 });
-it.each(['native', 'unified'])('posts %s first-run eligibility only to its own endpoint', async mode => {
-  vi.stubEnv('MODE', mode);
+it('leaves Cloud region, age and consent to the login sheet', () => {
+  vi.stubEnv('MODE', 'unified');
+  expect(renderToStaticMarkup(view())).toBe('<p>Runtime content</p>');
+  expect(fixture.request).not.toHaveBeenCalled();
+});
+it('posts native first-run eligibility only to its own endpoint and skips the interest screens', async () => {
   await form().props.onSubmit({ preventDefault: vi.fn() });
-  expect(fixture.request).toHaveBeenCalledExactlyOnceWith(mode === 'native' ? '/api/local/eligibility' : '/api/cloud/app/eligibility', {
+  expect(fixture.request).toHaveBeenCalledExactlyOnceWith('/api/local/eligibility', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ country: 'ZZ', age: 22 }),
   });
   expect(preferences()).toMatchObject({ country: 'ZZ', age: 22, accepted: true });
   expect(stored.get('kyalulu-eligibility-ticket')).toBe('native:fictional');
-  expect(fixture.states[1]).toBe('interests');
+  expect(fixture.states[1]).toBe('ready');
 });
 it('keeps native device onboarding on the local eligibility service', async () => {
   location.pathname = '/device/';

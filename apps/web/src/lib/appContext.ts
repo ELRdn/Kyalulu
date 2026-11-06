@@ -102,14 +102,14 @@ export function useGenerationBusy() { return useSyncExternalStore(subscribe, gen
 export function usePendingConversation() { return useSyncExternalStore(subscribe, pendingConversation, () => null); }
 export const labels = {
   ja: { cloud:'Cloud', device:'この端末', pc:'自分のPC', local:'このPC', target:'実行先', model:'モデル',
-    home:'ホーム', discover:'さがす', chats:'トーク', create:'つくる', profile:'設定', localOnly:'端末限定', sync:'アカウントに同期',
+    home:'ホーム', discover:'さがす', chats:'トーク', create:'つくる', profile:'マイページ', localOnly:'端末限定', sync:'アカウントに同期',
     next:'次へ', back:'戻る', skip:'スキップ', done:'はじめる', settings:'好みの設定', resume:'会話の続き',
     recommended:'あなたへのおすすめ', language:'表示言語', prepare:'モデルを準備', offline:'オフライン用に保存',
     balance:'クレジットを補充', buy:'追加購入', watch:'動画を見て補充', close:'閉じる', pending:'確認中',
     ad:'広告', private:'Cloudへ送信しません', unavailable:'準備中', migration:'以前のMobileから移行',
   },
   en: { cloud:'Cloud', device:'This device', pc:'My PC', local:'This PC', target:'Run on', model:'Model',
-    home:'Home', discover:'Explore', chats:'Chats', create:'Create', profile:'Settings', localOnly:'Device only', sync:'Sync to account',
+    home:'Home', discover:'Explore', chats:'Chats', create:'Create', profile:'My page', localOnly:'Device only', sync:'Sync to account',
     next:'Next', back:'Back', skip:'Skip', done:'Start', settings:'Your interests', resume:'Continue a conversation',
     recommended:'Recommended for you', language:'Language', prepare:'Prepare a model', offline:'Keep offline',
     balance:'Add credits', buy:'Buy credits', watch:'Watch to earn credits', close:'Close', pending:'Checking',

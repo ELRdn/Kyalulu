@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { deviceOwner, preferences, savePreferences, useLanguage, useDeviceOwner, labels, isUnifiedEntry, hasLocalRuntime, useExecutionTarget,
   generationBusy, useGenerationBusy, usePendingConversation, switchTarget, type AppPreferences, type ExecutionTarget } from '../lib/appContext';
 import { cloudFetch } from '../lib/transport';
@@ -44,18 +45,19 @@ export function ExecutionPicker() {
     <select aria-label={t.target} value={target} disabled={busy} onChange={e=>choose(e.target.value as ExecutionTarget)}>
       {(['cloud','device','pc',...(hasLocalRuntime()?['local']:[])] as ExecutionTarget[]).map(v=><option key={v} value={v}>{t[v]}</option>)}
     </select></label>{hasLocalRuntime()&&target==='cloud'&&<Button disabled={busy} onClick={()=>choose('cloud')}>{language==='ja'?'Cloudを開く':'Open Cloud'}</Button>}
-    {pending!==null&&<p role="status">{pending?<a href={`#/chats/${encodeURIComponent(pending)}`}>{en?'Check send result':'送信結果を確認'}</a>:(en?'Draft recovery could not be read. Check browser storage before switching.':'下書きの復旧記録を読み込めません。切替前にブラウザーの保存状態を確認してください。')}</p>}</div>;
+    {pending!==null&&<p role="status">{pending?<Link to={`/chats/${encodeURIComponent(pending)}`}>{en?'Check send result':'送信結果を確認'}</Link>:(en?'Draft recovery could not be read. Check browser storage before switching.':'下書きの復旧記録を読み込めません。切替前にブラウザーの保存状態を確認してください。')}</p>}</div>;
 }
 
 export default function UnifiedEntry({children}:{children:ReactNode}) {
-  const language=useLanguage(),[draft,setDraft]=useState(preferences),[stage,setStage]=useState<'legal'|'interests'|'ready'>(()=>preferences().accepted?'ready':'legal');
+  const language=useLanguage(),[draft,setDraft]=useState(preferences),[stage,setStage]=useState<'legal'|'ready'>(()=>preferences().accepted?'ready':'legal');
   const [busy,setBusy]=useState(false),[error,setError]=useState<''|'eligibility'|'guardian'|'scope'>('');
   const target=useExecutionTarget(),hostedCloud=hasLocalRuntime()&&target==='cloud';
-  if((!isUnifiedEntry()||stage==='ready')&&!hostedCloud)return <>{children}</>;
+  // Cloud asks for region, age and consent in the login sheet (docs/MOBILE_UX_SPEC.md §2-3); other targets still use this form.
+  if((!isUnifiedEntry()||stage==='ready'||target==='cloud')&&!hostedCloud)return <>{children}</>;
   const en=language==='en',t=labels[language];
-  return <main className="k-unified-entry" lang={language}><header><img src="/mascot/v1.2/face-default.png" alt="" width={56} height={56}/><h1>Kyalulu</h1></header>
+  return <main className="k-unified-entry" lang={language}><header><img src="/mascot/v2/face-default.webp" alt="" width={56} height={56}/><h1>Kyalulu</h1></header>
     <ExecutionPicker/>
-    {hostedCloud?<p>{en?'Cloud runs at app.kyalulu.com. Open Cloud or select another execution target.':'Cloudは app.kyalulu.com で利用します。Cloudを開くか、別の実行先を選んでください。'}</p>:stage==='interests'?<Interests onDone={()=>setStage('ready')}/>:<form onSubmit={async e=>{
+    {hostedCloud?<p>{en?'Cloud runs at app.kyalulu.com. Open Cloud or select another execution target.':'Cloudは app.kyalulu.com で利用します。Cloudを開くか、別の実行先を選んでください。'}</p>:<form onSubmit={async e=>{
       e.preventDefault();if(busy)return;const owner=deviceOwner();setBusy(true);setError('');
       try {
         const response=await cloudFetch(hasLocalRuntime()?'/api/local/eligibility':'/api/cloud/app/eligibility',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({country:draft.country,age:draft.age})});
@@ -63,7 +65,7 @@ export default function UnifiedEntry({children}:{children:ReactNode}) {
         if(owner!==deviceOwner())throw Error('Account changed');
         if(typeof result?.ticket!=='string'||!result.ticket||result.ticket.length>4000||result.country!==draft.country||!['adult','teen'].includes(result.age_band)||typeof result.policy!=='string'||!result.policy)throw Error('Invalid eligibility response');
         localStorage.setItem('kyalulu-eligibility-ticket',result.ticket);
-        savePreferences({...preferences(),country:draft.country,age:draft.age,accepted:true});setStage('interests');
+        savePreferences({...preferences(),country:draft.country,age:draft.age,accepted:true});setStage('ready');
       }catch(e){setError(owner!==deviceOwner()?'scope':e==='verified_guardian_consent_required'?'guardian':'eligibility');}
       finally{setBusy(false);}
     }}>

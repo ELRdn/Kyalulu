@@ -75,7 +75,7 @@ export default function CreatorSettings() {
     setNotice('imported');
   });
   return <div className="k-page k-lab">
-    <header><Link to="/create">← {en?'Create':'クリエイト'}</Link><h1 className="k-page-title">{en?'Personas and worlds':'ペルソナ・世界観'}</h1>
+    <header><Link to="/create">← {en?'Create':'つくる'}</Link><h1 className="k-page-title">{en?'Personas and worlds':'ペルソナ・世界観'}</h1>
       <p className="k-page-sub">{en?'Create your persona and the setting for your conversations.':'会話に登場するあなたの人物像と、物語の舞台を作れます。'}</p></header>
     <div className="k-lab-actions" role="group" aria-label={en?'Setting type':'設定の種類'}>
       {(["persona", "world"] as const).map(k => <Button key={k} disabled={busy} aria-pressed={kind === k} variant={kind === k ? "primary" : "secondary"} onClick={() => setKind(k)}>{label[k]}</Button>)}

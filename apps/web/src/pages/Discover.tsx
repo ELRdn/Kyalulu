@@ -1,8 +1,6 @@
 import { scopedKey } from '../lib/remoteStore';
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import HubBrowser from "../components/HubBrowser";
-import HubLinks from "../components/HubLinks";
+import { useSearchParams } from "react-router-dom";
 import { type CharacterInfo, type WorldInfo } from "../lib/api";
 import { Input } from "../components/ui/Input";
 import CharacterCard from "../components/ui/CharacterCard";
@@ -10,17 +8,15 @@ import WorldCard from "../components/ui/WorldCard";
 import EmptyState from "../components/ui/EmptyState";
 import Button from "../components/ui/Button";
 import Icon from "../components/ui/Icon";
-import { collectMoods, matchesMood, moodsOf } from "../lib/moodTaxonomy";
+import { matchesMood, moodsOf } from "../lib/moodTaxonomy";
+import { cleanTag, tagKey } from "../lib/authorFields";
 import { useAdultContent } from "../lib/adult";
 import { useDocumentTitle } from "../lib/title";
 import "./pages.css";
-import { useAdministrative, useRuntimeAccess } from '../components/RuntimeGate';
+import { useRuntimeAccess } from '../components/RuntimeGate';
 import { fetchBrowseCatalog, isCloudGuest } from '../lib/cloudGuest';
-import CommunityWorks from '../components/CommunityWorks';
 import { friendlyMessage } from '../lib/errors';
 import { useLanguage } from '../lib/appContext';
-
-type Source = "taverncard" | "sillytavern";
 
 const LS_RECENT = "kyalulu-recent-searches";
 function readRecent(): string[] {
@@ -41,7 +37,6 @@ function writeRecent(list: string[]) {
 
 export default function Discover() {
   const language = useLanguage(), en = language === 'en';
-  const administrative = useAdministrative();
   const guest = isCloudGuest(useRuntimeAccess());
   const [params, setParams] = useSearchParams();
   const [characters, setCharacters] = useState<CharacterInfo[]>([]);
@@ -51,12 +46,13 @@ export default function Discover() {
   const [loadError, setLoadError] = useState<{ cause: unknown } | null>(null);
   const [retry, setRetry] = useState(0);
   const [query, setQuery] = useState(params.get("q") ?? "");
-  const [hubSource, setHubSource] = useState<Source | null>(null);
   const [recent, setRecent] = useState<string[]>(readRecent);
 
   const [adult] = useAdultContent();
-  useDocumentTitle(en ? 'Explore' : 'ディスカバー');
+  useDocumentTitle(en ? 'Explore' : 'さがす');
   const activeMood = params.get("mood");
+  const typedTag = query.trim().startsWith("#") ? cleanTag(query) : "";
+  const activeTag = params.get("tag") || typedTag || null;
   const activeWorld = params.get("world");
 
   useEffect(() => {
@@ -80,24 +76,35 @@ export default function Discover() {
     setQuery(params.get("q") ?? "");
   }, [params]);
 
-  const moods = collectMoods(characters.map((c) => c.tags ?? []), language);
-  const activeMoodLabel = moods.find((m) => m.tag === activeMood)?.label ?? activeMood;
+  // Most-used tags first; nobody curates the row (docs/MOBILE_UX_SPEC.md §5.5).
+  const popularTags = useMemo(() => {
+    const counts = new Map<string, { tag: string; n: number }>();
+    for (const c of characters) for (const tag of c.tags ?? []) {
+      const clean = cleanTag(tag), entry = counts.get(tagKey(clean));
+      if (!clean) continue;
+      if (entry) entry.n++; else counts.set(tagKey(clean), { tag: clean, n: 1 });
+    }
+    return [...counts.values()].sort((a, b) => b.n - a.n).slice(0, 12).map((v) => v.tag);
+  }, [characters]);
+  const activeMoodLabel = activeTag ? `#${cleanTag(activeTag)}` : activeMood && (moodsOf([activeMood], language)[0]?.label ?? activeMood);
   const activeWorldInfo = worlds.find((w) => w.id === activeWorld);
 
   const filteredCharacters = useMemo(() => {
     const q = query.trim().toLowerCase();
     return characters.filter((c) => {
       if (activeMood && !matchesMood(c.tags, activeMood)) return false;
+      if (activeTag) return (c.tags ?? []).some((t) => tagKey(t) === tagKey(activeTag));
       if (!q) return true;
       const hay = [c.display_name, c.description, ...moodsOf(c.tags, 'ja').map(m => m.label), ...moodsOf(c.tags, 'en').map(m => m.label)].join(" ").toLowerCase();
       return hay.includes(q);
     });
-  }, [characters, query, activeMood]);
+  }, [characters, query, activeMood, activeTag]);
 
-  const setParam = (key: "mood" | "world", value: string | null) => {
+  const setParam = (key: "tag" | "world", value: string | null) => {
     const next = new URLSearchParams(params);
     if (query) next.set("q", query);
     else next.delete("q");
+    if (key === "tag") next.delete("mood");
     if (value) next.set(key, value);
     else next.delete(key);
     setParams(next, { replace: true });
@@ -120,14 +127,13 @@ export default function Discover() {
     setParams({}, { replace: true });
   };
 
-  const hasFilters = !!query || !!activeMood || !!activeWorld;
+  const hasFilters = !!query || !!activeMood || !!activeTag || !!activeWorld;
 
   return (
     <div className="k-page">
       <div className="k-page-head">
         <div>
-          <h1 className="k-page-title">{en ? 'Explore' : 'ディスカバー'}</h1>
-          <p className="k-page-sub">{en ? 'Find someone new through moods and worlds.' : '気分やワールドから、まだ知らない誰かに出会おう。'}</p>
+          <h1 className="k-page-title">{en ? 'Explore' : 'さがす'}</h1>
         </div>
       </div>
 
@@ -141,7 +147,7 @@ export default function Discover() {
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.nativeEvent.isComposing) rememberQuery();
             }}
-            placeholder={en ? 'Search by name, personality or mood…' : '名前、性格、雰囲気で探す…'}
+            placeholder={en ? 'Search by name, or #tag' : '名前や #タグ で探す'}
             aria-label={en ? 'Search characters' : 'キャラクターを検索'}
           />
         </div>
@@ -158,16 +164,12 @@ export default function Discover() {
             </button>
           </div>
         )}
-        {moods.length > 0 && (
-          <div className="k-chip-row" role="group" aria-label={en ? 'Filter by mood' : '気分で絞り込む'}>
-            <button className={`k-chip ${!activeMood ? "k-chip--active" : ""}`} onClick={() => setParam("mood", null)} aria-pressed={!activeMood}>
-              {en ? 'All' : 'すべて'}
-            </button>
-            {moods.map((m) => (
-              <button key={m.tag} className={`k-chip ${activeMood === m.tag ? "k-chip--active" : ""}`} onClick={() => setParam("mood", activeMood === m.tag ? null : m.tag)} aria-pressed={activeMood === m.tag}>
-                <span aria-hidden="true">{m.icon ?? "✦"}</span> {m.label}
-              </button>
-            ))}
+        {popularTags.length > 0 && (
+          <div className="k-chip-row k-chip-row--scroll" role="group" aria-label={en ? 'Filter by tag' : 'タグで絞り込む'}>
+            {popularTags.map((tag) => {
+              const on = !!activeTag && tagKey(activeTag) === tagKey(tag);
+              return <button key={tag} className={`k-chip ${on ? "k-chip--active" : ""}`} onClick={() => setParam("tag", on ? null : tag)} aria-pressed={on}>#{tag}</button>;
+            })}
           </div>
         )}
       </div>
@@ -200,7 +202,7 @@ export default function Discover() {
       <section className="k-section">
         <div className="k-section__head">
           <h2 className="k-section__title">
-            <span className="k-section__mark">✦</span> {activeMoodLabel ? (en ? `${activeMoodLabel} characters` : `${activeMoodLabel}なキャラクター`) : (en ? 'Characters' : 'キャラクター')}
+            <span className="k-section__mark">✦</span> {activeMoodLabel ? (en ? `${activeMoodLabel} characters` : `${activeMoodLabel}のキャラ`) : (en ? 'Characters' : 'キャラ')}
           </h2>
           {!loading && !loadError && <span className="k-count">{en ? `${filteredCharacters.length} ${filteredCharacters.length === 1 ? 'character' : 'characters'}` : `${filteredCharacters.length}人`}</span>}
         </div>
@@ -213,12 +215,11 @@ export default function Discover() {
         ) : filteredCharacters.length === 0 ? (
           <EmptyState
             mascot="shy"
-            title={en ? 'No characters found' : '見つからなかったみたい'}
-            description={en ? 'Try another search or mood. You can also import characters from an external Hub.' : 'ことばや気分を変えて、もう一度さがしてみよう。外部Hubから連れてくることもできるよ。'}
+            title={!hasFilters ? (en ? 'No characters yet.' : 'まだキャラがいません。') : en ? `No characters match “${query.trim() || activeMoodLabel || activeWorldInfo?.display_name}”.` : `「${query.trim() || activeMoodLabel || activeWorldInfo?.display_name}」に合うキャラは見つかりませんでした。`}
             action={
               hasFilters ? (
                 <Button variant="secondary" onClick={clearFilters}>
-                  {en ? 'Reset filters' : '絞り込みをリセット'}
+                  {en ? 'Reset filters' : '条件をリセット'}
                 </Button>
               ) : undefined
             }
@@ -226,43 +227,12 @@ export default function Discover() {
         ) : (
           <div className="k-grid k-grid--characters">
             {filteredCharacters.map((c) => (
-              <CharacterCard key={c.id} id={c.id} displayName={c.display_name} hook={c.description} creator={c.official ? "Kyalulu Official" : en ? 'My library' : 'マイライブラリ'} tags={c.tags ?? []} portraitUrl={c.portrait_url} talks={talks.get(c.id)} />
+              <CharacterCard key={c.id} id={c.id} displayName={c.display_name} hook={c.hook || c.description} creator={c.official ? "Kyalulu Official" : en ? 'My library' : 'マイライブラリ'} tags={c.tags ?? []} portraitUrl={c.portrait_url} talks={talks.get(c.id)} />
             ))}
           </div>
         )}
       </section>
 
-      <CommunityWorks query={query} />
-      <section className="k-section k-hub-section">
-        <div className="k-section__head">
-          <div>
-            <h2 className="k-section__title">
-              <span className="k-section__mark">✦</span> {en ? 'Import from external Hubs' : '外部Hubから連れてくる'}
-            </h2>
-            <p className="k-page-sub">{en ? 'Find public character cards and import them into your library.' : '公開されているキャラクターカードを探して、マイライブラリに取り込めます。'}</p>
-          </div>
-        </div>
-        {administrative ? <div className="k-chip-row" role="tablist" aria-label={en ? 'Choose a Hub' : 'Hubを選ぶ'}>
-          {(["taverncard", "sillytavern"] as const).map((value) => (
-            <button key={value} role="tab" aria-selected={hubSource === value} className={`k-chip ${hubSource === value ? "k-chip--active" : ""}`} onClick={() => setHubSource(hubSource === value ? null : value)}>
-              <Icon name="search" size={13} /> {value === "taverncard" ? (en ? 'Search TavernCard' : 'TavernCardを検索') : (en ? 'Browse SillyTavern Content' : 'SillyTavern Contentを見る')}
-            </button>
-          ))}
-          <Link to="/create?import=url" className="k-chip">
-            <Icon name="external" size={13} /> {en ? 'Import from URL' : 'URLから取り込む'}
-          </Link>
-          <Link to="/create?import=characterai" className="k-chip">
-            <Icon name="arrow" size={13} /> {en ? 'Import from Character.AI' : 'Character.AIから移行'}
-          </Link>
-        </div> : <p>{en ? 'Hub search and URL retrieval run on a PC with management access. On this device, import files from Create.' : 'Hubの検索やURLからの取得はサーバー側のPCで行えます。この端末では「つくる」からファイルを取り込めます。'}</p>}
-        {administrative && hubSource && <HubBrowser key={hubSource} source={hubSource} />}
-        <details className="k-hub-more">
-          <summary>{en ? 'Open other Hub sites' : 'ほかのHubサイトを開く'}</summary>
-          <div className="k-hubs">
-            <HubLinks />
-          </div>
-        </details>
-      </section>
     </div>
   );
 }

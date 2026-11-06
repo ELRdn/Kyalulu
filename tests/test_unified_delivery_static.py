@@ -24,7 +24,7 @@ def hosted(tmp_path):
 async def test_cloud_documents_keep_isolation_worker_scope_and_no_transform(hosted):
     app, _ = hosted
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='https://app.test') as client:
-        for path in ('/', '/index.html', '/conversation/fixture'):
+        for path in ('/', '/index.html', '/chats/fixture'):
             response = await client.get(path, headers={'Accept': 'text/html'})
             assert response.status_code == 200 and response.text == '<html>main</html>'
             assert response.headers['cache-control'] == 'no-store, no-transform'
@@ -73,3 +73,22 @@ async def test_missing_document_builds_remain_closed(hosted):
             (dist / name / 'index.html').unlink()
             response = await client.get(f'/{name}/', headers={'Accept': 'text/html'})
             assert response.status_code == 503 and response.json()['error'] == name + '_shell_not_built'
+
+
+@pytest.mark.asyncio
+async def test_public_routes_render_metadata_and_text_for_crawlers(hosted):
+    app, dist = hosted
+    (dist / 'index.html').write_text('<html><head><title>Kyalulu</title><meta name="description" content="generic">'
+                                     '<meta property="og:title" content="Kyalulu"></head><body><div id="root"></div></body></html>', encoding='utf-8')
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='https://app.test') as client:
+        page = await client.get('/characters/butler', headers={'Accept': 'text/html'})
+        assert page.status_code == 200 and page.text.count('<title>') == 1 and '<title>シオン執事 | Kyalulu</title>' in page.text
+        assert '<link rel="canonical" href="https://app.test/characters/butler">' in page.text
+        assert 'content="https://app.test/icons/shion-butler-1.png"' in page.text and 'content="generic"' not in page.text
+        assert '<div id="root"><main><article><h1>シオン執事</h1>' in page.text
+        listing = await client.get('/discover', headers={'Accept': 'text/html'})
+        assert 'href="/characters/butler"' in listing.text and 'href="/characters/mocha_sfw"' in listing.text
+        assert 'href="/characters/mocha"' not in listing.text  # NSFW characters stay out of public pages
+        for path in ('/characters/mocha', '/characters/private-library-id', '/'):
+            response = await client.get(path, headers={'Accept': 'text/html'})
+            assert response.status_code == 200 and '<div id="root"></div>' in response.text

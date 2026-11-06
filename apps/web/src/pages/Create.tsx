@@ -26,6 +26,10 @@ import { useAdministrative, useRuntimeAccess } from '../components/RuntimeGate';
 import { scopedKey } from '../lib/remoteStore';
 import { cloudOwner } from '../lib/cloudMode';
 import { useLanguage } from '../lib/appContext';
+import CharacterCard from '../components/ui/CharacterCard';
+import CloudLogin from '../components/CloudLogin';
+import { fetchBrowseCatalog, isCloudGuest } from '../lib/cloudGuest';
+import type { CharacterInfo } from '../lib/api';
 
 type Draft = { document: PortableDocument; selected: boolean; histories: number[]; target?: LibraryItem; rating?: 'sfw' | 'nsfw'; copy?: boolean };
 const formats = ['ccv3-json', 'ccv3-png', 'charx', 'ccv2-json', 'ccv2-png', 'backup', 'original'];
@@ -40,9 +44,36 @@ const creationOptions = [
 ] as const;
 
 export default function Create() {
-  useRuntimeAccess();
+  const guest = isCloudGuest(useRuntimeAccess());
   // An account/host change must tear down the previous owner's editor state.
-  return <CreateWorkspace key={scopedKey('kyalulu-create')} />;
+  return guest ? <GuestCreate /> : <CreateWorkspace key={scopedKey('kyalulu-create')} />;
+}
+
+/** Guests see a finished example and the three things to decide; the CTA opens the login sheet (docs/MOBILE_UX_SPEC.md §5.7). */
+function GuestCreate() {
+  const en = useLanguage() === 'en';
+  const [sample, setSample] = useState<CharacterInfo | null>(null);
+  const [loginOpen, setLoginOpen] = useState(false);
+  useDocumentTitle(en ? 'Create' : 'つくる');
+  useEffect(() => {
+    let active = true;
+    fetchBrowseCatalog(true).then(([c]) => { if (active) setSample(c.find(x => x.official && x.hook) ?? c[0] ?? null); }).catch(() => { /* The example is optional. */ });
+    return () => { active = false; };
+  }, []);
+  const steps = en ? ['Name and look', 'One line that sets the scene', 'The first line they say'] : ['名前と姿', '場面の一言', '最初のセリフ'];
+  return <div className="k-page k-create k-create--guest">
+    <h1 className="k-page-title">{en ? 'Create' : 'つくる'}</h1>
+    <section className="k-create-guest" aria-labelledby="k-create-guest-title">
+      <h2 id="k-create-guest-title">{en ? 'Just decide three things' : '3つ決めるだけ'}</h2>
+      <ol>{steps.map(step => <li key={step}>{step}</li>)}</ol>
+      <Button onClick={() => setLoginOpen(true)}><Icon name="plus" size={16} /> {en ? 'Create a character' : 'キャラをつくる'}</Button>
+    </section>
+    {sample && <section className="k-section" aria-label={en ? 'Example' : '完成見本'}>
+      <h2 className="k-section__title k-section__title--sm">{en ? 'Example' : '完成見本'}</h2>
+      <div className="k-grid k-grid--characters"><CharacterCard id={sample.id} displayName={sample.display_name} hook={sample.hook || sample.description} tags={sample.tags ?? []} creator="Kyalulu Official" portraitUrl={sample.portrait_url} /></div>
+    </section>}
+    {loginOpen && <CloudLogin returnTo="/create?edit=new" onClose={() => setLoginOpen(false)} />}
+  </div>;
 }
 
 function CreateWorkspace() {
@@ -100,7 +131,7 @@ function CreateWorkspace() {
     :message.kind==='saved'?(en?`Saved to ${storageLabel}. Existing conversations keep the settings they started with.`:`${storageLabel}に保存しました。これまでの会話は、はじめた時点の設定のまま続きます。`)
     :message.kind==='draft'?(en?'A temporary draft was saved in this browser. Use Save to store it in your library.':'一時下書きをこのブラウザーに保存しました。ライブラリへの保存は「保存」ボタンで行います。')
     :(en?`Reviewed version ${message.revision}. Use Save as a new version to save this draft.`:`版${message.revision}を確認しました。「新しい版として保存」でこの下書きを保存できます。`);
-  useDocumentTitle(en?'Create':'クリエイト');
+  useDocumentTitle(en?'Create':'つくる');
   useEffect(() => { if (!adult) setIncludeNsfw(false); }, [adult]);
   // 編集・確認モードへ切り替わったら画面の先頭から見せる（下に追加されて気づけない問題の対策）
   useEffect(() => { window.document.getElementById('main')?.scrollTo({ top: 0, behavior: 'smooth' }); }, [!!previewId, query.get('edit')]);
@@ -297,14 +328,13 @@ function CreateWorkspace() {
   </div>;
 
   return <div className="k-page k-create">
-    <div className="k-page-head"><div><p className="k-studio-kicker">{en?'My library':'マイライブラリ'}</p><h1 className="k-page-title">{en?'Create':'クリエイト'}</h1><p className="k-page-sub">{en?'Bring characters and worlds together in a plot.':'キャラクターと世界を、ひとつのプロットに。'}</p></div>
-      <Button onClick={() => setChooserOpen(true)}><Icon name="plus" size={16} /> {en?'Create new':'新しく作る'}</Button></div>
+    <div className="k-page-head"><div><p className="k-studio-kicker">{en?'My library':'マイライブラリ'}</p><h1 className="k-page-title">{en?'Create':'つくる'}</h1><p className="k-page-sub">{en?'Bring characters and worlds together in a plot.':'キャラクターと世界を、ひとつのプロットに。'}</p></div>
+      <Button onClick={() => setChooserOpen(true)}><Icon name="plus" size={16} /> {en?'Create new':'新しくつくる'}</Button></div>
     {banners}
     <div className="k-create-storage" role="note"><Icon name={cloud ? 'lock' : 'library'} size={15} /><span>{en?'Library location: ':'ライブラリの保存先：'}{storageLabel}{cloud ? (en?' · Shared within your account · General content':' · アカウント内で共有 · 全年齢の内容') : ''}</span><Link to="/create/settings">{en?'Persona and world settings':'ペルソナ・世界観の設定'}</Link></div>
-    <section className="k-create-start" aria-labelledby="k-create-start-title"><div><h2 id="k-create-start-title">{en?'Start a story':'物語をはじめよう'}</h2><p>{en?'Create plots, lorebooks and generation presets in your own words.':'プロット・設定集・生成プリセットを、自分の言葉で作れます。'}</p></div><Button variant="secondary" onClick={() => setChooserOpen(true)}><Icon name="plus" size={16} /> {en?'Choose what to create':'作るものを選ぶ'}</Button></section>
     {lastPreview && <div className="k-create-resume"><div><strong>{en?'A temporary import draft is available':'取り込みの一時下書きがあります'}</strong><p>{en?'Continue reviewing unsaved content. If the import expired, load the original file again.':'保存前の内容を続きから確認できます。取り込みの有効期限が切れた場合は、原本を再度読み込んでください。'}</p></div><Button variant="secondary" size="sm" onClick={() => setQuery({ preview: lastPreview }, { replace: true })}>{en?'Resume draft':'下書きを再開'}</Button></div>}
-    <section id="k-create-import-section" className="k-section" aria-label={en?'Import':'取り込む'}>
-      <h2 className="k-section__title"><span className="k-section__mark">✦</span> {en?'Import plots and lorebooks':'プロット・設定集を取り込む'}</h2>
+    <details id="k-create-import-section" className="k-section k-create-import-line" aria-label={en?'Import':'取り込む'} open={query.get('import') ? true : undefined}>
+      <summary><Icon name="upload" size={16} /> {en?'Import from a file':'ファイルから取り込む'}</summary>
       <div className="k-create-import">
         <div className={`k-create-drop ${dragging ? 'is-dragging' : ''} ${busy ? 'is-busy' : ''}`} onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={e => { e.preventDefault(); setDragging(false); importFile(e.dataTransfer.files[0]); }}>
           <span className="k-create-drop__icon" aria-hidden="true"><Icon name="upload" size={26} /></span>
@@ -325,12 +355,12 @@ function CreateWorkspace() {
         </details>
         {administrative && !cloud && <details><summary>{en?'Open external Hub sites':'外部Hubサイトを開く'}</summary><div className="k-create-more__body"><HubLinks /></div></details>}
       </div>
-    </section>
+    </details>
 
     <section className="k-section" aria-label={en?'My library':'マイライブラリ'}>
       <div className="k-section__head"><h2 className="k-section__title"><span className="k-section__mark">✦</span> {en?'My library':'マイライブラリ'} <span className="k-count">{countItems(items.length)}</span></h2>
         {adult && <label className="k-create-check k-create-check--sm"><input type="checkbox" checked={includeNsfw} onChange={e => setIncludeNsfw(e.target.checked)} /> {en?'Include adult content':'成人向けも表示'}</label>}</div>
-      {items.length === 0 ? <EmptyState mascot="wink" title={en?'Create your first plot':'最初のプロットを作ろう'} description={en?'Choose Create new, or import a favorite character card.':'「新しく作る」から作成するか、お気に入りのキャラクターカードを取り込めます。'} action={<Button variant="secondary" onClick={() => setChooserOpen(true)}><Icon name="plus" size={15} /> {en?'Create new':'新しく作る'}</Button>} />
+      {items.length === 0 ? <EmptyState mascot="wink" title={en?'Create your first plot':'最初のプロットを作ろう'} description={en?'Choose Create new, or import a favorite character card.':'「新しく作る」から作成するか、お気に入りのキャラクターカードを取り込めます。'} action={<Button variant="secondary" onClick={() => setChooserOpen(true)}><Icon name="plus" size={15} /> {en?'Create new':'新しくつくる'}</Button>} />
         : <div className="k-create-library">{items.map(item => <article key={item.id} className="k-lib-card">
           <button type="button" className="k-lib-card__main" onClick={() => openEditor(item.id)} aria-label={en?`Edit ${item.document.name}`:`${item.document.name}を編集`}>
             <Avatar name={item.document.name} seed={item.id} size="lg" src={portraitOf(item)} />
@@ -353,7 +383,7 @@ function CreateWorkspace() {
         try { saved = draftOwnerKnown && !!sessionStorage.getItem(storageKey('editor', `new-${option.kind}`)); } catch { /* Creation remains available when browser storage is disabled. */ }
         return <button key={option.kind} type="button" className={`k-create-choice${option.kind === 'character' ? ' k-create-choice--primary' : ''}`} onClick={() => openEditor('new', option.kind)}><span className="k-create-choice__icon"><Icon name={option.icon} size={22} /></span><span><strong>{option.title[en?1:0]}</strong><small>{option.description[en?1:0]}</small>{saved && <span className="k-create-choice__draft">{en?'Resume temporary draft':'一時下書きから再開'}</span>}</span><Icon name="chevron" size={18} /></button>;
       })}</div>
-      <button type="button" className="k-create-choice k-create-choice--import" onClick={() => { setChooserOpen(false); window.document.getElementById('k-create-import-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}><span className="k-create-choice__icon"><Icon name="upload" size={22} /></span><span><strong>{en?'Import files or text':'ファイル・テキストから取り込む'}</strong><small>{en?'Load your character cards or settings.':'手元のキャラクターカードや設定を読み込みます。'}</small></span><Icon name="chevron" size={18} /></button>
+      <button type="button" className="k-create-choice k-create-choice--import" onClick={() => { setChooserOpen(false); const section = window.document.getElementById('k-create-import-section') as HTMLDetailsElement | null; if (section) section.open = true; section?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}><span className="k-create-choice__icon"><Icon name="upload" size={22} /></span><span><strong>{en?'Import files or text':'ファイル・テキストから取り込む'}</strong><small>{en?'Load your character cards or settings.':'手元のキャラクターカードや設定を読み込みます。'}</small></span><Icon name="chevron" size={18} /></button>
     </Dialog>
 
     <Dialog open={!!exportItem} onClose={() => setExportItem(null)} labelledBy="k-export-title" wide>

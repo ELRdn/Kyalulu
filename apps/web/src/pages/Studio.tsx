@@ -113,7 +113,7 @@ export default function Studio() {
         <StudioLink to="/chats" icon="chat" label={en ? 'Try in chat' : 'チャットで試す'} desc={en ? 'Check settings in a conversation' : '設定を会話で確認'} />
         <StudioLink to="/research" icon="flask" label="Research" desc={en ? 'A/B/C comparisons and leaderboard' : 'A/B/C比較・リーダーボード'} />
         <StudioLink to="/status" icon="globe" label="Status" desc={en ? 'Provider status' : 'プロバイダの稼働状況'} />
-        <StudioLink to="/create" icon="pen" label={en ? 'Create' : 'クリエイト'} desc={en ? 'Import, edit and export' : '取り込み・編集・書き出し'} />
+        <StudioLink to="/create" icon="pen" label={en ? 'Create' : 'つくる'} desc={en ? 'Import, edit and export' : '取り込み・編集・書き出し'} />
       </div>
     </div>
   );

@@ -162,7 +162,7 @@ async def main():
                     summaries = await page.evaluate('''async id=>{const s=await import('/src/lib/appStore.ts');return (await s.entity(id)).payload.summaries;}''', SESSION)
                     assert summaries == expected_summaries(regenerated, regenerated=True)
                     # Closed tools are lazy, but opening them retains their original functionality and edit draft.
-                    await page.get_by_role('button', name='Open information panel' if en else '情報パネルを開く', exact=True).click()
+                    await page.get_by_role('button', name='Conversation settings' if en else '会話設定', exact=True).click()
                     panel = page.get_by_role('dialog', name='Conversation information' if en else '会話の情報', exact=True)
                     await panel.get_by_text('Review and correct conversation summaries' if en else '会話の要約を確認・訂正', exact=True).click()
                     await panel.get_by_text('Chapter summary' if en else '章の要約', exact=False).first.wait_for()

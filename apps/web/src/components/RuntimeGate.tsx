@@ -12,6 +12,7 @@ import { isCloud } from '../lib/cloudMode';
 import { loginPath } from '../lib/cloudGuest';
 import { rememberOwner, clearDeviceOwner, useLanguage } from '../lib/appContext';
 import { friendlyMessage } from '../lib/errors';
+import { ExecutionPicker } from './UnifiedEntry';
 
 type Access = { remote_mode: boolean; authenticated: boolean; administrative?: boolean; device_name?: string; cloud_mode?: boolean };
 const AccessContext = createContext<Access>({ remote_mode: false, authenticated: true });
@@ -99,7 +100,7 @@ export default function RuntimeGate({ children }: { children: ReactNode }) {
   if (access?.cloud_mode) return <AccessContext.Provider key={connectionScope()} value={access}><CloudRouteChoice authenticated={access.authenticated}>{children}</CloudRouteChoice></AccessContext.Provider>;
   if (access?.authenticated) return <AccessContext.Provider key={connectionScope()} value={access}>{children}</AccessContext.Provider>;
   return <main className="k-connect-screen"><div className="k-connect-screen__body">
-    <div className="k-connect-screen__brand">Kyalulu ✦</div>
+    <div className="k-connect-screen__brand">Kyalulu ✦</div><ExecutionPicker/>
     <h1>{access ? (en?'Your conversations on this device.':'いつもの会話を、この端末で。') : (en?'Connect to the conversation server':'会話のサーバーに接続')}</h1>
     <p className="k-connect-screen__intro">{access ? (en?'Enter the registration code issued by the server to connect this device.':'サーバーで発行した登録コードを入力して、この端末をつなぎます。') : (en?'Checking the server that stores your characters, conversations and memories.':'キャラ・会話・記憶を保管しているサーバーを確認しています。')}</p>
     <section className="k-connection" aria-label={en?'Device registration':'端末登録'}>

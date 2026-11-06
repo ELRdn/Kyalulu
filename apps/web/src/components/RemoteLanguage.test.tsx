@@ -18,9 +18,11 @@ vi.mock('../lib/appContext',async original=>({...await original<typeof import('.
 vi.mock('../lib/remoteStore',()=>({activeRemote:()=>fixture.active,remoteDevices:fixture.devices,deleteRemote:fixture.remove,
   restoreRemote:vi.fn(),selectRemote:fixture.select,connectionScope:()=> 'fixture-scope'}));
 vi.mock('../lib/transport',()=>({apiFetch:fixture.api}));
+vi.mock('./UnifiedEntry',()=>({ExecutionPicker:()=>null}));
 vi.mock('../lib/cloud',()=>({setCloud:vi.fn(),setCloudOwner:vi.fn()}));
 vi.mock('../lib/accountProfile',()=>({refreshAccountProfile:fixture.refresh}));
-vi.mock('react-router-dom',()=>({useLocation:()=>({pathname:'/chats/fixture',search:''}),useNavigate:()=>fixture.navigate}));
+vi.mock('react-router-dom',()=>({useLocation:()=>({pathname:'/chats/fixture',search:''}),useNavigate:()=>fixture.navigate,
+  Link:({to,children}:{to:string;children:ReactNode})=><a href={to}>{children}</a>}));
 vi.mock('./ConnectionSettings',()=>({default:()=>null}));
 vi.mock('./CloudRouteChoice',()=>({default:()=>null}));
 const device={id:'fictional-key',name:'原文の端末',hostName:'原文のPC',hostId:'host-fixture',relay:'https://relay.example.test',
@@ -75,7 +77,7 @@ it('translates relay connection status while preserving authored host names',()=
   for(const language of ['ja','en']){
     fixture.language=language;
     const html=renderToStaticMarkup(view(RemoteBanner,[true]));
-    expect(html).toContain(device.hostName);expect(html).toContain('href="#/profile"');
+    expect(html).toContain(device.hostName);expect(html).toContain('href="/profile"');
     expect(html).toContain(language==='en'?'Encrypted connection':'暗号化接続中');
     expect(html).toContain(language==='en'?'Conversations saved on PC':'会話はPCに保存');
     expect(html).not.toContain(device.privateKey);
