@@ -145,7 +145,7 @@ def main():
                 assert manifest['display'] == 'standalone'
                 assert {192, 512} <= {int(i['sizes'].split('x')[0]) for i in manifest['icons']}
                 context.set_offline(True)
-                expect(page.get_by_text('オフライン · 会話には接続が必要です', exact=True)).to_be_visible()
+                expect(page.get_by_text('電波が迷子みたい…つながったら戻るね', exact=True)).to_be_visible()
                 page.reload(wait_until='domcontentloaded')
                 expect(page.get_by_role('heading', name='会話のサーバーに接続', exact=True)).to_be_visible()
                 expect(page.get_by_role('button', name='もう一度接続する', exact=True)).to_be_enabled()

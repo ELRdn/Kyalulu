@@ -54,7 +54,7 @@ function GuestChats() {
   return (
     <div className="k-page" style={{ maxWidth: 780 }}>
       <h1 className="k-page-title">{en ? 'Chats' : 'トーク'}</h1>
-      <EmptyState mascot="default" title={en ? 'The characters you talk with will appear here.' : '話した相手がここに並びます'}
+      <EmptyState mascot="default" title={en ? 'The characters you talk with will appear here.' : '話した相手が、ここに並ぶよ'}
         action={<button type="button" className="k-text-link" onClick={() => setLoginOpen(true)}>{en ? 'Already have an account? Sign in' : 'ログインして続きを見る'}</button>} />
       <Suggestions characters={characters} />
       {loginOpen && <CloudLogin returnTo="/chats" onClose={() => setLoginOpen(false)} />}
@@ -162,7 +162,7 @@ function MemberChats() {
         <>
           <EmptyState
             mascot={query ? "shy" : "default"}
-            title={query ? (en ? 'No matching chats' : '見つからなかったみたい') : (en ? "You haven't talked with anyone yet." : 'まだ誰とも話していません。')}
+            title={query ? (en ? 'No matching chats' : '見つからなかったみたい…') : (en ? "You haven't talked with anyone yet." : 'まだ誰ともお話してないね')}
             description={query ? (en ? 'Try another search.' : '別のことばで探してみよう。') : undefined}
             action={
               !query && (

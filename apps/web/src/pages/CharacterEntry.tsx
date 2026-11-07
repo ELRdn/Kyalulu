@@ -163,11 +163,11 @@ export default function CharacterEntry() {
       <div className="k-page">
         <EmptyState
           mascot="cry"
-          title={en ? 'Character not found' : 'キャラクターが見つかりません'}
+          title={en ? 'Character not found' : 'この子とは、いまは話せないみたい…'}
           description={en ? 'The character may have been deleted, or the URL may be incorrect.' : '削除されたか、URLが間違っている可能性があります。'}
           action={
             <Button variant="secondary" onClick={() => navigate("/discover")}>
-              {en ? 'Back to Explore' : 'さがすに戻る'}
+              {en ? 'Back to Explore' : '似たキャラを見る'}
             </Button>
           }
         />

@@ -35,7 +35,7 @@ export default function CloudQuoteConfirmation({ quote, onAccept, onCancel, onPr
         onChange={event => onProviderTrainingConsentChange?.(event.target.checked)} />
       <span>{en ? 'Agree to Baidu storage and training use' : 'Baiduの保存・学習利用に同意する'}</span>
     </label>
-    <p className="k-quote__expires" role={remaining === 0 ? 'status' : undefined}>{remaining === 0 ? (en ? 'This quote expired. Cancel and send again to request a new quote.' : '見積もりの期限が切れました。キャンセルして再送信してください。') : (en ? `Expires in ${remaining} seconds` : `有効期間：残り${remaining}秒`)}</p>
+    <p className="k-quote__expires" role={remaining === 0 ? 'status' : undefined}>{remaining === 0 ? (en ? 'This quote expired. Cancel and send again to request a new quote.' : '待たせすぎちゃったみたい…キャンセルして、もう一度送ってね。期限が切れたので、料金はかかっていません。') : (en ? `Expires in ${remaining} seconds` : `有効期間：残り${remaining}秒`)}</p>
     <div className="k-quote__actions">
       <Button variant="secondary" onClick={onCancel}>{en ? 'Cancel' : 'キャンセル'}</Button>
       <Button disabled={disabled} onClick={() => { if (!disabled) onAccept(); }}>{en ? 'Send' : '送信する'}</Button>

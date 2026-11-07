@@ -34,7 +34,7 @@ export function refreshAccountProfile(): Promise<void> {
   const run=queue.catch(()=>{}).then(async()=>{
     if (cloudEpoch()!==epoch || !isCloud()) return;
     try {await read(owner,epoch);state={...state,error:''};emit();}
-    catch {if(cloudEpoch()===epoch){state={...state,error:'アカウントを同期できませんでした。接続を確認して再試行してください。'};emit();}}
+    catch {if(cloudEpoch()===epoch){state={...state,error:'同期の途中でつまずいちゃった…接続を確認して、もう一度試してね'};emit();}}
   });
   queue=run;return run;
 }

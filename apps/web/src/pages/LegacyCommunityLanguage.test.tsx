@@ -183,7 +183,7 @@ it('retains comment text and the send ID on failure, relocalizes the cause, and 
   const id = vi.mocked(community.workComments).mock.calls[1][2], before = counts();
   for (const language of ['en', 'ja', 'en']) {
     fixture.language = language; const result = view(); tree = result.tree;
-    expect(result.html).toContain(language === 'en' ? 'Could not connect to the server.' : 'サーバーに接続できませんでした。');
+    expect(result.html).toContain(language === 'en' ? 'Could not connect to the server.' : 'うまくつながらないみたい…');
     expect(field(tree, 2000).props.value).toBe(draft); expect(counts()).toEqual(before);
   }
   submit(tree); await settled();
@@ -305,7 +305,7 @@ it.each(['work', 'comments', 'author', 'related'])('relocalizes stored %s failur
   view(component); const before = counts();
   for (const language of ['en', 'ja', 'en']) {
     fixture.language = language;
-    expect(view(component).html).toContain(language === 'en' ? 'Could not connect to the server.' : 'サーバーに接続できませんでした。');
+    expect(view(component).html).toContain(language === 'en' ? 'Could not connect to the server.' : 'うまくつながらないみたい…');
     expect(counts()).toEqual(before); expect(fixture.states[errorIndex]).toEqual({ cause });
   }
 });

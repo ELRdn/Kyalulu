@@ -87,7 +87,7 @@ it('retains run failures for display in either language without retrying',async(
   await button(populated(),'▶ Run').props.onClick();
   expect(renderToStaticMarkup(render())).toContain('Could not connect to the server.');
   hooks.language='ja';const html=renderToStaticMarkup(render());
-  expect(html).toContain('サーバーに接続できませんでした。');expect(html).toContain('role="alert"');
+  expect(html).toContain('うまくつながらないみたい…');expect(html).toContain('role="alert"');
   expect(runExperiments).toHaveBeenCalledTimes(1);
 });
 

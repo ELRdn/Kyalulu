@@ -217,7 +217,7 @@ it('keeps an expired Baidu quote unsendable even after checking consent', () => 
     expiresAt: Date.now() - 1000, trainingConsent: false, providerTrainingConsent: true,
     route: { display_name: 'Baidu', provider: 'openrouter', model: 'fixture', training_consent_required: true } }}
     onAccept={accept} onCancel={vi.fn()} />);
-  expect(html).toContain('見積もりの期限が切れました');
+  expect(html).toContain('待たせすぎちゃったみたい…');
   expect(html).toContain('role="status"');
   expect(html).toMatch(/<input[^>]*checked=""/);
   expect(html).toMatch(/<button[^>]*disabled=""[^>]*>送信する/);

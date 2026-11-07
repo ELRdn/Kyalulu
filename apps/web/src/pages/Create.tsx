@@ -203,7 +203,7 @@ function CreateWorkspace() {
     if (!preview || !drafts.length || !currentScope()) return;
     if (!draftOwnerKnown) { setDraftSaved(false); setError('アカウントを確認できないため、一時下書きを保存できません。ログイン状態を確認してください。'); return; }
     try { sessionStorage.setItem(storageKey('preview', preview.preview_id), JSON.stringify({ drafts, pending: pending.current })); sessionStorage.setItem(`${draftPrefix}:last-preview`, preview.preview_id); setLastPreview(preview.preview_id); setDraftSaved(true); }
-    catch { setDraftSaved(false); setError('一時下書きを保存できませんでした。入力はこの画面に残っています。'); }
+    catch { setDraftSaved(false); setError('保存できなかった…書いた内容はこの画面に残ってるよ'); }
   }, [preview, drafts]);
   useEffect(() => {
     if (!dirty && !preview) return;

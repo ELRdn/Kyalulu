@@ -91,7 +91,7 @@ export default function CloudLogin({ returnTo = '/', characterName, onClose }: {
   const regionNames=typeof Intl.DisplayNames==='function'?new Intl.DisplayNames([language],{type:'region'}):null;
   const cause=message&&typeof message==='object'?message.cause:null;
   const detail=cause&&typeof cause==='object'&&'code' in cause&&typeof cause.code==='string'?cause.code:cause;
-  const notice=message==='email'?(en?'A sign-in email was sent. Open its link in this browser.':'確認メールを送りました。このブラウザでリンクを開いてください。'):message==='disclosure'?(en?'The provider disclosure has changed. Reload the login status to review the current details.':'接続先の説明が更新されています。ログイン状態を再確認し、現在の内容を確認してください。'):message?friendlyMessage(detail,language):'';
+  const notice=message==='email'?(en?'A sign-in email was sent. Open its link in this browser.':'メールを送ったよ。このブラウザでリンクを開いてね。届かないときは迷惑メールも確認してね'):message==='disclosure'?(en?'The provider disclosure has changed. Reload the login status to review the current details.':'接続先の説明が更新されています。ログイン状態を再確認し、現在の内容を確認してください。'):message?friendlyMessage(detail,language):'';
   const chooseCountry=(code:string)=>{setCountry(code);setConsent(false);if(!analyticsTouched.current){const on=analyticsConsent()!=='denied'&&!ANALYTICS_OPT_IN.has(code);analyticsChoice.current=on;setAnalyticsEnabled(on);}};
   useEffect(()=>{if(!analyticsTouched.current&&ANALYTICS_OPT_IN.has(country)){analyticsChoice.current=false;setAnalyticsEnabled(false);}},[country]);
   const body=<div className="k-connect-screen__body">

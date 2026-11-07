@@ -141,7 +141,7 @@ it('renders retained exploration failures and source download constraints in eit
   const error = { cause: Error('Failed to fetch') };
   expect(renderToStaticMarkup(discover('', error))).toContain('Could not connect to the server');
   fixture.language = 'ja';
-  expect(renderToStaticMarkup(discover('', error))).toContain('サーバーに接続できません');
+  expect(renderToStaticMarkup(discover('', error))).toContain('うまくつながらないみたい…');
   for (const message of ['未対応のブラウザー取得先です。', '配布元がこの形式・利用条件での取得を許可していません。',
     '公開コンテンツが見つかりません。', '配布元の取得制限です。時間を置いて再試行してください。',
     'ファイルが32 MiBを超えています。', '取得データがありません。', '配布元のエラー（HTTP 503）']) {
@@ -279,11 +279,11 @@ it('retains the explicit account save and composing-Enter guard in both profile 
 });
 
 it('localizes retained profile/account failures and keeps unverified counts hidden', () => {
-  fixture.cloud = true; fixture.profileError = 'アカウントを同期できませんでした。接続を確認して再試行してください。';
+  fixture.cloud = true; fixture.profileError = '同期の途中でつまずいちゃった…接続を確認して、もう一度試してね';
   for (const language of ['ja', 'en']) {
     fixture.language = language;
     const html = renderToStaticMarkup(profile({ cause: Error('Failed to fetch') }));
-    expect(html).toContain(language === 'en' ? 'Your account could not be synced.' : 'アカウントを同期できませんでした。');
+    expect(html).toContain(language === 'en' ? 'Your account could not be synced.' : '同期の途中でつまずいちゃった…');
     expect(html).not.toContain('k-profile-stats');
   }
   fixture.pending = 1;

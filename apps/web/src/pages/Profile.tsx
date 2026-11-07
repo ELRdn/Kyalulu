@@ -131,12 +131,12 @@ export function MemberProfile() {
         <section className="k-section">
           <h2 className="k-section__title">{en?'Saved characters':'保存したキャラ'}</h2>
           {savedCharacters.length ? <div className="k-grid k-grid--characters">{savedCharacters.map(card)}</div>
-            : <EmptyState mascot="wink" title={en?'Characters you save appear here.':'気になるキャラを保存すると、ここに並びます。'} action={<Button variant="secondary" onClick={() => navigate('/discover')}>{en?'Find characters':'キャラをさがす'}</Button>} />}
+            : <EmptyState mascot="wink" title={en?'Characters you save appear here.':'気になる子を保存すると、ここに並ぶよ'} action={<Button variant="secondary" onClick={() => navigate('/discover')}>{en?'Find characters':'キャラをさがす'}</Button>} />}
         </section>
         <section className="k-section">
           <h2 className="k-section__title">{en?'Characters you made':'作ったキャラ'}</h2>
           {created.length ? <div className="k-grid k-grid--characters">{created.map(card)}</div>
-            : <EmptyState mascot="excited" title={en?"You haven't made a character yet.":'まだキャラを作っていません。'} action={<Button variant="secondary" onClick={() => navigate('/create?edit=new')}>{en?'Make one in 3 steps':'3つ決めて作る'}</Button>} />}
+            : <EmptyState mascot="excited" title={en?"You haven't made a character yet.":'まだ自分のキャラはいないね'} action={<Button variant="secondary" onClick={() => navigate('/create?edit=new')}>{en?'Make one in 3 steps':'3つ決めて作る'}</Button>} />}
         </section>
       </>}
 

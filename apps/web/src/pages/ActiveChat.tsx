@@ -1300,7 +1300,7 @@ function ActiveChatSession() {
             streaming={streaming}
             sendBlocked={!capabilities || sessionAction || recovery.unresolved || historyLoading || !!historyPage?.next || commandRunning || !online || (!modelAvailable && !input.trim().startsWith("/"))}
             disabled={!settingsReady || !historyReady}
-            disabledText={!modelId ? (modelsFailed ? (en ? 'Cannot connect to the server. Check that the app is running.' : 'サーバーに接続できません。アプリの起動状態を確認してね') : (en ? 'Preparing the conversation model…' : '会話エンジンを準備中…')) : (en ? 'Preparing conversation…' : '会話を準備中…')}
+            disabledText={!modelId ? (modelsFailed ? (en ? 'Cannot connect to the server. Check that the app is running.' : 'うまくつながらないみたい…') : (en ? 'Preparing the conversation model…' : 'いま準備運動中…ちょっと待っててね')) : (en ? 'Preparing conversation…' : '会話を準備中…')}
             placeholder={hasCharacter ? (en ? `Write a message to ${headerName}…` : `${headerName}への言葉を入力してね…`) : (en ? 'Write your message…' : 'きみの言葉を入力してね…')}
           />
         </div>

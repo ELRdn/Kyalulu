@@ -215,7 +215,7 @@ export default function Discover() {
         ) : filteredCharacters.length === 0 ? (
           <EmptyState
             mascot="shy"
-            title={!hasFilters ? (en ? 'No characters yet.' : 'まだキャラがいません。') : en ? `No characters match “${query.trim() || activeMoodLabel || activeWorldInfo?.display_name}”.` : `「${query.trim() || activeMoodLabel || activeWorldInfo?.display_name}」に合うキャラは見つかりませんでした。`}
+            title={!hasFilters ? (en ? 'No characters yet.' : 'まだキャラがいません。') : en ? `No characters match “${query.trim() || activeMoodLabel || activeWorldInfo?.display_name}”.` : `「${query.trim() || activeMoodLabel || activeWorldInfo?.display_name}」に合う子、見つからなかった…`}
             action={
               hasFilters ? (
                 <Button variant="secondary" onClick={clearFilters}>

@@ -26,7 +26,7 @@ const knownEnglish: Record<string, string> = {
   '保存された返信を履歴で確認できません。': 'The saved reply could not be verified in history.',
   '端末の送信下書きを消去できません。': 'The send draft on this device could not be erased.',
   'アカウントの保存内容を確認できませんでした。': 'The saved account data could not be verified.',
-  'アカウントを同期できませんでした。接続を確認して再試行してください。': 'Your account could not be synced. Check your connection and try again.',
+  '同期の途中でつまずいちゃった…接続を確認して、もう一度試してね': 'Your account could not be synced. Check your connection and try again.',
   'アカウントを保存できませんでした。': 'Your account could not be saved.',
   '接続先を保存できませんでした。ブラウザーの保存容量と設定を確認してください。': 'The destination could not be saved. Check browser storage space and settings.',
   '保存された接続先が無効です。削除して登録し直してください。': 'The saved destination is invalid. Remove it and register it again.',
@@ -77,7 +77,7 @@ const knownEnglish: Record<string, string> = {
   'アカウントを確認できないため、一時下書きを保存できません。ログイン状態を確認してください。': 'Your account could not be verified, so the temporary draft cannot be saved. Check your login status.',
   'アカウントを確認できないため、一時下書きを保存できません。': 'Your account could not be verified, so the temporary draft cannot be saved.',
   '一時下書きを保存できませんでした。画面を閉じずに再試行するか、内容を保存してください。': 'The temporary draft could not be saved. Keep this screen open and retry, or save the content.',
-  '一時下書きを保存できませんでした。入力はこの画面に残っています。': 'The temporary draft could not be saved. Your input remains on this screen.',
+  '保存できなかった…書いた内容はこの画面に残ってるよ': 'The temporary draft could not be saved. Your input remains on this screen.',
   '一時下書きを保存できませんでした。画面を閉じずに再試行してください。': 'The temporary draft could not be saved. Keep this screen open and try again.',
 };
 const erasedCleanupPrefix = 'サーバーの会話データは消去しましたが、この端末の下書き・返信履歴の消去を確認できません。';
@@ -139,9 +139,9 @@ export function friendlyError(raw: unknown, language: Language = typeof window =
   if (/account_not_allowed/.test(text)) return {message:(en ? "Sign in with an account invited to this test." : 'テストに招待したアカウントでログインしてください。')};
   if (/cloud_residence_country_required/.test(text)) return {message:(en ? "Choose your country of residence. This beta is available in Japan and the United States." : '居住国を選択してください。このベータの提供地域は日本と米国です。')};
   if (/terms_consent_required/.test(text)) return {message:(en ? "Review and accept the terms, privacy policy, eligibility conditions and data destinations." : '利用条件を含む規約・プライバシーポリシーとデータ送信先を確認し、同意してください。')};
-  if (/authentication_flow_expired/.test(text)) return {message:(en ? "The login link expired. Start login again in the same browser." : 'ログインのリンクが失効しました。同じブラウザでログインをやり直してください。')};
-  if (/authentication_failed|authentication_unavailable|verified_email_required/.test(text)) return {message:(en ? "Login could not be verified. Try again with a verified Google account or email." : 'ログインを確認できませんでした。確認済みのGoogleアカウントまたはメールでやり直してください。')};
-  if (/insufficient_credits/.test(text)) return {message:(en ? "You do not have enough K-Credits to cover the conversation input cost. Check your balance or shorten the input." : '会話の入力料金をまかなうK-Creditsが足りません。残高を確認するか、会話の入力を短くしてください。')};
+  if (/authentication_flow_expired/.test(text)) return {message:(en ? "The login link expired. Start login again in the same browser." : 'このリンク、期限が切れちゃったみたい…同じブラウザでもう一度ログインしてね')};
+  if (/authentication_failed|authentication_unavailable|verified_email_required/.test(text)) return {message:(en ? "Login could not be verified. Try again with a verified Google account or email." : 'ログインできなかったみたい…確認済みのGoogleアカウントかメールで、もう一度試してね')};
+  if (/insufficient_credits/.test(text)) return {message:(en ? "You do not have enough K-Credits to cover the conversation input cost. Check your balance or shorten the input." : 'K-Creditsがちょっと足りないみたい…入力料金に届かないので、残高を確認するか、会話の入力を短くしてね')};
   if (/operator_budget_exhausted/.test(text)) return {message:(en ? "Generation is stopped because the operator API budget is exhausted or cost information is invalid. Sending may be unavailable even with K-Credits remaining." : '運営側のAPI予算が上限に達したか、料金情報に問題があるため生成を停止しています。K-Credits残高があっても送信できない場合があります。')};
   if (/cloud_registration_capacity_reached/.test(text)) return {message:(en ? "Registration capacity has been reached. Existing accounts can still sign in. Free Core is available locally." : '今回の新規受付枠に達しました。既存のアカウントは引き続きログインできます。無料Coreはローカルで利用できます。')};
   if (/provider_consent_renewal_required/.test(text)) return {message:(en ? "The provider disclosure changed. Sign in again and review consent for data destinations." : '接続先の説明が更新されました。再ログインして、データ送信先への同意を確認してください。')};
@@ -154,7 +154,7 @@ export function friendlyError(raw: unknown, language: Language = typeof window =
   if (/provider_key_not_configured/.test(text)) return {message:(en ? "The provider connection has not been configured." : '提供元への接続設定が準備されていません。')};
   if (/opencode_go_hosting_permission_required|opencode_go_cost_attribution_not_accepted|openrouter_not_accepted|openrouter_migration_not_accepted|inference_awaiting_acceptance|safety_not_configured/.test(text)) return {message:(en ? "Cloud generation is not available yet. You can view, delete and export existing data." : 'クラウドの生成は準備中です。現在のデータは閲覧・削除・エクスポートできます。')};
   if (/provider_usage_unavailable/.test(text)) return {message:(en ? "The generation cost could not be verified, so the result was not saved. No K-Credits were charged." : '生成料金を確認できなかったため、保存せず終了しました。K-Creditsの消費は0です。')};
-  if (/provider_rate_limited|HTTP\s+429\b/.test(text) || status === 429) return {message:(en ? "The selected provider rate limit prevented generation. Wait before retrying, or choose another conversation model. Failed generation charged no K-Credits." : '選択した提供元の利用制限で生成できませんでした。少し時間を置いて再試行するか、別の会話モデルを選んでください。失敗した生成のK-Creditsの消費は0です。')};
+  if (/provider_rate_limited|HTTP\s+429\b/.test(text) || status === 429) return {message:(en ? "The selected provider rate limit prevented generation. Wait before retrying, or choose another conversation model. Failed generation charged no K-Credits." : 'ちょっと急ぎすぎたかも…提供元の利用制限にかかったので、時間を置いて再試行するか、別の会話モデルを選んでね。失敗した生成のK-Creditsの消費は0です。')};
   if (/cloud_sfw_only/.test(text)) return {message:(en ? "Cloud storage and generation currently support general-audience content only. Review what you are sending." : 'クラウドではSFWの内容のみ保存・生成できます。送信内容を確認してください。')};
   if (/allow_nsfw|NSFW execution/i.test(text)) {
     return { message: (en ? "Adult conversations require enabling adult content in your profile." : "成人向けの会話は、プロフィールで成人向けコンテンツを有効にすると楽しめます。"), action: { label: (en ? "Open settings" : "設定をひらく"), to: "/profile#adult" } };
@@ -176,7 +176,7 @@ export function friendlyError(raw: unknown, language: Language = typeof window =
     return { message: (en ? "The AI could not respond. Choosing another conversation engine may help." : "AIがうまく応答できませんでした。別の会話エンジンを選ぶと解決することがあります。"), action: { label: (en ? "Choose an engine" : "エンジンを選ぶ"), to: "/studio" } };
   }
   if (/Failed to fetch|NetworkError|Load failed/i.test(text)) {
-    return { message: (en ? "Could not connect to the server. Check your network and that the app is running, then try again." : "サーバーに接続できませんでした。ネットワークやアプリの起動状態を確認して、もう一度試してね。") };
+    return { message: (en ? "Could not connect to the server. Check your network and that the app is running, then try again." : "うまくつながらないみたい…ネットワークやアプリの起動状態を確認して、もう一度試してね") };
   }
   if (/timed? ?out|Timeout/i.test(text)) {
     return { message: (en ? "The response timed out. Wait a little before sending again." : "応答に時間がかかりすぎたみたい。少し待ってから、もう一度送ってみてね。") };
@@ -187,7 +187,7 @@ export function friendlyError(raw: unknown, language: Language = typeof window =
   if (/HTTP 404|not found/i.test(text)) {
     return { message: (en ? "This could not be found. It may have been deleted or moved to another URL." : "見つかりませんでした。削除されたか、URLが変わった可能性があります。") };
   }
-  if (status === 401 || /HTTP 401|authentication_required/.test(text)) return { message: (en ? "Your login expired or authentication is required. Sign in again." : 'ログインの有効期限が切れたか、認証が必要です。もう一度ログインしてください。') };
+  if (status === 401 || /HTTP 401|authentication_required/.test(text)) return { message: (en ? "Your login expired or authentication is required. Sign in again." : 'しばらく会えなかったから、もう一度ログインしてね。会話は消えていません。') };
   if (status === 403 || /HTTP 403/.test(text)) return { message: (en ? "You do not have permission to view or change this content. Check the account and eligibility conditions." : 'この内容を表示・操作する権限がありません。ログイン先と利用条件を確認してください。') };
   if (/^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/.test(text)) return { message: (en ? "This action is currently unavailable. Check the eligibility conditions for this connection." : 'この操作は現在利用できません。接続先の利用条件を確認してください。') };
   return { message: text || (en ? "The action could not be completed. Please try again." : "うまくいきませんでした。もう一度試してね。") };

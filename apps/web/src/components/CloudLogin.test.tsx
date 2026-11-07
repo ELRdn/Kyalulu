@@ -73,7 +73,7 @@ it('keeps analytics revoked while an earlier login request completes',async()=>{
   analytics(tree).props.onChange({target:{checked:false}});resolve({});
   await vi.waitFor(()=>expect(fixture.states[5]).toBe('email'));
   expect(fixture.analytics.mock.calls.map(call=>call[0])).toEqual(['denied','denied']);
-  fixture.language='ja';expect(renderToStaticMarkup(view())).toContain('確認メールを送りました');expect(fixture.request).toHaveBeenCalledOnce();
+  fixture.language='ja';expect(renderToStaticMarkup(view())).toContain('メールを送ったよ');expect(fixture.request).toHaveBeenCalledOnce();
 });
 it('uses the latest explicit analytics choice when it is enabled again before login finishes',async()=>{
   let resolve!:(value:unknown)=>void;fixture.request.mockImplementation(()=>new Promise(done=>{resolve=done;}));

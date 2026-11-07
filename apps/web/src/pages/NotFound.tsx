@@ -13,7 +13,7 @@ export default function NotFound() {
     <div className="k-page">
       <EmptyState
         mascot="cry"
-        title={en ? "We couldn't find that page…" : 'そのページは見当たらないみたい…'}
+        title={en ? "We couldn't find that page…" : 'そのページ、見当たらないみたい…'}
         action={
           <Button variant="primary" onClick={() => navigate("/")}>
             {en ? 'Back to home' : 'ホームにもどる'}
