@@ -684,6 +684,12 @@ export async function branchSession(sessionId: string, message_id: number): Prom
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message_id }),
   }));
 }
+export const eraseConversationConfirm = (en: boolean) => ({
+  title: en ? 'Permanently erase conversation data?' : '会話データを完全消去しますか？',
+  description: en ? 'Conversation text, generation results and memories linked to this conversation will be permanently erased. Shared memories without an originating conversation are excluded. For conversations you allowed to sync, synced copies with the same conversation ID are included. Conflicting updates require another review; unsent changes on other devices remain device only. Cost ledgers are retained. Backup retention follows the connected service’s policy.' : '会話本文・生成結果・この会話にひも付く記憶を完全消去します。出典がない共有記憶は対象外です。同期を許可した会話は、同じ会話IDの同期コピーも対象です。更新の競合は再確認し、他の端末の未送信変更は端末限定で保持します。費用台帳は残り、バックアップの保持期間は接続先の方針に従います。',
+  confirmLabel: en ? 'Erase permanently' : '完全消去する', cancelLabel: en ? 'Cancel' : 'キャンセル', danger: true,
+});
+
 export async function deleteSessionData(sessionId: string): Promise<void> {
   const response = await fetch(`/api/chat/sessions/${encodeURIComponent(sessionId)}/data`, { method: 'DELETE' });
   if (!response.ok) await checkedJson(response);

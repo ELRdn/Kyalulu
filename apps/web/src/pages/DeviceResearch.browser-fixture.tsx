@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
 import App from '../App';
 import RuntimeGate from '../components/RuntimeGate';
-import { ThemeProvider } from '../lib/theme';
 import { deviceFetch } from '../lib/deviceApi';
 import { allEntities } from '../lib/appStore';
 import { preferences, savePreferences, rememberOwner, generationBusy } from '../lib/appContext';
@@ -29,7 +28,7 @@ export async function mount(node:HTMLElement,lang:'ja'|'en',theme:'light'|'dark'
   localStorage.setItem('kyalulu-execution-target','device');localStorage.setItem('my-zeta-theme',theme);
   rememberOwner('device-research-fixture');language(lang);
   await prepareRuntime();
-  const root=createRoot(node);root.render(<ThemeProvider><HashRouter><RuntimeGate><App /></RuntimeGate></HashRouter></ThemeProvider>);
+  const root=createRoot(node);root.render(<HashRouter><RuntimeGate><App /></RuntimeGate></HashRouter>);
   return ()=>root.unmount();
 }
 export async function prepareRuntime() {

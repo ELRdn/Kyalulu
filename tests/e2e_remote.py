@@ -357,8 +357,7 @@ async def run():
                     report['checks'].append('JA/EN pairing preserves name, one pending approval, confirmation code and persisted device-key fingerprint')
                     await language_in_place(page, 'en')
                     await expect(page.locator('.k-remote-banner')).to_contain_text('Encrypted connection')
-                    await page.goto(web_origin + '/profile')
-                    await page.locator('.k-profile-settings > summary').first.click()  # Connection settings fold under Settings.
+                    await page.goto(web_origin + '/profile/advanced')  # Connection settings live in My page › Settings › Advanced.
                     destinations=page.get_by_role('region',name='Remote destinations',exact=True)
                     # A named section uses the region role and must appear only once.
                     await expect(destinations).to_have_count(1)

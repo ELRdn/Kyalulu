@@ -1,19 +1,22 @@
 import Avatar from "./ui/Avatar";
-import MessageContent from "./MessageContent";
+import MessageContent, { Narration } from "./MessageContent";
+import { splitLeadingScene } from "../lib/text";
 
-/** キャラクター紹介ページで、最初のシーンを実際のチャットと同じ見た目でプレビューする */
+/** The opening scene, drawn exactly like the start of a chat. */
 export default function ScenePreview({ name, seed, portrait, content }: { name: string; seed: string; portrait?: string | null; content: string }) {
+  const [scene, rest] = splitLeadingScene(content);
   return (
     <div className="k-scene-preview">
-      <div className="k-msg k-msg--character">
-        <Avatar name={name} seed={seed} size="md" src={portrait} />
+      {scene && <Narration><p>{scene}</p></Narration>}
+      {rest && <div className="k-msg k-msg--character">
+        <Avatar name={name} seed={seed} size="sm" src={portrait} />
         <div className="k-msg__col">
           <div className="k-msg__meta">
             <span className="k-msg__name">{name}</span>
           </div>
-          <MessageContent content={content} />
+          <MessageContent content={rest} />
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

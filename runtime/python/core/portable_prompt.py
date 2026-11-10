@@ -93,7 +93,7 @@ def compile_portable(snapshot, history=None):
     macro_values = {
         'char': data.get('nickname') or doc.name, 'user': persona.get('display_name') or 'User',
         'description': data.get('description', ''), 'personality': data.get('personality', ''),
-        'scenario': data.get('scenario', ''), 'persona': persona.get('description', '') + '\n' + persona.get('traits', ''),
+        'scenario': data.get('scenario', ''), 'persona': persona.get('description', '') + '\n' + persona.get('traits', '') + (f"\n呼ばれ方: {persona['call_name']}" if persona.get('call_name') else ''),
         'mesExamplesRaw': data.get('mes_example', ''), 'mesExamples': data.get('mes_example', ''),
         'anchorBefore': '', 'anchorAfter': '', 'trim': '',
     }

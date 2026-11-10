@@ -115,6 +115,11 @@ CREATE TABLE IF NOT EXISTS creator_versions (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY(asset_id, revision)
 );
+-- Personas/worlds removed from the list; revisions pinned by conversations stay readable.
+CREATE TABLE IF NOT EXISTS creator_deleted (
+    asset_id TEXT PRIMARY KEY,
+    deleted_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS memories (
     id TEXT PRIMARY KEY,
     scope TEXT NOT NULL,

@@ -44,6 +44,8 @@
 
 {{persona.description}}
 
+{{persona.call_line}}
+
 {{user}}の発言・行動・感情・思考は{{user}}自身が決める。
 {{char.display_name}}は{{user}}の台詞、行動、考えを勝手に確定しない。
 

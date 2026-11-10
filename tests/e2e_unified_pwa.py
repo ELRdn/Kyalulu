@@ -82,9 +82,7 @@ def without_open_times(rows):
 async def check_library_workspace(page, language, before, draft, output):
     chat_url=page.url
     await page.goto(chat_url.rsplit('/chats/',1)[0]+'/create')
-    await page.locator('.k-page-head').get_by_role('button',name='Create new' if language=='en' else '新しく作る',exact=True).click()
-    chooser=page.locator('dialog[open]')
-    await chooser.get_by_role('button').filter(has_text='Create a plot' if language=='en' else 'プロットを作る').click()
+    await page.get_by_role('button',name='Create new' if language=='en' else '新しくつくる',exact=True).click()
     editor=page.locator('.k-portable-editor')
     await editor.get_by_role('textbox',name='Name' if language=='en' else '名前',exact=True).fill('ライブラリの原文')
     await editor.get_by_role('textbox',name='Description' if language=='en' else '説明',exact=True).fill('Original description · 原文')
@@ -97,7 +95,7 @@ async def check_library_workspace(page, language, before, draft, output):
     stored=await page.evaluate('key=>sessionStorage.getItem(key)',key)
     alternate='ja' if language=='en' else 'en'
     await language_in_place(page,alternate)
-    await page.get_by_role('button',name='Save temporary draft' if alternate=='en' else '一時下書きを保存',exact=True).wait_for()
+    await page.locator('.k-create-editor-head').get_by_role('button',name='Save' if alternate=='en' else '保存',exact=True).wait_for()
     assert await page.evaluate('key=>sessionStorage.getItem(key)',key)==stored
     assert await greeting.input_value()=='原文の挨拶 *星を見る*'
     async def accept(dialog):
@@ -110,22 +108,20 @@ async def check_library_workspace(page, language, before, draft, output):
     finally:
         page.remove_listener('dialog',accept)
     assert await page.evaluate('key=>sessionStorage.getItem(key)',key)==stored
-    await page.get_by_role('button',name='Save temporary draft' if alternate=='en' else '一時下書きを保存',exact=True).click()
+    # Drafts are kept automatically; the header shows the state.
     await language_in_place(page,language)
-    await page.get_by_role('status').filter(has_text='A temporary draft was saved' if language=='en' else '一時下書きをこのブラウザーに保存しました').wait_for()
+    await page.locator('.k-create-draft-state').filter(has_text='Draft saved' if language=='en' else '下書き保存済み').wait_for()
     back=page.locator('.k-create-editor-footer').get_by_role('button',name='Keep draft and go back' if language=='en' else '下書きを残して戻る',exact=True)
     await back.click()
     await page.locator('dialog[open]').get_by_role('button',name='Continue editing' if language=='en' else '編集を続ける',exact=True).click()
     assert await page.evaluate('key=>sessionStorage.getItem(key)',key)==stored
     await back.click()
     await page.locator('dialog[open]').get_by_role('button',name='Keep draft and go back' if language=='en' else '下書きを残して戻る',exact=True).click()
-    await page.locator('.k-page-head').get_by_role('button',name='Create new' if language=='en' else '新しく作る',exact=True).click()
-    await chooser.get_by_text('Resume temporary draft' if language=='en' else '一時下書きから再開',exact=True).wait_for()
-    await chooser.get_by_role('button').filter(has_text='Create a plot' if language=='en' else 'プロットを作る').click()
+    await page.get_by_role('button',name='Create new' if language=='en' else '新しくつくる',exact=True).click()
     await expect(editor.get_by_role('textbox',name='Name' if language=='en' else '名前',exact=True)).to_have_value('ライブラリの原文')
     assert await page.evaluate('key=>sessionStorage.getItem(key)',key)==stored
     await page.locator('.k-create-editor-head').get_by_role('button',name='Save' if language=='en' else '保存',exact=True).click()
-    await expect(page.locator('.k-create-editor-head').get_by_role('button',name='Save as a new version' if language=='en' else '新しい版として保存',exact=True)).to_be_enabled()
+    await expect(page.locator('.k-create-editor-head').get_by_role('button',name='Save' if language=='en' else '保存',exact=True)).to_be_enabled()
     first=await entities(page,['character'])
     assert len(first)==1 and first[0]['payload']['versions']['1']['data']['description']=='Original description · 原文'
     assert first[0]['payload']['versions']['1']['profile']['settings']=={'temperature':0.65}
@@ -133,14 +129,14 @@ async def check_library_workspace(page, language, before, draft, output):
     await editor.get_by_role('tab',name='Plot' if language=='en' else 'プロット',exact=False).click()
     await editor.get_by_role('textbox',name='Description' if language=='en' else '説明',exact=True).fill('Original description · revision two')
     await language_in_place(page,alternate)
-    await page.locator('.k-create-editor-head').get_by_role('button',name='Save as a new version' if alternate=='en' else '新しい版として保存',exact=True).click()
+    await page.locator('.k-create-editor-head').get_by_role('button',name='Save' if alternate=='en' else '保存',exact=True).click()
     await page.get_by_role('status').filter(has_text='Existing conversations keep' if alternate=='en' else 'これまでの会話は').wait_for()
     second=await entities(page,['character'])
     assert second[0]['id']==first[0]['id'] and second[0]['payload']['current_revision']==2
     assert second[0]['payload']['versions']['1']==first[0]['payload']['versions']['1']
     await page.get_by_role('button',name='Back to my library' if alternate=='en' else 'マイライブラリに戻る',exact=True).click()
-    card=page.locator('.k-lib-card').filter(has_text='ライブラリの原文')
-    await card.get_by_role('button',name='Export' if alternate=='en' else '書き出し',exact=True).click()
+    await page.locator('.k-lib-card').filter(has_text='ライブラリの原文').get_by_role('button').click()
+    await page.locator('.k-create-editor-footer').get_by_role('button',name='Export' if alternate=='en' else '書き出し',exact=True).click()
     await page.get_by_role('combobox',name='Export format' if alternate=='en' else '書き出し形式',exact=True).select_option('ccv3-json')
     await language_in_place(page,language)
     await page.get_by_role('combobox',name='Export format' if language=='en' else '書き出し形式',exact=True).wait_for()
@@ -155,6 +151,9 @@ async def check_library_workspace(page, language, before, draft, output):
     raw=json.dumps({'schema_version':1,'name':'持込の原文','data':{'description':'Imported original description','first_mes':'持込の挨拶'},
         'source':{'remote':{'source':'github','source_id':'fixture/card.json','sha256':'a'*64,'document_index':0,'transport':'browser','content_rating':'sfw'}}},ensure_ascii=False).encode('utf-8')
     file={'name':'fictional-card.json','mimeType':'application/json','buffer':raw}
+    await page.locator('dialog[open]').get_by_role('button',name='Close' if language=='en' else '閉じる',exact=True).click()
+    await page.get_by_role('button',name='Back to my library' if language=='en' else 'マイライブラリに戻る',exact=True).click()
+    await page.locator('.k-create-list__import').click()
     await page.get_by_label('File to import' if language=='en' else '取り込むファイル',exact=True).set_input_files(file)
     await page.get_by_role('heading',name='Review import' if language=='en' else '取り込み内容を確認',exact=True).wait_for()
     preview_url=page.url
@@ -164,6 +163,7 @@ async def check_library_workspace(page, language, before, draft, output):
     await page.get_by_role('button',name='Save selected content' if alternate=='en' else '選択した内容を保存',exact=True).click()
     await expect(page.locator('.k-lib-card')).to_have_count(2)
     saved=await entities(page,['character'])
+    await page.locator('.k-create-list__import').click()
     await page.get_by_label('File to import' if alternate=='en' else '取り込むファイル',exact=True).set_input_files(file)
     await page.get_by_text('This original was already imported.' if alternate=='en' else '同じ原本を取り込み済みです。',exact=True).wait_for()
     await expect(page.get_by_role('button',name='Save selected content' if alternate=='en' else '選択した内容を保存',exact=True)).to_be_disabled()
@@ -197,19 +197,19 @@ async def check_creator_settings(page, language, before, draft, output):
     await form.locator('textarea').nth(1).fill('原文の性格・価値観')
     alternate='ja' if language=='en' else 'en'
     await language_in_place(page,alternate)
-    await page.get_by_role('heading',name='Personas and worlds' if alternate=='en' else 'ペルソナ・世界観',exact=True).wait_for()
+    await page.get_by_role('heading',name='New persona' if alternate=='en' else '新しい人物像',exact=True).wait_for()
     assert await name.input_value()==persona_name
     assert await entities(page,['persona','world'])==[]
     await form.get_by_role('button',name='Save' if alternate=='en' else '保存',exact=True).click()
-    version_save=form.get_by_role('button',name='Save as a new version' if alternate=='en' else '新しい版として保存',exact=True)
+    version_save=form.get_by_role('button',name='Save' if alternate=='en' else '保存',exact=True)
     await expect(version_save).to_be_enabled()
     first=await entities(page,['persona','world'])
     assert len(first)==1 and first[0]['payload']['current_revision']==1
     await form.locator('textarea').nth(0).fill('原文の人物紹介 · revision two')
     await language_in_place(page,language)
-    await page.get_by_role('heading',name='Personas and worlds' if language=='en' else 'ペルソナ・世界観',exact=True).wait_for()
+    await page.get_by_role('heading',name='Edit persona' if language=='en' else '人物像の編集',exact=True).wait_for()
     assert await entities(page,['persona','world'])==first
-    await form.get_by_role('button',name='Save as a new version' if language=='en' else '新しい版として保存',exact=True).click()
+    await form.get_by_role('button',name='Save' if language=='en' else '保存',exact=True).click()
     await form.get_by_text('Version history' if language=='en' else '保存履歴',exact=True).wait_for()
     second=await entities(page,['persona','world'])
     assert second[0]['id']==first[0]['id'] and second[0]['payload']['current_revision']==2
@@ -246,7 +246,7 @@ async def check_creator_settings(page, language, before, draft, output):
     await rules.fill(json.dumps(valid,ensure_ascii=False))
     await expect(rules).to_have_attribute('aria-invalid','false')
     await form.get_by_role('button',name='Save' if alternate=='en' else '保存',exact=True).click()
-    await expect(form.get_by_role('button',name='Save as a new version' if alternate=='en' else '新しい版として保存',exact=True)).to_be_enabled()
+    await expect(form.get_by_role('button',name='Save' if alternate=='en' else '保存',exact=True)).to_be_enabled()
     saved=await entities(page,['persona','world'])
     world=next(row for row in saved if row['kind']=='world')
     assert world['payload']['creator']['cast'][0]['display_name']=='原文の登場人物'
@@ -259,14 +259,14 @@ async def check_creator_settings(page, language, before, draft, output):
 
     await name.fill('PRIVATE_UNSAVED_NAME_CANARY')
     await page.evaluate('''()=>{localStorage.setItem('kyalulu-app-owner','creator-other-owner');window.dispatchEvent(new Event('kyalulu-app-context'));}''')
-    await form.get_by_role('heading',name='New persona' if alternate=='en' else '新しいペルソナ',exact=True).wait_for()
+    await page.get_by_role('heading',name='New persona' if alternate=='en' else '新しい人物像',exact=True).wait_for()
     await expect(name).to_have_value('')
     assert 'PRIVATE_UNSAVED_NAME_CANARY' not in await page.locator('main').inner_text()
     assert '本人だけの秘密 · fixture' not in await page.locator('main').inner_text()
     assert await entities(page,['persona','world'])==saved
     await name.fill('別のアカウントの人物像')
     await form.get_by_role('button',name='Save' if alternate=='en' else '保存',exact=True).click()
-    await expect(form.get_by_role('button',name='Save as a new version' if alternate=='en' else '新しい版として保存',exact=True)).to_be_enabled()
+    await expect(form.get_by_role('button',name='Save' if alternate=='en' else '保存',exact=True)).to_be_enabled()
     separate=await entities(page,['persona','world'])
     assert len(separate)==3
     assert [row for row in separate if row['owner']=='pwa-fixture']==saved
@@ -290,11 +290,9 @@ async def check_profile_settings(page, language, before, draft, output):
     en = language == 'en'
     alternate = 'ja' if en else 'en'
     chat_url = page.url
-    await page.goto(chat_url.rsplit('/chats/', 1)[0] + '/profile')
+    # My page › Edit profile keeps an unsaved display name across a language switch (design 34).
+    await page.goto(chat_url.rsplit('/chats/', 1)[0] + '/profile/edit')
     await page.get_by_role('textbox', name='Display name' if en else '表示名', exact=True).wait_for()
-    # Theme and connection settings fold under My page › Settings › Advanced (docs/MOBILE_UX_SPEC.md §5.6).
-    await page.locator('.k-profile-settings > summary').first.click()
-    await page.locator('.k-profile-settings--advanced > summary').click()
     name = page.locator('#k-profile-name')
     old_name = await page.evaluate("localStorage.getItem('kyalulu-display-name')")
     old_servers = await page.evaluate("localStorage.getItem('kyalulu-server-bookmarks-v1')")
@@ -304,32 +302,29 @@ async def check_profile_settings(page, language, before, draft, output):
     await page.get_by_role('textbox', name='Display name' if alternate == 'en' else '表示名', exact=True).wait_for()
     assert await name.input_value() == name_draft
     assert await page.evaluate("localStorage.getItem('kyalulu-display-name')") == old_name
-    connection = page.locator('.k-connection').filter(has=page.locator('#connection-title'))
-    await connection.get_by_text('On-device conversations and memories are stored in this browser.' if alternate == 'en' else '端末内の会話・記憶はこのブラウザーに保存されます。', exact=False).wait_for()
-    initial_theme = await page.evaluate("localStorage.getItem('my-zeta-theme')")
-    assert initial_theme in {'light', 'dark'}
-    for theme in ['dark' if initial_theme == 'light' else 'light', initial_theme]:
-        label = ('Light' if theme == 'light' else 'Dark') if alternate == 'en' else ('ライト' if theme == 'light' else 'ダーク')
-        radio = page.get_by_role('radio', name=label, exact=True)
-        await radio.click()
-        await expect(radio).to_have_attribute('aria-checked', 'true')
+    await page.locator('.k-me-edit').screenshot(path=str(output / f'{language}-{page.viewport_size["width"]}-profile.png'), animations='disabled')
+    await name.blur()
     assert await page.evaluate("localStorage.getItem('kyalulu-display-name')") == name_draft
-    await connection.get_by_role('textbox', name='Destination name' if alternate == 'en' else '接続先の名前', exact=True).wait_for()
-    await connection.get_by_role('textbox', name='Server HTTPS address' if alternate == 'en' else 'サーバーのHTTPSアドレス', exact=True).wait_for()
+    await language_in_place(page, language)
+    # Connection settings live in My page › Settings › Advanced (design 29); an unsaved destination survives a language switch.
+    await page.goto(chat_url.rsplit('/chats/', 1)[0] + '/profile/advanced')
+    connection = page.locator('.k-connection').filter(has=page.locator('#connection-title'))
+    await connection.get_by_text('On-device conversations and memories are stored in this browser.' if en else '端末内の会話・記憶はこのブラウザーに保存されます。', exact=False).wait_for()
+    await connection.get_by_role('textbox', name='Destination name' if en else '接続先の名前', exact=True).wait_for()
+    await connection.get_by_role('textbox', name='Server HTTPS address' if en else 'サーバーのHTTPSアドレス', exact=True).wait_for()
     destination = connection.locator('input').nth(0)
     address = connection.locator('input').nth(1)
     await destination.fill('架空PC · unsaved destination')
     await address.fill('https://example.test')
-    await language_in_place(page, language)
-    await page.get_by_role('textbox', name='Display name' if en else '表示名', exact=True).wait_for()
-    assert await name.input_value() == name_draft
+    await language_in_place(page, alternate)
+    await connection.get_by_role('textbox', name='Destination name' if alternate == 'en' else '接続先の名前', exact=True).wait_for()
     assert await destination.input_value() == '架空PC · unsaved destination'
     assert await address.input_value() == 'https://example.test'
     assert await page.evaluate("localStorage.getItem('kyalulu-server-bookmarks-v1')") == old_servers
     assert not await page.get_by_role('switch', name='Show adult content' if en else '成人向けコンテンツを表示', exact=True).count()
     assert not await page.evaluate('document.documentElement.scrollWidth > innerWidth')
-    await page.locator('.k-profile-card').screenshot(path=str(output / f'{language}-{page.viewport_size["width"]}-profile.png'), animations='disabled')
     await connection.screenshot(path=str(output / f'{language}-{page.viewport_size["width"]}-server-settings.png'), animations='disabled')
+    await language_in_place(page, language)
     await page.goto(chat_url.rsplit('/chats/', 1)[0] + '/chats')
     await page.locator('.k-session-row__link').first.click()
     await page.locator('.k-composer textarea').wait_for()
@@ -362,7 +357,7 @@ async def check_chat_management(page, language, before, draft, output):
     panel = page.get_by_role('dialog', name='Conversation information' if en else '会話の情報', exact=True)
     await panel.wait_for()
     for button, fragments in [
-        ('Clear displayed history' if en else '表示履歴を削除',
+        ('Clear history' if en else '履歴を削除',
          ['Permanently erasing generation results and memories is a separate action.'] if en else ['生成結果や記憶の完全消去は別の操作です']),
         ('Erase conversation data' if en else '会話データを完全消去',
          ['same conversation ID', 'Conflicting updates require another review', 'unsent changes on other devices remain device only', 'Cost ledgers are retained', 'Backup retention']
@@ -517,9 +512,7 @@ async def check(dist, output):
                             localStorage.setItem('kyalulu-execution-target','device');
                             localStorage.setItem('my-zeta-theme',theme);
                         }''', [language, theme])
-                        await page.goto(origin + '/device/#/profile')
-                        await page.locator('.k-profile-settings > summary').first.click()
-                        await page.locator('.k-profile-settings--advanced > summary').click()
+                        await page.goto(origin + '/device/#/profile/advanced')
                         await page.locator('.k-mobile-status summary').click()
                         await page.get_by_role('button', name='Check for updates' if language == 'en' else '更新を確認', exact=True).wait_for()
                         await page.goto(origin + '/device/#/')

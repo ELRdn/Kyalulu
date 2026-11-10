@@ -16,13 +16,14 @@ Kind = Literal["persona", "world"]
 class Document(BaseModel):
     model_config = ConfigDict(extra="forbid")
     display_name: str = Field(min_length=1, max_length=120)
+    call_name: str = Field(default="", max_length=60)
     description: str = Field(default="", max_length=4000)
     traits: str = Field(default="", max_length=6000)
     rules: str = Field(default="", max_length=6000)
     cast: list[CastMember] = Field(default_factory=list, max_length=12)
     rpg: RPGOptions | None = None
 
-    @field_validator("display_name", "description", "traits", "rules", mode="before")
+    @field_validator("display_name", "call_name", "description", "traits", "rules", mode="before")
     @classmethod
     def trim(cls, value):
         return value.strip() if isinstance(value, str) else value
@@ -52,6 +53,14 @@ async def update_asset(kind: Kind, reference: str, body: Document):
     return creator.save(kind, body.model_dump(), reference)
 
 
+@router.delete("/{kind}/{reference}")
+async def delete_asset(kind: Kind, reference: str):
+    await init_db()
+    if not creator.delete(reference, kind):
+        raise HTTPException(404, "設定が見つかりません")
+    return {"ok": True}
+
+
 @router.get("/{kind}/{reference}")
 async def asset_detail(kind: Kind, reference: str):
     await init_db()
@@ -66,5 +75,7 @@ async def export_asset(kind: Kind, reference: str):
     detail = await asset_detail(kind, reference)
     item = detail["item"]
     document = Document.model_validate({key: item[key] for key in Document.model_fields if key in item}).model_dump()
+    if not document["call_name"]:
+        del document["call_name"]  # older readers reject unknown keys
     return JSONResponse({"format": "kyalulu-creator", "version": 1, "kind": kind, "document": document},
                         headers={"Content-Disposition": f'attachment; filename="{kind}.json"'})

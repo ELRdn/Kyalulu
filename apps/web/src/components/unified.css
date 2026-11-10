@@ -19,3 +19,21 @@
 .k-home-identity{display:flex;align-items:center;gap:16px;margin-bottom:24px}.k-home-identity h1{font-size:28px;margin:0}.k-home-identity p{margin:4px 0;font-size:14px}
 .k-home-identity img{object-fit:contain;width:72px;height:72px}.k-page--home{display:flex;flex-direction:column}
 @media(max-width:540px){.k-interest-options{grid-template-columns:1fr}.k-execution-picker{padding:6px 12px}.k-home-identity h1{font-size:24px}}
+/* 32: interests on one page */
+.k-interests--page{gap:20px}
+.k-interests__hint{margin:0;font-size:13px;color:var(--text-muted)}
+.k-interests__set{display:grid;gap:10px;margin:0;padding:0;border:0;min-width:0}
+.k-interests__set legend{padding:0;margin-bottom:10px;font-size:15px;font-weight:700;color:var(--text-primary)}
+.k-interests__chips{display:flex;flex-wrap:wrap;gap:8px}
+.k-interests .k-interests__chip{position:relative;display:inline-flex;align-items:center;min-height:34px;padding:0 13px;border:1px solid var(--border-subtle);border-radius:18px;background:var(--bg-surface);color:var(--text-secondary);font-size:13px;font-weight:700;cursor:pointer}
+.k-interests__chip input{position:absolute;inset:0;margin:0;opacity:0;cursor:pointer}
+.k-interests__chip:has(input:checked){background:var(--accent-fill);border-color:var(--accent-fill);color:#fff}
+.k-interests__chip:has(input:focus-visible){box-shadow:0 0 0 3px var(--focus-ring)}
+.k-interests--page > .k-btn{width:100%;min-height:48px;border-radius:24px}
+.k-set-row--block{display:block;padding:16px}
+
+/* 32: exact values from Penpot */
+.k-interests--page{gap:14px}
+.k-interests__set legend{margin-bottom:10px;line-height:23px}
+.k-interests .k-interests__chip{min-height:34px;border-radius:17px;font-size:13px;font-weight:500}
+.k-interests__hint{line-height:20px}

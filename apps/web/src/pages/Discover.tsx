@@ -1,4 +1,3 @@
-import { scopedKey } from '../lib/remoteStore';
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { type CharacterInfo, type WorldInfo } from "../lib/api";
@@ -18,38 +17,19 @@ import { fetchBrowseCatalog, isCloudGuest } from '../lib/cloudGuest';
 import { friendlyMessage } from '../lib/errors';
 import { useLanguage } from '../lib/appContext';
 
-const LS_RECENT = "kyalulu-recent-searches";
-function readRecent(): string[] {
-  try {
-    const v = JSON.parse(localStorage.getItem(scopedKey(LS_RECENT)) ?? "[]");
-    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").slice(0, 8) : [];
-  } catch {
-    return [];
-  }
-}
-function writeRecent(list: string[]) {
-  try {
-    localStorage.setItem(scopedKey(LS_RECENT), JSON.stringify(list));
-  } catch {
-    /* Storage unavailable: recent searches are only a convenience. */
-  }
-}
-
 export default function Discover() {
   const language = useLanguage(), en = language === 'en';
   const guest = isCloudGuest(useRuntimeAccess());
   const [params, setParams] = useSearchParams();
   const [characters, setCharacters] = useState<CharacterInfo[]>([]);
   const [worlds, setWorlds] = useState<WorldInfo[]>([]);
-  const [talks, setTalks] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<{ cause: unknown } | null>(null);
   const [retry, setRetry] = useState(0);
   const [query, setQuery] = useState(params.get("q") ?? "");
-  const [recent, setRecent] = useState<string[]>(readRecent);
 
   const [adult] = useAdultContent();
-  useDocumentTitle(en ? 'Explore' : 'さがす');
+  useDocumentTitle(en ? 'Search' : 'さがす');
   const activeMood = params.get("mood");
   const typedTag = query.trim().startsWith("#") ? cleanTag(query) : "";
   const activeTag = params.get("tag") || typedTag || null;
@@ -58,13 +38,10 @@ export default function Discover() {
   useEffect(() => {
     let active = true; setLoading(true); setLoadError(null);
     fetchBrowseCatalog(guest, adult)
-      .then(([c, w, sessions]) => {
+      .then(([c, w]) => {
         if (!active) return;
         setCharacters(c);
         setWorlds(w);
-        const counts = new Map<string, number>();
-        for (const s of sessions) if (s.character_id) counts.set(s.character_id, (counts.get(s.character_id) ?? 0) + s.count);
-        setTalks(counts);
       })
       .catch(error => { if (active) setLoadError({ cause: error }); })
       .finally(() => { if (active) setLoading(false); });
@@ -110,61 +87,29 @@ export default function Discover() {
     setParams(next, { replace: true });
   };
 
-  const rememberQuery = () => {
-    const q = query.trim();
-    if (!q) return;
-    const next = [q, ...recent.filter((x) => x !== q)].slice(0, 8);
-    setRecent(next);
-    writeRecent(next);
-  };
-  const clearRecent = () => {
-    setRecent([]);
-    writeRecent([]);
-  };
-
   const clearFilters = () => {
     setQuery("");
     setParams({}, { replace: true });
   };
 
   const hasFilters = !!query || !!activeMood || !!activeTag || !!activeWorld;
+  const noResults = !loading && !loadError && hasFilters && filteredCharacters.length === 0;
 
   return (
     <div className="k-page">
-      <div className="k-page-head">
-        <div>
-          <h1 className="k-page-title">{en ? 'Explore' : 'さがす'}</h1>
-        </div>
-      </div>
+      <h1 className="k-page-title">{en ? 'Search' : 'さがす'}</h1>
 
       <div className="k-discover-search">
         <div className="k-search-field">
-          <Icon name="search" size={18} />
+          <Icon name="search" size={20} />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onBlur={rememberQuery}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.nativeEvent.isComposing) rememberQuery();
-            }}
-            placeholder={en ? 'Search by name, or #tag' : '名前や #タグ で探す'}
+            placeholder={en ? 'Search by mood, scene or #tag' : '気分・場面・#タグで探す'}
             aria-label={en ? 'Search characters' : 'キャラクターを検索'}
           />
         </div>
-        {!query && recent.length > 0 && (
-          <div className="k-recent-search">
-            <span className="k-recent-search__label">{en ? 'Recent searches' : '最近の検索'}</span>
-            {recent.map((r) => (
-              <button key={r} type="button" className="k-chip k-chip--sm" onClick={() => setQuery(r)}>
-                <Icon name="search" size={12} /> {r}
-              </button>
-            ))}
-            <button type="button" className="k-recent-search__clear" onClick={clearRecent}>
-              {en ? 'Clear' : '消去'}
-            </button>
-          </div>
-        )}
-        {popularTags.length > 0 && (
+        {popularTags.length > 0 && !noResults && (
           <div className="k-chip-row k-chip-row--scroll" role="group" aria-label={en ? 'Filter by tag' : 'タグで絞り込む'}>
             {popularTags.map((tag) => {
               const on = !!activeTag && tagKey(activeTag) === tagKey(tag);
@@ -174,11 +119,11 @@ export default function Discover() {
         )}
       </div>
 
-      {!loading && worlds.length > 0 && !query && (
+      {!loading && worlds.length > 0 && !query && !noResults && (
         <section className="k-section">
           <div className="k-section__head">
             <h2 className="k-section__title">
-              <span className="k-section__mark">✦</span> {en ? 'Worlds' : 'ワールド'}
+              {en ? 'Worlds' : 'ワールド'}
             </h2>
             {activeWorld && (
               <button className="k-section__more" onClick={() => setParam("world", null)} style={{ border: "none", background: "none", cursor: "pointer" }}>
@@ -186,7 +131,7 @@ export default function Discover() {
               </button>
             )}
           </div>
-          <div className="k-grid k-grid--worlds">
+          <div className="k-world-list">
             {worlds.map((w) => (
               <WorldCard key={w.id} id={w.id} displayName={w.display_name} description={w.description} active={activeWorld === w.id} onClick={() => setParam("world", activeWorld === w.id ? null : w.id)} />
             ))}
@@ -200,12 +145,12 @@ export default function Discover() {
       )}
 
       <section className="k-section">
-        <div className="k-section__head">
+        {!noResults && <div className="k-section__head">
           <h2 className="k-section__title">
-            <span className="k-section__mark">✦</span> {activeMoodLabel ? (en ? `${activeMoodLabel} characters` : `${activeMoodLabel}のキャラ`) : (en ? 'Characters' : 'キャラ')}
+            {activeMoodLabel ? (en ? `${activeMoodLabel} characters` : `${activeMoodLabel} のキャラ`) : (en ? 'Characters' : 'キャラ')}
           </h2>
           {!loading && !loadError && <span className="k-count">{en ? `${filteredCharacters.length} ${filteredCharacters.length === 1 ? 'character' : 'characters'}` : `${filteredCharacters.length}人`}</span>}
-        </div>
+        </div>}
         {loadError ? <p role="alert">{friendlyMessage(loadError.cause, language)}<Button size="sm" variant="secondary" onClick={() => setRetry(value => value + 1)}>{en ? 'Retry' : '再読込'}</Button></p> : loading ? (
           <div className="k-grid k-grid--characters">
             {[0, 1, 2, 3].map((i) => (
@@ -214,11 +159,11 @@ export default function Discover() {
           </div>
         ) : filteredCharacters.length === 0 ? (
           <EmptyState
-            mascot="shy"
+            mascot="wink"
             title={!hasFilters ? (en ? 'No characters yet.' : 'まだキャラがいません。') : en ? `No characters match “${query.trim() || activeMoodLabel || activeWorldInfo?.display_name}”.` : `「${query.trim() || activeMoodLabel || activeWorldInfo?.display_name}」に合う子、見つからなかった…`}
             action={
               hasFilters ? (
-                <Button variant="secondary" onClick={clearFilters}>
+                <Button onClick={clearFilters}>
                   {en ? 'Reset filters' : '条件をリセット'}
                 </Button>
               ) : undefined
@@ -227,7 +172,7 @@ export default function Discover() {
         ) : (
           <div className="k-grid k-grid--characters">
             {filteredCharacters.map((c) => (
-              <CharacterCard key={c.id} id={c.id} displayName={c.display_name} hook={c.hook || c.description} creator={c.official ? "Kyalulu Official" : en ? 'My library' : 'マイライブラリ'} tags={c.tags ?? []} portraitUrl={c.portrait_url} talks={talks.get(c.id)} />
+              <CharacterCard key={c.id} id={c.id} displayName={c.display_name} hook={c.hook || c.description} creator={c.official ? "Kyalulu Official" : en ? 'My library' : 'マイライブラリ'} tags={c.tags ?? []} portraitUrl={c.portrait_url} />
             ))}
           </div>
         )}

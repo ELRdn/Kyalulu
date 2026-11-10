@@ -1,6 +1,6 @@
 import { connectionScope } from '../lib/remoteStore';
 import { chatCompletedAnalytics, chatReopenedAnalytics } from '../lib/analytics';
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   fetchHistory,
@@ -42,7 +42,7 @@ import {
 import ModelSelector from "../components/ModelSelector";
 import PortableSessionControls from '../components/PortableSessionControls';
 import { fetchLibraryItem, assetUrl, type LibraryItem, type LibraryBinding } from '../lib/library';
-import MessageContent from "../components/MessageContent";
+import MessageContent, { Narration, UserText } from "../components/MessageContent";
 import ReasoningSummary from '../components/ReasoningSummary';
 import KyaluluWaiting, { REPLY_WAIT_LABEL } from '../components/KyaluluWaiting';
 import Icon from "../components/ui/Icon";
@@ -67,14 +67,15 @@ import MemoryInspector from "../components/MemoryInspector";
 import { useDocumentTitle } from "../lib/title";
 import Dialog, { useConfirm } from "../components/ui/Dialog";
 import { getReplyVersions, recordReplyVersion, selectReplyVersion, eraseReplyVersions } from "../lib/replyVersions";
-import { cleanPreview } from "../lib/text";
+import { cleanPreview, splitLeadingScene } from "../lib/text";
 import { useMediaQuery } from "../lib/useMediaQuery";
+import Switch from "../components/ui/Switch";
 import { NARRATION_STYLES, extractNarrationStyle, applyNarrationStyle } from "../lib/narrationStyle";
 import { useChatRecovery } from "../lib/useChatRecovery";
 import { useAdministrative, useRuntimeAccess } from "../components/RuntimeGate";
 import CloudRouteControls, {defaultCloudRoute,type CloudRouteChoice} from '../components/CloudRouteControls';
 import { useCapabilities } from '../lib/capabilities';
-import { branchSession, deleteSessionData } from '../lib/api';
+import { branchSession, deleteSessionData, eraseConversationConfirm } from '../lib/api';
 import CloudQuoteConfirmation, { useQuoteConfirmation } from '../components/CloudQuoteConfirmation';
 import type { CloudQuote } from '../lib/quoteConsent';
 import { setGenerationBusy, executionTarget, useLanguage } from '../lib/appContext';
@@ -202,6 +203,8 @@ function ActiveChatSession() {
   const [debugOpen, setDebugOpen] = useState(false);
   const [versionTick, setVersionTick] = useState(0);
   const [directiveOpen, setDirectiveOpen] = useState(false);
+  const [menu, setMenu] = useState<{ index: number; x?: number; y?: number } | null>(null);
+  const pressTimer = useRef<number | undefined>(undefined);
   const [directive, setDirective] = useState("");
   const [suggestions, setSuggestions] = useState<string[] | null>(null);
   const [suggesting, setSuggesting] = useState(false);
@@ -248,6 +251,7 @@ function ActiveChatSession() {
     tutorial.dismiss(receipt);
     tutorialButtonRef.current?.focus({ preventScroll: true });
   };
+  useEffect(() => { if (suggestions && listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight; }, [suggestions]);
   const stopRef = useRef<(() => void) | null>(null);
   const dispatchedRef = useRef(false);
   const generationIdRef = useRef<string | null>(null);
@@ -280,7 +284,9 @@ function ActiveChatSession() {
   const hasCharacter = !!(characterId || portableCharacter);
   const [railQuery, setRailQuery] = useState("");
   const wide = useMediaQuery("(min-width: 1280px)");
-  const panelDocked = ctxPanel.mode === "always" && wide;
+  const phone = useMediaQuery("(max-width: 767px)");
+  // P3b: on PC an opened panel takes the right column instead of covering the chat.
+  const panelDocked = wide && (ctxPanel.mode === "always" || ctxPanel.open);
   const selectableCharacters = useMemo(() => characters.filter((c: any) => showNsfw || !c.nsfw || c.id === characterId), [characters, showNsfw, characterId]);
   useEffect(() => {
     let active = true;
@@ -715,15 +721,13 @@ function ActiveChatSession() {
   };
   const permanentlyDelete = async () => {
     if (mutationBlocked() || !capabilities?.features.permanent_delete) return;
-    if (!(await confirm({ title: en ? 'Permanently erase conversation data?' : '会話データを完全消去しますか？',
-      description: en ? 'Conversation text, generation results and memories linked to this conversation will be permanently erased. Shared memories without an originating conversation are excluded. For conversations you allowed to sync, synced copies with the same conversation ID are included. Conflicting updates require another review; unsent changes on other devices remain device only. Cost ledgers are retained. Backup retention follows the connected service’s policy.' : '会話本文・生成結果・この会話にひも付く記憶を完全消去します。出典がない共有記憶は対象外です。同期を許可した会話は、同じ会話IDの同期コピーも対象です。更新の競合は再確認し、他の端末の未送信変更は端末限定で保持します。費用台帳は残り、バックアップの保持期間は接続先の方針に従います。',
-      confirmLabel: en ? 'Erase permanently' : '完全消去する', cancelLabel: en ? 'Cancel' : 'キャンセル', danger: true })) || mutationBlocked()) return;
+    if (!(await confirm(eraseConversationConfirm(en))) || mutationBlocked()) return;
     const scope = connectionScope(); sessionActionRef.current = true; setSessionAction(true);
     try {
       await deleteSessionData(sessionId);
       if (scope !== connectionScope()) return;
       if (mountedRef.current) { setMessages([]); setHistoryPage(null);setDebugData(null); setVersionTick(value => value + 1); }
-      try { recovery.erase(); eraseReplyVersions(sessionId); }
+      try { recovery.erase(); eraseReplyVersions(sessionId); localStorage.removeItem(plainKey); }
       catch (error) { if (mountedRef.current) setError(`サーバーの会話データは消去しましたが、この端末の下書き・返信履歴の消去を確認できません。${String(error)}`); return; }
       if (mountedRef.current) navigate('/chats');
     }
@@ -916,9 +920,9 @@ function ActiveChatSession() {
     void send(id, req);
   };
   const openingReplies: string[] = !messages.some((m) => m.role === "user") && Array.isArray(activeCharacter?.opening_replies) ? activeCharacter.opening_replies : [];
-  const handleSuggest = async () => {
-    if (suggestions) return setSuggestions(null);
-    if (openingReplies.length) return setSuggestions(openingReplies);
+  const handleSuggest = async (more = false) => {
+    if (suggestions && !more) return setSuggestions(null);
+    if (!more && openingReplies.length && !messages.some((m) => m.role === 'user')) return setSuggestions(openingReplies);
     if (!modelId || suggesting || !capabilities?.features.suggestions || mutationBlocked()) return;
     setSuggesting(true);
     setError(null);
@@ -945,6 +949,52 @@ function ActiveChatSession() {
   const canRegenerate = !!capabilities?.features.regenerate && !mutationLocked && !historyLoading && !historyPage?.next && messages.at(-1)?.role === "assistant" && !!messages.at(-1)?.id && messages.at(-2)?.role === "user";
   const chatStatus = !online ? (en ? 'Waiting for connection' : '接続待ち') : quote ? (en ? 'Waiting for storage and training consent' : '保存・学習利用への同意待ち') : streaming ? (en ? 'thinking…' : '考えごとをしている…') : recovery.unresolved ? (en ? 'Checking the send result…' : '送信結果を確認中…')
     : settingsReady && historyReady && modelAvailable ? (en ? 'here with you' : 'そばにいる') : (en ? 'Preparing conversation…' : '会話を準備中…');
+  // 11: off detaches the character from this conversation; the id is kept so it can be turned back on.
+  const plainKey = `kyalulu-plain-character:${sessionId}`;
+  let plainSaved: string | null = null;
+  try { plainSaved = localStorage.getItem(plainKey); } catch { /* Storage can be blocked. */ }
+  const setUseCharacter = (on: boolean) => {
+    if (on && plainSaved) {
+      const saved = JSON.parse(plainSaved) as { id: string; ref: LibraryBinding['character'] };
+      localStorage.removeItem(plainKey);
+      setLibraryBinding(b => ({ profile: null, lorebooks: [], expression_asset_id: null, ...b, character: saved.ref }));
+      setCharacterId(saved.id);
+    } else if (!on && characterId) {
+      localStorage.setItem(plainKey, JSON.stringify({ id: characterId, ref: libraryBinding?.character ?? null }));
+      setLibraryBinding(b => b && { ...b, character: null, expression_asset_id: null });
+      setCharacterId(null);
+    }
+  };
+  const presetPanel = <div className="k-preset-panel">
+    <div className="k-preset-panel__head">
+      <IconButton label={en ? 'Back' : '戻る'} size="sm" onClick={() => setPortableOpen(false)}><Icon name="back" size={22} /></IconButton>
+      <h2 id="k-preset-title">{en ? 'Character & preset' : 'キャラ・プリセット'}</h2>
+    </div>
+    <fieldset className="k-chat-mutation-group k-preset-panel__body" disabled={mutationLocked || !settingsReady}>
+      <section className="k-context-group">
+        <h3>{en ? 'Conversation engine' : '会話エンジン'}</h3>
+        <div className="k-chat-model-choice">
+          <ModelSelector compact models={modelChoices} value={modelId} onChange={setModelId} disabled={!capabilities}
+            loading={modelsLoading} error={modelsFailed ? (en ? 'Could not load the engine list. Reload it.' : '会話エンジン一覧の取得に失敗しました。再読込してください。') : ''} />
+          {modelsFailed && <Button variant="ghost" size="sm" onClick={reloadModels}>{en ? 'Reload models' : 'モデルを再読込'}</Button>}
+        </div>
+      </section>
+      {capabilities?.model_selection==='cloud-routes'&&<CloudRouteControls key={sessionId} currentModel={currentModel} value={cloudRoute} onChange={setCloudRoute} disabled={mutationLocked || !settingsReady}/>}
+      <PortableSessionControls value={libraryBinding} characterId={characterId} character={portableCharacter} allowNsfw={showNsfw} onChange={setLibraryBinding} onTemperature={setTemperature} systemPrompt={systemPrompt} onSystemPrompt={setSystemPrompt} />
+      <Link to="/create?edit=new&kind=profile" className="k-btn k-btn--secondary k-btn--md k-preset-panel__create"><Icon name="plus" size={16} /> {en ? 'Create a preset' : 'プリセットを作る'}</Link>
+      <label className="k-preset-temp">
+        <span className="k-preset-temp__head"><span>{en ? 'Reply freedom' : '返事の自由さ'}</span><span>{temperature.toFixed(1)}</span></span>
+        <input type="range" min={0} max={2} step={0.1} value={temperature} onChange={e => setTemperature(Number(e.target.value))} aria-label={en ? 'Reply freedom' : '返事の自由さ'} />
+        <span className="k-preset-temp__ends"><span>{en ? 'Stable' : '安定'}</span><span>{en ? 'Free' : '自由'}</span></span>
+      </label>
+      {(hasCharacter || plainSaved) && <div className="k-preset-toggle">
+        <span><strong>{en ? "Use the character's settings" : 'キャラの設定を使う'}</strong><small>{en ? 'Off talks with the plain conversation engine.' : 'オフにすると素の会話エンジンで話します'}</small></span>
+        <Switch checked={!plainSaved} onChange={setUseCharacter} label={en ? "Use the character's settings" : 'キャラの設定を使う'} />
+      </div>}
+    </fieldset>
+    <p role="status" className="k-sheet-status">{settingsStatus}</p>
+  </div>;
+
   const starters = hasCharacter
     ? (en ? ['Hello! Nice to meet you.', 'How was your day?', 'Tell me more about yourself.', '*sits down quietly beside you*'] : ["こんにちは！はじめまして", "今日はどんな一日だった？", "きみのこと、もっと教えて", "*そっと隣に座る*"])
     : (en ? ['Hello!', 'What would you like to talk about?', 'Let’s make a story together.'] : ["こんにちは！", "おすすめの話題はある？", "物語をいっしょに作ろう"]);
@@ -977,26 +1027,28 @@ function ActiveChatSession() {
           <button type="button" className="k-chip" aria-pressed={visualNovel} onClick={() => { setVisualNovel(value => !value); if (!panelDocked) ctxPanel.setOpen(false); }}>{visualNovel ? (en ? 'Show chat history' : '会話履歴を表示') : (en ? 'Visual novel' : 'VN表示')}</button>
           <button type="button" className="k-chip" aria-pressed={portableOpen} onClick={() => { setPortableOpen((v) => !v); if (!panelDocked) ctxPanel.setOpen(false); }}>{en ? 'Character & preset' : 'キャラ・プリセット'}</button>
         </div>
-        <SessionPolicy sessionId={sessionId} model={currentModel?.display_name??modelId??''} disabled={mutationLocked}/>
-        {lastQuote && !quote && <p className="k-context-note" aria-label={en ? 'Current destination and credit cap' : '今回の送信先と消費上限'}>
-          {en ? 'Current: ' : '今回：'}{lastQuote.route.display_name} · {lastQuote.route.upstream || lastQuote.route.provider}
-          {lastQuote.route.upstream && (en ? ` (via ${lastQuote.route.provider})` : `（${lastQuote.route.provider}経由）`)} · {en ? 'Cap' : '上限'} {lastQuote.max_credits.toLocaleString()} K-Credits{en ? ' (no reservation; actual cost settled after completion)' : '（予約なし・完了後に実費精算）'}
-        </p>}
       </>}
-      extras={<>
-        {capabilities?.features.summaries && <ConversationContext key={sessionId} sessionId={sessionId} refreshKey={messages.length + (streaming ? 1 : 0)} disabled={mutationLocked} visible={panelDocked||ctxPanel.open} />}
+      tech={<>
+        <SessionPolicy sessionId={sessionId} model={currentModel?.display_name??modelId??''} disabled={mutationLocked}/>
+        {lastQuote && !quote && <div className="k-session-policy k-session-policy--quote" aria-label={en ? 'Current destination and credit cap' : '今回の送信先と消費上限'}>
+          <span className="k-kv"><span>{en ? 'Destination' : '送信先'}</span><span>{lastQuote.route.display_name} · {lastQuote.route.upstream || lastQuote.route.provider}{lastQuote.route.upstream && (en ? ` (via ${lastQuote.route.provider})` : `（${lastQuote.route.provider}経由）`)}</span></span>
+          <span className="k-kv"><span>{en ? 'Cap this time' : '今回の上限'}</span><span>{lastQuote.max_credits.toLocaleString()} K-Credits</span></span>
+        </div>}
+        {lastQuote && !quote && <p className="k-context-hint">{en ? 'No reservation; the actual cost is settled after completion.' : '予約なし・完了後に実費精算します。'}</p>}
+      </>}
+      summaries={capabilities?.features.summaries && <ConversationContext key={sessionId} sessionId={sessionId} refreshKey={messages.length + (streaming ? 1 : 0)} disabled={mutationLocked} visible={panelDocked||ctxPanel.open} />}
+      more={<>
         {capabilities?.features.story_rules && <StoryRuntime key={sessionId} sessionId={sessionId} refreshKey={messages.length + (streaming ? 1 : 0)} visible={panelDocked||ctxPanel.open} />}
         {portableCharacter && capabilities?.features.media_playback && <PortableMedia assets={portableCharacter.document.assets} />}
-        <div className="k-context-section"><Button size="sm" variant="danger" disabled={mutationLocked || !capabilities?.features.permanent_delete} onClick={() => void permanentlyDelete()}>{en ? 'Erase conversation data' : '会話データを完全消去'}</Button>
-          <p className="k-context-note">{capabilities?.features.permanent_delete ? (en ? 'Erases text, generation results and related memories. This is separate from clearing only the displayed history.' : '本文・生成結果・関連記憶を消去します。履歴のみの削除とは別の操作です。') : (en ? 'Permanent erasure is unavailable on this connection.' : 'この接続先では完全消去に対応していません。')}</p></div>
       </>}
+      erase={{ available: !!capabilities?.features.permanent_delete, disabled: mutationLocked, run: () => void permanentlyDelete() }}
     />
   );
 
   const railGroup = (title: string, list: SessionInfo[]) =>
     list.length > 0 && (
       <div className="k-chat-rail__group">
-        <div className="k-chat-rail__label">{title}</div>
+        {title && <div className="k-chat-rail__label">{title}</div>}
         {list.map((s) => (
           <SessionRow
             key={s.session_id}
@@ -1013,20 +1065,41 @@ function ActiveChatSession() {
   return (
     <div className="k-chat-layout">
       {confirmDialog}
-      <Dialog open={directiveOpen} onClose={() => setDirectiveOpen(false)} labelledBy="k-directive-title">
-        <form className="k-confirm" onSubmit={(e) => { e.preventDefault(); submitDirective(); }}>
-          <h2 id="k-directive-title" className="k-confirm__title">{en ? 'How should this reply change?' : 'どんな返事にしたい？'}</h2>
-          <p className="k-confirm__desc">{en ? 'Regenerate the current reply using this direction. The direction applies only to this one attempt.' : 'いまの返事を、この注文に沿って作り直します。注文はこの1回だけに使われます。'}</p>
-          <Textarea value={directive} onChange={(e) => setDirective(e.target.value)} rows={3} maxLength={300} placeholder={en ? 'e.g. more shy / advance the story / shorter' : '例：もっと照れた感じで / 話を少し進めて / 短めに'} data-autofocus />
+      {menu && messages[menu.index] && (() => {
+        const i = menu.index, m = messages[i], last = i === messages.length - 1 && m.role === 'assistant';
+        const items = [
+          ...(last && canRegenerate ? [
+            { icon: 'sparkle' as const, label: en ? 'Another reply' : '別の返事', sub: en ? 'One more take in the same flow' : '同じ流れで、もう一案', run: () => void send(messages.at(-1)!.id) },
+            { icon: 'sliders' as const, label: en ? 'Regenerate with direction' : '注文して作り直す', sub: en ? 'Ask for “sweeter”, for example' : '「もっと甘く」など希望を伝える', run: () => setDirectiveOpen(true) },
+          ] : []),
+          ...(m.id && capabilities?.features.branch ? [{ icon: 'share' as const, label: en ? 'Branch here' : 'ここから分岐', sub: en ? 'Start another conversation from this point' : 'この時点から別の会話をはじめる', run: () => void createBranch(m.id!) }] : []),
+          { icon: 'edit' as const, label: en ? 'Edit' : '編集', run: () => startEdit(i) },
+          { icon: 'trash' as const, label: en ? 'Delete' : '削除', danger: true, run: () => void handleDelete(i) },
+        ];
+        const list = <div className="k-msg-menu" role="menu" aria-label={en ? 'Message actions' : 'メッセージの操作'}>
+          {items.map((item) => <button key={item.label} type="button" role="menuitem" className={`k-msg-menu__item ${'danger' in item ? 'is-danger' : ''}`} disabled={!settingsReady && !('danger' in item)} onClick={() => { setMenu(null); item.run(); }}>
+            <Icon name={item.icon} size={18} /><span><span className="k-msg-menu__label">{item.label}</span>{'sub' in item && <span className="k-msg-menu__sub">{item.sub}</span>}</span>
+          </button>)}
+        </div>;
+        return menu.x !== undefined && window.matchMedia('(min-width: 768px)').matches
+          ? <div className="k-msg-menu-layer" onClick={() => setMenu(null)} onKeyDown={(e) => { if (e.key === 'Escape') setMenu(null); }}>
+              <div className="k-msg-menu-pop" style={{ left: Math.min(menu.x, window.innerWidth - 316), top: Math.min(menu.y ?? 0, window.innerHeight - 340) }} onClick={(e) => e.stopPropagation()}>{list}</div>
+            </div>
+          : <Dialog open onClose={() => setMenu(null)} label={en ? 'Message actions' : 'メッセージの操作'} sheet width={300}>{list}</Dialog>;
+      })()}
+      <Dialog open={directiveOpen} onClose={() => setDirectiveOpen(false)} labelledBy="k-directive-title" sheet width={440}>
+        <form className="k-confirm k-directive" onSubmit={(e) => { e.preventDefault(); submitDirective(); }}>
+          <div className="k-directive__head"><h2 id="k-directive-title" className="k-confirm__title">{en ? 'How should this reply change?' : 'どんな返事にしたい？'}</h2><IconButton label={en ? 'Close' : '閉じる'} size="sm" onClick={() => setDirectiveOpen(false)}><Icon name="close" size={20} /></IconButton></div>
+          <Textarea aria-label={en ? 'Direction for the new reply' : '作り直しの注文'} value={directive} onChange={(e) => setDirective(e.target.value)} rows={3} maxLength={300} placeholder={en ? 'e.g. more shy / advance the story / shorter' : '例：もっと照れた感じで / 話を少し進めて / 短めに'} data-autofocus />
           <div className="k-directive-presets">
-            {(en ? ['Sweeter', 'Shorter', 'Advance the story', 'More shy', 'Describe the scene'] : ["もっと甘く", "もっと短く", "話を進めて", "照れた感じで", "情景をくわしく"]).map((t) => (
-              <button key={t} type="button" className="k-chip" onClick={() => setDirective(t)}>{t}</button>
+            {(en ? ['Shorter', 'Sweeter', 'Advance the story', 'More scenery'] : ["もっと短く", "もっと甘く", "話を進めて", "情景を多めに"]).map((t) => (
+              <button key={t} type="button" className={`k-chip ${directive === t ? 'is-active' : ''}`} aria-pressed={directive === t} onClick={() => setDirective(t)}>{t}</button>
             ))}
           </div>
-          <div className="k-confirm__actions">
-            <Button variant="ghost" type="button" onClick={() => setDirectiveOpen(false)}>{en ? 'Cancel' : 'やめる'}</Button>
+          <div className="k-confirm__actions k-directive__actions">
+            <Button variant="secondary" type="button" onClick={() => setDirectiveOpen(false)}>{en ? 'Cancel' : 'やめる'}</Button>
             <Button variant="primary" type="submit" disabled={!directive.trim()}>
-              <Icon name="wand" size={15} /> {en ? 'Regenerate' : '作り直す'}
+              <Icon name="sparkle" size={15} /> {en ? 'Regenerate' : '作り直す'}
             </Button>
           </div>
         </form>
@@ -1034,23 +1107,24 @@ function ActiveChatSession() {
       {/* 左: セッションレール */}
       <aside className="k-chat-rail" aria-label={en ? 'Conversations' : '会話リスト'}>
         <div className="k-chat-rail__head">
-          <Button variant="primary" onClick={handleNewSession} className="k-chat-rail__new">
-            <Icon name="plus" size={16} /> {en ? 'New chat' : '新しいチャット'}
-          </Button>
-          <div className="k-chat-rail__search">
+          <div className="k-chat-rail__title">
+            <h2>{en ? 'Talk' : 'トーク'}</h2>
+            <IconButton label={en ? 'New chat' : '新しいチャット'} size="sm" onClick={handleNewSession}><Icon name="plus" size={20} /></IconButton>
+          </div>
+          {knownSessions.length > 6 && <div className="k-chat-rail__search">
             <Icon name="search" size={15} />
             <input value={railQuery} onChange={(e) => setRailQuery(e.target.value)} placeholder={en ? 'Search chats…' : 'チャットを検索…'} aria-label={en ? 'Search chats' : 'チャットを検索'} />
-          </div>
+          </div>}
         </div>
         <div className="k-chat-rail__list">
           {sessionsError ? <p role="alert">{sessionsError}<Button size="sm" variant="ghost" onClick={() => void loadSessions()}>{en ? 'Retry' : '再読込'}</Button></p> : railSessions.length === 0 && <EmptyState motif="✧" title={railNeedle ? (en ? 'No results' : '見つかりませんでした') : (en ? 'No chats yet' : 'チャットがありません')} />}
           {railGroup(en ? 'Pinned' : 'ピン留め', railPinned)}
-          {railGroup(en ? 'Recent chats' : '最近のチャット', railRecent)}
+          {railGroup(railPinned.length ? (en ? 'Recent chats' : '最近のチャット') : '', railRecent)}
         </div>
       </aside>
 
       {/* 中央: 会話 */}
-      <div className="k-chat-main">
+      <div className={`k-chat-main ${visualNovel ? 'is-vn' : ''}`}>
         <AdBanner/>
         <div className="k-chat-header">
           <Link to="/chats" className="k-chat-header__back" aria-label={en ? 'Back to chats' : 'チャット一覧へ戻る'}>
@@ -1059,11 +1133,10 @@ function ActiveChatSession() {
           <button type="button" className="k-chat-header__who" onClick={() => ctxPanel.setOpen(!ctxPanel.open)} aria-label={en ? `Show information for ${headerName}` : `${headerName}の情報を表示`}>
             <span className="k-chat-header__avatar">
               <Avatar name={headerName} seed={characterId ?? sessionId} size="md" src={portrait} mascot={!hasCharacter} />
-              <span className="k-chat-header__status" aria-hidden="true" />
             </span>
             <span className="k-chat-header__identity">
               <span className="k-chat-header__name" title={headerName}>{headerName}</span>
-              <span className="k-chat-header__sub">{activeWorld ? `✦ ${activeWorld.display_name} · ` : ""}{chatStatus}</span>
+              <span className={`k-chat-header__sub ${online && !quote && settingsReady && historyReady && modelAvailable ? 'is-near' : ''}`}>{activeWorld ? `✦ ${activeWorld.display_name} · ` : ""}{chatStatus}</span>
             </span>
           </button>
           <div className="k-chat-header__actions">
@@ -1077,10 +1150,10 @@ function ActiveChatSession() {
                 <Icon name="bug" size={17} />
               </IconButton>
             )}
-            {!panelDocked && (
-              <IconButton label={en ? 'Conversation settings' : '会話設定'} active={ctxPanel.open} aria-expanded={ctxPanel.open} onClick={() => ctxPanel.setOpen(!ctxPanel.open)}>
-                <Icon name="settings" size={17} />
-              </IconButton>
+            {!(panelDocked && ctxPanel.mode === 'always') && (
+              <button type="button" className={`k-chat-header__settings ${ctxPanel.open ? 'is-active' : ''}`} aria-label={en ? 'Conversation settings' : '会話設定'} aria-expanded={ctxPanel.open} onClick={() => ctxPanel.setOpen(!ctxPanel.open)}>
+                <Icon name="sliders" size={20} /><span>{en ? 'Settings' : '会話設定'}</span>
+              </button>
             )}
           </div>
         </div>
@@ -1094,14 +1167,7 @@ function ActiveChatSession() {
             {historyPage.next&&<span role="status">{en?'Return to latest before sending. Your draft is kept.':'送信するには「最新」へ戻ってね。下書きは保持されます。'}</span>}
           </nav>}
           {historyLoading&&<p role="status" className="k-context-note">{en?'Loading saved history…':'保存済みの履歴を読み込んでいます…'}</p>}
-          {tutorial.open && <FirstChatTutorial step={tutorial.step} cloud={!!cloud_mode} device={executionTarget() === 'device'} language={language} inspectorAvailable={administrative}
-            storageFailed={tutorial.storageFailed} panelRef={tutorialRef} onNext={tutorial.next} onBack={tutorial.back}
-            onSkip={() => dismissTutorial('skipped')} onComplete={() => dismissTutorial('completed')}
-            onFocusComposer={() => composerRef.current?.querySelector<HTMLTextAreaElement>('textarea')?.focus()}
-            onOpenModels={() => setPortableOpen(true)}
-            onOpenMemory={() => { ctxPanel.setOpen(true); setMemoryFocusRequest(value => value + 1); }}
-            onOpenInspector={() => { if (administrative) { setResearcher(true); setDebugOpen(true); } }} />}
-          {visualNovel && <VisualNovelScene name={headerName} messages={messages} streaming={streaming} cloud={cloud_mode} assets={capabilities?.features.media_playback ? portableCharacter?.document.assets ?? [] : []} />}
+          {visualNovel && <VisualNovelScene name={headerName} portrait={portrait} onExit={() => setVisualNovel(false)} onBack={() => navigate('/chats')} messages={messages} streaming={streaming} assets={capabilities?.features.media_playback ? portableCharacter?.document.assets ?? [] : []} />}
           <div className="k-chat-messages__inner" hidden={visualNovel}>
             {messages.length === 0 && settingsReady && historyReady && !historyLoading && (
               <div className="k-chat-welcome">
@@ -1133,8 +1199,15 @@ function ActiveChatSession() {
               const role = m.role === "user" ? "user" : "character";
               const showMeta = role === "character" && messages[i - 1]?.role !== "assistant";
               if (isStreaming && !m.content) return null;
+              // The opening scene of the first reply reads as narration above it (design 05).
+              const [scene, body] = i === 0 && isAssistant && !isEditing ? splitLeadingScene(m.content) : ['', m.content];
               return (
-                <div key={m.id ?? i} className={`k-msg k-msg--${role} ${isEditing ? "is-editing" : ""} ${i === messages.length - 1 ? "is-latest" : ""}`}>
+                <Fragment key={m.id ?? i}>
+                {scene && <Narration><p>{scene}</p></Narration>}
+                <div className={`k-msg k-msg--${role} ${isEditing ? "is-editing" : ""} ${i === messages.length - 1 ? "is-latest" : ""}`}
+                  onContextMenu={(e) => { if (isEditing || isStreaming || mutationLocked) return; e.preventDefault(); setMenu({ index: i, x: e.clientX, y: e.clientY }); }}
+                  onTouchStart={() => { if (isEditing || isStreaming || mutationLocked) return; pressTimer.current = window.setTimeout(() => setMenu({ index: i }), 450); }}
+                  onTouchEnd={() => window.clearTimeout(pressTimer.current)} onTouchMove={() => window.clearTimeout(pressTimer.current)}>
                   {role === "character" ? (
                     <span className="k-msg__avatar">{showMeta && <Avatar name={headerName} seed={characterId ?? sessionId} size="md" src={portrait} mascot={!hasCharacter} />}</span>
                   ) : null}
@@ -1144,7 +1217,7 @@ function ActiveChatSession() {
                         <span className="k-msg__name">{headerName}</span>
                       </div>
                     )}
-                    {isAssistant && !isEditing && !isStreaming && <ReasoningSummary message={m} cloud={cloud_mode || m.model_id?.startsWith('cloud-')} />}
+                    {isAssistant && !isEditing && !isStreaming && <ReasoningSummary message={m} />}
                     {isEditing ? (
                       <div className="k-msg__editor">
                         <Textarea aria-label={en ? 'Message text' : 'メッセージ本文'} value={editText} onChange={(e) => setEditText(e.target.value)} rows={Math.max(3, editText.split("\n").length)} autoFocus />
@@ -1154,46 +1227,21 @@ function ActiveChatSession() {
                         </div>
                       </div>
                     ) : role === "user" ? (
-                      <div className="k-bubble k-bubble--user">{m.content}</div>
+                      <div className="k-bubble k-bubble--user"><UserText content={m.content} /></div>
                     ) : (
-                      <MessageContent content={m.content} isStreaming={isStreaming} />
+                      <MessageContent content={body} isStreaming={isStreaming} />
                     )}
-                    {!isEditing && !isStreaming && !mutationLocked && (
-                      <div className="k-msg__actions">
-                        {isAssistant && i === messages.length - 1 && replyVersions && (
-                          <span className="k-msg__versions" role="group" aria-label={en ? 'Switch reply versions' : '返事の案を切り替える'}>
-                            <button type="button" className="k-msg__action k-msg__action--icon" onClick={() => void showVersion(replyVersions.index - 1)} disabled={replyVersions.index <= 0} aria-label={en ? 'Previous version' : '前の案'}>
-                              <Icon name="back" size={14} />
-                            </button>
-                            <span className="k-msg__versions-count" aria-live="polite">
-                              {replyVersions.index + 1}/{replyVersions.versions.length}
-                            </span>
-                            <button type="button" className="k-msg__action k-msg__action--icon" onClick={() => void showVersion(replyVersions.index + 1)} disabled={replyVersions.index >= replyVersions.versions.length - 1} aria-label={en ? 'Next version' : '次の案'}>
-                              <Icon name="chevron" size={14} />
-                            </button>
-                          </span>
-                        )}
-                        {isAssistant && i === messages.length - 1 && canRegenerate && (
-                          <>
-                            <button type="button" className="k-msg__action" onClick={() => void send(messages.at(-1)!.id)} disabled={!settingsReady}>
-                              <Icon name="refresh" size={14} /> {en ? 'Another reply' : '別の返事'}
-                            </button>
-                            <button type="button" className="k-msg__action" onClick={() => setDirectiveOpen(true)} disabled={!settingsReady}>
-                              <Icon name="wand" size={14} /> {en ? 'Regenerate with direction' : '注文して作り直す'}
-                            </button>
-                          </>
-                        )}
-                        {m.id && <button type="button" className="k-msg__action" disabled={!capabilities?.features.branch} title={capabilities?.features.branch ? (en ? 'Create a separate conversation from this state' : 'ここまでの状態で別の会話を作る') : (en ? 'Branching is unavailable on this connection' : 'この接続先は分岐に対応していません')} onClick={() => void createBranch(m.id!)}>{en ? 'Branch here' : 'ここから分岐'}</button>}
-                        <button type="button" className="k-msg__action" onClick={() => startEdit(i)} aria-label={en ? 'Edit' : '編集'}>
-                          <Icon name="edit" size={14} /> {en ? 'Edit' : '編集'}
-                        </button>
-                        <button type="button" className="k-msg__action k-msg__action--danger" onClick={() => handleDelete(i)} aria-label={en ? 'Delete' : '削除'}>
-                          <Icon name="trash" size={14} /> {en ? 'Delete' : '削除'}
-                        </button>
-                      </div>
+                    {!isEditing && !isStreaming && isAssistant && i === messages.length - 1 && replyVersions && replyVersions.versions.length > 1 && (
+                      <span className="k-msg__versions" role="group" aria-label={en ? 'Switch reply versions' : '返事の案を切り替える'}>
+                        <button type="button" className="k-msg__action k-msg__action--icon" onClick={() => void showVersion(replyVersions.index - 1)} disabled={mutationLocked || replyVersions.index <= 0} aria-label={en ? 'Previous version' : '前の案'}><Icon name="back" size={14} /></button>
+                        <span className="k-msg__versions-count" aria-live="polite">{replyVersions.index + 1}/{replyVersions.versions.length}</span>
+                        <button type="button" className="k-msg__action k-msg__action--icon" onClick={() => void showVersion(replyVersions.index + 1)} disabled={mutationLocked || replyVersions.index >= replyVersions.versions.length - 1} aria-label={en ? 'Next version' : '次の案'}><Icon name="chevron" size={14} /></button>
+                      </span>
                     )}
+                    {!isEditing && !isStreaming && !mutationLocked && <button type="button" className="k-msg__more" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ index: i, x: r.left, y: r.bottom }); }} aria-label={en ? 'Message actions' : 'メッセージの操作'}>…</button>}
                   </div>
                 </div>
+                </Fragment>
               );
             })}
           </div>
@@ -1249,7 +1297,13 @@ function ActiveChatSession() {
             {recovery.pending && !streaming && <button type="button" onClick={() => void recovery.cancel()}>{en ? 'Stop and check' : '停止して確認'}</button>}
           </div>
         )}
-        <div ref={composerRef} className="k-chat-composer-wrap">
+        <div ref={composerRef} className="k-chat-composer-wrap" data-coach={tutorial.open ? tutorial.step : undefined}>
+          {tutorial.open && <FirstChatTutorial step={tutorial.step} cloud={!!cloud_mode} device={executionTarget() === 'device'} language={language} inspectorAvailable={administrative}
+            storageFailed={tutorial.storageFailed} panelRef={tutorialRef} onNext={tutorial.next} onBack={tutorial.back}
+            onSkip={() => dismissTutorial('skipped')} onComplete={() => dismissTutorial('completed')}
+            onOpenModels={() => setPortableOpen(true)}
+            onOpenMemory={() => { ctxPanel.setOpen(true); setMemoryFocusRequest(value => value + 1); }}
+            onOpenInspector={() => { if (administrative) { setResearcher(true); setDebugOpen(true); } }} />}
           {tutorial.storageFailed && !tutorial.open && <p role="status" className="k-context-note">{en ? 'This browser could not record guide completion or skipping. The guide may appear again next time.' : '案内の完了・スキップをこのブラウザーに記録できませんでした。次回また案内が出る場合があります。'}</p>}
           {capabilitiesError && <div className="k-chat-error" role="alert">{capabilitiesError}<Button variant="ghost" size="sm" onClick={reloadCapabilities}>{en ? 'Reload capabilities' : '機能情報を再読込'}</Button></div>}
           {capabilities && !capabilities.features.regenerate && <p className="k-context-note">{en ? 'Reply regeneration is unavailable on this connection.' : 'この接続先では返事の再生成に対応していません。'}</p>}
@@ -1260,15 +1314,6 @@ function ActiveChatSession() {
             <dl>{([['文脈取得', clientTimings.context_fetch_ms], ['見積取得', clientTimings.quote_fetch_ms], ['同意待ち', clientTimings.quote_consent_ms], ['送信から最初の本文通知', clientTimings.post_to_first_body_ms], ['送信から全文完了通知', clientTimings.post_to_full_ms]] as const).map(([label, value]) => value !== null && <div key={label}><dt>{label}</dt><dd>{(value / 1000).toFixed(2)}秒</dd></div>)}</dl>
             <p className="k-context-note">本文通知は画面への引き渡し時刻です。Cloudで保存後に一括表示する場合は、最初の本文と全文完了が同時になります。</p>
           </details>}
-          {suggestions && (
-            <div className="k-suggest" role="group" aria-label="返事の候補">
-              {suggestions.map((t) => (
-                <button key={t} type="button" className="k-suggest__item" onClick={() => { setInput(t); setSuggestions(null); }}>
-                  {t}
-                </button>
-              ))}
-            </div>
-          )}
           {commandResult && (
             <div className={`k-cmd-result ${commandResult.ok ? "" : "is-error"}`} role="status">
               <div className="k-cmd-result__head">{commandResult.command}</div>
@@ -1280,7 +1325,7 @@ function ActiveChatSession() {
           )}
           <Composer
             commands={commands}
-            tools={
+            tools={(openingReplies.length > 0 || !capabilities || capabilities.features.suggestions) &&
               <button
                 type="button"
                 className={`k-composer__tool ${suggestions ? "is-active" : ""}`}
@@ -1301,8 +1346,25 @@ function ActiveChatSession() {
             sendBlocked={!capabilities || sessionAction || recovery.unresolved || historyLoading || !!historyPage?.next || commandRunning || !online || (!modelAvailable && !input.trim().startsWith("/"))}
             disabled={!settingsReady || !historyReady}
             disabledText={!modelId ? (modelsFailed ? (en ? 'Cannot connect to the server. Check that the app is running.' : 'うまくつながらないみたい…') : (en ? 'Preparing the conversation model…' : 'いま準備運動中…ちょっと待っててね')) : (en ? 'Preparing conversation…' : '会話を準備中…')}
-            placeholder={hasCharacter ? (en ? `Write a message to ${headerName}…` : `${headerName}への言葉を入力してね…`) : (en ? 'Write your message…' : 'きみの言葉を入力してね…')}
+            placeholder={visualNovel ? (!phone ? (en ? 'Click or press Enter for next, or type a reply' : 'クリックかEnterで次へ・入力して返事') : (en ? 'Tap for next, or type a reply' : 'タップで次へ・入力して返事')) : (en ? 'Message' : 'メッセージ')}
           />
+          {suggestions && (
+            <div className="k-suggest" role="group" aria-labelledby="k-suggest-title">
+              <div className="k-suggest__head">
+                <span id="k-suggest-title">{en ? 'Reply ideas' : '返事の提案'}</span>
+                <button type="button" className="k-suggest__close" onClick={() => setSuggestions(null)} aria-label={en ? 'Close' : '閉じる'}><Icon name="close" size={18} /></button>
+              </div>
+              {suggestions.map((t) => (
+                <button key={t} type="button" className="k-suggest__item" onClick={() => { setInput(t); setSuggestions(null); }}>
+                  {t.split(/(\*[^*]+\*)/).filter(Boolean).map((part, k) => part.startsWith('*') && part.endsWith('*') && part.length > 2 ? <em key={k} className="md-action">{part.slice(1, -1)}</em> : <span key={k}>{part}</span>)}
+                </button>
+              ))}
+              <div className="k-suggest__foot">
+                <span>{en ? 'Tap to put it in the message box' : 'タップで入力欄に入ります'}</span>
+                {!(openingReplies.length && !messages.some((m) => m.role === 'user')) && <button type="button" className="k-suggest__more" onClick={() => void handleSuggest(true)} disabled={suggesting}><Icon name="sparkle" size={13} /> {suggesting ? (en ? 'Thinking…' : '考え中…') : (en ? 'Other ideas' : '別の候補')}</button>}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1310,31 +1372,14 @@ function ActiveChatSession() {
       {panelDocked ? (
         <div className="k-chat-context-wrap">{contextPanel}</div>
       ) : (
-        <Sheet open={ctxPanel.open} onClose={() => ctxPanel.setOpen(false)} side="right" width="min(340px, 100vw)" topOffset={64} label={en ? 'Conversation information' : '会話の情報'}>
+        <Sheet open={ctxPanel.open} onClose={() => ctxPanel.setOpen(false)} side="right" width={phone ? '100vw' : 'min(400px, 100vw)'} topOffset={phone ? 0 : 64} label={en ? 'Conversation information' : '会話の情報'}>
           {contextPanel}
         </Sheet>
       )}
 
-      <Sheet open={portableOpen} onClose={() => setPortableOpen(false)} side="right" topOffset={64} label={en ? 'Character & preset' : 'キャラ・プリセット'}>
-        <div className="k-sheet-head">
-          <div className="k-sheet-head__title">{en ? 'Character & preset' : 'キャラ・プリセット'}</div>
-          <IconButton label={en ? 'Close' : '閉じる'} size="sm" onClick={() => setPortableOpen(false)}>
-            <Icon name="close" size={15} />
-          </IconButton>
-        </div>
-        <div style={{ flex: 1, minHeight: 0, padding: 18, overflowY: "auto", overscrollBehavior: "contain" }}>
-          <fieldset className="k-chat-mutation-group" disabled={mutationLocked || !settingsReady} style={{ display: "grid", gap: 18 }}>
-            <div className="k-chat-model-choice" style={{ display: "grid", gap: 8 }}>会話エンジン
-              <ModelSelector models={modelChoices} value={modelId} onChange={setModelId} disabled={!capabilities}
-                loading={modelsLoading} error={modelsFailed ? '会話エンジン一覧の取得に失敗しました。再読込してください。' : ''} />
-              <Button variant="ghost" onClick={reloadModels}>モデルを再読込</Button>
-            </div>
-            {capabilities?.model_selection==='cloud-routes'&&<CloudRouteControls key={sessionId} currentModel={currentModel} value={cloudRoute} onChange={setCloudRoute} disabled={mutationLocked || !settingsReady}/>}
-            <PortableSessionControls value={libraryBinding} characterId={characterId} character={portableCharacter} allowNsfw={showNsfw} onChange={setLibraryBinding} onTemperature={setTemperature} />
-          </fieldset>
-          <p role="status" className="k-sheet-status">{settingsStatus}</p>
-        </div>
-      </Sheet>
+      {phone
+        ? <Sheet open={portableOpen} onClose={() => setPortableOpen(false)} side="right" width="100vw" label={en ? 'Character & preset' : 'キャラ・プリセット'}>{presetPanel}</Sheet>
+        : <Dialog open={portableOpen} onClose={() => setPortableOpen(false)} labelledBy="k-preset-title" width={480} wide>{presetPanel}</Dialog>}
       {/* Studio: モデル選択/プリセット/Inspector（researcherのみ、Consumer UIから視覚的に分離） */}
       <Sheet open={researcher && studioOpen} onClose={() => setStudioOpen(false)} side="right" width="min(420px, 92vw)" topOffset={60}>
         <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
@@ -1501,49 +1546,22 @@ function ActiveChatSession() {
   );
 }
 
+function PickRow({ label, value, children }: { label: string; value: string; children: React.ReactNode }) {
+  // The native select sits over the row, so phones get their own picker (design 10).
+  return <label className="k-pick-row"><span className="k-pick-row__label">{label}</span><span className="k-pick-row__value">{value}</span><Icon name="chevron" size={18} />{children}</label>;
+}
+
 function ChatContextPanel({
-  name,
-  seed,
-  portrait,
-  activeCharacter,
-  characterId,
-  activeWorld,
-  intro,
-  currentNarrationStyle,
-  onSelectNarrationStyle,
-  ctxPanel,
-  docked,
-  onClose,
-  onNewSession,
-  onClearSession,
-  onInjectIntro,
-  sessionId,
-  memoryRefresh,
-  memoryRef,
-  settings,
-  extras,
-  tools,
+  name, seed, portrait, activeCharacter, characterId, activeWorld, intro, currentNarrationStyle, onSelectNarrationStyle,
+  ctxPanel, docked, onClose, onNewSession, onClearSession, onInjectIntro, sessionId, memoryRefresh, memoryRef, settings,
+  tools, tech, summaries, more, erase,
 }: {
-  name: string;
-  seed: string;
-  portrait?: string | null;
-  activeCharacter: any;
-  characterId: string | null;
-  activeWorld: WorldInfo | undefined;
-  intro: string;
-  currentNarrationStyle: string | null;
-  onSelectNarrationStyle: (id: string | null) => void;
-  ctxPanel: ReturnType<typeof useContextPanelPref>;
-  docked: boolean;
-  onClose: () => void;
-  onNewSession: () => void;
-  onClearSession: () => void;
-  onInjectIntro: () => void;
-  sessionId: string;
-  memoryRefresh: number;
-  memoryRef: React.Ref<HTMLDivElement>;
-  extras: React.ReactNode;
-  tools?: React.ReactNode;
+  name: string; seed: string; portrait?: string | null; activeCharacter: any; characterId: string | null; activeWorld: WorldInfo | undefined;
+  intro: string; currentNarrationStyle: string | null; onSelectNarrationStyle: (id: string | null) => void;
+  ctxPanel: ReturnType<typeof useContextPanelPref>; docked: boolean; onClose: () => void; onNewSession: () => void; onClearSession: () => void;
+  onInjectIntro: () => void; sessionId: string; memoryRefresh: number; memoryRef: React.Ref<HTMLDivElement>;
+  tools?: React.ReactNode; tech: React.ReactNode; summaries: React.ReactNode; more: React.ReactNode;
+  erase: { available: boolean; disabled: boolean; run: () => void };
   settings: {
     personaId: string | null; personas: PersonaInfo[]; worldId: string | null; worlds: WorldInfo[];
     systemPrompt: string; setPersonaId: (value: string | null) => void; setWorldId: (value: string | null) => void;
@@ -1553,101 +1571,77 @@ function ChatContextPanel({
   const { personaId, personas, worldId, worlds, systemPrompt, setPersonaId, setWorldId, setSystemPrompt, settingsReady, streaming } = settings;
   const en = useLanguage() === 'en';
   const [memoryOpen,setMemoryOpen]=useState(false),[memorySeen,setMemorySeen]=useState(false);
+  const none = en ? 'None' : '指定なし';
+  const personaName = personas.find(p => p.id === personaId)?.display_name ?? (personaId ? (en ? 'Saved version' : '保存版') : none);
+  const worldName = worlds.find(w => w.id === worldId)?.display_name ?? (worldId ? (en ? 'Saved version' : '保存版') : none);
+  const style = NARRATION_STYLES.find(st => st.id === currentNarrationStyle);
+  const firstName = Array.from(name.split(/[\s（(]/)[0] || name).slice(0, 12).join('');
   return (
     <div className="k-context-panel">
+      <div className="k-context-head">
+        <h2>{en ? 'Conversation settings' : '会話設定'}</h2>
+        {!(docked && ctxPanel.mode === 'always') && <IconButton label={en ? 'Close panel' : 'パネルを閉じる'} size="sm" onClick={onClose}><Icon name="close" size={20} /></IconButton>}
+      </div>
       <div className="k-context-hero">
-        {!docked && (
-          <IconButton label={en ? 'Close panel' : 'パネルを閉じる'} size="sm" className="k-context-hero__close" onClick={onClose}>
-            <Icon name="close" size={15} />
-          </IconButton>
-        )}
-        <Avatar name={name} seed={seed} size="xl" src={portrait} mascot={!characterId} />
-        <div className="k-context-hero__name">{name}</div>
-        {activeCharacter?.description ? <p className="k-context-hero__desc">{activeCharacter.description}</p> : !characterId && <p className="k-context-hero__desc">{en ? 'Free chat without a selected character.' : 'キャラクター未設定のフリートークです。'}</p>}
-        {characterId && (
-          <Link to={`/characters/${encodeURIComponent(characterId)}`} className="k-context-hero__link">
-            {en ? 'View profile' : 'プロフィールを見る'} <Icon name="chevron" size={13} />
-          </Link>
-        )}
+        <Avatar name={name} seed={seed} size="lg" src={portrait} mascot={!characterId} />
+        <div className="k-context-hero__text">
+          <div className="k-context-hero__name">{name}</div>
+          {characterId ? <Link to={`/characters/${encodeURIComponent(characterId)}`} className="k-context-hero__link">{en ? 'View profile' : 'プロフィールを見る'}</Link>
+            : <p className="k-context-hero__desc">{en ? 'Free chat without a selected character.' : 'キャラクター未設定のフリートークです。'}</p>}
+        </div>
       </div>
       {tools}
 
-      {activeWorld && (
-        <div className="k-context-section">
-          <div className="k-context-section__title">✦ {en ? 'Scenario / World' : 'シナリオ / ワールド'}</div>
-          <div className="k-context-world">
-            <div className="k-context-world__name">{activeWorld.display_name}</div>
-            <div className="k-context-world__desc">{activeWorld.description}</div>
+      <section className="k-context-group">
+        <h3>{en ? 'Conversation settings' : '会話の設定'}</h3>
+        <div className="k-set__group">
+          <PickRow label={en ? 'Your persona' : 'あなたの人物像'} value={personaName}><select aria-label={en ? 'Your persona' : 'あなたの人物像'} value={personaId ?? ""} disabled={!settingsReady || streaming} onChange={e => setPersonaId(e.target.value || null)}><option value="">{none}</option>{personaId && !personas.some(p => p.id === personaId) && <option value={personaId}>{en ? 'Previously selected persona (saved version)' : '以前選んだ人物像（保存版）'}</option>}{personas.map(p => <option key={p.id} value={p.id}>{p.display_name}</option>)}</select></PickRow>
+          <PickRow label={en ? 'Setting' : '舞台'} value={worldName}><select aria-label={en ? 'Setting' : '舞台'} value={worldId ?? ""} disabled={!settingsReady || streaming} onChange={e => setWorldId(e.target.value || null)}><option value="">{none}</option>{worldId && !worlds.some(w => w.id === worldId) && <option value={worldId}>{en ? 'Previously selected setting (saved version)' : '以前選んだ舞台（保存版）'}</option>}{worlds.map(w => <option key={w.id} value={w.id}>{w.display_name}</option>)}</select></PickRow>
+          <PickRow label={en ? 'Narration style' : 'ナレーションスタイル'} value={style ? (en ? style.englishLabel : style.label) : (en ? 'Default' : 'おまかせ')}><select aria-label={en ? 'Narration style' : 'ナレーションスタイル'} value={currentNarrationStyle ?? ''} disabled={streaming} onChange={e => onSelectNarrationStyle(e.target.value || null)}><option value="">{en ? 'Default' : 'おまかせ'}</option>{NARRATION_STYLES.map(st => <option key={st.id} value={st.id}>{en ? st.englishLabel : st.label}</option>)}</select></PickRow>
+        </div>
+        <Link to="/create/settings" className="k-context-link">{en ? 'Create personas and worlds' : '人物像・世界観を作る'}</Link>
+      </section>
+
+      <section className="k-context-group" ref={memoryRef} tabIndex={-1} aria-label={en ? 'Memories' : '覚えていること'} onFocus={event=>{if(event.target===event.currentTarget){setMemoryOpen(true);setMemorySeen(true);}}}>
+        <h3>{en ? 'Memories' : '覚えていること'}</h3>
+        <p className="k-context-hint">{en ? `A summary of the conversation ${firstName} remembers. You can correct it if it's wrong.` : `${firstName}が覚えている会話の要約です。違っていたら訂正できます。`}</p>
+        {summaries}
+        <details className="k-context-more" open={memoryOpen} onToggle={event=>{if(event.target===event.currentTarget){setMemoryOpen(event.currentTarget.open);if(event.currentTarget.open)setMemorySeen(true);}}}>
+          <summary>{en ? 'All memories' : '記憶をすべて見る'}</summary>
+          <fieldset className="k-chat-mutation-group" disabled={streaming}>
+            {memorySeen&&<MemoryPanel key={`${sessionId}:${characterId}:${personaId}`} sessionId={sessionId} refreshKey={memoryRefresh} visible={memoryOpen&&(docked||ctxPanel.open)} />}
+          </fieldset>
+        </details>
+      </section>
+
+      <section className="k-context-group">
+        <h3>{en ? 'Technical details' : '技術情報'}</h3>
+        {tech}
+      </section>
+
+      <section className="k-context-group">
+        <h3>{en ? 'Data' : 'データ'}</h3>
+        <div className="k-set__group">
+          <button type="button" className="k-pick-row k-pick-row--danger" onClick={onClearSession} disabled={streaming}><Icon name="trash" size={18} /><span className="k-pick-row__label">{en ? 'Clear history' : '履歴を削除'}</span></button>
+          <button type="button" className="k-pick-row k-pick-row--danger" onClick={erase.run} disabled={erase.disabled || !erase.available}><Icon name="trash" size={18} /><span className="k-pick-row__label">{en ? 'Erase conversation data' : '会話データを完全消去'}<small>{erase.available ? (en ? 'Also erases generation results and memories. This cannot be undone.' : '生成結果と記憶も消します。元に戻せません。') : (en ? 'Permanent erasure is unavailable on this connection.' : 'この接続先では完全消去に対応していません。')}</small></span></button>
+        </div>
+      </section>
+
+      <details className="k-context-group k-context-more">
+        <summary>{en ? 'More settings' : 'そのほかの設定'}</summary>
+        {activeWorld && <div className="k-context-world"><div className="k-context-world__name">{activeWorld.display_name}</div><div className="k-context-world__desc">{activeWorld.description}</div></div>}
+        {intro && <div className="k-context-sub"><div className="k-context-intro">{cleanPreview(intro, 400)}</div><Button variant="ghost" size="sm" onClick={onInjectIntro} disabled={streaming} style={{ justifySelf: "start" }}><Icon name="play" size={12} /> {en ? 'Insert at the start of the conversation' : '会話の最初に流す'}</Button></div>}
+        <StoryControls key={sessionId} value={systemPrompt} onChange={setSystemPrompt} disabled={!settingsReady || streaming} />
+        {more}
+        <div className="k-context-sub">
+          <span className="k-context-hint">{en ? 'Panel display' : 'パネルの表示'}</span>
+          <div className="k-narration-style-grid">
+            <button className={`k-narration-style-chip ${ctxPanel.mode === "collapsible" ? "k-narration-style-chip--active" : ""}`} onClick={() => ctxPanel.setMode("collapsible")}>{en ? 'When needed' : '必要なときだけ'}</button>
+            <button className={`k-narration-style-chip ${ctxPanel.mode === "always" ? "k-narration-style-chip--active" : ""}`} onClick={() => ctxPanel.setMode("always")}>{en ? 'Always visible' : '常に表示'}</button>
           </div>
         </div>
-      )}
-
-      {intro && (
-        <div className="k-context-section">
-          <div className="k-context-section__title">✦ {en ? 'Opening scene' : 'はじまりのシーン'}</div>
-          <div className="k-context-intro">{cleanPreview(intro, 400)}</div>
-          <Button variant="ghost" size="sm" onClick={onInjectIntro} disabled={streaming} style={{ justifySelf: "start" }}>
-            <Icon name="play" size={12} /> {en ? 'Insert at the start of the conversation' : '会話の最初に流す'}
-          </Button>
-        </div>
-      )}
-
-      <details className="k-context-section"><summary className="k-context-section__title">{en ? 'Conversation settings' : '会話の設定'}</summary>
-        <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-          <label>{en ? 'Your persona' : 'あなたの人物像'}<select className="k-input" value={personaId ?? ""} disabled={!settingsReady || streaming} onChange={e => setPersonaId(e.target.value || null)}><option value="">{en ? 'None' : '指定なし'}</option>{personaId && !personas.some(p => p.id === personaId) && <option value={personaId}>{en ? 'Previously selected persona (saved version)' : '以前選んだ人物像（保存版）'}</option>}{personas.map(p => <option key={p.id} value={p.id}>{p.display_name}</option>)}</select></label>
-          <label>{en ? 'Setting' : '舞台'}<select className="k-input" value={worldId ?? ""} disabled={!settingsReady || streaming} onChange={e => setWorldId(e.target.value || null)}><option value="">{en ? 'None' : '指定なし'}</option>{worldId && !worlds.some(w => w.id === worldId) && <option value={worldId}>{en ? 'Previously selected setting (saved version)' : '以前選んだ舞台（保存版）'}</option>}{worlds.map(w => <option key={w.id} value={w.id}>{w.display_name}</option>)}</select></label>
-          <Link to="/create/settings">{en ? 'Create personas and worlds' : '人物像・世界観を作る'}</Link>
-        </div>
+        <Button variant="secondary" size="sm" onClick={onNewSession}><Icon name="plus" size={14} /> {en ? 'New chat' : '新しいチャット'}</Button>
       </details>
-      <StoryControls key={sessionId} value={systemPrompt} onChange={setSystemPrompt} disabled={!settingsReady || streaming} />
-      <div ref={memoryRef} tabIndex={-1} aria-label={en ? 'Memories' : '覚えていること'} onFocus={event=>{if(event.target===event.currentTarget){setMemoryOpen(true);setMemorySeen(true);}}}>
-      <details className="k-context-section" open={memoryOpen} onToggle={event=>{if(event.target===event.currentTarget){setMemoryOpen(event.currentTarget.open);if(event.currentTarget.open)setMemorySeen(true);}}}>
-      <summary className="k-context-section__title">{en?'Memories':'覚えていること'}</summary>
-      <fieldset className="k-chat-mutation-group" disabled={streaming}>
-      {memorySeen&&<MemoryPanel key={`${sessionId}:${characterId}:${personaId}`} sessionId={sessionId} refreshKey={memoryRefresh} visible={memoryOpen&&(docked||ctxPanel.open)} />}
-      </fieldset>
-      </details>
-      </div>
-      {extras}
-
-      <div className="k-context-section">
-        <div className="k-context-section__title">✦ {en ? 'Narration style' : 'ナレーションスタイル'}</div>
-        <div className="k-narration-style-grid">
-          <button className={`k-narration-style-chip ${!currentNarrationStyle ? "k-narration-style-chip--active" : ""}`} onClick={() => onSelectNarrationStyle(null)} disabled={streaming}>
-            {en ? 'Default' : 'おまかせ'}
-          </button>
-          {NARRATION_STYLES.map((st) => (
-            <button key={st.id} className={`k-narration-style-chip ${currentNarrationStyle === st.id ? "k-narration-style-chip--active" : ""}`} onClick={() => onSelectNarrationStyle(st.id)} disabled={streaming}>
-              {en ? st.englishLabel : st.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="k-context-section">
-        <div className="k-context-section__title">✦ {en ? 'Panel display' : 'パネルの表示'}</div>
-        <div className="k-narration-style-grid">
-          <button className={`k-narration-style-chip ${ctxPanel.mode === "collapsible" ? "k-narration-style-chip--active" : ""}`} onClick={() => ctxPanel.setMode("collapsible")}>
-            {en ? 'When needed' : '必要なときだけ'}
-          </button>
-          <button className={`k-narration-style-chip ${ctxPanel.mode === "always" ? "k-narration-style-chip--active" : ""}`} onClick={() => ctxPanel.setMode("always")}>
-            {en ? 'Always visible' : '常に表示'}
-          </button>
-        </div>
-        {ctxPanel.mode === "always" && !docked && <div className="k-context-note">{en ? 'Docked on the right when the viewport is at least 1280 px wide.' : '画面幅が1280px以上のときに右側へ固定されます。'}</div>}
-      </div>
-
-      <div className="k-context-section" style={{ borderBottom: "none" }}>
-        <div className="k-context-section__title">✦ {en ? 'Conversation' : '会話'}</div>
-        <div style={{ display: "grid", gap: 6 }}>
-          <Button variant="secondary" size="sm" onClick={onNewSession}>
-            <Icon name="plus" size={14} /> {en ? 'New chat' : '新しいチャット'}
-          </Button>
-          <Button variant="danger" size="sm" onClick={onClearSession} disabled={streaming}>
-            <Icon name="trash" size={14} /> {en ? 'Clear displayed history' : '表示履歴を削除'}
-          </Button>
-        </div>
-      </div>
     </div>
   );
 }

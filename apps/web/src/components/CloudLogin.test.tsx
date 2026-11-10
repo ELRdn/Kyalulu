@@ -64,11 +64,12 @@ it('rerenders the original error code in the current language without retrying',
   expect(renderToStaticMarkup(view())).toContain('ログインをキャンセルしました');expect(fixture.request).not.toHaveBeenCalled();
 });
 it('keeps analytics revoked while an earlier login request completes',async()=>{
+  fixture.states[2]='GB';
   let resolve!:(value:unknown)=>void;fixture.request.mockImplementation(()=>new Promise(done=>{resolve=done;}));
   const tree=view();fixture.effects[0]();submit(tree);
   expect(fixture.request).toHaveBeenCalledOnce();
   const body=JSON.parse(fixture.request.mock.calls[0][1].body);
-  expect(body).toMatchObject({email:'fixture@example.test',country:'JP',consent:true,eligibility_ticket:'fixture-eligibility',
+  expect(body).toMatchObject({email:'fixture@example.test',country:'GB',consent:true,eligibility_ticket:'fixture-eligibility',
     operator_backend:'deepseek',provider_consent_version:fixture.states[8],provider_disclosure_version:fixture.states[8]});
   analytics(tree).props.onChange({target:{checked:false}});resolve({});
   await vi.waitFor(()=>expect(fixture.states[5]).toBe('email'));
@@ -76,6 +77,7 @@ it('keeps analytics revoked while an earlier login request completes',async()=>{
   fixture.language='ja';expect(renderToStaticMarkup(view())).toContain('メールを送ったよ');expect(fixture.request).toHaveBeenCalledOnce();
 });
 it('uses the latest explicit analytics choice when it is enabled again before login finishes',async()=>{
+  fixture.states[2]='GB';
   let resolve!:(value:unknown)=>void;fixture.request.mockImplementation(()=>new Promise(done=>{resolve=done;}));
   const tree=view();fixture.effects[0]();submit(tree);
   analytics(tree).props.onChange({target:{checked:false}});analytics(tree).props.onChange({target:{checked:true}});resolve({});

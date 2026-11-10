@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import Avatar from "./Avatar";
 import Icon from "./Icon";
 import { sessionTitle, type SessionInfo } from "../../lib/api";
-import { cleanPreview, formatRelative } from "../../lib/text";
+import { cleanPreview, splitLeadingScene } from "../../lib/text";
 import "./ui.css";
 import { useLanguage } from '../../lib/appContext';
 
@@ -12,16 +12,19 @@ export default function SessionRow({
   active = false,
   pinned = false,
   onTogglePin,
+  onDelete,
 }: {
   session: SessionInfo;
   worldName?: string;
   active?: boolean;
   pinned?: boolean;
   onTogglePin?: () => void;
+  onDelete?: () => void;
 }) {
   const language = useLanguage(), en = language === 'en';
   const name = sessionTitle(session, language);
-  const preview = cleanPreview(session.last_preview);
+  // Show the character's last line, not the opening scene above it (design 06).
+  const preview = cleanPreview(splitLeadingScene(session.last_preview ?? '')[1] || session.last_preview);
   return (
     <div className={`k-session-row ${active ? "k-session-row--active" : ""}`}>
       <Link to={`/chats/${encodeURIComponent(session.session_id)}`} className="k-session-row__link" aria-current={active ? "page" : undefined}>
@@ -29,7 +32,7 @@ export default function SessionRow({
         <div className="k-session-row__body">
           <div className="k-session-row__top">
             <span className="k-session-row__name">{name}</span>
-            <span className="k-session-row__time">{formatRelative(session.last_at, language)}</span>
+            {pinned && <Icon name="pin" size={14} className="k-session-row__pinned" />}
           </div>
           <div className="k-session-row__preview">{preview || (en ? 'No messages yet' : 'まだメッセージがありません')}</div>
           {session.sync_copy && <div className="k-session-row__world">{en ? 'Synced copy' : '同期コピー'} · v{session.sync_copy.revision}</div>}
@@ -39,7 +42,7 @@ export default function SessionRow({
         </div>
       </Link>
       {onTogglePin && (
-        <button
+        <div className="k-session-row__actions"><button
           type="button"
           className={`k-session-row__pin ${pinned ? "is-pinned" : ""}`}
           aria-label={pinned ? (en ? `Unpin ${name}` : `${name}のピン留めを解除`) : (en ? `Pin ${name}` : `${name}をピン留め`)}
@@ -47,8 +50,13 @@ export default function SessionRow({
           title={pinned ? (en ? 'Unpin' : 'ピン留めを解除') : (en ? 'Pin' : 'ピン留め')}
           onClick={onTogglePin}
         >
-          <Icon name="pin" size={15} />
+          <Icon name="pin" size={18} />
+          <span>{pinned ? (en ? 'Unpin' : '解除') : (en ? 'Pin' : 'ピン留め')}</span>
         </button>
+        {onDelete && <button type="button" className="k-session-row__pin k-session-row__delete" aria-label={en ? `Delete the conversation with ${name}` : `${name}との会話を削除`} onClick={onDelete}>
+          <Icon name="trash" size={18} />
+          <span>{en ? 'Delete' : '削除'}</span>
+        </button>}</div>
       )}
     </div>
   );

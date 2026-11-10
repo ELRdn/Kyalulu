@@ -18,6 +18,6 @@ export const PublicationSchema=PublicationResultSchema.extend({
 });
 export const PublicationQueueSchema=z.object({publications:z.array(PublicationSchema),moderator:z.boolean(),owner_scope:z.string().min(1),account_name:z.string()});
 export const PublicationViewerSchema=z.object({authenticated:z.boolean(),owner_scope:z.string(),account_name:z.string()});
-export const PublishedWorkSchema=PublicWorkSchema.extend({moderation_revision:z.number().int().positive(),snapshot_hash:z.string().regex(/^[a-f0-9]{64}$/),rating:z.enum(['general','adult'])});
+export const PublishedWorkSchema=PublicWorkSchema.extend({author_bio:z.string().optional(),moderation_revision:z.number().int().positive(),snapshot_hash:z.string().regex(/^[a-f0-9]{64}$/),rating:z.enum(['general','adult'])});
 export type Publication=z.infer<typeof PublicationSchema>;
 export type PublishedWork=z.infer<typeof PublishedWorkSchema>;

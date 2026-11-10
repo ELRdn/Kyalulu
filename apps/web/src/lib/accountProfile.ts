@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { cloudJson } from './cloud';
 import { cloudEpoch, cloudOwner, isCloud } from './cloudMode';
 
-export type AccountProfile = {revision:number;display_name:string;saved_characters:string[];pinned_sessions:string[]};
+export type AccountProfile = {revision:number;display_name:string;bio?:string;avatar?:string;saved_characters:string[];pinned_sessions:string[]};
 type State = {owner:string;epoch:number;profile:AccountProfile|null;pending:number;error:string};
 let state: State = {owner:'',epoch:0,profile:null,pending:0,error:''};
 let queue: Promise<unknown> = Promise.resolve();

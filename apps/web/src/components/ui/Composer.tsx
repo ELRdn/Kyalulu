@@ -69,8 +69,8 @@ export default function Composer({
     const t = ref.current;
     if (!t) return;
     t.style.height = "auto";
-    t.style.height = Math.min(t.scrollHeight, 200) + "px";
-  }, [value]);
+    t.style.height = Math.min(t.scrollHeight + 2, 200) + "px";
+  }, [value, disabled, placeholder]);
 
   const locked = disabled || streaming || sendBlocked;
 
@@ -108,65 +108,62 @@ export default function Composer({
             ))}
           </div>
         )}
-        <textarea
-          ref={ref}
-          className="k-composer__input"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onCompositionStart={() => { composing.current = true; }}
-          onCompositionEnd={() => { composing.current = false; }}
-          onKeyDown={(e) => {
-            // Android keyboards may report isComposing=false on the final keydown.
-            if (preserveComposerKey(e.key, composing.current, e.nativeEvent.isComposing, e.keyCode,
-              window.matchMedia("(pointer: coarse)").matches)) return;
-            if (selected && !e.nativeEvent.isComposing) {
-              const partial = selected.name !== query.trimEnd() && selected.name.startsWith(query.trimEnd());
-              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-                e.preventDefault();
-                const i = matches.indexOf(selected) + (e.key === "ArrowDown" ? 1 : -1);
-                setActive((i + matches.length) % matches.length);
-                return;
-              }
-              if (e.key === "Escape") {
-                e.preventDefault();
-                setDismissed(true);
-                return;
-              }
-              if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey && partial)) {
-                e.preventDefault();
-                complete(selected);
-                return;
-              }
-            }
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              if (!locked) onSend();
-            }
-          }}
-          placeholder={disabled && !streaming ? disabledText ?? (en ? 'Preparing…' : '準備中…') : placeholder ?? (en ? 'Write your message…' : 'きみの言葉を入力してね…')}
-          disabled={disabled && !streaming}
-          rows={1}
-          aria-label={en ? 'Message' : 'メッセージ'}
-        />
         <div className="k-composer__row">
+          <textarea
+            ref={ref}
+            className="k-composer__input"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onCompositionStart={() => { composing.current = true; }}
+            onCompositionEnd={() => { composing.current = false; }}
+            onKeyDown={(e) => {
+              // Android keyboards may report isComposing=false on the final keydown.
+              if (preserveComposerKey(e.key, composing.current, e.nativeEvent.isComposing, e.keyCode,
+                window.matchMedia("(pointer: coarse)").matches)) return;
+              if (selected && !e.nativeEvent.isComposing) {
+                const partial = selected.name !== query.trimEnd() && selected.name.startsWith(query.trimEnd());
+                if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                  e.preventDefault();
+                  const i = matches.indexOf(selected) + (e.key === "ArrowDown" ? 1 : -1);
+                  setActive((i + matches.length) % matches.length);
+                  return;
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setDismissed(true);
+                  return;
+                }
+                if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey && partial)) {
+                  e.preventDefault();
+                  complete(selected);
+                  return;
+                }
+              }
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                if (!locked) onSend();
+              }
+            }}
+            placeholder={disabled && !streaming ? disabledText ?? (en ? 'Preparing…' : '準備中…') : placeholder ?? (en ? 'Message' : 'メッセージ')}
+            disabled={disabled && !streaming}
+            rows={1}
+            aria-label={en ? 'Message' : 'メッセージ'}
+          />
           {tools}
-          <button type="button" className="k-composer__tool" onClick={insertAsterisk} disabled={disabled && !streaming} title={en ? 'Insert narration (*action*)' : 'ト書きを入れる（*動作*）'} aria-label={en ? 'Insert narration' : 'ト書きを入れる'}>
+          <button type="button" className="k-composer__tool k-composer__tool--round" onClick={insertAsterisk} disabled={disabled && !streaming} title={en ? 'Insert an action (*action*)' : '仕草を入れる（*動作*）'} aria-label={en ? 'Insert an action' : '仕草を入れる'}>
             <span aria-hidden="true">＊</span>
           </button>
-          <span className="k-composer__hint k-composer__hint--keyboard">
-            <kbd>Enter</kbd> {en ? 'Send' : '送信'} · <kbd>Shift</kbd>+<kbd>Enter</kbd> {en ? 'New line' : '改行'}
-          </span>
           {streaming && onStop ? (
             <Button variant="secondary" size="md" className="k-composer__send" onClick={onStop}>
               <Icon name="stop" size={14} /> {en ? 'Stop' : '停止'}
             </Button>
           ) : onAdvance && !value.trim() ? (
             <Button variant="primary" size="md" className="k-composer__send" onClick={onAdvance} disabled={locked}>
-              <Icon name="chevron" size={15} /> {en ? 'Go on' : '進む'}
+              {en ? 'Go on' : '進む'} <Icon name="chevron" size={15} />
             </Button>
           ) : (
-            <Button variant="primary" size="md" className="k-composer__send" onClick={onSend} disabled={locked || !value.trim()}>
-              <Icon name="send" size={15} /> {en ? 'Send' : '送信'}
+            <Button variant="primary" size="md" className="k-composer__send" onClick={onSend} disabled={locked || !value.trim()} aria-label={en ? 'Send' : '送信'}>
+              <Icon name="arrowUp" size={18} strokeWidth={2.2} />
             </Button>
           )}
         </div>

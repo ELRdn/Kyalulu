@@ -1,7 +1,9 @@
+import { fetchPublicationQueue } from '../lib/publications';
 import PublishWorkButton from '../components/PublishWorkButton';
 import PublicationSubmit from '../components/PublicationSubmit';
 import { useCapabilities } from '../lib/capabilities';
-import { RuntimeDownload } from '../components/RuntimeMedia';
+import { RuntimeDownload, RuntimeImage } from '../components/RuntimeMedia';
+import ScenePreview from '../components/ScenePreview';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import Button from '../components/ui/Button';
@@ -9,8 +11,6 @@ import Card from '../components/ui/Card';
 import { Textarea } from '../components/ui/Input';
 import Dialog, { useConfirm } from '../components/ui/Dialog';
 import Icon from '../components/ui/Icon';
-import Avatar from '../components/ui/Avatar';
-import EmptyState from '../components/ui/EmptyState';
 import HubLinks from '../components/HubLinks';
 import { useAdultContent } from '../lib/adult';
 import { friendlyMessage } from '../lib/errors';
@@ -26,10 +26,10 @@ import { useAdministrative, useRuntimeAccess } from '../components/RuntimeGate';
 import { scopedKey } from '../lib/remoteStore';
 import { cloudOwner } from '../lib/cloudMode';
 import { useLanguage } from '../lib/appContext';
-import CharacterCard from '../components/ui/CharacterCard';
 import CloudLogin from '../components/CloudLogin';
 import { fetchBrowseCatalog, isCloudGuest } from '../lib/cloudGuest';
 import type { CharacterInfo } from '../lib/api';
+import { fetchSessions } from '../lib/api';
 
 type Draft = { document: PortableDocument; selected: boolean; histories: number[]; target?: LibraryItem; rating?: 'sfw' | 'nsfw'; copy?: boolean };
 const formats = ['ccv3-json', 'ccv3-png', 'charx', 'ccv2-json', 'ccv2-png', 'backup', 'original'];
@@ -37,12 +37,6 @@ const statusLabels = { ja: { applied: '反映できる', converted: '変換す�
 const formatLabels: Record<string, [string,string]> = { 'ccv3-json': ['Character Card V3（JSON）','Character Card V3 (JSON)'], 'ccv3-png': ['Character Card V3（PNG画像）','Character Card V3 (PNG)'], charx: ['CHARX','CHARX'], 'ccv2-json': ['Character Card V2（JSON）','Character Card V2 (JSON)'], 'ccv2-png': ['Character Card V2（PNG画像）','Character Card V2 (PNG)'], backup: ['Kyaluluバックアップ','Kyalulu backup'], original: ['取り込んだ原本','Imported original'] };
 const kindLabels = { ja: { character: 'プロット', profile: '生成プリセット', lorebook: '設定集' }, en: { character: 'Plot', profile: 'Generation preset', lorebook: 'Lorebook' } };
 type Notice = '' | {kind:'imported';count:number} | {kind:'saved'} | {kind:'draft'} | {kind:'reviewed';revision:number};
-const creationOptions = [
-  { kind: 'character', icon: 'sparkle', title: ['プロットを作る','Create a plot'], description: ['キャラクターと世界観、会話のはじまりを設定します。','Set up characters, a world and the opening scene.'] },
-  { kind: 'lorebook', icon: 'book', title: ['設定集を作る','Create a lorebook'], description: ['世界の知識をキーワードと一緒にまとめます。','Organize world knowledge with keywords.'] },
-  { kind: 'profile', icon: 'settings', title: ['生成プリセットを作る','Create a generation preset'], description: ['文体や生成パラメーターをまとめて保存します。','Save writing style and generation settings together.'] },
-] as const;
-
 export default function Create() {
   const guest = isCloudGuest(useRuntimeAccess());
   // An account/host change must tear down the previous owner's editor state.
@@ -60,18 +54,22 @@ function GuestCreate() {
     fetchBrowseCatalog(true).then(([c]) => { if (active) setSample(c.find(x => x.official && x.hook) ?? c[0] ?? null); }).catch(() => { /* The example is optional. */ });
     return () => { active = false; };
   }, []);
-  const steps = en ? ['Name and look', 'One line that sets the scene', 'The first line they say'] : ['名前と姿', '場面の一言', '最初のセリフ'];
+  const steps: [string, string][] = en
+    ? [['Name and look', 'e.g. Butler Sion, a black-cat beastfolk'], ['One line that sets the scene', 'e.g. A black-cat butler bows to greet you amid the scent of tea'], ['The first line they say', 'e.g. Welcome home, master.']]
+    : [['名前と姿', '例：シオン執事・黒猫の獣人'], ['場面の一言', '例：紅茶の香りの中、黒猫の執事が一礼してあなたを迎える'], ['最初のセリフ', '例：お帰りなさいませ、ご主人様。']];
   return <div className="k-page k-create k-create--guest">
     <h1 className="k-page-title">{en ? 'Create' : 'つくる'}</h1>
     <section className="k-create-guest" aria-labelledby="k-create-guest-title">
       <h2 id="k-create-guest-title">{en ? 'Just decide three things' : '3つ決めるだけ'}</h2>
-      <ol>{steps.map(step => <li key={step}>{step}</li>)}</ol>
-      <Button onClick={() => setLoginOpen(true)}><Icon name="plus" size={16} /> {en ? 'Create a character' : 'キャラをつくる'}</Button>
+      <p>{en ? 'Your character could become someone\'s company for the day.' : 'あなたのキャラが、誰かの「今日の一人」になるかも。'}</p>
+      <ol className="k-create-steps">{steps.map(([title, example], index) => <li key={title}><span className="k-create-steps__n" aria-hidden="true">{index + 1}</span><span><strong>{title}</strong><small>{example}</small></span></li>)}</ol>
+      {sample && <Link to={`/characters/${sample.id}`} className="k-create-sample">
+        <span className="k-create-sample__img">{sample.portrait_url ? <RuntimeImage src={sample.portrait_url} alt="" loading="lazy" /> : <Icon name="user" size={22} />}</span>
+        <span><small>{en ? 'Example' : '完成見本'}</small><strong>{sample.display_name}</strong><span>{en ? 'An official character made from these three' : 'この3つから生まれた公式キャラ'}</span></span>
+      </Link>}
+      <Button className="k-create-cta" onClick={() => setLoginOpen(true)}>{en ? 'Create a character' : 'キャラをつくる'}</Button>
+      <button type="button" className="k-text-link" onClick={() => setLoginOpen(true)}>{en ? 'Import from a file' : 'ファイルから取り込む'}</button>
     </section>
-    {sample && <section className="k-section" aria-label={en ? 'Example' : '完成見本'}>
-      <h2 className="k-section__title k-section__title--sm">{en ? 'Example' : '完成見本'}</h2>
-      <div className="k-grid k-grid--characters"><CharacterCard id={sample.id} displayName={sample.display_name} hook={sample.hook || sample.description} tags={sample.tags ?? []} creator="Kyalulu Official" portraitUrl={sample.portrait_url} /></div>
-    </section>}
     {loginOpen && <CloudLogin returnTo="/create?edit=new" onClose={() => setLoginOpen(false)} />}
   </div>;
 }
@@ -90,7 +88,6 @@ function CreateWorkspace() {
   const currentScope = () => mounted.current && scope === scopedKey('kyalulu-create');
   const storageKey = (type: 'editor' | 'preview', id: string) => `${draftPrefix}:${type}:${id}`;
   const [confirmation, confirm] = useConfirm();
-  const [chooserOpen, setChooserOpen] = useState(false);
   const [draftSaved, setDraftSaved] = useState(false);
   const [loadedEditor, setLoadedEditor] = useState<string | null>(null);
   const baseline = useRef('');
@@ -211,6 +208,15 @@ function CreateWorkspace() {
     window.addEventListener('beforeunload', protect);
     return () => window.removeEventListener('beforeunload', protect);
   }, [dirty, !!preview]);
+  // 19: how each saved character is doing, separate from the editor's load.
+  const [talks, setTalks] = useState<Record<string, number>>({});
+  const [published, setPublished] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let active = true;
+    fetchSessions().then(list => { if (active) setTalks(list.reduce<Record<string, number>>((all, item) => { if (item.character_id) all[item.character_id] = (all[item.character_id] ?? 0) + 1; return all; }, {})); }).catch(() => {});
+    if (cloud) fetchPublicationQueue().then(queue => { if (active) setPublished(new Set(queue.publications.flatMap(item => item.status === 'approved' && item.source.item_id ? [item.source.item_id] : []))); }).catch(() => {});
+    return () => { active = false; };
+  }, [cloud]);
   const run = async (work: () => Promise<void>) => { if (busy || !currentScope()) return; setBusy(true); setError(''); setMessage(''); try { await work(); } catch (e) { if (currentScope()) setError(e instanceof Error?e:String(e)); } finally { if (currentScope()) setBusy(false); } };
   const receive = (value: ImportPreview) => { if (!currentScope()) return; setPreview(value); setDrafts(value.documents.map(d => ({ document: d, selected: true, histories: [] }))); setDraftSaved(false); setDocument(null); setEditing(undefined); setInvalid({}); pending.current = null; setQuery({ preview: value.preview_id }, { replace: true }); };
   const clearPreview = (remove = false) => {
@@ -279,28 +285,52 @@ function CreateWorkspace() {
     setDocument(null); setEditing(undefined); setLoadedEditor(null); setInvalid({}); setQuery({}, { replace: true });
     void refresh().catch(error => { if (currentScope()) setError(error instanceof Error?error:String(error)); });
   };
-  const openEditor = (id: string, kind: PortableDocument['kind'] = 'character') => { setChooserOpen(false); setQuery(id === 'new' ? { edit: id, kind } : { edit: id }, { replace: true }); setInvalid({}); setMessage(''); };
-  const portraitOf = (item: LibraryItem) => assetUrl(item.document.assets.find(a => a.type === 'icon')?.asset_id ?? item.document.assets[0]?.asset_id);
+  const openEditor = (id: string, kind: PortableDocument['kind'] = 'character') => { setQuery(id === 'new' ? { edit: id, kind } : { edit: id }, { replace: true }); setInvalid({}); setMessage(''); };
+  const portraitOf = (doc: PortableDocument) => assetUrl(doc.assets.find(a => a.type === 'icon' && !/^(audio|video)\//.test(a.media_type))?.asset_id ?? doc.assets.find(a => a.media_type.startsWith('image/'))?.asset_id);
   const hasInvalid = preview ? drafts.some((d, i) => d.selected && (invalid[i] || (cloud && (d.document.nsfw || d.rating === 'nsfw')) || ((d.document.source.remote as { content_rating?: string } | undefined)?.content_rating === 'unknown' && !d.rating) || ((preview.duplicates[String(i)]?.length ?? 0) > 0 && !d.target && !d.copy))) : !!invalid.editor || (cloud && !!document?.nsfw);
   const banners = <>
     {error && <div className="k-create-banner k-create-banner--error" role="alert"><Icon name="info" size={16} /><span>{friendlyMessage(error,language)}</span><button type="button" onClick={() => setError('')} aria-label={en?'Close':'閉じる'}><Icon name="close" size={14} /></button></div>}
     {message && <div className="k-create-banner" role="status"><Icon name="check" size={16} /><span>{messageText}</span><button type="button" onClick={() => setMessage('')} aria-label={en?'Close':'閉じる'}><Icon name="close" size={14} /></button></div>}
     {sessions.length > 0 && <div className="k-create-migrated">{sessions.map(s => <Link key={s.session_id} to={`/chats/${s.session_id}`} className="k-chip"><Icon name="chat" size={13} /> {en?'Open migrated conversation: ':'移行した会話を開く：'}{s.name}</Link>)}</div>}
   </>;
+  const exportDialog = <>
+      <Dialog open={!!exportItem} onClose={() => setExportItem(null)} labelledBy="k-export-title" wide>
+        {exportItem && <div className="k-confirm">
+          <h2 id="k-export-title" className="k-confirm__title">{en?`Export ${exportItem.document.name}`:`${exportItem.document.name}を書き出す`}</h2>
+          <p className="k-confirm__desc">{en?'Save a file for use in other apps. Some settings may not transfer in the selected format.':'ほかのアプリで使える形式でファイルに保存します。形式によっては一部の設定が引き継がれません。'}</p>
+          <label className="k-create-field">{en?'Format':'形式'}<select aria-label={en?'Export format':'書き出し形式'} value={format} onChange={e => setFormat(e.target.value)}>{formats.filter(f => f !== 'original' || exportItem.original_id).map(f => <option key={f} value={f}>{formatLabels[f]?.[en?1:0] ?? f}</option>)}</select></label>
+          {exportInfo ? <>{exportInfo.notices.length > 0 && <ul className="k-create-notices">{exportInfo.notices.map((n, i) => <li key={i}>{n.path}：{n.reason}</li>)}</ul>}
+            <div className="k-confirm__actions"><Button variant="ghost" onClick={() => setExportItem(null)}>{en?'Close':'閉じる'}</Button><RuntimeDownload className="k-btn k-btn--primary k-btn--md" href={`/api/library/${exportItem.id}/export?format=${format}&revision=${exportItem.revision}&download=true`} download={exportInfo.filename}><Icon name="download" size={15} /> {exportInfo.filename}</RuntimeDownload></div></>
+            : <div className="k-confirm__actions"><Button variant="ghost" onClick={() => setExportItem(null)}>{en?'Close':'閉じる'}</Button><Button disabled={busy} onClick={() => void run(async () => setExportInfo(await libraryRequest(`/api/library/${exportItem.id}/export?format=${format}&revision=${exportItem.revision}`)))}>{busy ? (en?'Checking…':'確認中…') : (en?'Review export':'書き出し内容を確認')}</Button></div>}
+          {error && <p className="k-inline-error" role="alert">{friendlyMessage(error,language)}</p>}
+        </div>}
+      </Dialog>
+  </>;
   const editorHint = !document?.name.trim() ? (en?'Enter a name to enable saving':'名前を入力すると保存できます') : hasInvalid ? (en?'Check your input':'入力内容を確認してください') : dirty ? (en?`Saving to ${storageLabel} is not complete`:`${storageLabel}への保存はまだ完了していません`) : (en?'Saved to the library':'ライブラリへの保存が完了しています');
 
-  if (document) return <div className="k-page k-create k-create--focus">
+  if (document) {
+    const portrait = portraitOf(document), firstLine = typeof document.data.first_mes === 'string' ? document.data.first_mes : '', hook = typeof document.data.hook === 'string' ? document.data.hook : '';
+    const title = document.kind === 'character' ? (editing ? (en ? 'Edit character' : 'キャラを編集') : (en ? 'Create a character' : 'キャラをつくる')) : editing ? (en ? `Edit ${kindLabel[document.kind].toLowerCase()}` : `${kindLabel[document.kind]}を編集`) : (en ? `New ${kindLabel[document.kind].toLowerCase()}` : `新しい${kindLabel[document.kind]}`);
+    return <div className="k-page k-create k-create--focus k-create-edit">
     {confirmation}
     <header className="k-create-editor-head">
-      <div className="k-create-editor-head__title"><button type="button" className="k-back-link" disabled={busy} onClick={() => void closeEditor()} aria-label={en?'Back to my library':'マイライブラリに戻る'}><Icon name="back" size={20} /></button><div><p className="k-studio-kicker">{kindLabel[document.kind]}{editing ? (en?` · Version ${editing.revision}`:` · 版${editing.revision}`) : (en?' · New':' · 新規作成')}</p><h1 className="k-page-title">{document.name || (en?`New ${kindLabel[document.kind].toLowerCase()}`:`新しい${kindLabel[document.kind]}`)}</h1></div></div>
-      <div className="k-create-editor-head__actions"><Button variant="secondary" size="sm" disabled={busy} onClick={() => { if (persistEditor()) setMessage({kind:'draft'}); }}>{en?'Save temporary draft':'一時下書きを保存'}</Button><Button size="sm" disabled={busy || hasInvalid || !document.name.trim()} onClick={() => void save()}>{busy ? (en?'Saving…':'保存中…') : editing ? (en?'Save as a new version':'新しい版として保存') : (en?'Save':'保存')}</Button></div>
+      <div className="k-create-editor-head__title"><button type="button" className="k-back-link" disabled={busy} onClick={() => void closeEditor()} aria-label={en?'Back to my library':'マイライブラリに戻る'}><Icon name="back" size={20} /></button><h1 className="k-page-title">{title}{document.name && <span className="k-create-editor-head__name"> · {document.name}</span>}</h1></div>
+      <div className="k-create-editor-head__actions"><span className="k-create-draft-state" role="status">{draftSaved ? (en?'Autosaved':'自動保存済み') : ''}{editing ? (en?` · Version ${editing.revision}`:` · 版${editing.revision}`) : ''}</span><Button size="sm" disabled={busy || hasInvalid || !document.name.trim()} onClick={() => void save()}>{busy ? (en?'Saving…':'保存中…') : (en?'Save':'保存')}</Button></div>
     </header>
-    <div className="k-create-storage" role="note"><Icon name={cloud ? 'lock' : 'library'} size={15} /><span>{en?'Save to: ':'保存先：'}{storageLabel}{cloud ? (en?' · Shared within your account · General content':' · アカウント内で共有 · 全年齢の内容') : ''}</span><span className="k-create-draft-state">{draftSaved ? (en?'Temporary draft saved in this browser':'一時下書き：このブラウザーに保存済み') : (en?'Temporary draft not saved':'一時下書き：未保存')}</span></div>
     {banners}
     {conflict && editing && <div className="k-create-note" role="alert"><p>{en?'Another device changed this item. Your draft is retained. Review the latest version before saving.':'別の端末で変更されています。この下書きは残っています。保存前に最新版を確認してください。'}</p><Button variant="secondary" disabled={busy} onClick={() => void reviewConflict()}>{en?'Review conflicting version':'競合した版を確認'}</Button></div>}
-    <Card className="k-create-editor-card"><fieldset disabled={busy}><PortableEditor library={items} key={`${loadedEditor}-${editing?.revision ?? 0}`} document={document} onChange={value => { setDraftSaved(false); setDocument(value); }} onValidity={valid => setInvalid(x => x.editor === !valid ? x : ({ ...x, editor: !valid }))} /></fieldset></Card>
-    <footer className="k-create-editor-footer"><p>{editorHint}</p><div className="k-create-editor-footer__links"><Button variant="ghost" size="sm" disabled={busy} onClick={() => void closeEditor()}>{en?'Keep draft and go back':'下書きを残して戻る'}</Button>{editing?.document.kind === 'character' && <Button variant="secondary" size="sm" disabled={busy || dirty} onClick={() => navigate(`/characters/${editing.id}`)}><Icon name="chat" size={15} /> {en?'Open plot':'プロットを開く'}</Button>}</div><small>{en?'Temporary drafts can resume after reload in the same account and browser.':'一時下書きは再読み込み後も同じアカウント・ブラウザーで再開できます。'}{editing ? (en?' Saving a new version keeps ongoing conversations on their original settings.':'新しい版を保存しても、進行中の会話は開始時の設定を使います。') : ''}</small></footer>
+    <div className="k-create-edit__body">
+      <fieldset disabled={busy} className="k-create-edit__form"><PortableEditor library={items} chooseKind={!editing} key={`${loadedEditor}-${editing?.revision ?? 0}`} document={document} onChange={value => { setDraftSaved(false); setDocument(value); }} onValidity={valid => setInvalid(x => x.editor === !valid ? x : ({ ...x, editor: !valid }))} /></fieldset>
+      {document.kind === 'character' && <aside className="k-create-edit__preview" aria-label={en?'Preview':'プレビュー'}>
+        <h2 className="k-create-edit__label">{en?'Preview':'プレビュー'}</h2>
+        <div className="k-create-edit__card"><label htmlFor="k-portrait-input" className="k-create-edit__art" aria-label={en?'Choose image':'画像を選ぶ'}>{portrait ? <RuntimeImage src={portrait} alt="" /> : <span className="k-create-edit__noimg"><Icon name="user" size={32} /></span>}</label><strong>{document.name || (en?'Untitled':'名前未設定')}</strong>{hook && <span>{hook}</span>}</div>
+        {firstLine.trim() && <><h2 className="k-create-edit__label">{en?'How the conversation starts':'会話の始まり'}</h2><div className="k-plot-editor__preview k-create-edit__scene"><ScenePreview name={document.name || (en?'Untitled':'名前未設定')} seed={editorKey ?? 'new'} portrait={portrait} content={firstLine} /></div></>}
+      </aside>}
+    </div>
+    <footer className="k-create-editor-footer"><p>{editorHint}</p><div className="k-create-editor-footer__links"><Button variant="ghost" size="sm" disabled={busy} onClick={() => void closeEditor()}>{en?'Keep draft and go back':'下書きを残して戻る'}</Button>{editing?.document.kind === 'character' && <Button variant="secondary" size="sm" disabled={busy || dirty} onClick={() => navigate(`/characters/${editing.id}`)}><Icon name="chat" size={15} /> {en?'Open plot':'プロットを開く'}</Button>}{editing && <Button variant="ghost" size="sm" disabled={busy || dirty} onClick={() => setExportItem(editing)}><Icon name="download" size={13} /> {en?'Export':'書き出し'}</Button>}{editing && (capabilities?.features.publication_review?<PublicationSubmit item={editing}/>:<PublishWorkButton item={editing} enabled={!!capabilities?.features.community} />)}</div><small>{en?'Temporary drafts can resume after reload in the same account and browser.':'一時下書きは再読み込み後も同じアカウント・ブラウザーで再開できます。'}{editing ? (en?' Saving a new version keeps ongoing conversations on their original settings.':'新しい版を保存しても、進行中の会話は開始時の設定を使います。') : ''}</small></footer>
+    {exportDialog}
   </div>;
+  }
 
   if (preview) return <div className="k-page k-create k-create--focus">
     {confirmation}
@@ -327,75 +357,52 @@ function CreateWorkspace() {
     <div className="k-create-savebar"><span className="k-create-savebar__hint">{hasInvalid ? (en?'Check input, destination and content rating':'入力内容・保存先・内容区分を確認してください') : (en?`Save ${countItems(drafts.filter(d => d.selected).length)} to ${storageLabel}`:`${drafts.filter(d => d.selected).length}件を${storageLabel}に保存します`)}</span><Button variant="ghost" disabled={busy} onClick={() => void leavePreview()}>{en?'Back':'戻る'}</Button><Button disabled={busy || hasInvalid || !drafts.some(d => d.selected)} onClick={() => void commit()}>{busy ? (en?'Saving…':'保存中…') : (en?'Save selected content':'選択した内容を保存')}</Button></div>
   </div>;
 
+  const closeImport = () => setQuery({}, { replace: true });
   return <div className="k-page k-create">
-    <div className="k-page-head"><div><p className="k-studio-kicker">{en?'My library':'マイライブラリ'}</p><h1 className="k-page-title">{en?'Create':'つくる'}</h1><p className="k-page-sub">{en?'Bring characters and worlds together in a plot.':'キャラクターと世界を、ひとつのプロットに。'}</p></div>
-      <Button onClick={() => setChooserOpen(true)}><Icon name="plus" size={16} /> {en?'Create new':'新しくつくる'}</Button></div>
+    <h1 className="k-page-title">{en?'Create':'つくる'}</h1>
     {banners}
-    <div className="k-create-storage" role="note"><Icon name={cloud ? 'lock' : 'library'} size={15} /><span>{en?'Library location: ':'ライブラリの保存先：'}{storageLabel}{cloud ? (en?' · Shared within your account · General content':' · アカウント内で共有 · 全年齢の内容') : ''}</span><Link to="/create/settings">{en?'Persona and world settings':'ペルソナ・世界観の設定'}</Link></div>
     {lastPreview && <div className="k-create-resume"><div><strong>{en?'A temporary import draft is available':'取り込みの一時下書きがあります'}</strong><p>{en?'Continue reviewing unsaved content. If the import expired, load the original file again.':'保存前の内容を続きから確認できます。取り込みの有効期限が切れた場合は、原本を再度読み込んでください。'}</p></div><Button variant="secondary" size="sm" onClick={() => setQuery({ preview: lastPreview }, { replace: true })}>{en?'Resume draft':'下書きを再開'}</Button></div>}
-    <details id="k-create-import-section" className="k-section k-create-import-line" aria-label={en?'Import':'取り込む'} open={query.get('import') ? true : undefined}>
-      <summary><Icon name="upload" size={16} /> {en?'Import from a file':'ファイルから取り込む'}</summary>
-      <div className="k-create-import">
-        <div className={`k-create-drop ${dragging ? 'is-dragging' : ''} ${busy ? 'is-busy' : ''}`} onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={e => { e.preventDefault(); setDragging(false); importFile(e.dataTransfer.files[0]); }}>
-          <span className="k-create-drop__icon" aria-hidden="true"><Icon name="upload" size={26} /></span>
-          <h3>{en?'Import a file':'ファイルから取り込む'}</h3>
-          <p>Character Card / SillyTavern / Backyard AI / RisuAI</p>
-          <label className={`k-btn k-btn--primary k-btn--md k-create-file ${busy ? 'is-disabled' : ''}`}>{busy ? (en?'Loading…':'読み込み中…') : (en?'Choose a file':'ファイルを選ぶ')}<input aria-label={en?'File to import':'取り込むファイル'} type="file" accept=".json,.png,.apng,.charx,.byaf,.zip,.txt" disabled={busy} onChange={e => { importFile(e.target.files?.[0]); e.target.value = ''; }} /></label>
-          <small>{en?'Drag and drop supported · JSON, PNG, CHARX, BYAF, text (up to 32 MiB)':'ドラッグ＆ドロップにも対応 · JSON・PNG・CHARX・BYAF・テキスト（最大32 MiB）'}</small>
-        </div>
-          {administrative ? <Card className="k-create-url">
-            <UrlImportBox onPreview={receive} disabled={busy} onBusyChange={setBusy} />
-          </Card> : <Card className="k-create-url"><p>{en?'Import files or text on this device. Retrieve URLs on the PC running the server.':'この端末ではファイルやテキストから取り込めます。URLからの取得はサーバー側のPCで行ってください。'}</p></Card>}
-      </div>
-      <div className="k-create-more">
-        <details open={query.get('import') === 'characterai' || undefined}><summary>{en?'Paste Character.AI settings or world knowledge':'Character.AIの設定や世界の知識を貼り付ける'}</summary>
-          <div className="k-create-more__body"><p>{en?'Paste original names, descriptions, greetings and definitions for review.':'名前・説明・挨拶・Definitionの原文を貼り付けて確認できます。'}</p>
-            <Textarea aria-label={en?'Settings text to migrate':'移行する設定テキスト'} rows={8} value={text} placeholder={en?'Name: Character name\nDescription: Description\nGreeting: First greeting\nDefinition: Original definition':'Name: キャラの名前\nDescription: 説明\nGreeting: 最初の挨拶\nDefinition: 定義の原文'} onChange={e => setText(e.target.value)} />
-            <Button disabled={busy || !text.trim()} onClick={() => void run(async () => receive(await previewText(text)))}>{en?'Review pasted content':'貼り付け内容を確認'}</Button></div>
-        </details>
-        {administrative && !cloud && <details><summary>{en?'Open external Hub sites':'外部Hubサイトを開く'}</summary><div className="k-create-more__body"><HubLinks /></div></details>}
-      </div>
-    </details>
-
-    <section className="k-section" aria-label={en?'My library':'マイライブラリ'}>
-      <div className="k-section__head"><h2 className="k-section__title"><span className="k-section__mark">✦</span> {en?'My library':'マイライブラリ'} <span className="k-count">{countItems(items.length)}</span></h2>
+    <section className="k-create-hero" aria-labelledby="k-create-hero-title">
+      <h2 id="k-create-hero-title">{en?'Create a new character':'新しいキャラをつくる'}</h2>
+      <p>{en?'Start from three things: name and look, one line that sets the scene, and the first line they say.':'名前と姿・場面の一言・最初のセリフの3つから始められます。'}</p>
+      <Button className="k-create-cta" onClick={() => openEditor('new', 'character')}><Icon name="plus" size={16} /> {en?'Create new':'新しくつくる'}</Button>
+    </section>
+    <section className="k-create-made" aria-labelledby="k-create-made-title">
+      <div className="k-create-made__head"><h2 id="k-create-made-title" className="k-create-made__title" hidden={!items.length}>{en?'Your characters':'つくったキャラ'}</h2>
         {adult && <label className="k-create-check k-create-check--sm"><input type="checkbox" checked={includeNsfw} onChange={e => setIncludeNsfw(e.target.checked)} /> {en?'Include adult content':'成人向けも表示'}</label>}</div>
-      {items.length === 0 ? <EmptyState mascot="wink" title={en?'Create your first plot':'最初のプロットを作ろう'} description={en?'Choose Create new, or import a favorite character card.':'「新しく作る」から作成するか、お気に入りのキャラクターカードを取り込めます。'} action={<Button variant="secondary" onClick={() => setChooserOpen(true)}><Icon name="plus" size={15} /> {en?'Create new':'新しくつくる'}</Button>} />
-        : <div className="k-create-library">{items.map(item => <article key={item.id} className="k-lib-card">
-          <button type="button" className="k-lib-card__main" onClick={() => openEditor(item.id)} aria-label={en?`Edit ${item.document.name}`:`${item.document.name}を編集`}>
-            <Avatar name={item.document.name} seed={item.id} size="lg" src={portraitOf(item)} />
-            <span className="k-lib-card__who"><span className="k-lib-card__name">{item.document.name}</span><span className="k-lib-card__meta">{kindLabel[item.document.kind]} · {en?'Version ':'版'}{item.revision}{item.document.nsfw ? (en?' · Adult':' · 成人向け') : ''}</span></span>
-          </button>
-          <div className="k-lib-card__actions">
-            {item.document.kind === 'character' && <Button size="sm" onClick={() => navigate(`/characters/${item.id}`)}><Icon name="chat" size={13} /> {en?'Chat':'話す'}</Button>}
-            <Button variant="secondary" size="sm" onClick={() => openEditor(item.id)}><Icon name="edit" size={13} /> {en?'Edit':'編集'}</Button>
-            <Button variant="ghost" size="sm" onClick={() => setExportItem(item)}><Icon name="download" size={13} /> {en?'Export':'書き出し'}</Button>
-            {capabilities?.features.publication_review?<PublicationSubmit item={item}/>:<PublishWorkButton item={item} enabled={!!capabilities?.features.community} />}
-          </div>
-        </article>)}</div>}
+      {items.length > 0 && <ul className="k-create-list">{items.map(item => { const portrait = portraitOf(item.document); return <li key={item.id} className="k-lib-card">
+        <button type="button" className="k-lib-card__main" onClick={() => openEditor(item.id)} aria-label={en?`Edit ${item.document.name}`:`${item.document.name}を編集`}>
+          <span className="k-lib-card__avatar">{portrait ? <RuntimeImage src={portrait} alt="" loading="lazy" /> : Array.from(item.document.name || '?')[0]}</span>
+          <span className="k-lib-card__who"><span className="k-lib-card__name">{item.document.name}</span><span className="k-lib-card__meta" title={en?`Version ${item.revision}`:`版${item.revision}`}>{item.document.kind === 'character' ? '' : `${kindLabel[item.document.kind]} · `}{published.has(item.id) ? (en?'Published':'公開中') : (en?'Only you':'自分だけ')}{item.document.kind === 'character' ? (en?` · ${talks[item.id] ?? 0} chats`:` · 会話 ${talks[item.id] ?? 0}`) : ''}{item.document.nsfw ? (en?' · Adult':' · 成人向け') : ''}</span></span>
+          <Icon name="chevron" size={18} />
+        </button>
+      </li>; })}</ul>}
+      <button type="button" className="k-create-list__import" onClick={() => setQuery({ import: '1' }, { replace: true })}><Icon name="upload" size={20} /><span><strong>{en?'Import from a file':'ファイルから取り込む'}</strong><small>{en?'From a character card image or JSON':'キャラカード画像やJSONから'}</small></span><Icon name="chevron" size={18} /></button>
     </section>
 
-    <Dialog open={chooserOpen} onClose={() => setChooserOpen(false)} labelledBy="k-create-chooser-title" contentClassName="k-create-chooser" overlayClassName="k-dialog-overlay k-create-chooser-overlay">
-      <div className="k-create-chooser__handle" aria-hidden="true" />
-      <div className="k-create-chooser__head"><h2 id="k-create-chooser-title">{en?'What would you like to create?':'何を作りますか？'}</h2><Button variant="ghost" size="sm" aria-label={en?'Close creation menu':'作成メニューを閉じる'} onClick={() => setChooserOpen(false)}><Icon name="close" size={18} /></Button></div>
-      <div className="k-create-chooser__options">{creationOptions.map(option => {
-        let saved = false;
-        try { saved = draftOwnerKnown && !!sessionStorage.getItem(storageKey('editor', `new-${option.kind}`)); } catch { /* Creation remains available when browser storage is disabled. */ }
-        return <button key={option.kind} type="button" className={`k-create-choice${option.kind === 'character' ? ' k-create-choice--primary' : ''}`} onClick={() => openEditor('new', option.kind)}><span className="k-create-choice__icon"><Icon name={option.icon} size={22} /></span><span><strong>{option.title[en?1:0]}</strong><small>{option.description[en?1:0]}</small>{saved && <span className="k-create-choice__draft">{en?'Resume temporary draft':'一時下書きから再開'}</span>}</span><Icon name="chevron" size={18} /></button>;
-      })}</div>
-      <button type="button" className="k-create-choice k-create-choice--import" onClick={() => { setChooserOpen(false); const section = window.document.getElementById('k-create-import-section') as HTMLDetailsElement | null; if (section) section.open = true; section?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}><span className="k-create-choice__icon"><Icon name="upload" size={22} /></span><span><strong>{en?'Import files or text':'ファイル・テキストから取り込む'}</strong><small>{en?'Load your character cards or settings.':'手元のキャラクターカードや設定を読み込みます。'}</small></span><Icon name="chevron" size={18} /></button>
+    <Dialog open={!!query.get('import')} onClose={closeImport} labelledBy="k-create-import-title" sheet width={520}>
+      <div className="k-create-import">
+        <div className="k-create-chooser__head"><h2 id="k-create-import-title">{en?'Import from a file':'ファイルから取り込む'}</h2><Button variant="ghost" size="sm" aria-label={en?'Back':'戻る'} onClick={closeImport}><Icon name="back" size={18} /></Button></div>
+        <div className={`k-create-drop ${dragging ? 'is-dragging' : ''} ${busy ? 'is-busy' : ''}`} onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={e => { e.preventDefault(); setDragging(false); importFile(e.dataTransfer.files[0]); }}>
+          <span className="k-create-drop__icon" aria-hidden="true"><Icon name="upload" size={26} /></span>
+          <label className={`k-btn k-btn--primary k-btn--md k-create-file ${busy ? 'is-disabled' : ''}`}>{busy ? (en?'Loading…':'読み込み中…') : (en?'Choose a file':'ファイルを選ぶ')}<input aria-label={en?'File to import':'取り込むファイル'} type="file" accept=".json,.png,.apng,.charx,.byaf,.zip,.txt" disabled={busy} onChange={e => { importFile(e.target.files?.[0]); e.target.value = ''; }} /></label>
+          <small>{en?'Character card images (PNG) and JSON · drag and drop works too':'キャラカード画像（PNG）・JSON · ドラッグ＆ドロップにも対応'}</small>
+        </div>
+        {administrative ? <div className="k-create-url"><p className="k-create-or">{en?'Or from a URL':'またはURLから'}</p><UrlImportBox onPreview={receive} disabled={busy} onBusyChange={setBusy} /></div>
+          : <p className="k-create-or">{en?'Import files or text on this device. Retrieve URLs on the PC running the server.':'この端末ではファイルやテキストから取り込めます。URLからの取得はサーバー側のPCで行ってください。'}</p>}
+        <div className="k-create-formats"><strong>{en?'Supported formats':'対応している形式'}</strong><p>SillyTavern{en?' (V2/V3 cards)':'（V2/V3カード）'}・CharacterHub・RisuAI・Backyard AI・CHARX・Kyalulu</p><p>{en?'Fields that cannot be imported are kept as original text.':'取り込めない項目も原文のまま保存します。'}</p></div>
+        <div className="k-create-more">
+          <details open={query.get('import') === 'characterai' || undefined}><summary>{en?'Paste Character.AI settings or world knowledge':'Character.AIの設定や世界の知識を貼り付ける'}</summary>
+            <div className="k-create-more__body"><p>{en?'Paste original names, descriptions, greetings and definitions for review.':'名前・説明・挨拶・Definitionの原文を貼り付けて確認できます。'}</p>
+              <Textarea aria-label={en?'Settings text to migrate':'移行する設定テキスト'} rows={8} value={text} placeholder={en?'Name: Character name\nDescription: Description\nGreeting: First greeting\nDefinition: Original definition':'Name: キャラの名前\nDescription: 説明\nGreeting: 最初の挨拶\nDefinition: 定義の原文'} onChange={e => setText(e.target.value)} />
+              <Button disabled={busy || !text.trim()} onClick={() => void run(async () => receive(await previewText(text)))}>{en?'Review pasted content':'貼り付け内容を確認'}</Button></div>
+          </details>
+          {administrative && !cloud && <details><summary>{en?'Open external Hub sites':'外部Hubサイトを開く'}</summary><div className="k-create-more__body"><HubLinks /></div></details>}
+        </div>
+        {error && <p className="k-inline-error" role="alert">{friendlyMessage(error,language)}</p>}
+      </div>
     </Dialog>
 
-    <Dialog open={!!exportItem} onClose={() => setExportItem(null)} labelledBy="k-export-title" wide>
-      {exportItem && <div className="k-confirm">
-        <h2 id="k-export-title" className="k-confirm__title">{en?`Export ${exportItem.document.name}`:`${exportItem.document.name}を書き出す`}</h2>
-        <p className="k-confirm__desc">{en?'Save a file for use in other apps. Some settings may not transfer in the selected format.':'ほかのアプリで使える形式でファイルに保存します。形式によっては一部の設定が引き継がれません。'}</p>
-        <label className="k-create-field">{en?'Format':'形式'}<select aria-label={en?'Export format':'書き出し形式'} value={format} onChange={e => setFormat(e.target.value)}>{formats.filter(f => f !== 'original' || exportItem.original_id).map(f => <option key={f} value={f}>{formatLabels[f]?.[en?1:0] ?? f}</option>)}</select></label>
-        {exportInfo ? <>{exportInfo.notices.length > 0 && <ul className="k-create-notices">{exportInfo.notices.map((n, i) => <li key={i}>{n.path}：{n.reason}</li>)}</ul>}
-          <div className="k-confirm__actions"><Button variant="ghost" onClick={() => setExportItem(null)}>{en?'Close':'閉じる'}</Button><RuntimeDownload className="k-btn k-btn--primary k-btn--md" href={`/api/library/${exportItem.id}/export?format=${format}&revision=${exportItem.revision}&download=true`} download={exportInfo.filename}><Icon name="download" size={15} /> {exportInfo.filename}</RuntimeDownload></div></>
-          : <div className="k-confirm__actions"><Button variant="ghost" onClick={() => setExportItem(null)}>{en?'Close':'閉じる'}</Button><Button disabled={busy} onClick={() => void run(async () => setExportInfo(await libraryRequest(`/api/library/${exportItem.id}/export?format=${format}&revision=${exportItem.revision}`)))}>{busy ? (en?'Checking…':'確認中…') : (en?'Review export':'書き出し内容を確認')}</Button></div>}
-        {error && <p className="k-inline-error" role="alert">{friendlyMessage(error,language)}</p>}
-      </div>}
-    </Dialog>
+    {exportDialog}
   </div>;
 }

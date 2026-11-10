@@ -23,7 +23,7 @@ vi.mock('react', async original => ({ ...await original<typeof import('react')>(
     }
   },
 }));
-vi.mock('../lib/appContext', () => ({ useLanguage: () => fixture.language }));
+vi.mock('../lib/appContext', () => ({ useLanguage: () => fixture.language, executionTarget: () => 'local' }));
 vi.mock('../lib/title', () => ({ useDocumentTitle: vi.fn() }));
 vi.mock('../lib/api', () => ({ fetchHealth: vi.fn(), fetchProvidersHealth: vi.fn() }));
 vi.mock('../components/Diagnostics', () => ({ default: () => <section>診断原文：LE token mismatch / HTTP 401</section> }));

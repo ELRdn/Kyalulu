@@ -1,17 +1,17 @@
+import { useMediaQuery } from '../lib/useMediaQuery';
 import { RuntimeImage } from '../components/RuntimeMedia';
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { type CharacterInfo, type SessionInfo, type WorldInfo } from "../lib/api";
 import Button from "../components/ui/Button";
 import EmptyState from "../components/ui/EmptyState";
 import Icon from "../components/ui/Icon";
-import Avatar, { gradientFor } from "../components/ui/Avatar";
-import CharacterCard from "../components/ui/CharacterCard";
-import SessionRow from "../components/ui/SessionRow";
+import Avatar from "../components/ui/Avatar";
+import Dialog from "../components/ui/Dialog";
 import ScenePreview from "../components/ScenePreview";
 import { moodsOf } from "../lib/moodTaxonomy";
 import { startNewSession } from "../lib/session";
-import { cleanPreview, displayProfileText, formatCount } from "../lib/text";
+import { cleanPreview, displayProfileText } from "../lib/text";
 import { useAdultContent } from "../lib/adult";
 import { useSavedCharacters, toggleSaved } from "../lib/saved";
 import { friendlyMessage } from "../lib/errors";
@@ -19,14 +19,14 @@ import { useDocumentTitle } from "../lib/title";
 import "./pages.css";
 import "./characterEntry.css";
 import { useRuntimeAccess } from '../components/RuntimeGate';
-import { fetchBrowseCatalog, isCloudGuest } from '../lib/cloudGuest';
+import { fetchBrowseCatalog, isCloudGuest, PENDING_START } from '../lib/cloudGuest';
 import CloudLogin from '../components/CloudLogin';
 import { useLanguage } from '../lib/appContext';
 
 type Character = CharacterInfo & { nsfw?: boolean; species?: string; age?: string; personality?: string; speaking_style?: string; portrait_urls?: string[] };
 
 // Survives the OAuth round trip so the same chat starts after login (docs/MOBILE_UX_SPEC.md §2).
-const PENDING = 'kyalulu-pending-start';
+const PENDING = PENDING_START;
 const readPending = (): { character: string; text: string } | null => {
   try { const value = JSON.parse(sessionStorage.getItem(PENDING) ?? 'null'); return typeof value?.character === 'string' && typeof value.text === 'string' ? value : null; } catch { return null; }
 };
@@ -52,13 +52,14 @@ export default function CharacterEntry() {
   const [reload, setReload] = useState(0);
   const [starting, setStarting] = useState(false);
   const [greetingIndex, setGreetingIndex] = useState(0);
-  const [portraitIndex, setPortraitIndex] = useState(0);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsTab, setDetailsTab] = useState<'about' | 'profile' | 'worlds'>('about');
   const [loginOpen, setLoginOpen] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [repliesOpen, setRepliesOpen] = useState(true);
+  const phone = useMediaQuery('(max-width: 767px)');
   const [adult] = useAdultContent();
   const saved = useSavedCharacters();
-  const heroRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -78,18 +79,10 @@ export default function CharacterEntry() {
 
   useEffect(() => {
     setGreetingIndex(0);
-    setPortraitIndex(0);
-    setProfileOpen(false);
+    setDetailsOpen(false);
+    setDraft('');
+    setRepliesOpen(true);
   }, [characterId]);
-
-  // ヒーロー画像が隠れたら、上部バーを不透明にして名前を出す
-  useEffect(() => {
-    const el = heroRef.current;
-    if (!el) return;
-    const io = new IntersectionObserver(([entry]) => setScrolled(entry.intersectionRatio < 0.25), { threshold: [0, 0.25, 1] });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [loading, characterId]);
 
   const character = characters.find((c) => c.id === characterId);
 
@@ -128,7 +121,7 @@ export default function CharacterEntry() {
       .filter((c) => c.id !== character.id && (adult || !c.nsfw))
       .map((c) => ({ c, score: moodsOf(c.tags).filter((m) => mine.has(m.tag)).length + (c.official ? 0.5 : 0) }))
       .sort((a, b) => b.score - a.score)
-      .slice(0, 8)
+      .slice(0, 6)
       .map((x) => x.c);
   }, [characters, character, adult]);
 
@@ -160,13 +153,12 @@ export default function CharacterEntry() {
 
   if (!character) {
     return (
-      <div className="k-page">
+      <div className="k-page k-notfound k-notfound--entry">
         <EmptyState
           mascot="cry"
           title={en ? 'Character not found' : 'この子とは、いまは話せないみたい…'}
-          description={en ? 'The character may have been deleted, or the URL may be incorrect.' : '削除されたか、URLが間違っている可能性があります。'}
           action={
-            <Button variant="secondary" onClick={() => navigate("/discover")}>
+            <Button onClick={() => navigate("/discover")}>
               {en ? 'Back to Explore' : '似たキャラを見る'}
             </Button>
           }
@@ -184,7 +176,7 @@ export default function CharacterEntry() {
           description={en ? 'Sign in and complete the required adult verification before enabling adult content in Settings.' : 'ログインと必要な成人確認を済ませ、設定で成人向けコンテンツを有効にしてください。'}
           action={
             <div className="k-empty__actions">
-              <Button variant="primary" onClick={() => navigate("/profile#adult")}>
+              <Button variant="primary" onClick={() => navigate("/profile/settings#adult")}>
                 <Icon name="lock" size={15} /> {en ? 'Open Settings' : '設定をひらく'}
               </Button>
               <Button variant="ghost" onClick={() => navigate("/discover")}>
@@ -198,127 +190,74 @@ export default function CharacterEntry() {
   }
 
   const name = character.display_name;
-  const portraits = [...new Set([character.portrait_url, ...(character.portrait_urls ?? [])].filter((url): url is string => !!url))];
-  const portrait = portraits[portraitIndex] ?? portraits[0];
+  const shortName = name.replace(/[（(].*$/, '').replace(/(執事|先輩|ちゃん|さん|くん)$/, '') || name;
+  const portrait = character.portrait_url;
   const greetings = [character.intro ?? "", ...(character.alternate_greetings ?? [])].filter((g) => g.trim());
   const greeting = greetings[greetingIndex] ?? "";
   const moods = moodsOf(character.tags, language);
   const mySessions = sessions.filter((s) => s.count > 0 && s.character_id === character.id);
-  const pastSessions = mySessions.slice(0, 3);
-  const talkCount = mySessions.reduce((n, s) => n + s.count, 0);
   const isSaved = saved.includes(character.id);
-  const [tagline, about] = splitDescription(character.description ?? "");
+  const replies = character.opening_replies ?? [];
   const facts = [
     [en ? 'Species' : '種族', character.species],
     [en ? 'Age' : '年齢', character.age],
   ].filter((f): f is [string, string] => !!f[1]?.trim());
   const personality = displayProfileText(character.personality, name, language);
   const speaking = displayProfileText(character.speaking_style, name, language);
-  const hasProfile = facts.length > 0 || !!personality || !!speaking;
-  const profileLong = (personality + speaking).length > 220;
-  const creator = character.official ? "Kyalulu Official" : en ? 'My library' : 'マイライブラリ';
+  const creator = character.official ? (en ? 'Kyalulu Official' : 'Kyalulu公式') : en ? 'My library' : 'マイライブラリ';
 
-  const resume = () => pastSessions[0] && navigate(`/chats/${encodeURIComponent(pastSessions[0].session_id)}`);
+  const resume = () => mySessions[0] && navigate(`/chats/${encodeURIComponent(mySessions[0].session_id)}`);
   const save = () => toggleSaved(character.id);
+  const share = () => {
+    const url = location.href;
+    if (navigator.share) void navigator.share({ title: name, url }).catch(() => {});
+    else void navigator.clipboard?.writeText(url);
+  };
   const back = () => (window.history.length > 1 ? navigate(-1) : navigate("/discover"));
-
-  const art = portrait ? (
-    <RuntimeImage src={portrait} alt={name} />
-  ) : (
-    <span className="k-char-entry__sigil" aria-hidden="true">
-      {name.trim().charAt(0)}
-    </span>
-  );
 
   return (
     <div className="k-plot">
-      <div className="k-plot-backdrop" style={{ background: gradientFor(character.id) }} aria-hidden="true">{portrait && <RuntimeImage src={portrait} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}</div>
-
-      <header className={`k-plot-bar ${scrolled ? "is-solid" : ""}`}>
-        <button type="button" className="k-plot-bar__btn" onClick={back} aria-label={en ? 'Back' : '戻る'}>
-          <Icon name="back" size={20} />
-        </button>
-        <span className="k-plot-bar__title" aria-hidden={!scrolled}>
-          {name}
-        </span>
-        <button type="button" className={`k-plot-bar__btn ${isSaved ? "is-on" : ""}`} onClick={save} aria-pressed={isSaved} aria-label={isSaved ? (en ? 'Unsave' : '保存を解除') : guest ? (en ? 'Save in this browser' : 'このブラウザに保存する') : (en ? 'Save' : '保存する')}>
-          <Icon name="heart" size={19} />
-        </button>
-      </header>
-
-      <div ref={heroRef} className="k-plot-hero">
-        <div className="k-plot-hero__art" style={portrait ? undefined : { background: gradientFor(character.id) }}>
-          {art}
-          <span className="k-char-card__sparkles" aria-hidden="true" />
-        </div>
-        {moods[0] && <span className="k-plot-hero__badge">{moods[0].label}</span>}
-        {portraits.length > 1 && (
-          <div className="k-plot-hero__photos" role="group" aria-label={en ? 'Choose a portrait' : '写真を選択'}>
-            {portraits.map((url, index) => (
-              <button key={url} type="button" aria-label={en ? `Show portrait ${index + 1}` : `写真 ${index + 1} を表示`} aria-pressed={index === portraitIndex} onClick={() => setPortraitIndex(index)}>
-                <RuntimeImage src={url} alt="" />
-              </button>
-            ))}
-          </div>
-        )}
-        <button type="button" className={`k-plot-hero__save ${isSaved ? "is-on" : ""}`} onClick={save} aria-pressed={isSaved}>
-          <Icon name="heart" size={15} /> {isSaved ? (en ? 'Saved' : '保存済み') : (en ? 'Save' : '保存')}
-        </button>
+      <div className="k-plot-hero">
+        {portrait ? <RuntimeImage src={portrait} alt={name} /> : <span className="k-char-card__initial" aria-hidden="true">{name.trim().charAt(0)}</span>}
       </div>
+
+      <header className="k-plot-bar">
+        <button type="button" className="k-plot-bar__btn k-plot-bar__back" onClick={back} aria-label={en ? 'Back' : '戻る'}><Icon name="back" size={22} /></button>
+        <span className="k-plot-bar__space" />
+        <button type="button" className={`k-plot-bar__btn ${isSaved ? "is-on" : ""}`} onClick={save} aria-pressed={isSaved} aria-label={isSaved ? (en ? 'Unsave' : '保存を解除') : guest ? (en ? 'Save in this browser' : 'このブラウザに保存する') : (en ? 'Save' : '保存する')}>
+          <Icon name="bookmark" size={20} />
+        </button>
+        <button type="button" className="k-plot-bar__btn" onClick={share} aria-label={en ? 'Share' : '共有'}><Icon name="share" size={20} /></button>
+      </header>
 
       <div className="k-plot-body">
         <section className="k-plot-head">
           <h1 className="k-plot-title">{name}</h1>
-          {tagline && <p className="k-plot-tagline">{tagline}</p>}
-          {moods.length > 0 && (
-            <div className="k-plot-hashtags">
-              {moods.map((m) => (
-                <Link key={m.tag} to={`/discover?mood=${encodeURIComponent(m.tag)}`}>
-                  #{m.label}
-                </Link>
-              ))}
-            </div>
-          )}
-          <div className="k-plot-stats">
-            <span className="k-plot-stat" title={en ? 'Total messages' : 'これまでのメッセージ数'}>
-              <Icon name="chat" size={13} /> {formatCount(talkCount, language)}
-            </span>
-            {greetings.length > 1 && (
-              <span className="k-plot-stat">
-                <Icon name="play" size={12} /> {en ? `${greetings.length} opening scenes` : `はじまり ${greetings.length}種`}
-              </span>
-            )}
-            {worlds.length > 0 && (
-              <span className="k-plot-stat">
-                <Icon name="globe" size={13} /> {en ? `${worlds.length} worlds` : `ワールド ${worlds.length}`}
-              </span>
-            )}
-            {character.nsfw && <span className="k-plot-stat k-plot-stat--adult">{en ? 'Adult' : '成人向け'}</span>}
+          <p className="k-plot-tagline">{character.hook || splitDescription(character.description ?? "")[0]}</p>
+          <div className="k-plot-hashtags">
+            {moods.slice(0, phone ? 3 : 4).map((m) => <Link key={m.tag} to={`/discover?mood=${encodeURIComponent(m.tag)}`}>#{m.label}</Link>)}
+            <button type="button" className="k-plot-profile-link" onClick={() => setDetailsOpen(true)}>{en ? 'View profile' : 'プロフィールを見る'} <Icon name="chevron" size={14} /></button>
           </div>
         </section>
 
-        <div className="k-plot-creator">
-          <Avatar name={creator} size="md" mascot={character.official} src={character.official ? undefined : null} seed={creator} />
-          <div className="k-plot-creator__who">
-            <span className="k-plot-creator__name">{creator}</span>
-            <span className="k-plot-creator__sub">{character.official ? "@kyalulu" : en ? 'A character you imported' : 'あなたが取り込んだキャラクター'}</span>
-          </div>
-          {character.library_revision && (
-            <Link to={`/create?edit=${character.id}`} className="k-plot-creator__edit">
-              <Icon name="edit" size={14} /> {en ? 'Edit' : '編集'}
-            </Link>
-          )}
-        </div>
-
-        {pastSessions[0] && (
+        {mySessions[0] && (
           <button type="button" className="k-plot-notice" onClick={resume}>
             <Icon name="chat" size={16} />
-            <span>
-              {en ? <>You have a conversation with <strong>{name}</strong>. <em>Resume now</em></> : <><strong>{name}</strong>との会話のつづきがあります。<em>今すぐ再開</em></>}
-            </span>
+            <span>{en ? <>You have a conversation with <strong>{name}</strong>. <em>Resume</em></> : <><strong>{name}</strong>との会話のつづきがあります。<em>つづきから</em></>}</span>
             <Icon name="chevron" size={15} />
           </button>
         )}
+
+        {greetings.length > 1 && (
+          <div className="k-plot-tabs" role="tablist" aria-label={en ? 'Choose an opening scene' : 'はじまりのシーンを選ぶ'}>
+            {greetings.map((g, i) => (
+              <button key={i} type="button" role="tab" aria-selected={i === greetingIndex} className={i === greetingIndex ? "is-active" : ""} onClick={() => setGreetingIndex(i)} title={cleanPreview(g, 80)}>
+                {en ? `Scene ${i + 1}` : `シーン${i + 1}`}
+              </button>
+            ))}
+          </div>
+        )}
+        {greeting && <ScenePreview name={name} seed={character.id} portrait={portrait} content={greeting} />}
 
         {error && (
           <p role="alert" className="k-inline-error">
@@ -326,135 +265,68 @@ export default function CharacterEntry() {
           </p>
         )}
 
-        {about && (
-          <section className="k-plot-section">
-            <h2 className="k-plot-section__title">{en ? 'About' : '紹介'}</h2>
-            <p className="k-plot-text">{about}</p>
-          </section>
-        )}
-
-        {hasProfile && (
-          <section className="k-plot-section">
-            <h2 className="k-plot-section__title">{en ? 'Profile' : 'プロフィール'}</h2>
-            <div className="k-plot-card">
-              <div className="k-plot-profile__top">
-                <span className="k-plot-thumb" style={character.portrait_url ? undefined : { background: gradientFor(character.id) }}>
-                  {character.portrait_url ? <RuntimeImage src={character.portrait_url} alt="" /> : <span>{name.trim().charAt(0)}</span>}
-                </span>
-                <div className="k-plot-profile__id">
-                  <div className="k-plot-profile__name">{name}</div>
-                  {facts.length > 0 && (
-                    <dl className="k-plot-facts">
-                      {facts.map(([k, v]) => (
-                        <div key={k}>
-                          <dt>{k}</dt>
-                          <dd>{v}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                  )}
-                </div>
+        <div className="k-plot-cta">
+          <form className="k-plot-composer" onSubmit={(e) => { e.preventDefault(); void start(draft.trim()); }}>
+            <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={phone ? (en ? 'Message' : 'メッセージ') : en ? `Say something to ${shortName}` : `${shortName}に話しかける`} aria-label={en ? 'First message' : '最初のメッセージ'} disabled={starting} />
+            <button type="submit" className="k-plot-cta__main" disabled={starting} aria-label={starting ? (en ? 'Preparing…' : '準備中…') : (en ? 'Start conversation' : '会話をはじめる')}><Icon name="arrowUp" size={20} strokeWidth={2.2} /></button>
+          </form>
+          {replies.length > 0 && repliesOpen && (
+            <div className="k-plot-replies" role="group" aria-labelledby="k-plot-replies-title">
+              <div className="k-plot-replies__head">
+                <span id="k-plot-replies-title">{en ? 'Pick a first line' : '最初の一言を選ぶ'}</span>
+                <button type="button" className="k-plot-replies__close" onClick={() => setRepliesOpen(false)} aria-label={en ? 'Close' : '閉じる'}><Icon name="close" size={18} /></button>
               </div>
-              {(personality || speaking) && (
-                <div className={`k-plot-profile__body ${profileLong && !profileOpen ? "is-clamped" : ""}`}>
-                  {personality && (
-                    <>
-                      <h3>{en ? 'Personality' : '性格'}</h3>
-                      <p className="k-plot-text">{personality}</p>
-                    </>
-                  )}
-                  {speaking && (
-                    <>
-                      <h3>{en ? 'Speaking style' : '話し方'}</h3>
-                      <p className="k-plot-text">{speaking}</p>
-                    </>
-                  )}
-                </div>
-              )}
-              {profileLong && (
-                <button type="button" className="k-plot-more" onClick={() => setProfileOpen((v) => !v)} aria-expanded={profileOpen}>
-                  {profileOpen ? (en ? 'Collapse' : '閉じる') : (en ? 'Show all' : 'すべて表示')} <Icon name="chevron" size={13} style={{ transform: profileOpen ? "rotate(-90deg)" : "rotate(90deg)" }} />
-                </button>
-              )}
+              {replies.map((reply) => <button key={reply} type="button" className="k-starter" onClick={() => void start(reply)} disabled={starting}>{reply}</button>)}
+              <p className="k-plot-replies__note">{en ? 'Tap to start the conversation' : 'タップで会話をはじめます'}</p>
             </div>
-          </section>
-        )}
-
-        {worlds.length > 0 && (
-          <section className="k-plot-section">
-            <h2 className="k-plot-section__title">{en ? 'Worlds to explore' : '出会えるワールド'}</h2>
-            <div className="k-plot-list">
-              {worlds.map((w) => (
-                <Link key={w.id} to={`/discover?world=${encodeURIComponent(w.id)}`} className="k-plot-list__item">
-                  <span className="k-plot-list__body">
-                    <span className="k-plot-list__name">{w.display_name}</span>
-                    <span className="k-plot-list__desc">{w.description}</span>
-                  </span>
-                  <Icon name="chevron" size={16} />
-                </Link>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {greeting && (
-          <section className="k-plot-section">
-            <h2 className="k-plot-section__title">{en ? 'Opening scene' : 'イントロ'}</h2>
-            {greetings.length > 1 && (
-              <div className="k-plot-tabs" role="tablist" aria-label={en ? 'Choose an opening scene' : 'はじまりのシーンを選ぶ'}>
-                {greetings.map((g, i) => (
-                  <button key={i} type="button" role="tab" aria-selected={i === greetingIndex} className={i === greetingIndex ? "is-active" : ""} onClick={() => setGreetingIndex(i)} title={cleanPreview(g, 80)}>
-                    {en ? `Scene ${i + 1}` : `シーン${i + 1}`}
-                  </button>
-                ))}
-              </div>
-            )}
-            <ScenePreview name={name} seed={character.id} portrait={character.portrait_url} content={greeting} />
-            <p className="k-plot-hint">{en ? '“Start conversation” begins your story from this scene.' : '「会話をはじめる」と、このシーンから物語がはじまります。'}</p>
-          </section>
-        )}
-
-        {pastSessions.length > 0 && (
-          <section className="k-plot-section">
-            <h2 className="k-plot-section__title">{en ? `Conversations with ${name}` : `${name}との会話`}</h2>
-            <div className="k-chat-list">
-              {pastSessions.map((s) => (
-                <SessionRow key={s.session_id} session={s} worldName={worlds.find((w) => w.id === s.world_id)?.display_name} />
-              ))}
-            </div>
-          </section>
-        )}
-
-        {recommendations.length > 0 && (
-          <section className="k-plot-section">
-            <h2 className="k-plot-section__title">{en ? `If you like ${name}` : `${name}が気に入ったなら？`}</h2>
-            <div className="k-plot-recs">
-              {recommendations.map((c) => (
-                <CharacterCard key={c.id} id={c.id} displayName={c.display_name} hook={c.hook || c.description} creator={c.official ? "Kyalulu Official" : en ? 'My library' : 'マイライブラリ'} tags={c.tags ?? []} portraitUrl={c.portrait_url} />
-              ))}
-            </div>
-          </section>
-        )}
+          )}
+        </div>
       </div>
 
-      {loginOpen && <CloudLogin returnTo={`/characters/${encodeURIComponent(character.id)}`} characterName={name} onClose={() => { sessionStorage.removeItem(PENDING); setLoginOpen(false); }} />}
-      <div className="k-plot-cta">
-        {(character.opening_replies?.length ?? 0) > 0 && (
-          <div className="k-plot-replies" role="group" aria-label={en ? 'First reply suggestions' : '最初の一言の候補'}>
-            {character.opening_replies!.map((reply) => (
-              <button key={reply} type="button" className="k-starter" onClick={() => void start(reply)} disabled={starting}>{reply}</button>
+      <Dialog open={detailsOpen} onClose={() => setDetailsOpen(false)} label={en ? `About ${name}` : `${name}の詳細`} sheet width={560}>
+        <div className="k-plot-details">
+          <div className="k-plot-details__tabs" role="tablist">
+            {(['about', 'profile', 'worlds'] as const).map((tab) => (
+              <button key={tab} type="button" role="tab" aria-selected={detailsTab === tab} className={detailsTab === tab ? 'is-active' : ''} onClick={() => setDetailsTab(tab)}>
+                {tab === 'about' ? (en ? 'About' : '紹介') : tab === 'profile' ? (en ? 'Profile' : 'プロフィール') : (en ? 'Worlds' : 'ワールド')}
+              </button>
             ))}
           </div>
-        )}
-        {pastSessions[0] && (
-          <Button variant="secondary" size="lg" onClick={resume} className="k-plot-cta__sub">
-            {en ? 'Resume conversation' : 'つづきから'}
-          </Button>
-        )}
-        <Button variant="primary" size="lg" className="k-plot-cta__main k-btn--glow" onClick={() => void start()} disabled={starting}>
-          {starting ? (en ? 'Preparing…' : '準備中…') : pastSessions[0] ? (en ? 'Start a new conversation' : '新しくはじめる') : (en ? 'Start conversation' : '会話をはじめる')} <Icon name="sparkle" size={16} />
-        </Button>
-      </div>
+          {detailsTab === 'about' && <>
+            {character.description && <p className="k-plot-text">{character.description}</p>}
+            {moods.length > 0 && <div className="k-chip-row">{moods.map((m) => <Link key={m.tag} className="k-chip" to={`/discover?mood=${encodeURIComponent(m.tag)}`}>#{m.label}</Link>)}</div>}
+            <div className="k-plot-creator">
+              <Avatar name={creator} size="md" mascot={character.official} src={character.official ? undefined : null} seed={creator} />
+              <div className="k-plot-creator__who">
+                <span className="k-plot-creator__name">{creator}</span>
+                <span className="k-plot-creator__sub">{character.official ? (en ? 'Official character' : '公式キャラ') : en ? 'A character you imported' : 'あなたが取り込んだキャラクター'}</span>
+              </div>
+              {character.library_revision && <Link to={`/create?edit=${character.id}`} className="k-plot-creator__edit"><Icon name="edit" size={14} /> {en ? 'Edit' : '編集'}</Link>}
+            </div>
+            {recommendations.length > 0 && <section className="k-plot-section">
+              <h2 className="k-plot-section__title">{en ? `If you like ${shortName}` : `${shortName}が気に入ったなら`}</h2>
+              <div className="k-plot-recs">
+                {recommendations.map((c) => (
+                  <Link key={c.id} to={`/characters/${encodeURIComponent(c.id)}`} className="k-plot-rec" onClick={() => setDetailsOpen(false)}>
+                    <span className="k-plot-rec__art">{c.portrait_url ? <RuntimeImage src={c.portrait_url} alt="" /> : <span className="k-char-card__initial">{c.display_name.trim().charAt(0)}</span>}</span>
+                    <span className="k-plot-rec__name">{c.display_name}</span>
+                  </Link>
+                ))}
+              </div>
+            </section>}
+          </>}
+          {detailsTab === 'profile' && <>
+            {facts.length > 0 && <dl className="k-plot-facts">{facts.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>}
+            {personality && <><h3 className="k-plot-section__title">{en ? 'Personality' : '性格'}</h3><p className="k-plot-text">{personality}</p></>}
+            {speaking && <><h3 className="k-plot-section__title">{en ? 'Speaking style' : '話し方'}</h3><p className="k-plot-text">{speaking}</p></>}
+            {!facts.length && !personality && !speaking && <p className="k-plot-text">{en ? 'No profile yet.' : 'プロフィールはまだありません。'}</p>}
+          </>}
+          {detailsTab === 'worlds' && (worlds.length ? <div className="k-world-list">{worlds.map((w) => <Link key={w.id} to={`/discover?world=${encodeURIComponent(w.id)}`} className="k-world-row" onClick={() => setDetailsOpen(false)}><span className="k-world-row__text"><span className="k-world-row__name">{w.display_name}</span><span className="k-world-row__desc">{w.description}</span></span></Link>)}</div>
+            : <p className="k-plot-text">{en ? 'No worlds yet.' : 'ワールドはまだありません。'}</p>)}
+        </div>
+      </Dialog>
+
+      {loginOpen && <CloudLogin returnTo={`/characters/${encodeURIComponent(character.id)}`} characterName={shortName} firstLine={readPending()?.text || undefined} onClose={() => { sessionStorage.removeItem(PENDING); setLoginOpen(false); }} />}
     </div>
   );
 }

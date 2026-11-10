@@ -4,7 +4,6 @@ import Composer from '../components/ui/Composer';
 import { Input, Textarea } from '../components/ui/Input';
 import MessageContent from '../components/MessageContent';
 import MobileAppStatus from '../components/MobileAppStatus';
-import { ThemeProvider, useTheme } from '../lib/theme';
 import AppErrorBoundary from '../components/AppErrorBoundary';
 import { MODELS, downloadModel, formatBytes, modelBytes, readyModels, removeModel } from './models';
 import { initialData, loadData, newConversation, parseBackup, saveData } from './store';
@@ -19,7 +18,6 @@ function exportJson(value:unknown,name:string) {
   setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
 function Mobile() {
-  const {theme,toggle}=useTheme();
   const [data,setData]=useState<MobileData>(initialData);
   const dataRef=useRef(data);
   const saveQueue=useRef(Promise.resolve<unknown>(undefined));
@@ -159,7 +157,7 @@ function Mobile() {
   if(!opened)return <main className="m-app"><h1>Kyalulu Mobile</h1><p role={error?'alert':'status'}>{error||'端末のデータを開いています…'}</p></main>;
   return <div className="m-app">
     <MobileAppStatus local />
-    <header className="m-header"><div><span className="m-brand">Kyalulu <small>Mobile</small></span><p>きみのスマホで、いつでも会話。</p></div><button type="button" className="m-theme" aria-label={`${theme==='light'?'ダーク':'ライト'}テーマにする`} onClick={toggle}>{theme==='light'?'☾':'☀'}</button></header>
+    <header className="m-header"><div><span className="m-brand">Kyalulu <small>Mobile</small></span><p>きみのスマホで、いつでも会話。</p></div></header>
     <nav className="m-nav" aria-label="メインメニュー">{(['chats','characters','models','settings'] as const).map((t,i)=><button key={t} type="button" aria-current={tab===t?'page':undefined} onClick={()=>setTab(t)}>{['会話','キャラ','モデル','保存・設定'][i]}</button>)}</nav>
     {error&&<div className="m-error" role="alert"><span>{error}</span><button type="button" onClick={()=>setError('')} aria-label="通知を閉じる">×</button></div>}
     <main>
@@ -197,4 +195,4 @@ function Mobile() {
     <footer className="m-footer">Kyalulu Mobile · 端末内で動くキャラクターAI<br/><a href="source/kyalulu-mobile-source.zip">対応ソース</a> · <a href="licenses/AGPL-3.0.txt">AGPL-3.0</a></footer>
   </div>;
 }
-export default function MobileApp(){return <AppErrorBoundary><ThemeProvider><Mobile/></ThemeProvider></AppErrorBoundary>;}
+export default function MobileApp(){return <AppErrorBoundary><Mobile/></AppErrorBoundary>;}

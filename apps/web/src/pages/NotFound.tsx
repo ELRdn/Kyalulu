@@ -10,7 +10,7 @@ export default function NotFound() {
   const navigate = useNavigate();
   useDocumentTitle(en ? 'Page not found' : 'ページが見つかりません');
   return (
-    <div className="k-page">
+    <div className="k-page k-notfound">
       <EmptyState
         mascot="cry"
         title={en ? "We couldn't find that page…" : 'そのページ、見当たらないみたい…'}

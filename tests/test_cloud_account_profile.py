@@ -105,3 +105,20 @@ async def test_authenticated_devices_share_profile_reject_stale_edits_and_isolat
     finally:
         for client in clients:
             await client.aclose()
+
+
+def test_bio_and_avatar_are_validated_and_stored(tmp_path):
+    store = CloudStore(config(tmp_path))
+    owner = str(uuid4())
+    enroll(store, owner)
+    profiles = AccountProfile(store)
+    revision = profiles.read(owner)["revision"]
+    saved = profiles.update(owner, {"revision": revision, "change": {"bio": " のんびり話します "}})
+    assert saved["bio"] == "のんびり話します"
+    avatar = "data:image/webp;base64,AAAA"
+    saved = profiles.update(owner, {"revision": saved["revision"], "change": {"avatar": avatar}})
+    assert saved["avatar"] == avatar
+    for change in ({"bio": "x" * 161}, {"avatar": "https://example.test/a.png"},
+                   {"avatar": "data:image/svg+xml;base64,AAAA"}):
+        with pytest.raises(CloudError):
+            profiles.update(owner, {"revision": saved["revision"], "change": change})

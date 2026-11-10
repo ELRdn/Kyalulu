@@ -137,16 +137,16 @@ describe('official reasoning summary', () => {
   it('places the normal chat summary before the message while retaining editing and streaming guards', () => {
     const source = readFileSync(new URL('../pages/ActiveChat.tsx', import.meta.url), 'utf8');
     const summary = source.indexOf('{isAssistant && !isEditing && !isStreaming && <ReasoningSummary');
-    const message = source.indexOf('<MessageContent content={m.content}');
+    const message = source.indexOf('<MessageContent content={body}');
     expect(summary).toBeGreaterThan(-1);
     expect(message).toBeGreaterThan(summary);
   });
   it.each(['unsupported', 'not_provided', 'available'] as const)('hides a local reply without a summary even with %s status', status => {
-    expect(renderToStaticMarkup(<ReasoningSummary cloud={false} message={{ role: 'assistant', content: 'local reply',
+    expect(renderToStaticMarkup(<ReasoningSummary message={{ role: 'assistant', content: 'local reply',
       reasoning_summary: null, reasoning_summary_status: status }} />)).toBe('');
   });
   it('preserves an actual official summary supplied by a local route', () => {
-    const html = renderToStaticMarkup(<ReasoningSummary cloud={false} message={{ role: 'assistant', content: 'local reply',
+    const html = renderToStaticMarkup(<ReasoningSummary message={{ role: 'assistant', content: 'local reply',
       reasoning_summary: 'Official local summary', reasoning_summary_status: 'available' }} />);
     expect(html).toContain('Official local summary');
     expect(html).not.toMatch(/<details[^>]*\bopen=/);
@@ -164,7 +164,7 @@ describe('official reasoning summary', () => {
     const message = { role: 'assistant', content: 'answer <think>hidden body</think>', model_id: ids[4],
       reasoning_summary: 'Official summary\n<script>alert(1)</script>', reasoning_summary_status: 'available' as const,
       reasoning: 'raw hidden chain', reasoning_content: 'another hidden chain' };
-    const html = renderToStaticMarkup(<ReasoningSummary message={message} cloud />);
+    const html = renderToStaticMarkup(<ReasoningSummary message={message} />);
     expect(html).toContain('<details');
     expect(html).toContain('<summary>公式推論要約</summary>');
     expect(html).not.toMatch(/<details[^>]*\bopen=/);
@@ -174,10 +174,10 @@ describe('official reasoning summary', () => {
     expect(html).not.toContain('hidden chain');
   });
 
-  it.each(['unsupported', 'not_provided'] as const)('explains %s and ignores contradictory summary text', status => {
-    const html = renderToStaticMarkup(<ReasoningSummary cloud message={{ role: 'assistant', content: 'answer',
+  it.each(['unsupported', 'not_provided'] as const)('hides %s and ignores contradictory summary text', status => {
+    const html = renderToStaticMarkup(<ReasoningSummary message={{ role: 'assistant', content: 'answer',
       reasoning_summary: 'must not show', reasoning_summary_status: status }} />);
-    expect(html).toContain(status === 'unsupported' ? '取得が未実装' : '提供されていません');
+    expect(html).toBe('');
     expect(html).not.toContain('このモデル・提供元は');
     expect(html).not.toContain('must not show');
   });
@@ -200,13 +200,12 @@ it('renders Baidu consent inline with destination, cap and privacy visible', () 
   expect(html).not.toContain('aria-modal=');
   expect(html).not.toContain('autofocus');
   expect(html).not.toContain('role="status"');
-  expect(html).toContain('<h2>この送信の保存・学習利用</h2>');
+  expect(html).toContain('<h2>送信前の確認</h2>');
   expect(html).toContain('DeepSeek · Baidu');
   expect(html).toContain('Baidu（openrouter経由）');
-  expect(html).toContain('上限 12 K-Credits');
+  expect(html).toContain('<dt>上限</dt><dd>12 K-Credits</dd>');
   expect(html).toContain('Published privacy note');
-  expect(html).toContain('クレジットは予約せず、完了後に実費精算');
-  expect(html).toContain('失敗時の消費は0');
+  expect(html).toContain('完了後に実費。失敗時は0');
   expect(html).toContain('キャンセル');
   expect(html).toMatch(/<button[^>]*disabled=""[^>]*>送信する/);
 });
@@ -250,8 +249,7 @@ it.each([{ consent: false, expired: false }, { consent: true, expired: false }, 
     expiresAt: Date.now() + (expired ? -1000 : 30000), trainingConsent: false, providerTrainingConsent: consent,
     route: { display_name: 'Baidu', provider: 'openrouter', upstream: 'Baidu', model: 'fixture' } }} onAccept={accept} onCancel={vi.fn()} />);
   expect(html).toContain('12,500 K-Credits');
-  expect(html).toContain('Credits are not reserved.');
-  expect(html).toContain('Failed generation costs 0 credits.');
+  expect(html).toContain('Actual cost after completion. 0 if it fails');
   expect(html).toContain('Baidu may retain conversations, settings, memories and generated results');
   expect(html).not.toMatch(/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u);
   expect(/<button[^>]*disabled=""[^>]*>Send/.test(html)).toBe(!consent || expired);
@@ -262,8 +260,8 @@ it('explains English route behavior and absence of an official summary without i
   language.value = 'en';
   const route = renderToStaticMarkup(<CloudRouteControls currentModel={models[0]} value={defaultCloudRoute} onChange={vi.fn()} disabled={false} />);
   expect(route).toContain('Models and providers do not switch automatically.');
-  const summary = renderToStaticMarkup(<ReasoningSummary cloud message={{ role: 'assistant', content: 'Reply', reasoning_summary_status: 'not_provided', reasoning_summary: 'must not show' }} />);
-  expect(summary).toContain('The provider did not supply an official reasoning summary');
+  const summary = renderToStaticMarkup(<ReasoningSummary message={{ role: 'assistant', content: 'Reply', reasoning_summary_status: 'not_provided', reasoning_summary: 'must not show' }} />);
+  expect(summary).toBe('');
   expect(summary).not.toContain('must not show');
   expect(route + summary).not.toMatch(/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u);
 });

@@ -8,13 +8,26 @@ import { useConfirm } from './ui/Dialog';
 import './unified.css';
 
 const choices: {key:'genres'|'moods'|'activities';ja:string;en:string;options:[string,string,string][]}[] = [
-  {key:'genres',ja:'好きなジャンル',en:'Your genres',options:[['school','学園','School'],['fantasy','異世界','Fantasy'],['night','夜のひととき','Night']]},
-  {key:'moods',ja:'キャラの雰囲気',en:'Character style',options:[['cool','クール','Cool'],['sweet','甘々','Sweet'],['tsundere','ツンデレ','Tsundere'],['polite','礼儀正しい','Polite'],['mysterious','ミステリアス','Mysterious']]},
-  {key:'activities',ja:'楽しみ方',en:'Your moments',options:[['healing','癒し','Comfort'],['smart','知的な会話','Thoughtful chats'],['fantasy','冒険','Adventure']]},
+  {key:'genres',ja:'好きなジャンル',en:'Your genres',options:[['school','学園','School'],['fantasy','ファンタジー','Fantasy'],['日常','日常','Everyday'],['恋愛','恋愛','Romance'],['ミステリー','ミステリー','Mystery'],['ホラー','ホラー','Horror'],['SF','SF','Sci-fi']]},
+  {key:'moods',ja:'好きな雰囲気',en:'Character style',options:[['cool','クール','Cool'],['healing','癒し','Comfort'],['sweet','甘々','Sweet'],['tsundere','ツンデレ','Tsundere'],['onee-san','お姉さん','Big sister'],['年下','年下','Younger']]},
+  {key:'activities',ja:'やりたいこと',en:'Your moments',options:[['雑談','雑談','Small talk'],['相談','相談','Advice'],['冒険','冒険','Adventure'],['ロールプレイ','ロールプレイ','Roleplay']]},
 ];
 
-export function Interests({onDone}:{onDone:()=>void}) {
-  const owner=useDeviceOwner();return <InterestChoices key={owner} owner={owner} onDone={onDone}/>;
+export function Interests({onDone,page=false}:{onDone:()=>void;page?:boolean}) {
+  const owner=useDeviceOwner();return page?<InterestPage key={owner} owner={owner} onDone={onDone}/>:<InterestChoices key={owner} owner={owner} onDone={onDone}/>;
+}
+/** 32: every choice on one page, saved explicitly (first-run onboarding keeps the three steps). */
+function InterestPage({owner,onDone}:{owner:string;onDone:()=>void}) {
+  const [draft,setDraft]=useState(preferences),language=useLanguage(),en=language==='en';
+  const save=()=>{if(owner!==deviceOwner())return;savePreferences({...preferences(),genres:draft.genres,moods:draft.moods,activities:draft.activities});onDone();};
+  return <section className="k-interests k-interests--page" lang={language} aria-label={en?'Your interests':'好みの設定'}>
+    <p className="k-interests__hint">{en?'Used for suggestions. You can change these any time.':'おすすめに使います。あとでいつでも変えられます。'}</p>
+    {choices.map(group=><fieldset key={group.key} className="k-interests__set"><legend>{en?group.en:group.ja}</legend>
+      <div className="k-interests__chips">{group.options.map(([key,ja,english])=><label key={key} className="k-interests__chip">
+        <input type="checkbox" checked={draft[group.key].includes(key)} onChange={e=>setDraft({...draft,[group.key]:e.target.checked?[...draft[group.key],key]:draft[group.key].filter(v=>v!==key)})}/>{en?english:ja}
+      </label>)}</div></fieldset>)}
+    <Button size="lg" onClick={save}>{en?'Save':'保存'}</Button>
+  </section>;
 }
 function InterestChoices({owner,onDone}:{owner:string;onDone:()=>void}) {
   const [step,setStep]=useState(0),[draft,setDraft]=useState(preferences);
@@ -31,7 +44,8 @@ function InterestChoices({owner,onDone}:{owner:string;onDone:()=>void}) {
   </section>;
 }
 
-export function ExecutionPicker() {
+/** `segment` is design 29's three-way control; the entry form keeps the compact select. */
+export function ExecutionPicker({segment=false}:{segment?:boolean}={}) {
   const language=useLanguage(),target=useExecutionTarget(),busy=useGenerationBusy(),t=labels[language];
   const pending=usePendingConversation(),en=language==='en';
   const [dialog,confirm]=useConfirm();
@@ -41,6 +55,13 @@ export function ExecutionPicker() {
     if(await confirm({title:cloud?(language==='ja'?'Cloudをブラウザーで開きますか？':'Open Cloud in your browser?'):(language==='ja'?'実行先を切り替えますか？':'Switch execution target?'),
       description:cloud?(language==='ja'?'https://app.kyalulu.com/ を別画面で開きます。保存済みの会話と下書きはこのPCに残り、認証情報も転送しません。':'Open https://app.kyalulu.com/ separately. Saved conversations and drafts stay on this PC. No sign-in information is transferred.'):(language==='ja'?'保存済みの会話と下書きは元の場所に残ります。会話を自動転送しません。':'Saved conversations and drafts stay in their original location. Nothing is transferred automatically.'),confirmLabel:t.next,cancelLabel:en?'Cancel':'キャンセル'})&&!generationBusy()) switchTarget(next);
   };
+  const options=(['cloud','device','pc',...(hasLocalRuntime()?['local']:[])] as ExecutionTarget[]);
+  const recovery=pending!==null&&<p role="status">{pending?<Link to={`/chats/${encodeURIComponent(pending)}`}>{en?'Check send result':'送信結果を確認'}</Link>:(en?'Draft recovery could not be read. Check browser storage before switching.':'下書きの復旧記録を読み込めません。切り替える前にブラウザーの保存領域を確認してください。')}</p>;
+  if(segment)return <section className="k-set k-execution-segment">{dialog}
+    <div><h2 className="k-set__title">{t.target}</h2><p className="k-set__desc">{en?'Where replies are generated. Conversations do not move automatically when you switch.':'会話をどこで生成するか。切り替えても会話は自動で移りません。'}</p></div>
+    <div className="k-segment" role="radiogroup" aria-label={t.target}>{options.map(v=><button type="button" key={v} role="radio" aria-checked={target===v} className={target===v?'is-active':''} disabled={busy} onClick={()=>{if(v!==target)void choose(v);}}>{t[v]}</button>)}</div>
+    {hasLocalRuntime()&&target==='cloud'&&<Button disabled={busy} onClick={()=>choose('cloud')}>{language==='ja'?'Cloudを開く':'Open Cloud'}</Button>}
+    {recovery}</section>;
   return <div className="k-execution-picker">{dialog}<label>{t.target}
     <select aria-label={t.target} value={target} disabled={busy} onChange={e=>choose(e.target.value as ExecutionTarget)}>
       {(['cloud','device','pc',...(hasLocalRuntime()?['local']:[])] as ExecutionTarget[]).map(v=><option key={v} value={v}>{t[v]}</option>)}

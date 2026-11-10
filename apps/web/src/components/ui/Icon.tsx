@@ -39,6 +39,12 @@ const PATHS: Record<string, string> = {
   command: "M9 6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3z",
   arrow: "M5 12h14M13 6l6 6-6 6",
   library: "M5 4h4v16H5zM10 4h4v16h-4zM15.5 4.5l3.8 1 -3.6 14.4-3.8-1z",
+  sliders: "M4 8h9M17 8h3M15 6v4M4 16h3M11 16h9M9 14v4",
+  mail: "M4 6h16v12H4zM4 7l8 6 8-6",
+  bookmark: "M7 4h10v17l-5-4-5 4z",
+  share: "M12 15V3M7 8l5-5 5 5M5 13v7h14v-7",
+  arrowUp: "M12 19V5M6 11l6-6 6 6",
+  lines: "M5 8h14M5 12h14M5 16h9",
   wand: "M4 20 15 9M13 7l4 4M18 3v3M16.5 4.5h3M20 9v2M19 10h2M9 3v2M8 4h2",
 };
 

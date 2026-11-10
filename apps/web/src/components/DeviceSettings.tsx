@@ -15,16 +15,16 @@ const stageLabels:Record<string,{ja:string;en:string}>={
   downloading:{ja:'ダウンロード中',en:'Downloading'},complete:{ja:'検証・保存完了',en:'Verified and saved'},
 };
 
-export default function DeviceSettings() {
+export default function DeviceSettings({ advanced = false }: { advanced?: boolean } = {}) {
   const target=useExecutionTarget(),language=useLanguage(),t=labels[language],en=language==='en',generation=useGenerationBusy();
   const [interests,setInterests]=useState(false),[ready,setReady]=useState(new Set<string>()),[busy,setBusy]=useState(''),[error,setError]=useState('');
   const [progress,setProgress]=useState({loaded:0,total:1,stage:''}),abort=useRef<AbortController|null>(null);
   const [dialog,confirm]=useConfirm();
   useEffect(()=>{if(target==='device')void readyModels().then(setReady).catch(e=>setError(String(e)));return()=>abort.current?.abort();},[target]);
-  return <section className="k-section">{dialog}<h2 className="k-section__title">Kyalulu</h2>
+  return <section className="k-section">{dialog}{!advanced && <><h2 className="k-section__title">Kyalulu</h2>
     <label>{t.language}<select aria-label={t.language} value={language} onChange={e=>savePreferences({...preferences(),language:e.target.value as 'ja'|'en'})}><option value="ja">日本語</option><option value="en">English</option></select></label>
     <Button variant="secondary" onClick={()=>setInterests(v=>!v)}>{t.settings}</Button>
-    {interests&&<Interests onDone={()=>setInterests(false)}/>}
+    {interests&&<Interests onDone={()=>setInterests(false)}/>}</>}
     {target==='pc'&&<RemoteConnections/>}
     {target==='device'&&<RuntimeSyncSettings/>}
     {target==='device'&&<p><Link to="/research">{en?'On-device research and ratings':'端末内の比較・評価'}</Link></p>}

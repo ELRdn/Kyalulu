@@ -1,9 +1,13 @@
 """Encrypted account preferences shared by authenticated Web devices."""
 
 import json
+import re
 import unicodedata
 
 from .store import CloudError
+
+
+AVATAR = re.compile(r"data:image/(webp|jpeg|png);base64,[A-Za-z0-9+/]+={0,2}")
 
 
 class AccountProfile:
@@ -40,6 +44,14 @@ class AccountProfile:
             if (not value or len(value) > 80
                     or any(unicodedata.category(c) in {"Cc", "Cs"} for c in value)):
                 raise CloudError("invalid_display_name")
+        elif key == "bio":
+            value = unicodedata.normalize("NFC", value).strip()
+            if len(value) > 160 or any(unicodedata.category(c) in {"Cc", "Cs"} for c in value):
+                raise CloudError("invalid_account_profile")
+        elif key == "avatar":
+            # The browser sends a 176px image; keeping the limit here protects the encrypted row.
+            if value and (len(value) > 140_000 or not AVATAR.fullmatch(value)):
+                raise CloudError("invalid_account_profile")
         elif key in {"toggle_saved", "toggle_pin"}:
             if not value or len(value) > 200 or any(unicodedata.category(c).startswith("C") for c in value):
                 raise CloudError("invalid_account_profile")
@@ -51,7 +63,7 @@ class AccountProfile:
             profile = self._read(db, owner)
             if body["revision"] != profile["revision"]:
                 raise CloudError("profile_conflict", 409)
-            if key == "display_name":
+            if key in {"display_name", "bio", "avatar"}:
                 profile[key] = value
             else:
                 field = "saved_characters" if key == "toggle_saved" else "pinned_sessions"

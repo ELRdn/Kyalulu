@@ -163,7 +163,9 @@ class SupabaseAuth:
             "consent_version": agreement["consent"], "self_declared": True}))
         metadata = user.get("user_metadata")
         name = metadata.get("full_name", "") if isinstance(metadata, dict) else ""
+        login = user.get("app_metadata")
         self.store.secret(owner, "identity", json.dumps({"id": owner, "email": user["email"],
+            "provider": login.get("provider", "email") if isinstance(login, dict) else "email",
             "display_name": name[:200] if isinstance(name, str) else ""}))
         token = secrets.token_urlsafe(32)
         self.save(token, owner, session)

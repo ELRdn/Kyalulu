@@ -39,7 +39,7 @@ const item={id:'fictional-item',document,revision:4,original_id:'fictional-origi
 const suffix=' この下書きと保存IDは残っています。内容を変えずに再保存すると同じ保存IDで結果を確認します。内容を変える前にライブラリの保存結果を確認してください。';
 function view(render:()=>ReactNode,states:unknown[]){fixture.next=0;fixture.states=states;return render();}
 function workspace(patch:Record<number,unknown>={}){
-  const states:unknown[]=[false,false,'new-character',null,[item],false,false,'',null,[],undefined,false,null,'',false,{},'',[],null,'ccv3-json',null];
+  const states:unknown[]=[false,'new-character',null,[item],false,false,'',null,[],undefined,false,null,'',false,{},'',[],null,'ccv3-json',null];
   for(const [index,value] of Object.entries(patch))states[Number(index)]=value;
   return view(()=>{const page=Create();return (page.type as any)(page.props);},states);
 }
@@ -53,6 +53,7 @@ beforeEach(()=>{vi.clearAllMocks();fixture.language='en';fixture.cloud=false;fix
 afterEach(()=>vi.unstubAllGlobals());
 
 it('translates library controls while retaining item IDs, versions and authored text',()=>{
+  fixture.params=new URLSearchParams('import=1');
   for(const language of ['ja','en']){
     fixture.language=language;
     const html=renderToStaticMarkup(workspace());
@@ -66,7 +67,7 @@ it('retains draft/uncertain-save warnings and live notices in either language',(
   fixture.params=new URLSearchParams('edit=new');
   for(const language of ['ja','en']){
     fixture.language=language;
-    const html=renderToStaticMarkup(workspace({12:document,13:'Error: Failed to fetch'+suffix,16:{kind:'draft'}}));
+    const html=renderToStaticMarkup(workspace({11:document,12:'Error: Failed to fetch'+suffix,15:{kind:'draft'}}));
     expect(html).toContain(language==='en'?'This draft and its save ID are retained':'この下書きと保存IDは残っています');
     expect(html).toContain(language==='en'?'A temporary draft was saved in this browser':'一時下書きをこのブラウザーに保存しました');
     expect(html).toContain(document.name);expect(fixture.save).not.toHaveBeenCalled();
@@ -76,7 +77,7 @@ it('retains draft/uncertain-save warnings and live notices in either language',(
 it('retains original export format IDs and the pinned revision across language switches',()=>{
   for(const language of ['ja','en']){
     fixture.language=language;
-    const html=renderToStaticMarkup(workspace({18:item,20:{notices:[],filename:'original-name.json'}}));
+    const html=renderToStaticMarkup(workspace({17:item,19:{notices:[],filename:'original-name.json'}}));
     expect(html).toContain(`/api/library/${item.id}/export?format=ccv3-json&amp;revision=4&amp;download=true`);
     expect(html).toContain('value="original"');expect(html).toContain('original-name.json');
     expect(html).toContain(language==='en'?'Imported original':'取り込んだ原本');
@@ -86,14 +87,14 @@ it('retains original export format IDs and the pinned revision across language s
 
 it('keeps the matching payload and request ID when an explicit save cannot be verified',async()=>{
   fixture.params=new URLSearchParams('edit=new');fixture.save.mockRejectedValue(Error('Failed to fetch'));
-  const tree=workspace({12:document});
+  const tree=workspace({11:document});
   nodes(tree,node=>node.props.children==='Save')[0].props.onClick();
   await vi.waitFor(()=>expect(fixture.save).toHaveBeenCalledOnce());
   const [payload,editing,id]=fixture.save.mock.calls[0];
   expect(payload).toEqual(document);expect(editing).toBeUndefined();expect(id).toMatch(/^[0-9a-f-]{36}$/);
   const stored=JSON.parse(sessionStorage.getItem('kyalulu-create-draft-v1:fixture-owner:editor:new-character')!);
   expect(stored.request_id).toBe(id);expect(stored.document).toEqual(document);
-  await vi.waitFor(()=>expect(fixture.updates.some(update=>update.index===13&&String(update.value).endsWith(suffix))).toBe(true));
+  await vi.waitFor(()=>expect(fixture.updates.some(update=>update.index===12&&String(update.value).endsWith(suffix))).toBe(true));
   expect(fixture.fetch).not.toHaveBeenCalled();
 });
 
@@ -140,7 +141,7 @@ it('retains HTTP permission metadata and singular import counts when display lan
   const error=Object.assign(Error('fixture permission detail'),{status:403});
   for(const language of ['ja','en']){
     fixture.language=language;
-    const html=renderToStaticMarkup(workspace({13:error,16:{kind:'imported',count:1}}));
+    const html=renderToStaticMarkup(workspace({12:error,15:{kind:'imported',count:1}}));
     expect(html).toContain(language==='en'?'You do not have permission':'権限がありません');
     expect(html).toContain(language==='en'?'Saved 1 item to':'1件を');
     expect(html).not.toContain('1 items');

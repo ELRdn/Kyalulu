@@ -40,9 +40,10 @@ export default function SessionPolicy({sessionId,model,disabled}:{sessionId:stri
   const [policy,setPolicy]=useState('local'),[pinned,setPinned]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false),[stored,setStored]=useState(false);
   const [dialog,confirm]=useConfirm();
   useEffect(()=>{let alive=true;setStored(false);if(target==='device')void conversationInfo(sessionId,owner).then(value=>{if(alive){setPolicy(value?.selection.storage_policy??'local');setPinned(value?.pinned??false);setStored(!!value&&!value.deleted);}}).catch(error=>{if(alive)setError(String(error));});return()=>{alive=false;};},[sessionId,target,state,owner,disabled]);
-  return <div className="k-session-policy">{dialog}<span>{t.target}: {t[target]}</span><span>{t.model}: {model||t.unavailable}</span>
-    {target==='local'&&<NativeSessionPolicy key={sessionId} sessionId={sessionId} en={en}/>}
-    {target!=='device'?<span>{en?'Saved on':'保存先'}: {target==='cloud'?'Cloud':target==='local'?t.local:t.pc}</span>:<>
+  // Rows of label and value (design 10, 技術情報).
+  return <div className="k-session-policy">{dialog}<span className="k-kv"><span>{t.target}</span><span>{t[target]}</span></span><span className="k-kv"><span>{t.model}</span><span>{model||t.unavailable}</span></span>
+    {target==='local'&&<span className="k-kv"><span>{en?'Sync':'同期'}</span><NativeSessionPolicy key={sessionId} sessionId={sessionId} en={en}/></span>}
+    {target!=='device'?<span className="k-kv"><span>{en?'Saved on':'保存先'}</span><span>{target==='cloud'?(en?'Cloud':'クラウド'):target==='local'?t.local:t.pc}</span></span>:<>
       <span>{policy==='local'?t.localOnly:t.sync}</span>
       {policy==='local'&&<Button size="sm" variant="ghost" disabled={disabled||busy||!stored} onClick={async()=>{
         const owner=deviceOwner();setError('');

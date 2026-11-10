@@ -22,22 +22,21 @@ export default function WorldCard({
 }) {
   const body = (
     <>
-      <div className={`k-media-card__art k-world-scene ${sceneFor(id)}`} aria-hidden="true">
+      <span className={`k-world-row__thumb k-world-scene ${sceneFor(id)}`} aria-hidden="true">
         <span className="k-world-scene__moon" />
         <span className="k-world-scene__stars" />
-        <span className="k-world-scene__horizon" />
-      </div>
-      <div className="k-media-card__body">
-        <div className="k-media-card__title">{displayName}</div>
-        <div className="k-media-card__hook">{description}</div>
-      </div>
+      </span>
+      <span className="k-world-row__text">
+        <span className="k-world-row__name">{displayName}</span>
+        <span className="k-world-row__desc">{description}</span>
+      </span>
     </>
   );
   return onClick ? (
-    <button type="button" className={`k-media-card k-media-card--world ${active ? "k-media-card--selected" : ""}`} onClick={onClick} aria-pressed={active}>
+    <button type="button" className="k-world-row" onClick={onClick} aria-pressed={active}>
       {body}
     </button>
   ) : (
-    <div className="k-media-card k-media-card--world">{body}</div>
+    <div className="k-world-row">{body}</div>
   );
 }

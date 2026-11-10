@@ -77,6 +77,8 @@ class UnifiedService:
         self.transfers = EntityTransfers(self)
         from .publications import Publications
         self.publications = Publications(self)
+        from .age_check import AgeCheck
+        self.age = AgeCheck(self)
 
     def available(self):
         if not self.store.config.unified_enabled:
@@ -125,7 +127,7 @@ class UnifiedService:
             raise CloudError("adult_verification_required", 403)
 
     def record_age_result(self, owner, *, country, adult, expires, receipt, policy):
-        """Only a verified provider adapter calls this; never expose a browser claim API."""
+        """Only AgeCheck calls this: a provider result, or a declaration where the region allows one."""
         if (type(adult) is not bool or type(expires) not in {int, float}
                 or not math.isfinite(expires) or not time.time() < expires <= time.time() + 366 * 86400
                 or not isinstance(receipt, str) or not 1 <= len(receipt) <= 200
@@ -883,3 +885,21 @@ def install_routes(app, service):
         if type(body.get('enabled')) is not bool:
             raise CloudError('invalid_adult_consent')
         return await publication_call(service.publications.consent, request.state.owner, body['enabled'])
+
+    @app.get('/api/cloud/app/age')
+    async def age_status(request: Request):
+        return await publication_call(service.age.status, request.state.owner)
+
+    @app.post('/api/cloud/app/age/declare')
+    async def age_declare(request: Request):
+        body = await publication_body(request)
+        return await publication_call(service.age.declare, request.state.owner, body.get('adult'))
+
+    @app.post('/api/cloud/app/age/yoti')
+    async def age_yoti_start(request: Request):
+        return await service.age.start(request.state.owner)
+
+    @app.post('/api/cloud/app/age/yoti/result')
+    async def age_yoti_result(request: Request):
+        body = await publication_body(request)
+        return await service.age.finish(request.state.owner, body.get('session_id'))

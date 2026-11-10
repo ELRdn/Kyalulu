@@ -11,7 +11,7 @@ import { friendlyMessage } from '../lib/errors';
 import ChatsLanding from '../pages/ChatsLanding';
 import StoryControls from './StoryControls';
 import { applyStory, readStory } from '../lib/story';
-import { MemberProfile } from '../pages/Profile';
+import { MemberProfile, ProfileEdit } from '../pages/Profile';
 import ConnectionSettings from './ConnectionSettings';
 
 const fixture = vi.hoisted(() => ({ language: 'en', administrative: false, guest: false,
@@ -21,6 +21,8 @@ const fixture = vi.hoisted(() => ({ language: 'en', administrative: false, guest
   saveName: vi.fn(), setTheme: vi.fn(),
   navigate: vi.fn(), close: vi.fn(), browse: vi.fn(), fetch: vi.fn(), preview: vi.fn(), hub: vi.fn(), toggle: vi.fn(),
 }));
+vi.mock('../lib/capabilities',()=>({useCapabilities:()=>({capabilities:null})}));
+vi.mock('./ui/Dialog',()=>({useConfirm:()=>[null,vi.fn()]}));
 vi.mock('react', async importOriginal => ({ ...await importOriginal<typeof import('react')>(),
   useEffect: vi.fn(), useMemo: (fn: () => unknown) => fn(), useCallback: (fn: unknown) => fn,
   useRef: (initial: unknown) => ({ current: initial }),
@@ -48,8 +50,7 @@ vi.mock('./RuntimeGate', () => ({ useAdministrative: () => fixture.administrativ
 vi.mock('./CommunityWorks', () => ({ default: () => null }));
 vi.mock('./RuntimeMedia', () => ({ RuntimeImage: ({ src, alt, ...props }: any) => <img src={src} alt={alt} {...props} /> }));
 vi.mock('./ui/Dialog', () => ({ default: ({ children, label }: any) => <div role="dialog" aria-label={label}>{children}</div>, useConfirm: () => [null, vi.fn()] }));
-vi.mock('../lib/theme', () => ({ useTheme: () => ({ theme: 'dark', toggle: fixture.toggle, setTheme: fixture.setTheme }) }));
-vi.mock('../lib/profile', () => ({ useDisplayName: () => 'Original name', setDisplayName: fixture.saveName }));
+vi.mock('../lib/profile', () => ({ useDisplayName: () => 'Original name', useProfileExtras: () => ({ bio: '', avatar: '' }), setProfileExtras: vi.fn(), avatarFromFile: vi.fn(), setDisplayName: fixture.saveName }));
 vi.mock('../lib/accountProfile', () => ({ useAccountProfile: () => ({ error: fixture.profileError,
   pending: fixture.pending, profile: fixture.profileReady ? {} : null }), refreshAccountProfile: vi.fn() }));
 vi.mock('../lib/mode', () => ({ useResearcherMode: () => [false, vi.fn()] }));
@@ -74,7 +75,7 @@ function nodes(tree: ReactNode, match: (node: ReactElement<any>) => boolean): Re
     [...(match(node) ? [node] : []), ...nodes(node.props.children, match)]);
 }
 function discover(query: string, error: unknown = null) {
-  return view(Discover, [characters, [], new Map(), false, error, 0, query, []]);
+  return view(Discover, [characters, [], false, error, 0, query]);
 }
 function palette(query: string) {
   return view(() => CommandPalette({ open: true, onClose: fixture.close }), [query, 0, characters, [], []]);
@@ -104,8 +105,8 @@ it('keeps Japanese and English mood searches and stable filter IDs across langua
 });
 
 it('localizes navigation and exploration without granting management actions', () => {
-  const shell = renderToStaticMarkup(view(AppShell, [false, false]));
-  expect(shell).toContain('Search characters and worlds');
+  const shell = renderToStaticMarkup(view(AppShell, [false]));
+  expect(shell).toContain('Search by mood, scene or #tag');
   expect(shell).toContain('Main navigation');
   expect(shell).not.toContain('href="/studio"');
   expect(shell).not.toMatch(/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u);
@@ -178,25 +179,22 @@ it('localizes generated conversation labels while preserving authored names', ()
   expect(sessionTitle({ session_id: 'new', character_name: '原文' }, 'en')).toBe('原文');
 });
 
-it('preserves chat-list search, pinning and sort across display languages', () => {
+it('lists chats newest first with pinned ones on top in both display languages', () => {
   const sessions = [
     { session_id: 'old', count: 2, character_name: null, last_preview: 'Earlier text', last_at: '2026-10-01 10:00:00' },
     { session_id: 'new', count: 3, character_name: null, last_preview: 'Later text', last_at: '2026-10-02 10:00:00' },
   ];
-  for (const query of ['Free chat', 'フリートーク']) {
-    for (const language of ['ja', 'en']) {
-      fixture.language = language;
-      const render = (oldest: boolean) => renderToStaticMarkup(view(ChatsLanding,
-        [sessions, [], false, null, null, 0, query, oldest, characters]));
-      const newest = render(false), oldest = render(true);
-      expect(newest.indexOf('href="/chats/new"')).toBeLessThan(newest.indexOf('href="/chats/old"'));
-      expect(oldest.indexOf('href="/chats/old"')).toBeLessThan(oldest.indexOf('href="/chats/new"'));
-      fixture.pinned = ['old'];
-      const pinned = render(false);
-      expect(pinned).toContain(language === 'en' ? 'Pinned' : 'ピン留め');
-      expect(pinned.indexOf('href="/chats/old"')).toBeLessThan(pinned.indexOf('href="/chats/new"'));
-      fixture.pinned = [];
-    }
+  for (const language of ['ja', 'en']) {
+    fixture.language = language;
+    const render = () => renderToStaticMarkup(view(ChatsLanding, [sessions, [], false, null, null, 0, characters]));
+    const newest = render();
+    expect(newest.indexOf('href="/chats/new"')).toBeLessThan(newest.indexOf('href="/chats/old"'));
+    expect(newest).toContain(language === 'en' ? 'Pick someone to talk to' : '話す相手を選んでね');
+    fixture.pinned = ['old'];
+    const pinned = render();
+    expect(pinned).toContain(language === 'en' ? 'Pinned' : 'ピン留め');
+    expect(pinned.indexOf('href="/chats/old"')).toBeLessThan(pinned.indexOf('href="/chats/new"'));
+    fixture.pinned = [];
   }
   expect(fixture.fetch).not.toHaveBeenCalled();
 });
@@ -236,43 +234,42 @@ it('keeps story drafts and original prompt instructions when language changes', 
 });
 
 function profile(error: unknown = null) {
-  return view(MemberProfile, ['入力中の名前 · draft', [{ session_id: 'chat-one', count: 3, character_id: 'hero', character_name: 'Original character' }],
+  return view(MemberProfile, [[{ session_id: 'chat-one', count: 3, character_id: 'hero', character_name: 'Original character' }],
     characters, error, false, 0]);
+}
+function edit() {
+  return view(ProfileEdit, ['入力中の名前 · draft']);
 }
 
 it('keeps profile drafts and saved characters without exposing unified adult shortcuts', () => {
   fixture.saved = ['hero']; fixture.pinned = ['chat-one'];
   for (const language of ['ja', 'en']) {
     fixture.language = language;
-    // Nested controls use their defaults after the page's six state entries.
     const html = renderToStaticMarkup(profile());
-    expect(html).toContain('入力中の名前 · draft');
+    expect(html).toContain('Original name');
+    expect(html).toContain('href="/profile/edit"');
     expect(html).toContain('href="/characters/hero"');
     expect(html).toContain(language === 'en' ? 'Saved characters' : '保存したキャラ');
-    expect(html).toContain(language === 'en' ? 'Your display name is saved on this device.' : '表示名はこのデバイスに保存されます。');
+    const draft = renderToStaticMarkup(edit());
+    expect(draft).toContain('入力中の名前 · draft');
     expect(html).not.toContain(language === 'en' ? 'Show adult content' : '成人向けコンテンツを表示');
     expect(html).not.toContain('href="/studio"');
     expect(fixture.saveName).not.toHaveBeenCalled();
   }
 });
 
-it('retains the explicit account save and composing-Enter guard in both profile languages', () => {
+it('saves the profile only from the header button in both languages', () => {
   fixture.cloud = true;
   for (const language of ['ja', 'en']) {
     fixture.language = language;
-    const tree = profile(), blur = vi.fn();
-    const input = nodes(tree, node => node.props.id === 'k-profile-name')[0];
-    input.props.onKeyDown({ key: 'Enter', nativeEvent: { isComposing: true }, keyCode: 13, currentTarget: { blur } });
-    input.props.onKeyDown({ key: 'Enter', nativeEvent: { isComposing: false }, keyCode: 229, currentTarget: { blur } });
-    expect(blur).not.toHaveBeenCalled();
-    input.props.onBlur(); expect(fixture.saveName).not.toHaveBeenCalled();
-    input.props.onKeyDown({ key: 'Enter', nativeEvent: { isComposing: false }, keyCode: 13, currentTarget: { blur } });
-    expect(blur).toHaveBeenCalledOnce();
-    const save = nodes(tree, node => typeof node.type !== 'string' && node.props.children === (language === 'en' ? 'Save display name' : '表示名を保存'))[0];
+    const tree = edit();
+    expect(fixture.saveName).not.toHaveBeenCalled();
+    const save = (tree as any).props.action;
+    expect(save.props.children).toBe(language === 'en' ? 'Save' : '保存');
     expect(save.props.disabled).toBe(false); save.props.onClick();
     expect(fixture.saveName).toHaveBeenLastCalledWith('入力中の名前 · draft'); fixture.saveName.mockClear();
     fixture.profileReady = false;
-    const locked = profile();
+    const locked = edit();
     expect(nodes(locked, node => node.props.id === 'k-profile-name')[0].props.disabled).toBe(true);
     fixture.profileReady = true;
   }
@@ -287,8 +284,7 @@ it('localizes retained profile/account failures and keeps unverified counts hidd
     expect(html).not.toContain('k-profile-stats');
   }
   fixture.pending = 1;
-  const busy = renderToStaticMarkup(profile());
-  expect(busy).toContain('Saving…');
+  expect((edit() as any).props.action.props.disabled).toBe(true);
   expect(fixture.saveName).not.toHaveBeenCalled();
 });
 

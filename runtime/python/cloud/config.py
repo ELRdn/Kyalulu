@@ -14,7 +14,10 @@ def validate_region_policies(policies):
                 or type(policy.get('minimum_age', 13)) is not int
                 or not 13 <= policy.get('minimum_age', 13) <= 120
                 or type(policy.get('guardian_below', 18)) is not int
-                or not 13 <= policy.get('guardian_below', 18) <= 120):
+                or not 13 <= policy.get('guardian_below', 18) <= 120
+                # How adults unlock adult content: "self" (declaration) where no law requires a
+                # check, "yoti" (facial age estimation) where one does; absent means unavailable.
+                or policy.get('adult_method') not in (None, 'self', 'yoti')):
             raise ValueError('invalid unified regional policy')
 
 
@@ -57,6 +60,8 @@ class CloudConfig:
     unified_enabled: bool = False
     region_policies: tuple = ()
     moderator_owners: tuple[str, ...] = ()
+    yoti_sdk_id: str = ""
+    yoti_api_key: str = ""
 
     def __post_init__(self):
         origin = urlsplit(self.origin)
@@ -123,6 +128,8 @@ class CloudConfig:
             root=Path(os.environ["KYALULU_CLOUD_DATA_DIR"]).resolve(),
             unified_enabled=flag("KYALULU_UNIFIED_APP_ENABLED"),
             region_policies=tuple(json.loads(os.getenv("KYALULU_REGION_POLICIES", "{}")).items()),
+            yoti_sdk_id=os.getenv("KYALULU_YOTI_SDK_ID", ""),
+            yoti_api_key=os.getenv("KYALULU_YOTI_API_KEY", ""),
             moderator_owners=tuple(x.strip() for x in os.getenv("KYALULU_MODERATOR_OWNERS", "").split(',') if x.strip()),
             origin=os.environ["KYALULU_CLOUD_ORIGIN"],
             secret=os.environ["KYALULU_CLOUD_SECRET"],

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { NavLink } from "react-router-dom";
+import { Link } from "react-router-dom";
 import "./ui.css";
 
 export default function NavItem({
@@ -9,7 +9,7 @@ export default function NavItem({
   secondary = false,
   compact = false,
   badge,
-  end = false,
+  active,
 }: {
   to: string;
   icon: ReactNode;
@@ -17,13 +17,13 @@ export default function NavItem({
   secondary?: boolean;
   compact?: boolean;
   badge?: ReactNode;
-  end?: boolean;
+  active: boolean;
 }) {
   return (
-    <NavLink
+    <Link
       to={to}
-      end={end}
-      className={({ isActive }) => `k-nav-item ${isActive ? "k-nav-item--active" : ""} ${secondary ? "k-nav-item--secondary" : ""}`}
+      aria-current={active ? "page" : undefined}
+      className={`k-nav-item ${active ? "k-nav-item--active" : ""} ${secondary ? "k-nav-item--secondary" : ""}`}
       title={label}
       aria-label={label}
     >
@@ -32,6 +32,6 @@ export default function NavItem({
       </span>
       {!compact && <span className="k-nav-item__label">{label}</span>}
       {!compact && badge}
-    </NavLink>
+    </Link>
   );
 }

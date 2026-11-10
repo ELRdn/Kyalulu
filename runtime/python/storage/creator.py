@@ -43,6 +43,7 @@ def list_latest(kind: str):
     with _connect() as db:
         rows = db.execute("SELECT * FROM creator_versions v WHERE kind=? AND revision="
                           "(SELECT MAX(revision) FROM creator_versions WHERE asset_id=v.asset_id) "
+                          "AND asset_id NOT IN (SELECT asset_id FROM creator_deleted) "
                           "ORDER BY created_at DESC, asset_id", (kind,)).fetchall()
     return [_item(row) for row in rows]
 
@@ -61,6 +62,8 @@ def save(kind: str, document: dict, reference: str | None = None):
     before = get(reference, kind) if reference else None
     if reference and not before:
         raise ValueError("保存した設定が見つかりません")
+    if before and _deleted(before["asset_id"]):
+        raise ValueError("保存した設定が見つかりません")
     asset_id = before["asset_id"] if before else "created_" + uuid4().hex
     revision = before["revision"] + 1 if before else 1
     with _connect() as db:
@@ -71,3 +74,29 @@ def save(kind: str, document: dict, reference: str | None = None):
         db.execute("INSERT INTO creator_versions(asset_id,revision,kind,document_json) VALUES(?,?,?,?)",
                    (asset_id, revision, kind, json.dumps(document, ensure_ascii=False)))
     return get(f"{asset_id}@{revision}", kind)
+
+
+def _deleted(asset_id: str) -> bool:
+    with _connect() as db:
+        return db.execute("SELECT 1 FROM creator_deleted WHERE asset_id=?", (asset_id,)).fetchone() is not None
+
+
+def delete(reference: str, kind: str) -> bool:
+    """Drop an asset from the list. Revisions a conversation still names are kept so it can continue."""
+    item = get(reference, kind)
+    if not item or _deleted(item["asset_id"]):
+        return False
+    asset_id = item["asset_id"]
+    with _connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        pinned = set()
+        for row in db.execute("SELECT persona_id, world_id FROM session_settings WHERE persona_id LIKE ? OR world_id LIKE ?",
+                              (asset_id + "@%", asset_id + "@%")):
+            for value in row:
+                if (value or "").startswith(asset_id + "@"):
+                    pinned.add(int(value.rsplit("@", 1)[1]))
+        for (revision,) in db.execute("SELECT revision FROM creator_versions WHERE asset_id=?", (asset_id,)).fetchall():
+            if revision not in pinned:
+                db.execute("DELETE FROM creator_versions WHERE asset_id=? AND revision=?", (asset_id, revision))
+        db.execute("INSERT OR IGNORE INTO creator_deleted(asset_id) VALUES(?)", (asset_id,))
+    return True

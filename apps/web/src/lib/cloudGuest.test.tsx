@@ -63,7 +63,11 @@ it('retains the selected work when OAuth fails and requires a login retry', () =
   rememberLoginReturn('/works/selected');
   const html = renderToStaticMarkup(<MemoryRouter initialEntries={['/?login_error=login_cancelled']}><CloudRouteChoice authenticated={false}><span>public-page</span></CloudRouteChoice></MemoryRouter>);
   expect(html).toContain('login:/works/selected');
-  expect(html).not.toContain('public-page');
+  expect(html).toContain('public-page');
+});
+it('keeps a private page hidden when OAuth fails there', () => {
+  const html = renderToStaticMarkup(<MemoryRouter initialEntries={['/studio?login_error=login_cancelled']}><CloudRouteChoice authenticated={false}><span>private-page</span></CloudRouteChoice></MemoryRouter>);
+  expect(html).toContain('login:'); expect(html).not.toContain('private-page');
 });
 it.each(['https://evil.test', '//evil.test', '/\\evil.test', '/login?returnTo=/login', '/chats/private#injected', '/chats/\nprivate'])('rejects unsafe authentication return %s', path => {
   expect(safeLoginReturn(path)).toBe('/');

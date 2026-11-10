@@ -1,9 +1,18 @@
+/* Design 15: a coach card above the composer; the button it explains is ringed. */
+.k-chat-composer-wrap { position: relative; }
 .k-first-chat-tutorial {
   box-sizing: border-box;
-  max-width: 920px;
-  margin: 0 auto 20px;
+  position: absolute;
+  z-index: 25;
+  bottom: calc(100% + 12px);
+  left: 12px;
+  right: 12px;
+  max-width: 420px !important;
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
+  margin: 0 auto;
   padding: 16px;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-strong);
   border-radius: 16px;
   background: var(--bg-surface);
   color: var(--text-primary);
@@ -12,9 +21,36 @@
 .k-first-chat-tutorial__head, .k-first-chat-tutorial__links, .k-first-chat-tutorial__nav {
   display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
 }
-.k-first-chat-tutorial__head { justify-content: space-between; color: var(--text-secondary); font-size: 12px; }
-.k-first-chat-tutorial h2 { font-size: 16px; margin: 12px 0 8px; }
-.k-first-chat-tutorial p { font-size: 13px; line-height: 1.7; color: var(--text-secondary); }
-.k-first-chat-tutorial__nav { justify-content: flex-end; margin-top: 12px; }
-.k-first-chat-tutorial p.k-first-chat-tutorial__note { font-size: 11px; margin-bottom: 0; }
+.k-first-chat-tutorial__head { justify-content: space-between; }
+.k-first-chat-tutorial__step { font-size: 12px; font-weight: 700; color: var(--accent-primary); }
+.k-first-chat-tutorial__skip { min-height: 32px; margin: -6px -6px -6px 0; padding: 0 8px; border: 0; background: none; color: var(--text-muted); font: inherit; font-size: 12px; cursor: pointer; }
+.k-first-chat-tutorial__skip:hover { color: var(--text-primary); }
+.k-first-chat-tutorial h2 { font-size: 16px; font-weight: 700; margin: 8px 0 6px; }
+.k-first-chat-tutorial p { margin: 0 0 6px; font-size: 13px; line-height: 1.7; color: var(--text-secondary); }
+.k-first-chat-tutorial__nav { justify-content: flex-end; margin-top: 10px; }
+.k-first-chat-tutorial__nav .k-btn--primary { min-height: 36px; padding: 0 18px; border-radius: 18px; }
+.k-first-chat-tutorial p.k-first-chat-tutorial__note { font-size: 11px; margin: 8px 0 0; color: var(--text-muted); }
 .k-first-chat-tutorial:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+
+/* Spotlight on the explained button: ring plus a dimmed page around it. */
+.k-chat-composer-wrap[data-coach="0"] .k-composer__tool--round,
+.k-chat-composer-wrap[data-coach="1"] .k-composer__send {
+  position: relative;
+  z-index: 20;
+  box-shadow: 0 0 0 3px var(--bg-surface), 0 0 0 5px var(--accent-primary), 0 0 0 100vmax rgba(0, 0, 0, 0.6);
+}
+
+/* 15, P19: a 300px card next to the action button */
+.k-first-chat-tutorial { border: 0; width: 300px; max-width: calc(100% - 40px) !important; left: 20px; right: auto; margin: 0; }
+.k-first-chat-tutorial p { font-weight: 400; }
+.k-first-chat-tutorial__skip { margin-right: 0; padding: 0; font-weight: 400; }
+.k-first-chat-tutorial__nav .k-btn--primary { font-size: 13px; font-weight: 700; }
+.k-first-chat-tutorial p.k-first-chat-tutorial__note:not([role]) { display: none; }
+@media (min-width: 768px) {
+  .k-first-chat-tutorial { left: calc(50% - 312px); }
+}
+.k-first-chat-tutorial__skip { min-height: 18px; margin-block: 0; }
+.k-first-chat-tutorial h2 { margin: 8px 0; line-height: 24px; }
+.k-first-chat-tutorial p { margin-bottom: 0; line-height: 22.5px; }
+.k-first-chat-tutorial__nav { margin-top: 8px; }
+@media (max-width: 767px) { .k-first-chat-tutorial { bottom: calc(100% + 2px); } }

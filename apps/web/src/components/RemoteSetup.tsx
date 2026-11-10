@@ -71,5 +71,5 @@ export function RemoteBanner() {
     return () => window.removeEventListener('kyalulu-remote-status', update);
   }, []);
   if (!activeRemote() || executionTarget() !== 'pc') return null;
-  return <div className="k-remote-banner" role="status"><Link to="/profile">{activeRemote()?.hostName || (en?'Home PC':'自宅PC')} · {connected ? (en?'Encrypted connection':'暗号化接続中') : (en?'Unable to connect':'接続できません')}</Link><span>{en?'Conversations saved on PC':'会話はPCに保存'}</span></div>;
+  return <div className="k-remote-banner" role="status"><Link to="/profile/advanced">{activeRemote()?.hostName || (en?'Home PC':'自宅PC')} · {connected ? (en?'Encrypted connection':'暗号化接続中') : (en?'Unable to connect':'接続できません')}</Link><span>{en?'Conversations saved on PC':'会話はPCに保存'}</span></div>;
 }

@@ -80,9 +80,7 @@ async def main():
                         await sheet.get_by_role('button',name='Not now' if en else 'あとで',exact=True).click()
                         await expect(sheet).to_have_count(0)
                         # The execution target lives in My page › Settings › Advanced.
-                        await page.goto(origin+'/profile')
-                        await page.locator('.k-profile-settings > summary').first.click()
-                        await page.locator('.k-profile-settings--advanced > summary').click()
+                        await page.goto(origin+'/profile/advanced')
                         target=page.get_by_role('combobox',name='Run on' if en else '実行先',exact=True)
                         await expect(target).to_have_value('cloud')
                         async with page.expect_navigation(wait_until='domcontentloaded'):
@@ -129,9 +127,8 @@ async def main():
                         chats=await page.evaluate(READ_ENTITIES_JS, ['conversation'])
                         assert len(chats)==1 and chats[0]['owner']=='guest' and chats[0]['payload']['storage_policy']=='local'
                         assert len(calls)==reads
-                        await page.goto(origin+'/device/#/profile')
-                        await page.locator('.k-profile-settings > summary').first.click()
-                        settings=page.locator('.k-profile-settings').first
+                        await page.goto(origin+'/device/#/profile/settings')
+                        settings=page.locator('.k-me-sub').first
                         interests=page.locator('.k-interests')
                         await settings.get_by_role('button',name='Your interests' if en else '好みの設定',exact=True).click()
                         await interests.get_by_role('heading',name='Your genres' if en else '好きなジャンル',exact=True).wait_for()

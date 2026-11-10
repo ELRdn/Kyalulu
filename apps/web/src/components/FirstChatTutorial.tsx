@@ -63,18 +63,18 @@ export type FirstChatTutorialProps = {
   onBack: () => void;
   onSkip: () => void;
   onComplete: () => void;
-  onFocusComposer: () => void;
   onOpenModels: () => void;
   onOpenMemory: () => void;
   onOpenInspector: () => void;
 };
 
 export default function FirstChatTutorial({ step, cloud, device = false, language = 'ja', inspectorAvailable, storageFailed, panelRef,
-  onNext, onBack, onSkip, onComplete, onFocusComposer, onOpenModels, onOpenMemory, onOpenInspector,
+  onNext, onBack, onSkip, onComplete, onOpenModels, onOpenMemory, onOpenInspector,
 }: FirstChatTutorialProps) {
   const en = language === 'en';
-  const titles = en ? ['Start with a message', 'Check the destination and cost', 'Review and correct memories', 'Inspect how replies use memory']
-    : ['ひとことから始めよう', '送信先と料金を確認しよう', '記憶を確認・訂正しよう', '返事の裏側を確認しよう'];
+  const titles = en ? ['Write gestures with the ＊ button', 'Check the destination and cost', 'Review and correct memories', 'Inspect how replies use memory']
+    : ['＊ボタンで仕草を書けます', '送信先と料金を確認しよう', '記憶を確認・訂正しよう', '返事の裏側を確認しよう'];
+  const lastStep = inspectorAvailable ? 3 : 2;
   return <section ref={panelRef} tabIndex={-1} className="k-first-chat-tutorial" aria-label={en ? 'First chat guide' : '初トークの案内'}
     onKeyDown={event => {
       if (event.key === 'Escape' && !event.nativeEvent.isComposing) {
@@ -82,12 +82,12 @@ export default function FirstChatTutorial({ step, cloud, device = false, languag
       }
     }}>
     <div className="k-first-chat-tutorial__head">
-      <span>{en ? 'First chat guide' : '初トークの案内'} · {step + 1} / 4</span>
-      <Button type="button" variant="ghost" size="sm" onClick={onSkip}>{en ? 'Skip' : 'スキップ'}</Button>
+      <span className="k-first-chat-tutorial__step">{en ? 'First chat guide' : '初トークの案内'} {step + 1}/{inspectorAvailable ? 4 : 3}</span>
+      <button type="button" className="k-first-chat-tutorial__skip" onClick={onSkip}>{en ? 'Skip' : 'スキップ'}</button>
     </div>
     <div aria-live="polite" aria-atomic="true">
       <h2>{titles[step]}</h2>
-      {step === 0 && <p>{en ? 'Write a greeting or topic in the input and press Send. This guide never fills in or sends a message automatically.' : '入力欄に挨拶や話したいことを書き、送信ボタンを押します。この案内は自動で入力・送信しません。'}</p>}
+      {step === 0 && <p>{en ? 'Write it like “*takes the cup*” and it reads apart from your lines. This guide never fills in or sends a message.' : '「*カップを受け取る*」のように書くと、セリフと分けて伝わります。この案内は自動で入力・送信しません。'}</p>}
       {step === 1 && (device ? <>
         <p>{en ? 'Prepare a model in Settings, then select it in “Character & preset”. Generation runs in this browser on this device.' : '設定でモデルを準備し、「キャラ・プリセット」で選びます。生成はこのブラウザーの端末内で行います。'}</p>
         <p>{en ? 'Model download and first-time preparation require a connection. Device-only conversations and memory processing are not sent to Cloud or external AI. Switching execution targets never transfers a conversation automatically.' : 'モデルの取得と初回準備には通信が必要です。端末限定の会話・記憶処理をCloudや外部AIへ送りません。実行先を切り替えても会話を自動転送しません。'}</p>
@@ -107,16 +107,15 @@ export default function FirstChatTutorial({ step, cloud, device = false, languag
         <p>{inspectorAvailable ? (en ? '“Open Inspector” enables detailed mode. Look for “Memory Inspector” in the debug panel.' : '「Inspectorを開く」で詳細モードを有効にし、デバッグ画面の「Memory Inspector」を確認できます。') : (en ? 'Detailed Inspector is unavailable on this connection. Open “Memories” to review saved memories and their sources.' : 'この接続では詳細Inspectorを利用できません。「覚えていること」で保存された記憶と出典を確認してください。')}</p>
       </>}
     </div>
-    <div className="k-first-chat-tutorial__links">
-      {step === 0 && <Button type="button" variant="secondary" size="sm" onClick={onFocusComposer}>{en ? 'Focus input' : '入力欄へ'}</Button>}
+    <div className="k-first-chat-tutorial__links" hidden={step === 0}>
       {step === 1 && <Button type="button" variant="secondary" size="sm" onClick={onOpenModels}>{en ? 'Open Character & preset' : 'キャラ・プリセットを開く'}</Button>}
       {(step === 2 || (step === 3 && !inspectorAvailable)) && <Button type="button" variant="secondary" size="sm" onClick={onOpenMemory}>{en ? 'Open Memories' : '覚えていることを開く'}</Button>}
       {step === 3 && <Button type="button" variant="secondary" size="sm" disabled={!inspectorAvailable}
         onClick={inspectorAvailable ? onOpenInspector : undefined}>{en ? 'Open Inspector' : 'Inspectorを開く'}</Button>}
     </div>
     <div className="k-first-chat-tutorial__nav">
-      <Button type="button" variant="ghost" size="sm" disabled={step === 0} onClick={onBack}>{en ? 'Back' : '戻る'}</Button>
-      <Button type="button" variant="primary" size="sm" onClick={step === 3 ? onComplete : onNext}>{step === 3 ? (en ? 'Finish guide' : '案内を完了') : (en ? 'Next' : '次へ')}</Button>
+      {step > 0 && <Button type="button" variant="ghost" size="sm" onClick={onBack}>{en ? 'Back' : '戻る'}</Button>}
+      <Button type="button" variant="primary" size="sm" onClick={step >= lastStep ? onComplete : onNext}>{step >= lastStep ? (en ? 'Finish guide' : '案内を完了') : (en ? 'Next' : '次へ')}</Button>
     </div>
     <p className="k-first-chat-tutorial__note">{en ? 'Completion or skipping is recorded in this browser. Reopen the guide anytime from “First chat guide” in conversation settings.' : '完了・スキップはこのブラウザーに記録します。会話設定の「初トークの案内」からいつでも再表示できます。'}</p>
     {storageFailed && <p role="status" className="k-first-chat-tutorial__note">{en ? 'Your browser could not save this status, so the guide may appear again next time.' : 'ブラウザーに記録できないため、次回また案内が出る場合があります。'}</p>}

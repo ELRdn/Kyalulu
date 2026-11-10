@@ -102,6 +102,11 @@ class CloudStore:
                 db.execute("ALTER TABLE operations ADD COLUMN review_required INTEGER NOT NULL DEFAULT 0")
             if "valid_until" not in {r[1] for r in db.execute("PRAGMA table_info(sessions)")}:
                 db.execute("ALTER TABLE sessions ADD COLUMN valid_until REAL NOT NULL DEFAULT 0")
+            if "label" not in {r[1] for r in db.execute("PRAGMA table_info(operations)")}:
+                db.execute("ALTER TABLE operations ADD COLUMN label TEXT NOT NULL DEFAULT ''")
+            if "created" not in {r[1] for r in db.execute("PRAGMA table_info(credit_lots)")}:
+                db.execute("ALTER TABLE credit_lots ADD COLUMN created REAL")
+                db.execute("ALTER TABLE credit_lots ADD COLUMN granted INTEGER")
 
     @contextmanager
     def transaction(self):
@@ -279,8 +284,8 @@ class CloudStore:
             with self.transaction() as con:
                 return self.grant(owner, amount, expires, kind, source, con)
         db.execute(
-            "INSERT OR IGNORE INTO credit_lots VALUES(?,?,?,?,?,?)",
-            (secrets.token_hex(16), owner, amount, expires, kind, source),
+            "INSERT OR IGNORE INTO credit_lots(id,owner,remaining,expires,kind,source,created,granted) VALUES(?,?,?,?,?,?,?,?)",
+            (secrets.token_hex(16), owner, amount, expires, kind, source, time.time(), amount),
         )
 
     def trial(self, owner):
@@ -355,7 +360,7 @@ class CloudStore:
             db.execute("INSERT INTO quote_provider_tariffs VALUES(?,?)", (quote, provider_tariff))
         return quote
 
-    def reserve(self, owner, operation, request_hash, quote_id, maximum, *, provider_tariff=""):
+    def reserve(self, owner, operation, request_hash, quote_id, maximum, *, provider_tariff="", label=""):
         with self.transaction() as db:
             account = db.execute("SELECT suspended FROM accounts WHERE id=?", (owner,)).fetchone()
             if not account or account[0]:
@@ -399,7 +404,7 @@ class CloudStore:
             if recent >= (60 if q["route"] == "safety" else 6):
                 raise CloudError("generation_rate_limited", 429)
             db.execute(
-                "INSERT INTO operations(owner,id,fingerprint,state,route,max_credits,max_cost,created,markup) VALUES(?,?,?,'pending',?,?,?,?,?)",
+                "INSERT INTO operations(owner,id,fingerprint,state,route,max_credits,max_cost,created,markup,label) VALUES(?,?,?,'pending',?,?,?,?,?,?)",
                 (
                     owner,
                     operation,
@@ -409,6 +414,7 @@ class CloudStore:
                     q["max_cost"],
                     time.time(),
                     TARIFF.markup,
+                    label,
                 ),
             )
             self._hold(db, "funds", "fund_holds", "fund", owner, operation, q["max_cost"])
@@ -555,7 +561,7 @@ class CloudStore:
             lots = [
                 dict(r)
                 for r in db.execute(
-                    "SELECT remaining,expires,kind FROM credit_lots WHERE owner=? AND expires>? ORDER BY expires",
+                    "SELECT remaining,expires,kind,created,granted FROM credit_lots WHERE owner=? AND expires>? ORDER BY expires",
                     (owner, time.time()),
                 )
             ]
@@ -564,7 +570,7 @@ class CloudStore:
             balance = self.balance(owner, db)
             debt = db.execute("SELECT COALESCE(SUM(amount),0) FROM credit_debts WHERE owner=?", (owner,)).fetchone()[0]
             history = [dict(row) for row in db.execute(
-                "SELECT state,created,charged_credits,max_credits FROM operations WHERE owner=? "
+                "SELECT state,created,charged_credits,max_credits,label FROM operations WHERE owner=? "
                 "AND route!='safety' ORDER BY created DESC LIMIT 20", (owner,))]
         return {
             "plan": account["plan"],

@@ -478,19 +478,21 @@ async function route(input:string,init:RequestInit,owner:string) :Promise<Respon
   if(path==='/api/commands')return json(method==='GET'?{commands:[]}:{ok:false,command:'',output:'Use Settings to manage on-device models',refresh_models:false});
   if(path==='/api/characters')return json({characters:[...builtin.map(c=>({...c,portrait_url:c.id==='senior_cool'?'/icons/rei-senpai.png':c.id==='butler'?'/icons/shion-butler-1.png':c.id==='mocha_sfw'?'/icons/mocha-1.png':null})),
     ...(await readRecords(['character'])).filter(e=>e.kind==='character'&&!e.payload.document?.nsfw).map(e=>({id:e.id,display_name:e.payload.document.name,description:String(e.payload.document.data.description??e.payload.document.data.personality??''),intro:e.payload.document.data.first_mes??'',hook:e.payload.document.data.hook??'',opening_replies:e.payload.document.data.opening_replies??[],tags:e.payload.document.data.tags??[],version:String(e.payload.current_revision??e.revision),library_revision:e.payload.current_revision??e.revision}))]});
-  if(path==='/api/personas')return json({personas:[...catalog.personas,...(await readRecords(['persona'])).filter(e=>e.kind==='persona'&&e.payload.creator).map(e=>creatorView(e))]});
-  if(path==='/api/worlds')return json({worlds:[...catalog.worlds,...(await readRecords(['world'])).filter(e=>e.kind==='world'&&e.payload.creator).map(e=>creatorView(e))]});
+  if(path==='/api/personas')return json({personas:[...catalog.personas,...(await readRecords(['persona'])).filter(e=>e.kind==='persona'&&e.payload.creator&&!e.payload.hidden).map(e=>creatorView(e))]});
+  if(path==='/api/worlds')return json({worlds:[...catalog.worlds,...(await readRecords(['world'])).filter(e=>e.kind==='world'&&e.payload.creator&&!e.payload.hidden).map(e=>creatorView(e))]});
   if(path==='/api/prompt/compile')return json(await compiled(body,[],owner));
   const creator=path.match(/^\/api\/creator\/(persona|world)(?:\/(created_[0-9a-f]{32}@[1-9]\d*)(\/export)?)?$/);
   if(creator){
     const kind=creator[1] as 'persona'|'world',reference=creator[2],match=reference?.match(/^(.*)@(\d+)$/),value=match?await entity(match[1],owner):undefined;
-    if(reference&&(!value||value.deleted||value.kind!==kind))throw fail('Saved setting not found',404);
+    if(reference&&(!value||value.deleted||value.kind!==kind||method!=='GET'&&value.payload.hidden))throw fail('Saved setting not found',404);
     if(method==='GET'){
-      if(!reference)return json({items:(await readRecords([kind])).filter(e=>e.kind===kind&&e.payload.creator).map(e=>creatorView(e))});
+      if(!reference)return json({items:(await readRecords([kind])).filter(e=>e.kind===kind&&e.payload.creator&&!e.payload.hidden).map(e=>creatorView(e))});
       const item=creatorView(value!,Number(match![2]));
-      if(creator[3]){const document=CreatorDocumentSchema.parse(Object.fromEntries(Object.keys(CreatorDocumentSchema.innerType().shape).map(key=>[key,item[key]])));return json({format:'kyalulu-creator',version:1,kind,document});}
+      if(creator[3]){const {call_name,...rest}=CreatorDocumentSchema.parse(Object.fromEntries(Object.keys(CreatorDocumentSchema.innerType().shape).map(key=>[key,item[key]])));return json({format:'kyalulu-creator',version:1,kind,document:call_name?{...rest,call_name}:rest});}
       return json({item,versions:Object.keys(value!.payload.versions).map(r=>creatorView(value!,Number(r))).sort((a,b)=>b.revision-a.revision)});
     }
+    // Deleting hides the setting; conversations that name one of its revisions keep reading it.
+    if(method==='DELETE'&&reference){await saveEntity({...value!,payload:{...value!.payload,hidden:true}},value!.revision);return json({ok:true});}
     if(!['POST','PUT'].includes(method)||method==='PUT'&&!reference||method==='POST'&&reference)throw fail('Invalid creator operation',405);
     if(value&&(value.payload.current_revision??value.revision)!==Number(match![2]))throw fail('Setting revision changed',409);
     if(value?.payload.snapshot_only)throw fail('Synced revisions are immutable; create a separate editable copy',409);

@@ -26,10 +26,12 @@ vi.mock('../lib/cloudGuest', () => ({ isCloudGuest: () => fixture.guest, fetchBr
 vi.mock('../components/RuntimeMedia', () => ({ RuntimeImage: ({ src, alt, ...props }: any) => <img src={src} alt={alt} {...props} /> }));
 vi.mock('../components/ScenePreview', () => ({ default: ({ content }: { content: string }) => <div>{content}</div> }));
 
+// State order: characters, worlds, sessions, loading, error, loadError, reload, starting, greeting,
+// detailsOpen, detailsTab, loginOpen, draft, repliesOpen. The details sheet opens on its profile tab.
 function view() {
   fixture.next = 0;
   fixture.states = [fixture.characters, fixture.worlds, fixture.sessions, false, fixture.error,
-    fixture.loadError, 0, false, 1, 0, false, false];
+    fixture.loadError, 0, false, 1, true, 'profile', false, '', true];
   return CharacterEntry();
 }
 function find(tree: ReactNode, match: (element: ReactElement<any>) => boolean): ReactElement<any> {
@@ -57,7 +59,7 @@ beforeEach(() => {
 
 it('translates controls and display helpers without changing the selected original greeting', async () => {
   const tree = view(), html = renderToStaticMarkup(tree);
-  expect(html).toContain('Start a new conversation');
+  expect(html).toContain('Start conversation');
   expect(html).toContain('Species');
   expect(html).toContain('Hero remembers you.');
   expect(html).toContain('SECOND_ORIGINAL');
@@ -68,7 +70,7 @@ it('translates controls and display helpers without changing the selected origin
   fixture.language = 'ja';
   expect(renderToStaticMarkup(view())).toContain('SECOND_ORIGINAL');
   expect(fixture.start).not.toHaveBeenCalled();
-  await find(tree, node => node.props.className?.includes('k-plot-cta__main')).props.onClick();
+  await find(tree, node => node.props.className === 'k-plot-composer').props.onSubmit({ preventDefault: vi.fn() });
   expect(fixture.start).toHaveBeenCalledExactlyOnceWith({ characterId: 'hero', intro: 'SECOND_ORIGINAL', temperature: .63 });
   expect(fixture.navigate).toHaveBeenCalledWith('/chats/created-chat', { state: undefined });
 });
@@ -107,7 +109,7 @@ it('preserves guest login and adult-view restrictions in both languages', async 
   await find(tree, node => node.props['aria-label'] === 'Save in this browser').props.onClick();
   expect(fixture.save).toHaveBeenCalledExactlyOnceWith('hero');
   expect(fixture.navigate).not.toHaveBeenCalled();
-  await find(tree, node => node.props.className?.includes('k-plot-cta__main')).props.onClick();
+  await find(tree, node => node.props.className === 'k-plot-composer').props.onSubmit({ preventDefault: vi.fn() });
   expect(fixture.navigate).not.toHaveBeenCalled();
   expect(fixture.start).not.toHaveBeenCalled();
   fixture.characters[0].nsfw = true;

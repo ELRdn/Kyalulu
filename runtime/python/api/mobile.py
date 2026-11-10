@@ -220,6 +220,7 @@ ALLOWED = {
         r"/api/chat/history/[0-9]+",
         r"/api/memory/mem_[0-9a-f]{12}",
         r"/api/prompts/presets/preset_[0-9a-f]{8}",
+        r"/api/creator/(persona|world)/created_[0-9a-f]{32}@[0-9]+",
     ],
 }
 

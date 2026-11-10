@@ -68,6 +68,12 @@ export function splitSegments(content: string): Segment[] {
   return out;
 }
 
+/** The opening scene: a first paragraph that is entirely *…* is shown as narration above the message. */
+export function splitLeadingScene(content: string): [string, string] {
+  const m = content.trimStart().match(/^\*([^*\n][^*]*?)\*[ \t]*(?:\r?\n\s*\r?\n|$)([\s\S]*)$/);
+  return m ? [m[1].trim(), m[2].trim()] : ['', content];
+}
+
 function unwrapEmphasis(s: string) {
   const t = s.trim();
   return /^\*[^*]+\*$/.test(t) ? t.slice(1, -1) : t;
