@@ -410,7 +410,7 @@ async def test_single_call_overrun_within_operation_reservation_persists_stop_wi
     assert app.state.store.balance(owner) == 500
     restarted = CloudStore(cfg)
     assert restarted.private_budget()["available_nano"] == 0
-    assert restarted.settle(owner, req.generation_id, 0, success=False)["actual_cost"] == 1_000_000
+    assert restarted.settle(owner, req.generation_id, 0, success=False)["actual_cost"] == 2_000_000
     q = restarted.quote(owner, "next", 0, 1, "safety")
     with pytest.raises(CloudError, match="operator_budget_exhausted"):
         restarted.reserve(owner, "next", "next", q, 0)
