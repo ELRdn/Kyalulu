@@ -17,7 +17,9 @@ def validate_region_policies(policies):
                 or not 13 <= policy.get('guardian_below', 18) <= 120
                 # How adults unlock adult content: "self" (declaration) where no law requires a
                 # check, "yoti" (facial age estimation) where one does; absent means unavailable.
-                or policy.get('adult_method') not in (None, 'self', 'yoti')):
+                or policy.get('adult_method') not in (None, 'self', 'yoti')
+                # Minors' guardian consent: "self" (declaration); absent means unavailable.
+                or policy.get('guardian_method') not in (None, 'self')):
             raise ValueError('invalid unified regional policy')
 
 

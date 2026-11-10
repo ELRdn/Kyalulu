@@ -266,6 +266,13 @@ def test_age_policy_and_publication_boundaries(service):
     with pytest.raises(CloudError, match="verified_guardian_consent_required"):
         service.general_eligibility("JP", 15)
     assert service.general_eligibility("JP", 20)["age_band"] == "adult"
+    with pytest.raises(CloudError, match="verified_guardian_consent_required"):
+        service.eligibility_ticket("JP", 15, True)
+    service.regions["JP"]["guardian_method"] = "self"
+    with pytest.raises(CloudError, match="verified_guardian_consent_required"):
+        service.eligibility_ticket("JP", 15)
+    ticket = service.eligibility_ticket("JP", 15, True)["ticket"]
+    assert service.verify_eligibility_ticket(ticket, "JP")["age_band"] == "teen"
     doc = {"name": "Character", "data": {"personality": "hello", "memories": "private"}}
     with pytest.raises(CloudError, match="adult_verification_required"):
         service.submit(user, doc, "adult")

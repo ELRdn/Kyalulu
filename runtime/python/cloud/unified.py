@@ -87,9 +87,13 @@ class UnifiedService:
     def general_eligibility(self, country, age, *, guardian=False):
         return general_eligibility(self.regions, country, age, guardian=guardian)
 
-    def eligibility_ticket(self, country, age):
-        result = self.general_eligibility(country, age)
-        return {**result, 'ticket': self.store.encrypt(json.dumps({**result, 'age': age, 'expires': time.time() + 30 * 86400}))}
+    def _guardian(self, country, declared):
+        return declared is True and (self.regions.get(country) or {}).get('guardian_method') == 'self'
+
+    def eligibility_ticket(self, country, age, guardian_consent=False):
+        guardian = self._guardian(country, guardian_consent)
+        result = self.general_eligibility(country, age, guardian=guardian)
+        return {**result, 'ticket': self.store.encrypt(json.dumps({**result, 'age': age, 'guardian': guardian, 'expires': time.time() + 30 * 86400}))}
 
     def verify_eligibility_ticket(self, ticket, country):
         try:
@@ -98,7 +102,7 @@ class UnifiedService:
             value = json.loads(self.store.decrypt(ticket))
             if value['country'] != country or value['expires'] <= time.time():
                 raise ValueError()
-            current = self.general_eligibility(country, value['age'])
+            current = self.general_eligibility(country, value['age'], guardian=self._guardian(country, value.get('guardian')))
             if current['policy'] != value['policy']:
                 raise ValueError()
             return current
@@ -710,9 +714,9 @@ def install_routes(app, service):
     async def eligibility(request: Request):
         service.available()
         body = await request.json()
-        if not isinstance(body, dict) or set(body) != {'country', 'age'}:
+        if not isinstance(body, dict) or set(body) - {'guardian_consent'} != {'country', 'age'}:
             raise CloudError('invalid_eligibility')
-        return service.eligibility_ticket(body['country'], body['age'])
+        return service.eligibility_ticket(body['country'], body['age'], body.get('guardian_consent', False))
 
     @app.get("/api/cloud/app/status")
     async def app_status(request: Request):

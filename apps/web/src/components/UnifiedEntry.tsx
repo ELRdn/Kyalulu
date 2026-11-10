@@ -71,17 +71,17 @@ export function ExecutionPicker({segment=false}:{segment?:boolean}={}) {
 
 export default function UnifiedEntry({children}:{children:ReactNode}) {
   const language=useLanguage(),[draft,setDraft]=useState(preferences),[stage,setStage]=useState<'legal'|'ready'>(()=>preferences().accepted?'ready':'legal');
-  const [busy,setBusy]=useState(false),[error,setError]=useState<''|'eligibility'|'guardian'|'scope'>('');
+  const [busy,setBusy]=useState(false),[error,setError]=useState<''|'eligibility'|'guardian'|'scope'>(''),[guardian,setGuardian]=useState(false);
   const target=useExecutionTarget(),hostedCloud=hasLocalRuntime()&&target==='cloud';
   // Cloud asks for region, age and consent in the login sheet (docs/MOBILE_UX_SPEC.md §2-3); other targets still use this form.
   if((!isUnifiedEntry()||stage==='ready'||target==='cloud')&&!hostedCloud)return <>{children}</>;
-  const en=language==='en',t=labels[language];
+  const en=language==='en',t=labels[language],teen=!hasLocalRuntime()&&draft.age>=13&&draft.age<18;
   return <main className="k-unified-entry" lang={language}><header><img src="/mascot/v2/face-default.webp" alt="" width={56} height={56}/><h1>Kyalulu</h1></header>
     <ExecutionPicker/>
     {hostedCloud?<p>{en?'Cloud runs at app.kyalulu.com. Open Cloud or select another execution target.':'Cloudは app.kyalulu.com で利用します。Cloudを開くか、別の実行先を選んでください。'}</p>:<form onSubmit={async e=>{
       e.preventDefault();if(busy)return;const owner=deviceOwner();setBusy(true);setError('');
       try {
-        const response=await cloudFetch(hasLocalRuntime()?'/api/local/eligibility':'/api/cloud/app/eligibility',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({country:draft.country,age:draft.age})});
+        const response=await cloudFetch(hasLocalRuntime()?'/api/local/eligibility':'/api/cloud/app/eligibility',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(teen?{country:draft.country,age:draft.age,guardian_consent:guardian}:{country:draft.country,age:draft.age})});
         const result=await response.json();if(!response.ok)throw result?.error;
         if(owner!==deviceOwner())throw Error('Account changed');
         if(typeof result?.ticket!=='string'||!result.ticket||result.ticket.length>4000||result.country!==draft.country||!['adult','teen'].includes(result.age_band)||typeof result.policy!=='string'||!result.policy)throw Error('Invalid eligibility response');
@@ -94,6 +94,7 @@ export default function UnifiedEntry({children}:{children:ReactNode}) {
       <label>{t.language}<select aria-label={t.language} disabled={busy} value={language} onChange={e=>savePreferences({...preferences(),language:e.target.value as AppPreferences['language']})}><option value="ja">日本語</option><option value="en">English</option></select></label>
       <label>{en?'Country / region (ISO code)':'居住国・地域（ISOコード）'}<input disabled={busy} value={draft.country} onChange={e=>setDraft({...draft,country:e.target.value.toUpperCase()})} pattern="[A-Z]{2}" minLength={2} maxLength={2} placeholder="JP" required autoComplete="country"/></label>
       <label>{en?'Age':'年齢'}<input disabled={busy} type="number" min={13} max={120} value={draft.age||''} onChange={e=>setDraft({...draft,age:e.target.valueAsNumber})} required/></label>
+      {teen&&<label className="k-unified-check"><input disabled={busy} type="checkbox" checked={guardian} onChange={e=>setGuardian(e.target.checked)} required/>{en?"I have a parent or guardian's consent.":'保護者の同意を得ています。'}</label>}
       <label className="k-unified-check"><input disabled={busy} type="checkbox" required/>{en?'I agree to the terms and privacy policy.':'利用規約・プライバシーポリシーに同意します。'}</label>
       <p><a href="https://kyalulu.com/terms" target="_blank" rel="noreferrer">{en?'Terms':'利用規約'}</a> · <a href="https://kyalulu.com/privacy" target="_blank" rel="noreferrer">{en?'Privacy':'プライバシー'}</a></p>
       {error&&<p role="alert">{error==='scope'?(en?'The account changed. Review these details and try again.':'アカウントが切り替わりました。内容を確認して再試行してください。'):error==='guardian'?(en?'Verified guardian consent is required for this age group. Access stays closed until that confirmation is available.':'この年齢区分には確認済みの保護者同意が必要です。確認手段の提供まで利用できません。'):(en?'This region or age group is not enabled. Please try again after its requirements are verified.':'この地域・年齢区分の提供条件を確認できません。条件の確認後に再試行してください。')}</p>}<Button type="submit" disabled={busy}>{busy?(en?'Checking':'確認中'):t.next}</Button>

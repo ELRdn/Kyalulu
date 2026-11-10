@@ -29,7 +29,8 @@ export default function CloudLogin({ returnTo = '/', characterName, firstLine, o
   const [ready,setReady] = useState(false), [loading,setLoading] = useState(true), [privateTest,setPrivateTest] = useState(false);
   const [retry,setRetry] = useState(0);
   const [countries,setCountries] = useState<string[]>([]);
-  const [age,setAge] = useState(() => preferences().age || 0);
+  const [age,setAge] = useState(() => preferences().age || 0), [guardian,setGuardian] = useState(false);
+  const teen = isUnifiedEntry() && age >= 13 && age < 18;
   const disclosure = useRef<string|null>(null);
   const mounted=useRef(false),analyticsChoice=useRef(analyticsEnabled);
   const analyticsTouched = useRef(false);
@@ -75,7 +76,7 @@ export default function CloudLogin({ returnTo = '/', characterName, firstLine, o
     rememberLoginReturn(returnTo);
     try {
       if(isUnifiedEntry()){
-        const eligibility=await cloudJson('app/eligibility',{method:'POST',body:JSON.stringify({country,age})});
+        const eligibility=await cloudJson('app/eligibility',{method:'POST',body:JSON.stringify(teen?{country,age,guardian_consent:guardian}:{country,age})});
         if(typeof eligibility?.ticket!=='string'||eligibility.country!==country)throw Error('Invalid eligibility response');
         localStorage.setItem('kyalulu-eligibility-ticket',eligibility.ticket);
         savePreferences({...preferences(),country,age,accepted:true});
@@ -89,7 +90,7 @@ export default function CloudLogin({ returnTo = '/', characterName, firstLine, o
     } catch(error) {if(mounted.current)setMessage({cause:error});}
     finally {if(mounted.current)setBusy(false);}
   }
-  const disabled=busy || !ready || !provider || !providerVersion || !consent || !countries.includes(country) || (isUnifiedEntry() && !(age>=13 && age<=120));
+  const disabled=busy || !ready || !provider || !providerVersion || !consent || !countries.includes(country) || (isUnifiedEntry() && !(age>=13 && age<=120)) || (teen && !guardian);
   const regionNames=typeof Intl.DisplayNames==='function'?new Intl.DisplayNames([language],{type:'region'}):null;
   const cause=message&&typeof message==='object'?message.cause:null;
   const detail=cause&&typeof cause==='object'&&'code' in cause&&typeof cause.code==='string'?cause.code:cause;
@@ -121,6 +122,7 @@ export default function CloudLogin({ returnTo = '/', characterName, firstLine, o
         </select></label>
       </div>
       {isUnifiedEntry()&&!(Number(preferences().age)>=13)&&<label className="k-cloud-login__age"><span>{en?'Age':'年齢'}</span><input type="number" inputMode="numeric" min={13} max={120} disabled={busy} value={age||''} onChange={e=>setAge(e.target.valueAsNumber||0)} required /></label>}
+      {teen&&<label><input type="checkbox" disabled={busy} checked={guardian} onChange={e=>setGuardian(e.target.checked)} /><span>{en?"I have a parent or guardian's consent.":'保護者の同意を得ています'}</span></label>}
       <label><input type="checkbox" disabled={busy||loading||!ready||!providerVersion} checked={consent} onChange={e=>setConsent(e.target.checked)} />
         <span>{en?<>I agree to the <a href="/legal/en/terms.html" target="_blank" rel="noreferrer">terms</a> and <a href="/legal/en/privacy.html" target="_blank" rel="noreferrer">privacy policy</a>, and to sending data to {destination}.</>:<><a href="/legal/terms.html" target="_blank" rel="noreferrer">利用規約</a>と<a href="/legal/privacy.html" target="_blank" rel="noreferrer">プライバシーポリシー</a>、{destination}へのデータ送信に同意します</>}</span>
       </label>
