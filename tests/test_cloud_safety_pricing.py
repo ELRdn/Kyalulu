@@ -29,7 +29,7 @@ async def test_current_endpoint_price_is_eligible_and_screening_is_budgeted():
     assert tariff.input_miss == prompt * 1000
     assert tariff.input_hit >= prompt * 1000
     assert tariff.output == completion * 1000
-    assert tariff.version.endswith('2026-10-12')
+    assert tariff.version.endswith('2026-11-10')
 
     def respond(request):
         payload = json.loads(request.content)
@@ -79,7 +79,7 @@ async def test_butler_cloud_start_and_talk_keep_screening_and_settlement(tmp_pat
     def respond(request):
         payload = json.loads(request.content)
         calls.append(payload)
-        assert payload['provider']['max_price'] == {'prompt': 0.077, 'completion': 0.66}
+        assert payload['provider']['max_price'] == {'prompt': 0.103, 'completion': 0.66}
         if payload['stream']:
             return generation_response(VALID_OUTPUT, {
                 'prompt_tokens': 40, 'completion_tokens': 40, 'cost': 0.000001})

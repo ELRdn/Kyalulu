@@ -105,8 +105,8 @@ VALID_OUTPUT = json.dumps({"reply": "hello", "state_update": {
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('status', [401, 402])
-async def test_upstream_refusal_costs_nothing(tmp_path, status):
+@pytest.mark.parametrize('status,code', [(401, 'provider_auth_failed'), (402, 'provider_auth_failed'), (404, 'provider_endpoint_unavailable')])
+async def test_upstream_refusal_costs_nothing(tmp_path, status, code):
     def respond(request):
         if not json.loads(request.content)["stream"]:
             return screened_response(0.000003001, case="valid")
@@ -114,7 +114,7 @@ async def test_upstream_refusal_costs_nothing(tmp_path, status):
     app = create_app(config(tmp_path), transport=httpx.MockTransport(respond))
     owner = enroll(app)
     _, result = await run_job(app, owner)
-    assert result["status"] == "failed" and result["error"] == "provider_auth_failed"
+    assert result["status"] == "failed" and result["error"] == code
     assert result["charged_credits"] == 0
     with app.state.store.transaction() as db:
         op = db.execute("SELECT * FROM operations").fetchone()
@@ -393,7 +393,7 @@ async def test_single_call_overrun_within_operation_reservation_persists_stop_wi
         if not payload["stream"]:
             return screened_response(0.000003001, case="valid")
         return generation_response(VALID_OUTPUT,
-            {"prompt_tokens": 10, "completion_tokens": 5, "cost": 0.001})
+            {"prompt_tokens": 10, "completion_tokens": 5, "cost": 0.002})
 
     cfg = config(tmp_path)
     app = create_app(cfg, transport=httpx.MockTransport(respond))
@@ -402,7 +402,7 @@ async def test_single_call_overrun_within_operation_reservation_persists_stop_wi
     assert result["status"] == "failed" and result["charged_credits"] == 0 and len(calls) == 1
     with app.state.store.transaction() as db:
         row = db.execute("SELECT * FROM operations WHERE route='cloud-standard'").fetchone()
-        assert row["actual_cost"] == 1_000_000 < row["max_cost"]
+        assert row["actual_cost"] == 2_000_000 < row["max_cost"]
         assert db.execute("SELECT COALESCE(SUM(amount),0) FROM budget_debt").fetchone()[0] == 0
         assert row["review_required"] == 1
         assert db.execute("SELECT COUNT(*) FROM budget_debt").fetchone()[0] == 0

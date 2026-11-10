@@ -18,8 +18,8 @@ LUNA = "openai/gpt-6-luna"
 MIMO = "xiaomi/mimo-v2.6-flash"
 UPSTREAM = "InferenceNet"
 UPSTREAM_TAG = "inference-net"
-# USD per million ceilings; DeepSeek refreshed on 2026-10-12, other models on 2026-10-11.
-PRICE_CAPS = {DEEPSEEK: ("0.077", "0.66"), GLM: ("0.07", "0.05"),
+# USD per million ceilings; DeepSeek and GLM refreshed on 2026-11-10, others on 2026-10-11.
+PRICE_CAPS = {DEEPSEEK: ("0.103", "0.66"), GLM: ("0.108", "0.35"),
               HAIKU: ("0.1", "0.5"), LUNA: ("0.05", "0.25")}
 
 

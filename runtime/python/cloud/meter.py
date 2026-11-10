@@ -104,6 +104,10 @@ class MeteredProvider:
                 # Refused before reaching a model (bad key, no balance): nothing was billed.
                 self.meter.provider_error = "provider_auth_failed"
                 self.meter.pending = None
+            if str(exc) == "openrouter_http_404":
+                # No endpoint matched the route and price cap, so no model ran.
+                self.meter.provider_error = "provider_endpoint_unavailable"
+                self.meter.pending = None
             usage = getattr(exc, "openrouter_usage", None)
             if self.billable and self.meter.pending is not None and usage is not None:
                 try:

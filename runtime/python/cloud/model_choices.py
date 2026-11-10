@@ -19,14 +19,14 @@ CHOICES = {
     },
     "cloud-deepseek-inferencenet": {
         "display_name": "DeepSeek V4.1 Flash · InferenceNet", "model": DEEPSEEK,
-        "upstream": "InferenceNet", "upstream_tag": "inference-net/fp8", "prices": ("0.077", "0.66"),
-        "observed_at": "2026-10-12",
+        "upstream": "InferenceNet", "upstream_tag": "inference-net/fp8", "prices": ("0.103", "0.66"),
+        "observed_at": "2026-11-10",
         "reasoning_effort": "low", "reasoning_summary_supported": False,
         "privacy_note": "学習利用を許可しない経路に固定します。",
     },
     "cloud-glm-inferencenet": {
         "display_name": "GLM 5.3 Flash · InferenceNet", "model": GLM,
-        "upstream": "InferenceNet", "upstream_tag": "inference-net/fp4", "prices": ("0.07", "0.05"),
+        "upstream": "InferenceNet", "upstream_tag": "inference-net/fp4", "prices": ("0.108", "0.35"), "observed_at": "2026-11-10",
         "reasoning_effort": "low", "reasoning_summary_supported": False,
         "privacy_note": "学習利用を許可しない経路に固定します。",
     },
