@@ -21,7 +21,7 @@ vi.mock('../lib/title', () => ({ useDocumentTitle: vi.fn() }));
 vi.mock('../lib/saved', () => ({ useSavedCharacters: () => [], toggleSaved: fixture.save }));
 vi.mock('../lib/session', () => ({ startNewSession: fixture.start }));
 vi.mock('../components/RuntimeGate', () => ({ useRuntimeAccess: () => ({}) }));
-vi.mock('../lib/cloudGuest', () => ({ isCloudGuest: () => fixture.guest, fetchBrowseCatalog: fixture.browse,
+vi.mock('../lib/cloudGuest', () => ({ PENDING_START: 'kyalulu-pending-start', isCloudGuest: () => fixture.guest, fetchBrowseCatalog: fixture.browse,
   loginPath: (to: string) => '/login?next=' + encodeURIComponent(to) }));
 vi.mock('../components/RuntimeMedia', () => ({ RuntimeImage: ({ src, alt, ...props }: any) => <img src={src} alt={alt} {...props} /> }));
 vi.mock('../components/ScenePreview', () => ({ default: ({ content }: { content: string }) => <div>{content}</div> }));

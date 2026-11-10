@@ -100,6 +100,10 @@ class MeteredProvider:
         except (RuntimeError, httpx.HTTPError, asyncio.CancelledError) as exc:
             if str(exc) == "openrouter_http_429":
                 self.meter.provider_error = "provider_rate_limited"
+            if str(exc) in {"openrouter_http_401", "openrouter_http_402"}:
+                # Refused before reaching a model (bad key, no balance): nothing was billed.
+                self.meter.provider_error = "provider_auth_failed"
+                self.meter.pending = None
             usage = getattr(exc, "openrouter_usage", None)
             if self.billable and self.meter.pending is not None and usage is not None:
                 try:

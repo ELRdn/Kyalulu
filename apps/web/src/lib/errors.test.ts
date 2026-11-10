@@ -89,7 +89,7 @@ it.each([
   'insufficient_credits', 'operator_budget_exhausted', 'cloud_registration_capacity_reached', 'provider_consent_renewal_required',
   'provider_retention_approval_required', 'provider_endpoint_unavailable', 'provider_privacy_unverified', 'provider_terms_unverified',
   'model_catalog_unverified', 'cloud_route_not_available', 'provider_key_not_configured', 'inference_awaiting_acceptance',
-  'provider_usage_unavailable', 'provider_rate_limited', 'cloud_sfw_only', 'allow_nsfw', 'le_unavailable', 'ECONNREFUSED',
+  'provider_usage_unavailable', 'provider_rate_limited', 'provider_auth_failed', 'cloud_sfw_only', 'allow_nsfw', 'le_unavailable', 'ECONNREFUSED',
   'Generation failed', 'Failed to fetch', 'Timeout', 'Internal Server Error', 'HTTP 404', 'HTTP 401', 'HTTP 403', 'future_provider_gate', '',
 ])('explains %s in English without exposing a machine code', raw => {
   const result = friendlyError(raw, 'en');

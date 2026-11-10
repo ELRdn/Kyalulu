@@ -1019,7 +1019,7 @@ function ActiveChatSession() {
       sessionId={sessionId}
       memoryRefresh={messages.length * 2 + (streaming ? 1 : 0)}
       memoryRef={memoryRef}
-      settings={{ personaId, personas, worldId, worlds, systemPrompt, setPersonaId, setWorldId, setSystemPrompt, settingsReady, streaming: mutationLocked }}
+      settings={{ personaId, personas, worldId, worlds, systemPrompt, setPersonaId, setWorldId, setSystemPrompt, settingsReady, streaming: mutationLocked, models: modelChoices, modelId, setModelId, modelsReady: !!capabilities }}
       tools={<>
         <div className="k-context-tools">
           <button ref={tutorialButtonRef} type="button" className="k-chip" aria-expanded={tutorial.open}
@@ -1566,9 +1566,10 @@ function ChatContextPanel({
     personaId: string | null; personas: PersonaInfo[]; worldId: string | null; worlds: WorldInfo[];
     systemPrompt: string; setPersonaId: (value: string | null) => void; setWorldId: (value: string | null) => void;
     setSystemPrompt: (value: string) => void; settingsReady: boolean; streaming: boolean;
+    models: { id: string; display_name: string; available?: boolean }[]; modelId: string; setModelId: (value: string) => void; modelsReady: boolean;
   };
 }) {
-  const { personaId, personas, worldId, worlds, systemPrompt, setPersonaId, setWorldId, setSystemPrompt, settingsReady, streaming } = settings;
+  const { personaId, personas, worldId, worlds, systemPrompt, setPersonaId, setWorldId, setSystemPrompt, settingsReady, streaming, models, modelId, setModelId, modelsReady } = settings;
   const en = useLanguage() === 'en';
   const [memoryOpen,setMemoryOpen]=useState(false),[memorySeen,setMemorySeen]=useState(false);
   const none = en ? 'None' : '指定なし';
@@ -1598,6 +1599,7 @@ function ChatContextPanel({
           <PickRow label={en ? 'Your persona' : 'あなたの人物像'} value={personaName}><select aria-label={en ? 'Your persona' : 'あなたの人物像'} value={personaId ?? ""} disabled={!settingsReady || streaming} onChange={e => setPersonaId(e.target.value || null)}><option value="">{none}</option>{personaId && !personas.some(p => p.id === personaId) && <option value={personaId}>{en ? 'Previously selected persona (saved version)' : '以前選んだ人物像（保存版）'}</option>}{personas.map(p => <option key={p.id} value={p.id}>{p.display_name}</option>)}</select></PickRow>
           <PickRow label={en ? 'Setting' : '舞台'} value={worldName}><select aria-label={en ? 'Setting' : '舞台'} value={worldId ?? ""} disabled={!settingsReady || streaming} onChange={e => setWorldId(e.target.value || null)}><option value="">{none}</option>{worldId && !worlds.some(w => w.id === worldId) && <option value={worldId}>{en ? 'Previously selected setting (saved version)' : '以前選んだ舞台（保存版）'}</option>}{worlds.map(w => <option key={w.id} value={w.id}>{w.display_name}</option>)}</select></PickRow>
           <PickRow label={en ? 'Narration style' : 'ナレーションスタイル'} value={style ? (en ? style.englishLabel : style.label) : (en ? 'Default' : 'おまかせ')}><select aria-label={en ? 'Narration style' : 'ナレーションスタイル'} value={currentNarrationStyle ?? ''} disabled={streaming} onChange={e => onSelectNarrationStyle(e.target.value || null)}><option value="">{en ? 'Default' : 'おまかせ'}</option>{NARRATION_STYLES.map(st => <option key={st.id} value={st.id}>{en ? st.englishLabel : st.label}</option>)}</select></PickRow>
+          <PickRow label={en ? 'Model' : 'モデル'} value={models.find(m => m.id === modelId)?.display_name ?? ''}><select aria-label={en ? 'Model' : 'モデル'} value={modelId} disabled={!modelsReady || !models.length} onChange={e => setModelId(e.target.value)}>{models.map(m => <option key={m.id} value={m.id} disabled={m.available === false}>{m.display_name}</option>)}</select></PickRow>
         </div>
         <Link to="/create/settings" className="k-context-link">{en ? 'Create personas and worlds' : '人物像・世界観を作る'}</Link>
       </section>

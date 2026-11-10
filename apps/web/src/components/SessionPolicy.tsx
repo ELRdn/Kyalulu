@@ -1,3 +1,4 @@
+import { useCapabilities } from '../lib/capabilities';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useExecutionTarget, useLanguage, labels, deviceOwner, useDeviceOwner } from '../lib/appContext';
 import { entity, conversationInfo, saveEntity, entitySelection, appTransaction } from '../lib/appStore';
@@ -34,7 +35,7 @@ function NativeSessionPolicy({sessionId,en}:{sessionId:string;en:boolean}) {
   return <span role="status">{text}</span>;
 }
 export default function SessionPolicy({sessionId,model,disabled}:{sessionId:string;model:string;disabled:boolean}) {
-  const target=useExecutionTarget(),language=useLanguage(),en=language==='en',t=labels[language];
+  const selected=useExecutionTarget(),{capabilities}=useCapabilities(),target=selected==='local'&&capabilities?.mode==='cloud'?'cloud':selected,language=useLanguage(),en=language==='en',t=labels[language];
   const owner=useDeviceOwner();
   const state=useSyncExternalStore(subscribeSync,syncState,syncState);
   const [policy,setPolicy]=useState('local'),[pinned,setPinned]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false),[stored,setStored]=useState(false);

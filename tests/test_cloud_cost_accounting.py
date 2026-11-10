@@ -105,6 +105,23 @@ VALID_OUTPUT = json.dumps({"reply": "hello", "state_update": {
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('status', [401, 402])
+async def test_upstream_refusal_costs_nothing(tmp_path, status):
+    def respond(request):
+        if not json.loads(request.content)["stream"]:
+            return screened_response(0.000003001, case="valid")
+        return httpx.Response(status, json={"error": {"code": status, "message": "API key expired."}})
+    app = create_app(config(tmp_path), transport=httpx.MockTransport(respond))
+    owner = enroll(app)
+    _, result = await run_job(app, owner)
+    assert result["status"] == "failed" and result["error"] == "provider_auth_failed"
+    assert result["charged_credits"] == 0
+    with app.state.store.transaction() as db:
+        op = db.execute("SELECT * FROM operations").fetchone()
+        assert op["actual_cost"] == 0 and op["review_required"] == 0
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('usage_kind', ['missing', 'known', 'invalid'])
 async def test_upstream_429_preserves_failure_reason_and_budget_stop(tmp_path, usage_kind):
     calls = []
