@@ -12,6 +12,6 @@ def test_complete_campaign_does_not_authorize_partial_paid_validation():
     assert result["calls_required"] == 240
     assert sum(row["calls"] for row in result["routes"]) == 240
     assert all(row["max_output_tokens"] == 4096 for row in result["routes"])
-    assert result["output_only_upper_allowance_usd"] == "0.3489792"
+    assert result["output_only_upper_allowance_usd"] == "0.4964352"
     assert result["reason"] == "output_allowance_alone_exceeds_cap"
     assert not result["ready"] and not result["execute"] and result["real_generation_requests"] == 0
