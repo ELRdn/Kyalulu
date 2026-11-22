@@ -72,7 +72,9 @@ function GuestProfile() {
         <Button size="lg" onClick={() => setLoginOpen(true)}>{en ? 'Sign in / Sign up' : 'ログイン・新規登録'}</Button>
       </section>
       {loginOpen && <CloudLogin returnTo="/profile" onClose={() => setLoginOpen(false)} />}
-      <Group><LanguageRow /></Group>
+      <Group><LanguageRow />
+        <SetRow to="/profile/advanced" icon="sliders" label={en ? 'Execution target' : '実行先'} />
+      </Group>
       <Group><HelpRows sales={false} /></Group>
     </div>
   );
@@ -428,8 +430,8 @@ function AdvancedPage({ member }: { member: boolean }) {
   const wide = useMediaQuery('(min-width: 1200px)');
   useEffect(() => { void startPwa(); }, []);
   const relay = import.meta.env.VITE_RELAY_ORIGIN ? new URL(import.meta.env.VITE_RELAY_ORIGIN).host : '';
-  return (
-    <SettingsFrame current="advanced" member={member}><SubPage title={en ? 'Advanced' : '上級者向け'}>
+  const page = (
+    <SubPage title={en ? 'Advanced' : '上級者向け'}>
       <ExecutionPicker segment />
       {!wide && pwa.enabled && <Group title={en ? 'App' : 'アプリ'}>
         {!pwa.installed && <SetRow label={en ? 'Add to home screen' : 'ホーム画面に追加'} sub={en ? 'Use it like an app' : 'アプリのように使えます'} onClick={() => { if (pwa.installable && !pwa.busy) void installPwa(); }} />}
@@ -451,8 +453,9 @@ function AdvancedPage({ member }: { member: boolean }) {
         <SetRow to="/research" label="Research" />
         <SetRow to="/status" label="Status" />
       </Group>}
-    </SubPage></SettingsFrame>
+    </SubPage>
   );
+  return member ? <SettingsFrame current="advanced" member>{page}</SettingsFrame> : page;
 }
 
 /** One level under 29: the existing connection forms, unchanged in behavior. */

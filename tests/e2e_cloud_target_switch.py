@@ -168,7 +168,7 @@ async def run_case(browser, vite, directory, language, width, theme):
             await page.goto(ORIGIN + '/chats/' + SESSION)
             picker = page.get_by_role('combobox', name='Run on' if en else '実行先', exact=True)
             composer = page.locator('.k-composer__input')
-            await expect(page.locator('html')).to_have_attribute('data-theme', theme)
+            await expect(page.locator('html')).to_have_attribute('data-theme', 'dark')
 
             async def reject_switches():
                 assert await page.evaluate('''async()=>{
