@@ -96,7 +96,7 @@ async def test_verified_login_pkce_account_identity_grant_and_logout(tmp_path, p
         assert SESSION_COOKIE in callback.headers["set-cookie"]
         assert (await client.get("/api/cloud/status")).json()["authenticated"]
         account = (await client.get("/api/cloud/account")).json()
-        assert account["identity"] == {"id":owner,"email":"owner@example.test","display_name":"Owner"}
+        assert account["identity"] == {"id":owner,"email":"owner@example.test","provider":"email","display_name":"Owner"}
         assert account["wallet"]["credits"] == 0 and not account["billing_available"]
         assert app.state.store.admin_grant(owner,500,"owner-initial-500")["granted"]
         assert app.state.store.balance(owner) == 500
@@ -192,6 +192,17 @@ async def test_expired_refresh_changed_identity_revokes_session(tmp_path):
         await auth.owner("browser-token")
     with store.transaction() as db:
         assert db.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 0
+
+
+def test_wallet_history_names_the_character_and_the_grant(tmp_path):
+    store=CloudStore(config(tmp_path));owner=str(uuid4());store.account(owner,consent="test")
+    store.admin_grant(owner,500,"once")
+    quote=store.quote(owner,"hash",120,2_000_000,"cloud-standard")
+    store.reserve(owner,"first","hash",quote,120,label="シオン執事")
+    store.settle(owner,"first",1_000_000,success=True)
+    wallet=store.public_wallet(owner)
+    assert wallet["usage"][0]["label"] == "シオン執事"
+    assert wallet["lots"][0]["granted"] == 500 and wallet["lots"][0]["remaining"] == 440 and wallet["lots"][0]["created"]
 
 
 def test_credits_settlement_restart_and_prior_cost_cannot_refill(tmp_path):

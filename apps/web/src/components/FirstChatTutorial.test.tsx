@@ -6,7 +6,7 @@ import FirstChatTutorial, { FIRST_CHAT_TUTORIAL_KEY, readTutorialReceipt, writeT
 
 function props(overrides: Partial<FirstChatTutorialProps> = {}): FirstChatTutorialProps {
   return { step: 0, cloud: false, inspectorAvailable: true, storageFailed: false,
-    onNext: vi.fn(), onBack: vi.fn(), onSkip: vi.fn(), onComplete: vi.fn(), onFocusComposer: vi.fn(),
+    onNext: vi.fn(), onBack: vi.fn(), onSkip: vi.fn(), onComplete: vi.fn(),
     onOpenModels: vi.fn(), onOpenMemory: vi.fn(), onOpenInspector: vi.fn(), ...overrides };
 }
 
@@ -137,10 +137,9 @@ describe('first-chat tutorial', () => {
     expect(p.onOpenMemory).toHaveBeenCalledOnce();
   });
 
-  it('focus navigation, configuration and Inspector actions require explicit clicks', () => {
+  it('configuration and Inspector actions require explicit clicks', () => {
     const p = props();
-    findButton(FirstChatTutorial(p), '入力欄へ').props.onClick();
-    expect(p.onFocusComposer).toHaveBeenCalledOnce();
+    expect(renderToStaticMarkup(FirstChatTutorial(p))).toContain('自動で入力・送信しません');
     expect(p.onNext).not.toHaveBeenCalled();
     findButton(FirstChatTutorial({ ...p, step: 1 }), 'キャラ・プリセットを開く').props.onClick();
     expect(p.onOpenModels).toHaveBeenCalledOnce();

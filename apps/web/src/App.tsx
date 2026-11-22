@@ -7,6 +7,7 @@ import ChatsLanding from "./pages/ChatsLanding";
 import ActiveChat from "./pages/ActiveChat";
 import CharacterEntry from "./pages/CharacterEntry";
 import Profile from "./pages/Profile";
+import Legal from "./pages/Legal";
 import NotFound from "./pages/NotFound";
 import { useAdministrative, useRuntimeAccess } from './components/RuntimeGate';
 import { subscribeAppAnalyticsPageView, syncAppAnalytics } from './lib/analytics';
@@ -57,6 +58,8 @@ export default function App() {
         <Route path="/create/settings" element={deferred(<CreatorSettings key={owner} />)} />
         <Route path="/research/benchmarks" element={target==='device'?deferred(<BenchmarkLab key={owner} />):<AdminPage>{deferred(<BenchmarkLab />)}</AdminPage>} />
         <Route path="/profile" element={<Profile />} />
+        <Route path="/profile/:section" element={<Profile />} />
+        <Route path="/profile/legal/:doc" element={<Legal />} />
         <Route path="/migration" element={deferred(<Migration />)} />
         <Route path="/studio" element={<AdminPage>{deferred(<Studio />)}</AdminPage>} />
         <Route path="/research" element={target==='device'?deferred(<ResearchPage key={owner} />):<AdminPage>{deferred(<ResearchPage />)}</AdminPage>} />

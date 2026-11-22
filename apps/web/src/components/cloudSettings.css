@@ -15,8 +15,8 @@
 .k-cloud__storage-number span { font-size: 13px; font-weight: 400; margin-left: 6px; color: var(--text-secondary); }
 .k-cloud progress { display: block; width: 100%; height: 6px; appearance: none; border: 0; border-radius: 4px; overflow: hidden; margin-top: 16px; background: var(--bg-hover); }
 .k-cloud progress::-webkit-progress-bar { background: var(--bg-hover); }
-.k-cloud progress::-webkit-progress-value { background: var(--accent-primary); border-radius: 4px; }
-.k-cloud progress::-moz-progress-bar { background: var(--accent-primary); }
+.k-cloud progress::-webkit-progress-value { background: var(--accent-fill); border-radius: 4px; }
+.k-cloud progress::-moz-progress-bar { background: var(--accent-fill); }
 .k-cloud h3 { display: flex; align-items: center; gap: 8px; font-size: 16px; margin: 0; }
 .k-cloud__status { flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); }
 .k-cloud__status::before { content: ''; width: 6px; height: 6px; background: #58c990; border-radius: 50%; }

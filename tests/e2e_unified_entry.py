@@ -55,7 +55,11 @@ async def main():
                             assert request.method=='GET' or url.path=='/api/cloud/app/eligibility', 'Unexpected write'
                             headers={'Origin':config.origin}
                             if request.method!='GET':
-                                assert set(json.loads(request.post_data))=={'country','age'}
+                                body=json.loads(request.post_data)
+                                if body['age']==15:
+                                    assert body=={'country':'JP','age':15,'guardian_consent':True}
+                                else:
+                                    assert set(body)=={'country','age'}
                             for name in ('content-type','x-kyalulu-owner','x-kyalulu-country','x-kyalulu-eligibility'):
                                 if name in request.headers: headers[name]=request.headers[name]
                             response=await api.request(request.method,url.path+('?' + url.query if url.query else ''),headers=headers,content=request.post_data_buffer)
@@ -79,26 +83,29 @@ async def main():
                         await sheet.wait_for()
                         await sheet.get_by_role('button',name='Not now' if en else 'あとで',exact=True).click()
                         await expect(sheet).to_have_count(0)
-                        # The execution target lives in My page › Settings › Advanced.
+                        # A Cloud guest can switch to this device without signing in.
                         await page.goto(origin+'/profile')
-                        await page.locator('.k-profile-settings > summary').first.click()
-                        await page.locator('.k-profile-settings--advanced > summary').click()
-                        target=page.get_by_role('combobox',name='Run on' if en else '実行先',exact=True)
-                        await expect(target).to_have_value('cloud')
+                        await page.get_by_role('link',name='Execution target' if en else '実行先',exact=True).click()
+                        target=page.get_by_role('radiogroup',name='Run on' if en else '実行先',exact=True)
+                        await expect(target.get_by_role('radio',name='Cloud',exact=True)).to_be_checked()
                         async with page.expect_navigation(wait_until='domcontentloaded'):
-                            await target.select_option('device')
+                            await target.get_by_role('radio',name='This device' if en else 'この端末',exact=True).click()
                             await page.locator('dialog[open]').get_by_role('button',name='Next' if en else '次へ',exact=True).click()
                         assert '/device/' in page.url
                         entry=page.locator('.k-unified-entry')
                         await entry.get_by_role('heading',name='Before you begin' if en else 'はじめに',exact=True).wait_for()
                         country=entry.get_by_role('textbox')
                         age=entry.get_by_role('spinbutton')
+                        terms=entry.get_by_role('checkbox',name='I agree to the terms and privacy policy.' if en else '利用規約・プライバシーポリシーに同意します。',exact=True)
+                        guardian=entry.get_by_role('checkbox',name="I have a parent or guardian's consent." if en else '保護者の同意を得ています。',exact=True)
                         next_button=entry.get_by_role('button',name='Next' if en else '次へ',exact=True)
                         await country.fill('XX'); await age.fill('25')
                         before=len(calls); await next_button.click(); assert len(calls)==before
-                        await entry.get_by_role('checkbox').check(); await next_button.click()
+                        await terms.check(); await next_button.click()
                         await entry.get_by_role('alert').wait_for(); assert not (await prefs(page)).get('accepted')
-                        await country.fill('JP'); await age.fill('15'); await next_button.click()
+                        await country.fill('JP'); await age.fill('15')
+                        before=len(calls); await next_button.click(); assert len(calls)==before
+                        await guardian.check(); await next_button.click()
                         await expect(next_button).to_be_enabled(); await entry.get_by_role('alert').wait_for()
                         await expect(entry.get_by_role('alert')).to_contain_text('guardian' if en else '保護者')
                         assert not (await prefs(page)).get('accepted')
@@ -108,7 +115,7 @@ async def main():
                         await age.fill('21'); await next_button.click()
                         await asyncio.wait_for(held.wait(),10)
                         await expect(age).to_be_disabled();await expect(country).to_be_disabled()
-                        await expect(entry.get_by_role('checkbox')).to_be_disabled()
+                        await expect(terms).to_be_disabled()
                         await page.evaluate("localStorage.setItem('kyalulu-app-owner','changed-during-eligibility');window.dispatchEvent(new Event('kyalulu-app-context'))")
                         release.set();await expect(next_button).to_be_enabled()
                         await expect(entry.get_by_role('alert')).to_contain_text('account' if en else 'アカウント')
@@ -129,55 +136,53 @@ async def main():
                         chats=await page.evaluate(READ_ENTITIES_JS, ['conversation'])
                         assert len(chats)==1 and chats[0]['owner']=='guest' and chats[0]['payload']['storage_policy']=='local'
                         assert len(calls)==reads
-                        await page.goto(origin+'/device/#/profile')
-                        await page.locator('.k-profile-settings > summary').first.click()
-                        settings=page.locator('.k-profile-settings').first
                         interests=page.locator('.k-interests')
-                        await settings.get_by_role('button',name='Your interests' if en else '好みの設定',exact=True).click()
-                        await interests.get_by_role('heading',name='Your genres' if en else '好きなジャンル',exact=True).wait_for()
-                        await expect(interests).to_have_attribute('lang',language)
+                        async def open_interests(current_language):
+                            await page.goto(origin+'/device/#/profile/settings')
+                            english=current_language=='en'
+                            if width>=1200:
+                                settings=page.get_by_role('navigation',name='Settings' if english else '設定',exact=True)
+                                await settings.get_by_role('link',name='Interests' if english else '好み',exact=True).click()
+                            else:
+                                await page.get_by_role('link',name='Your interests' if english else '好みの設定',exact=True).click()
+                            await expect(interests).to_have_attribute('lang',current_language)
+
+                        await open_interests(language)
                         await interests.get_by_role('checkbox',name='School' if en else '学園',exact=True).check()
-                        await interests.get_by_role('button',name='Next' if en else '次へ',exact=True).click()
                         await interests.get_by_role('checkbox',name='Cool' if en else 'クール',exact=True).check()
-                        await interests.get_by_role('button',name='Back' if en else '戻る',exact=True).click()
-                        await expect(interests.get_by_role('checkbox',name='School' if en else '学園',exact=True)).to_be_checked()
-                        await interests.get_by_role('button',name='Next' if en else '次へ',exact=True).click()
-                        await expect(interests.get_by_role('checkbox',name='Cool' if en else 'クール',exact=True)).to_be_checked()
-                        await interests.get_by_role('button',name='Skip' if en else 'スキップ',exact=True).click()
                         await interests.get_by_role('checkbox',name='Comfort' if en else '癒し',exact=True).check()
-                        await interests.get_by_role('button',name='Start' if en else 'はじめる',exact=True).click()
+                        assert (await prefs(page))['genres']==[]
+                        await interests.get_by_role('button',name='Save' if en else '保存',exact=True).click()
                         current=await prefs(page)
-                        assert current['genres']==['school'] and current['moods']==['cool'] and current['activities']==['healing']
+                        assert current['genres']==['school'] and current['moods']==['cool','healing']
                         assert len(calls)==reads, 'Device-only preferences must not call Cloud'
-                        await settings.get_by_role('button',name='Your interests' if en else '好みの設定',exact=True).click()
+                        await open_interests(language)
                         await expect(interests.get_by_role('checkbox',name='School' if en else '学園',exact=True)).to_be_checked()
                         await interests.get_by_role('checkbox',name='School' if en else '学園',exact=True).uncheck()
-                        await interests.get_by_role('checkbox',name='Fantasy' if en else '異世界',exact=True).check()
+                        await interests.get_by_role('checkbox',name='Fantasy' if en else 'ファンタジー',exact=True).check()
                         alternate='ja' if en else 'en'
-                        await settings.get_by_role('combobox',name='Language' if en else '表示言語',exact=True).select_option(alternate)
-                        await interests.get_by_role('heading',name='好きなジャンル' if en else 'Your genres',exact=True).wait_for()
+                        await page.evaluate('''async language=>{
+                          const {preferences,savePreferences}=await import('/src/lib/appContext.ts');
+                          savePreferences({...preferences(),language});
+                        }''',alternate)
                         await expect(interests).to_have_attribute('lang',alternate)
                         await page.evaluate('''()=>{
                           const key='kyalulu-app-preferences-v1:guest',value=JSON.parse(localStorage.getItem(key));
                           localStorage.setItem(key,JSON.stringify({...value,favorites:['new-favorite'],dismissed:['new-dismissal']}));
                           window.dispatchEvent(new Event('kyalulu-app-context'));
                         }''')
-                        for _ in range(3):
-                            await interests.get_by_role('button',name='スキップ' if en else 'Skip',exact=True).click()
+                        await interests.get_by_role('button',name='保存' if en else 'Save',exact=True).click()
                         current=await prefs(page)
                         assert current['language']==alternate and current['favorites']==['new-favorite'] and current['dismissed']==['new-dismissal']
-                        assert current['genres']==['fantasy'] and current['moods']==['cool'] and current['activities']==['healing']
+                        assert current['genres']==['fantasy'] and current['moods']==['cool','healing']
                         assert len(calls)==reads, 'Device-only preferences must not call Cloud'
-                        await settings.get_by_role('button',name='好みの設定' if en else 'Your interests',exact=True).click()
+                        await open_interests(alternate)
                         await interests.get_by_role('checkbox',name='学園' if en else 'School',exact=True).check()
-                        for _ in range(2):
-                            await interests.get_by_role('button',name='次へ' if en else 'Next',exact=True).click()
-                        await page.evaluate("const oldFinish=document.querySelector('.k-interests .k-btn:last-child');localStorage.setItem('kyalulu-app-owner','fixture-next-owner');window.dispatchEvent(new Event('kyalulu-app-context'));oldFinish.click()")
+                        await page.evaluate("const oldSave=document.querySelector('.k-interests button');localStorage.setItem('kyalulu-app-owner','fixture-next-owner');window.dispatchEvent(new Event('kyalulu-app-context'));oldSave.click()")
                         assert (await prefs(page))['genres']==[]
                         await expect(interests.get_by_role('checkbox',name='学園' if en else 'School',exact=True)).not_to_be_checked()
-                        await expect(interests.get_by_role('checkbox',name='異世界' if en else 'Fantasy',exact=True)).not_to_be_checked()
-                        for _ in range(3):
-                            await interests.get_by_role('button',name='スキップ' if en else 'Skip',exact=True).click()
+                        await expect(interests.get_by_role('checkbox',name='ファンタジー' if en else 'Fantasy',exact=True)).not_to_be_checked()
+                        await interests.get_by_role('button',name='保存' if en else 'Save',exact=True).click()
                         current=await prefs(page)
                         assert current['genres']==[] and current['moods']==[] and current['activities']==[] and current['favorites']==[]
                         previous=await page.evaluate("JSON.parse(localStorage.getItem('kyalulu-app-preferences-v1:guest'))")
@@ -187,7 +192,7 @@ async def main():
                         assert await page.evaluate('document.documentElement.scrollWidth<=innerWidth')
                         await page.screenshot(path=str(OUTPUT/f'entry-settings-{language}-{width}-{theme}.png'),full_page=True,animations='disabled')
                         results.append({'language':language,'width':width,'theme':theme,'server_region_age_guardian_and_terms':True,
-                            'cloud_skips_form_and_opens_login_sheet':True,'picker_in_my_page_advanced':True,'interests_back_skip_and_later_edit':True,'device_without_login':True,
+                            'cloud_skips_form_and_opens_login_sheet':True,'picker_in_my_page_advanced':True,'interests_save_and_later_edit':True,'device_without_login':True,
                             'invalid_success_response_and_late_owner_response_rejected':True,
                             'guest_creates_real_device_only_chat_without_cloud_requests':True,
                             'live_language_and_other_preferences_preserved':True,'owner_change_resets_draft':True,'device_preferences_send_nothing':True})

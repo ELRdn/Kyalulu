@@ -1,8 +1,12 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import MessageContent from "./MessageContent";
+import MessageContent, { UserText } from "./MessageContent";
 
 describe("RP message display", () => {
+  it("styles only *actions* in the user's own text", () => {
+    const html = renderToStaticMarkup(<UserText content={"*カップを受け取る*\nありがとう # 2*3"} />);
+    expect(html).toBe('<em class="md-action">カップを受け取る</em>\nありがとう # 2*3');
+  });
   it("shows assistant thoughts and actions inside the character bubble", () => {
     const html = renderToStaticMarkup(<MessageContent content={"@キャルル:\n*カップを置く*\n\n*（もう少し話していたい）*\n\nもう一杯、飲む？"} />);
     expect(html).toContain('class="k-bubble k-bubble--character"');

@@ -11,6 +11,7 @@ export default function ModelSelector({
   disabled = false,
   loading = false,
   error = '',
+  compact = false,
 }: {
   models: ModelInfo[];
   value: string;
@@ -18,12 +19,14 @@ export default function ModelSelector({
   disabled?: boolean;
   loading?: boolean;
   error?: string;
+  /** Design 11: the name and one line of destination and price. */
+  compact?: boolean;
 }) {
   const infoId = useId();
   const language = useLanguage(), en = language === 'en';
   const selected = models.find(model => model.id === value);
   return (
-    <div className="k-model-selector" aria-busy={loading}>
+    <div className={`k-model-selector${compact ? ' k-model-selector--compact' : ''}`} aria-busy={loading}>
       <label style={{ fontSize: 12, color: "var(--text-faint)", whiteSpace: "nowrap" }}>{en ? 'Model' : 'モデル'}</label>
       <select
         className="k-input"
@@ -45,12 +48,12 @@ export default function ModelSelector({
       {error && <p role="alert">{en ? 'Could not load models: ' : 'モデルを取得できません：'}{friendlyMessage(error, language)}</p>}
       {!loading && !error && models.length === 0 && <p role="status">{en ? 'No models are registered.' : '登録されたモデルがありません。'}</p>}
       {selected && <div id={infoId} className="k-model-selector__info">
-        {selected.provider_type && <p>{en ? 'Destination: ' : '送信先：'}{selected.provider_type}{selected.upstream ? ` / ${selected.upstream}` : ''}</p>}
+        {selected.provider_type && <p>{en ? 'Destination: ' : '送信先：'}{selected.provider_type}{selected.upstream ? (compact ? `（${selected.upstream}）` : ` / ${selected.upstream}`) : ''}{compact && selected.pricing && <> · {en ? 'Reference price: input ' : '参考単価 入力 '}{selected.pricing.input_per_million ?? (en ? 'unpublished' : '未公表')} / {en ? 'output ' : '出力 '}{selected.pricing.output_per_million ?? (en ? 'unpublished' : '未公表')}{en ? ' (1M tokens)' : '（100万トークン）'}</>}</p>}
         {selected.retains_prompts && <p><strong>{en ? 'This provider retains your input.' : 'この提供元は入力を保存します。'}</strong></p>}
         {selected.training && <p><strong>{en ? 'Conversations, settings, memories and generated results may be used to train or improve AI. Explicit consent is required for each send.' : '会話・設定・記憶・生成結果をAIの学習・改善に利用する可能性があります。送信ごとの明示的な同意が必要です。'}</strong></p>}
         {selected.service_tier?.toLowerCase() === 'flex' && <p>{en ? 'Flex responses may take longer or be unavailable.' : 'Flexは応答まで長く待つ場合や、利用できない場合があります。'}</p>}
         {selected.available === false && <p role="status">{en ? 'Unavailable: ' : '利用できません：'}{friendlyMessage(selected.unavailable_reason || 'cloud_route_not_available', language)}</p>}
-        <details key={selected.id} className="k-model-selector__details">
+        {compact ? selected.privacy_note && <p>{selected.privacy_note}</p> : <details key={selected.id} className="k-model-selector__details">
           <summary>{en ? 'Technical details, reference prices and retention' : '技術情報・参考価格・保存条件'}</summary>
           <div>{en ? 'Model ID: ' : 'モデルID：'}{selected.provider_model || selected.id}</div>
           {selected.quantization && <div>{en ? 'Quantization: ' : '量子化：'}{selected.quantization}</div>}
@@ -58,7 +61,7 @@ export default function ModelSelector({
           {selected.reasoning_summary_supported !== undefined && <div>{en ? 'Official reasoning summary: ' : '公式推論要約：'}{selected.reasoning_summary_supported ? (en ? 'Supported (may be absent in some responses)' : '取得対応（提供されない応答もあります）') : (en ? 'Not supported' : '取得は未対応')}</div>}
           {selected.pricing && <div>{en ? 'Reference price' : '参考単価'}（{selected.pricing.currency || 'USD'} / {en ? '1 million tokens' : '100万トークン'}）：{en ? 'Input ' : '入力 '}{selected.pricing.input_per_million ?? (en ? 'Unpublished' : '未公表')} / {en ? 'Output ' : '出力 '}{selected.pricing.output_per_million ?? (en ? 'Unpublished' : '未公表')}{selected.pricing.observed_at && (en ? ` (checked ${selected.pricing.observed_at})` : `（${selected.pricing.observed_at}確認）`)}{en ? '. Review the actual limit in the quote before sending.' : '。実際の上限は送信前の見積もりで確認します。'}</div>}
           {selected.privacy_note && <div>{selected.privacy_note}</div>}
-        </details>
+        </details>}
       </div>}
     </div>
   );

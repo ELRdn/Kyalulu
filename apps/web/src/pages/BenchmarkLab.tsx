@@ -71,7 +71,7 @@ export default function BenchmarkLab() {
   const planned = (scenarios.find(s => s.id === scenario)?.turns ?? 0) * runs * modelIds.length * (memory === "compare" ? 2 : 1);
   return <div className="k-page k-lab">
     <header><Link to="/research">← {en ? "Research" : "研究"}</Link><h1 className="k-page-title">{en ? "Benchmarks" : "比較実験"}</h1><p className="k-page-sub">{device?(en?'Compare prepared on-device models using the same scenario and seed. Runs continue while this tab is open, including on other screens. Closing or reloading the tab interrupts the job; saved results stay on this device.':'準備済みの端末内モデルを、同じシナリオ・シードで比較します。このタブを開いている間は別の画面に移っても続きます。タブを閉じる・再読込すると中断し、保存済み結果は端末に残ります。'):(en ? "Compare models and memory using the same scenario and seed. Experiments continue after you close this page." : "同じシナリオ・シードでモデルと記憶の効果を比較します。実験は画面を閉じても続きます。")}</p></header>
-    {device&&<p><Link to="/profile">{en?'Prepare models in Settings':'設定でモデルを準備'}</Link></p>}
+    {device&&<p><Link to="/profile/advanced">{en?'Prepare models in Settings':'設定でモデルを準備'}</Link></p>}
     {error != null && <p role="alert" className="k-lab-error">{friendlyMessage(error, language)}</p>}
     <Card><form className="k-lab-form" onSubmit={e => { e.preventDefault(); void start(); }}>
       <fieldset disabled={busy || jobs.some(active)||device&&generating}><legend>{en ? "Conversation models (up to 3)" : "会話モデル（最大3つ）"}</legend><div className="k-lab-actions">{models.map(m => <label key={m.id}><input type="checkbox" checked={modelIds.includes(m.id)} disabled={!modelIds.includes(m.id) && modelIds.length >= 3||device&&m.available===false} onChange={e => setModelIds(ids => e.target.checked ? [...ids, m.id] : ids.filter(id => id !== m.id))} />{m.display_name}</label>)}</div></fieldset>

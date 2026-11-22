@@ -46,7 +46,11 @@ export default function PublicAuthor() {
   };
   return <div className="k-page">{dialog}<Link to="/discover">{en ? '← Discover' : '← さがす'}</Link>
     {capabilityError ? <p role="alert">{friendlyMessage(capabilityError, language)}<Button onClick={reload}>{en ? 'Reload' : '再読込'}</Button></p> : !capabilities ? <p role="status">{en ? 'Checking feature availability…' : '対応状況を確認中…'}</p> : !capabilities.features.community ? <p>{en ? 'Public author pages are not available at this connection.' : 'この接続先では公開作者ページを提供していません。'}</p> : error ? <p role="alert">{friendlyMessage(error.cause, language)}<Button onClick={() => setRetry(value => value + 1)}>{en ? 'Reload' : '再読込'}</Button></p> : !author ? <p role="status">{en ? 'Loading author…' : '作者を読み込んでいます…'}</p> : <>
-      <h1>{author.name}</h1><p>{en ? 'Followers' : 'フォロワー'} {author.followers}</p><h2>{en ? 'Public works' : '公開作品'}</h2>{works.length ? <WorkCards works={works} /> : <p>{en ? 'No public works to display.' : '表示できる公開作品はありません。'}</p>}
+      <section className="k-author__head">
+        <span className="k-author__avatar" aria-hidden="true">{[...author.name][0]}</span>
+        <div className="k-author__who"><h1>{author.name}</h1><p>{en ? 'Public works' : '公開作品'} {works.length} · {en ? 'Followers' : 'フォロワー'} {author.followers}</p></div>
+      </section>
+      <h2 className="k-author__title">{en ? 'Public works' : '公開作品'}</h2>{works.length ? <WorkCards works={works} /> : <p>{en ? 'No public works to display.' : '表示できる公開作品はありません。'}</p>}
       {!works.some(work => work.owned) && <div className="k-create-actions"><Button disabled={busy} onClick={() => void relation('follow', true)}>{en ? 'Follow' : 'フォロー'}</Button><Button disabled={busy} variant="ghost" onClick={() => void relation('follow', false)}>{en ? 'Unfollow' : 'フォロー解除'}</Button><Button disabled={busy} variant="danger" onClick={() => void relation('block', true)}>{en ? 'Block' : 'ブロック'}</Button><Button disabled={busy} variant="secondary" onClick={() => void relation('block', false)}>{en ? 'Unblock' : 'ブロック解除'}</Button></div>}
       {notice && <p role="status">{en ? 'Your relationship with this author was updated.' : '作者との関係を更新しました。'}</p>}
       <p className="k-page-sub">{en ? 'Showing works within the retrieved catalog.' : 'catalogの取得範囲にある作品を表示しています。'}</p>

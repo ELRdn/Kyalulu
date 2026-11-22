@@ -77,6 +77,8 @@ class UnifiedService:
         self.transfers = EntityTransfers(self)
         from .publications import Publications
         self.publications = Publications(self)
+        from .age_check import AgeCheck
+        self.age = AgeCheck(self)
 
     def available(self):
         if not self.store.config.unified_enabled:
@@ -85,9 +87,13 @@ class UnifiedService:
     def general_eligibility(self, country, age, *, guardian=False):
         return general_eligibility(self.regions, country, age, guardian=guardian)
 
-    def eligibility_ticket(self, country, age):
-        result = self.general_eligibility(country, age)
-        return {**result, 'ticket': self.store.encrypt(json.dumps({**result, 'age': age, 'expires': time.time() + 30 * 86400}))}
+    def _guardian(self, country, declared):
+        return declared is True and (self.regions.get(country) or {}).get('guardian_method') == 'self'
+
+    def eligibility_ticket(self, country, age, guardian_consent=False):
+        guardian = self._guardian(country, guardian_consent)
+        result = self.general_eligibility(country, age, guardian=guardian)
+        return {**result, 'ticket': self.store.encrypt(json.dumps({**result, 'age': age, 'guardian': guardian, 'expires': time.time() + 30 * 86400}))}
 
     def verify_eligibility_ticket(self, ticket, country):
         try:
@@ -96,7 +102,7 @@ class UnifiedService:
             value = json.loads(self.store.decrypt(ticket))
             if value['country'] != country or value['expires'] <= time.time():
                 raise ValueError()
-            current = self.general_eligibility(country, value['age'])
+            current = self.general_eligibility(country, value['age'], guardian=self._guardian(country, value.get('guardian')))
             if current['policy'] != value['policy']:
                 raise ValueError()
             return current
@@ -125,7 +131,7 @@ class UnifiedService:
             raise CloudError("adult_verification_required", 403)
 
     def record_age_result(self, owner, *, country, adult, expires, receipt, policy):
-        """Only a verified provider adapter calls this; never expose a browser claim API."""
+        """Only AgeCheck calls this: a provider result, or a declaration where the region allows one."""
         if (type(adult) is not bool or type(expires) not in {int, float}
                 or not math.isfinite(expires) or not time.time() < expires <= time.time() + 366 * 86400
                 or not isinstance(receipt, str) or not 1 <= len(receipt) <= 200
@@ -708,9 +714,9 @@ def install_routes(app, service):
     async def eligibility(request: Request):
         service.available()
         body = await request.json()
-        if not isinstance(body, dict) or set(body) != {'country', 'age'}:
+        if not isinstance(body, dict) or set(body) - {'guardian_consent'} != {'country', 'age'}:
             raise CloudError('invalid_eligibility')
-        return service.eligibility_ticket(body['country'], body['age'])
+        return service.eligibility_ticket(body['country'], body['age'], body.get('guardian_consent', False))
 
     @app.get("/api/cloud/app/status")
     async def app_status(request: Request):
@@ -883,3 +889,21 @@ def install_routes(app, service):
         if type(body.get('enabled')) is not bool:
             raise CloudError('invalid_adult_consent')
         return await publication_call(service.publications.consent, request.state.owner, body['enabled'])
+
+    @app.get('/api/cloud/app/age')
+    async def age_status(request: Request):
+        return await publication_call(service.age.status, request.state.owner)
+
+    @app.post('/api/cloud/app/age/declare')
+    async def age_declare(request: Request):
+        body = await publication_body(request)
+        return await publication_call(service.age.declare, request.state.owner, body.get('adult'))
+
+    @app.post('/api/cloud/app/age/yoti')
+    async def age_yoti_start(request: Request):
+        return await service.age.start(request.state.owner)
+
+    @app.post('/api/cloud/app/age/yoti/result')
+    async def age_yoti_result(request: Request):
+        body = await publication_body(request)
+        return await service.age.finish(request.state.owner, body.get('session_id'))

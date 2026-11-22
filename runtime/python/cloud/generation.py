@@ -6,7 +6,7 @@ import time
 from decimal import Decimal
 from typing import Literal
 from pydantic import Field, StrictBool
-from python.api.chat import ChatRequest, _load_settings
+from python.api.chat import ChatRequest, _load_settings, _session_identity
 from python.core.generation import generate_events
 from python.core.prompt_compiler import compile_prompt
 from python.core.schemas import GenerationOutputWithMemory, GenerationOutput
@@ -235,6 +235,7 @@ class CloudGenerations:
             "settings_snapshot": {**settings.model_dump(),'system_prompt':req.system_prompt or settings.system_prompt,
                 'temperature':req.temperature if req.temperature is not None else settings.temperature},
             "character_constraints": constraints,
+            "character_name": _session_identity(settings)["character_name"] or "",
         }
 
     async def quote(self, owner, req):
@@ -303,7 +304,7 @@ class CloudGenerations:
             prepared = await self.prepare(owner, req)
             self.store.reserve(
                 owner, req.generation_id, prepared["hash"], req.quote_id, req.max_credits,
-                provider_tariff=prepared["tariff"].version,
+                provider_tariff=prepared["tariff"].version, label=prepared["character_name"][:60],
             )
             try:
                 await generations.reserve(req.generation_id, req.session_id, prepared["body"],

@@ -47,7 +47,7 @@
   border: 1px solid var(--border-subtle);
   border-radius: 0 0 20px 20px;
   background: var(--bg-surface);
-  box-shadow: 0 12px 32px rgb(30 27 36 / 14%);
+  box-shadow: none;
   line-height: 1.7;
 }
 .k-mobile-status__panel p + p { margin-top: 8px; }
@@ -66,3 +66,15 @@
 }
 .k-mobile-status button:disabled { opacity: .55; cursor: default; }
 .k-mobile-status :is(summary, button):focus-visible { outline: 3px solid var(--accent-primary); outline-offset: -3px; }
+
+/* 36, P40: the offline strip */
+.k-mobile-status:has(.is-offline) { box-sizing: border-box; border-bottom: 0; }
+.k-mobile-status:has(.is-offline) summary { justify-content: center; min-height: 32px; padding-block: 0; font-weight: 500; }
+.k-mobile-status:has(.is-offline) :is(.k-mobile-status__dot, .k-mobile-status__hint) { display: none; }
+@media (min-width: 768px) {
+  .k-pwa-root > .k-mobile-status:has(.is-offline) { margin: 0 0 -32px 72px; }
+  .k-pwa-root:has(> .k-mobile-status .is-offline) .k-shell__column { padding-top: 32px; }
+}
+@media (min-width: 1200px) {
+  .k-pwa-root > .k-mobile-status:has(.is-offline) { margin-left: 216px; }
+}

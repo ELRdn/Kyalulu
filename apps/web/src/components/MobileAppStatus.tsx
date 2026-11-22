@@ -15,7 +15,7 @@ export default function MobileAppStatus({ local = false, quiet = false }: { loca
       <details className="k-mobile-status__details">
         <summary>
           <span className={`k-mobile-status__dot ${pwa.online ? "" : "is-offline"}`} aria-hidden="true" />
-          <span role="status">{!pwa.online ? local ? (en ? 'Offline · Use prepared models on this device' : 'オフライン · 保存済みモデルで会話できます') : (en ? 'Offline · A connection is needed for generation' : 'オフライン · 生成には接続が必要です') : pwa.updateAvailable ? (en ? 'An update is available' : '新しいバージョンがあります') : (en ? 'Online' : 'オンライン')}</span>
+          <span role="status">{!pwa.online ? local ? (en ? 'Offline · Use prepared models on this device' : '電波が迷子みたい…保存済みモデルなら話せるよ') : (en ? 'Offline · A connection is needed for generation' : '電波が迷子みたい…つながったら戻るね') : pwa.updateAvailable ? (en ? 'An update is available' : '新しいバージョンがあります') : (en ? 'Online' : 'オンライン')}</span>
           <span className="k-mobile-status__hint">{en ? 'App info' : 'アプリ情報'}</span>
         </summary>
         <div className="k-mobile-status__panel">

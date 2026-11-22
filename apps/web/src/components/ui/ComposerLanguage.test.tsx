@@ -10,8 +10,8 @@ it.each(['ja', 'en'])('localizes composing, disabled and stopping controls in %s
   const props = { value: '', onChange: vi.fn(), onSend: vi.fn(), onStop: vi.fn() };
   const ready = renderToStaticMarkup(<Composer {...props} />);
   expect(ready).toContain(language === 'en' ? 'aria-label="Message"' : 'aria-label="メッセージ"');
-  expect(ready).toContain(language === 'en' ? 'Write your message' : 'きみの言葉を入力');
-  expect(ready).toContain(language === 'en' ? 'Insert narration' : 'ト書きを入れる');
+  expect(ready).toContain(language === 'en' ? 'placeholder="Message"' : 'placeholder="メッセージ"');
+  expect(ready).toContain(language === 'en' ? 'Insert an action' : '仕草を入れる');
   const disabled = renderToStaticMarkup(<Composer {...props} disabled />);
   expect(disabled).toContain(language === 'en' ? 'Preparing…' : '準備中…');
   const streaming = renderToStaticMarkup(<Composer {...props} streaming />);

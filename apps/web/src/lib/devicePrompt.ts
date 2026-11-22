@@ -99,7 +99,7 @@ export function compilePortable(snapshot:PortableSnapshot,history:Message[]=[]) 
   const samplers=new Set(['temperature','top_p','top_k','min_p','repeat_penalty','repeat_last_n','frequency_penalty','presence_penalty','seed','max_tokens','stop']);
   for(const [key,value] of Object.entries(profile.settings))if(samplers.has(key))settings[key]=value;else notices.push({path:'profile.settings.'+key,status:'preserved',reason:'Not a supported generation setting'});
   const values:RecordValue={char:data.nickname||doc.name,user:persona.display_name||'User',description:data.description??'',personality:data.personality??'',scenario:data.scenario??'',
-    persona:text(persona.description)+'\n'+text(persona.traits),mesExamplesRaw:data.mes_example??'',mesExamples:data.mes_example??'',anchorBefore:'',anchorAfter:'',trim:''};
+    persona:text(persona.description)+'\n'+text(persona.traits)+(text(persona.call_name)?'\n呼ばれ方: '+text(persona.call_name):''),mesExamplesRaw:data.mes_example??'',mesExamples:data.mes_example??'',anchorBefore:'',anchorAfter:'',trim:''};
   const unknown=new Set<string>();
   const expand=(value:string,original='')=>{
     let result=text(value);

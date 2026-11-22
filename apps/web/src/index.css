@@ -36,42 +36,44 @@
   --gradient-tyarai-mode: linear-gradient(135deg, #FF7AB8 0%, #FFB8D8 100%);
   --gradient-mint-breeze: linear-gradient(135deg, #B8F2E6 0%, #CFE3FF 100%);
 
-  /* --- 5.1 Semantic tokens (light) --- */
-  --bg-canvas: #F6F6FA;
-  --bg-surface: #FFFFFF;
-  --bg-surface-soft: #F0EFFF;
-  --bg-surface-warm: #FFF5E6;
-  --bg-hover: #F1EDFB;
+  /* --- 5. Semantic tokens: Kyalulu is dark-only and flat (no elevation shadows) --- */
+  color-scheme: dark;
+  --bg-canvas: #0E0D12;
+  --bg-surface: #1B1922;
+  --bg-surface-soft: #2A2633;
+  --bg-surface-warm: #2A2633;
+  --bg-hover: #2A2633;
 
-  --text-primary: #1E1B24;
-  --text-secondary: #4B4758;
-  --text-muted: #8E899E;
-  --text-on-accent: #F6F6FA;
+  --text-primary: #F6F6FA;
+  --text-secondary: #CFCADB;
+  --text-muted: #9A95AA;
+  --text-on-accent: #FFFFFF;
 
-  --border-subtle: #E2DDF3;
-  --border-strong: #B9B4CB;
+  --border-subtle: #2A2633;
+  --border-strong: #4B4758;
 
-  --accent-primary: #6C5CE7;
-  --accent-secondary: #BFA7FF;
+  --accent-primary: #BFA7FF;
+  --accent-fill: #6C5CE7;
+  --accent-secondary: #D7B4FF;
   --accent-pink: #FFB8D8;
   --accent-blue: #CFE3FF;
   --accent-mint: #B8F2E6;
   --accent-orchid: #D7B4FF;
 
-  --danger: #E4494B;
-  --danger-bg: #FDECEC;
-  --danger-border: #F5C6C6;
-  --success: #1F9D7C;
+  --danger: #F87171;
+  --danger-bg: #2A1214;
+  --danger-border: #7F1D1D;
+  --success: #4ADE80;
 
-  --focus-ring: rgba(108, 92, 231, 0.18);
+  --focus-ring: rgba(191, 167, 255, 0.22);
 
   /* --- legacy aliases (既存コードの段階的移行用) --- */
   --bg: var(--bg-canvas);
   --bg-subtle: var(--bg-surface-soft);
   --bg-card: var(--bg-surface);
-  --bg-input: var(--bg-surface);
+  --bg-input: var(--bg-surface-soft);
   --bg-code: var(--bg-surface-soft);
-  --bg-code-block: #1E1B24;
+  --bg-code-block: #0E0D12;
   --bg-code-block-text: #E3E1EB;
   --border: var(--border-subtle);
   --border-strong-legacy: var(--border-strong);
@@ -81,8 +83,8 @@
   --text-dim: var(--text-muted);
   --accent: var(--accent-primary);
   --accent-text: var(--text-on-accent);
-  --accent-hover: #5A4BD4;
-  --user-bg: var(--accent-primary);
+  --accent-hover: #7B6CF0;
+  --user-bg: var(--accent-fill);
   --user-text: var(--text-on-accent);
   --assistant-bg: var(--bg-surface);
   --assistant-text: var(--text-primary);
@@ -90,7 +92,7 @@
   --error-bg: var(--danger-bg);
   --error-text: var(--danger);
   --error-border: var(--danger-border);
-  --overlay-shadow: 0 2px 12px rgba(30, 27, 36, 0.08);
+  --overlay-shadow: none;
 
   /* --- 8. Spacing (4px base) --- */
   --space-1: 4px;
@@ -116,69 +118,12 @@
   --ease-kyalulu: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* --- 5.2 Dark theme (not a simple inversion) --- */
-[data-theme="dark"] {
-  --bg-canvas: #0E0D12;
-  --bg-surface: #1E1B24;
-  --bg-surface-soft: #2E2A38;
-  --bg-surface-warm: #2E2A38;
-  --bg-hover: #3A3446;
-
-  --text-primary: #F6F6FA;
-  --text-secondary: #E3E1EB;
-  --text-muted: #B9B4CB;
-  --text-on-accent: #1E1B24;
-
-  --border-subtle: #2E2A38;
-  --border-strong: #4B4758;
-
-  --accent-primary: #BFA7FF;
-  --accent-secondary: #D7B4FF;
-  --accent-pink: #FFB8D8;
-  --accent-blue: #CFE3FF;
-  --accent-mint: #B8F2E6;
-  --accent-orchid: #D7B4FF;
-
-  --danger: #F87171;
-  --danger-bg: #2A1214;
-  --danger-border: #7F1D1D;
-  --success: #4ADE80;
-
-  --focus-ring: rgba(191, 167, 255, 0.22);
-
-  --bg: var(--bg-canvas);
-  --bg-subtle: var(--bg-surface-soft);
-  --bg-card: var(--bg-surface);
-  --bg-input: var(--bg-surface-soft);
-  --bg-code: var(--bg-surface-soft);
-  --bg-code-block: #0E0D12;
-  --bg-code-block-text: #E3E1EB;
-  --border: var(--border-subtle);
-  --text: var(--text-primary);
-  --text-faint: var(--text-secondary);
-  --text-dim: var(--text-muted);
-  --accent: var(--accent-primary);
-  --accent-text: var(--text-on-accent);
-  --accent-hover: #D7B4FF;
-  --user-bg: var(--accent-primary);
-  --user-text: var(--text-on-accent);
-  --assistant-bg: var(--bg-surface-soft);
-  --assistant-text: var(--text-primary);
-  --assistant-border: var(--border-subtle);
-  --error-bg: var(--danger-bg);
-  --error-text: var(--danger);
-  --error-border: var(--danger-border);
-  --overlay-shadow: 0 2px 20px rgba(0, 0, 0, 0.45);
-}
-
 html, body { height: 100%; }
 body {
   background: var(--bg-canvas);
   color: var(--text-primary);
-  transition: background 0.2s, color 0.2s;
   font-family: Inter, "Noto Sans JP", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", system-ui, sans-serif;
   font-weight: 500;
-  letter-spacing: 0.01em;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -214,3 +159,12 @@ a { color: var(--accent-primary); }
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
 ::selection { background: rgba(191, 167, 255, 0.45); }
+
+@media (max-width: 767px) {
+  ::-webkit-scrollbar { display: none; }
+}
+
+/* Secondary text is regular weight in the Penpot designs. */
+small, .k-kv span, .k-pick-row__value, .k-set-row__select, .k-preset-temp__ends span, .k-portable-session__hint,
+.k-suggest__foot > span, .k-cloud-login__region span, .k-plot-creator__sub, .k-session-row__preview, .k-talk__hint,
+.k-set-row__sub, .k-profile-stat__label, .k-create-hero p, .k-msg-menu__sub { font-weight: 400; }

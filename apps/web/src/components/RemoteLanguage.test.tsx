@@ -77,7 +77,7 @@ it('translates relay connection status while preserving authored host names',()=
   for(const language of ['ja','en']){
     fixture.language=language;
     const html=renderToStaticMarkup(view(RemoteBanner,[true]));
-    expect(html).toContain(device.hostName);expect(html).toContain('href="/profile"');
+    expect(html).toContain(device.hostName);expect(html).toContain('href="/profile/advanced"');
     expect(html).toContain(language==='en'?'Encrypted connection':'暗号化接続中');
     expect(html).toContain(language==='en'?'Conversations saved on PC':'会話はPCに保存');
     expect(html).not.toContain(device.privateKey);

@@ -25,3 +25,10 @@
 @media (max-width: 420px) { .k-connection { padding: 18px; } }
 .k-remote-banner { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .5rem; padding: .4rem 1rem; font-size: .75rem; color: var(--text-secondary); border-bottom: 1px solid var(--border); }
 .k-remote-banner a { color: inherit; min-height: 44px; min-width: 0; max-width: 100%; overflow-wrap: anywhere; display: inline-flex; align-items: center; }
+.k-app-error__help { justify-self: center; font-size: 12px; color: var(--text-muted); }
+
+/* 43, P48 */
+.k-connect-screen__body.k-app-error { display: grid; justify-items: center; gap: 12px; width: 335px; max-width: 100%; padding: 24px 0 8px; border: 0; background: none; box-shadow: none; text-align: center; }
+.k-app-error h1 { margin: 0; font-size: 15px; font-weight: 700; line-height: 23px; }
+.k-app-error .k-btn { width: auto; min-height: 44px; padding: 0 22px; font-size: 14px; font-weight: 700; }
+.k-app-error .k-app-error__help { margin-top: 8px; font-size: 12px; font-weight: 400; }

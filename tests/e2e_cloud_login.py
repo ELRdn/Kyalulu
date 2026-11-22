@@ -97,11 +97,11 @@ async def main():
                         await expect(email).to_be_disabled();await expect(country).to_be_disabled();await expect(consent).to_be_disabled()
                         await analytics.uncheck();await expect(analytics).not_to_be_checked()
                         state['hold']=False;release.set()
-                        await login.get_by_role('status').filter(has_text='確認メールを送りました' if en else 'A sign-in email was sent').wait_for()
+                        await login.get_by_role('status').filter(has_text='メールを送ったよ' if en else 'A sign-in email was sent').wait_for()
                         assert len(posts)==1
                         before=len(status_reads)
                         await login.get_by_role('combobox',name='表示言語' if en else 'Language',exact=True).select_option(language)
-                        await login.get_by_role('status').filter(has_text='A sign-in email was sent' if en else '確認メールを送りました').wait_for()
+                        await login.get_by_role('status').filter(has_text='A sign-in email was sent' if en else 'メールを送ったよ').wait_for()
                         assert len(status_reads)==before
                         await expect(analytics).not_to_be_checked();await expect(email).to_have_value('fixture@example.test')
                         assert await page.evaluate("sessionStorage.getItem('kyalulu-cloud-login-return')")=='/chats/selected'

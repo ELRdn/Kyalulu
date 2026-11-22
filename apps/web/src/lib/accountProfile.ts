@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { cloudJson } from './cloud';
 import { cloudEpoch, cloudOwner, isCloud } from './cloudMode';
 
-export type AccountProfile = {revision:number;display_name:string;saved_characters:string[];pinned_sessions:string[]};
+export type AccountProfile = {revision:number;display_name:string;bio?:string;avatar?:string;saved_characters:string[];pinned_sessions:string[]};
 type State = {owner:string;epoch:number;profile:AccountProfile|null;pending:number;error:string};
 let state: State = {owner:'',epoch:0,profile:null,pending:0,error:''};
 let queue: Promise<unknown> = Promise.resolve();
@@ -34,7 +34,7 @@ export function refreshAccountProfile(): Promise<void> {
   const run=queue.catch(()=>{}).then(async()=>{
     if (cloudEpoch()!==epoch || !isCloud()) return;
     try {await read(owner,epoch);state={...state,error:''};emit();}
-    catch {if(cloudEpoch()===epoch){state={...state,error:'アカウントを同期できませんでした。接続を確認して再試行してください。'};emit();}}
+    catch {if(cloudEpoch()===epoch){state={...state,error:'同期の途中でつまずいちゃった…接続を確認して、もう一度試してね'};emit();}}
   });
   queue=run;return run;
 }

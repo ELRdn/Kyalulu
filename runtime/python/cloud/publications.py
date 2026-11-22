@@ -4,6 +4,7 @@ import json
 import time
 from uuid import UUID, uuid4
 
+from .account_profile import AccountProfile
 from .community import Community, PUBLIC_KEYS
 from .store import CloudError
 
@@ -273,7 +274,10 @@ class Publications:
     def detail(self, owner, id):
         allowed = self.ratings(owner, public=True)
         with self.store.transaction() as db:
-            return self._public(self._visible(db, owner, id, allowed), owner)
+            row = self._visible(db, owner, id, allowed)
+            work = self._public(row, owner)
+            bio = AccountProfile(self.store)._read(db, row['owner']).get('bio')
+            return {**work, 'author_bio': bio} if bio else work
 
     def block(self, owner, author, active):
         self.general(owner)

@@ -332,6 +332,7 @@ FILES = (
     "tests/fixtures/native-restore.html",
     "tests/fixtures/publications.html",
     "tests/portable_samples.py",
+    "tests/test_age_check.py",
     "tests/test_backup_parity.py",
     "tests/test_cloud_account_profile.py",
     "tests/test_cloud_auth.py",

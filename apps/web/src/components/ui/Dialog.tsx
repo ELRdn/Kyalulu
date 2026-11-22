@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import Button from "./Button";
 import "./ui.css";
 
-export default function Dialog({ open, onClose, children, labelledBy, label, wide = false, contentClassName, overlayClassName }: { open: boolean; onClose: () => void; children: ReactNode; labelledBy?: string; label?: string; wide?: boolean; contentClassName?: string; overlayClassName?: string }) {
+/** A centered dialog. With `sheet`, phones get a bottom sheet instead and `width` sets the PC width (docs/MOBILE_UX_SPEC.md §5.9). */
+export default function Dialog({ open, onClose, children, labelledBy, label, wide = false, contentClassName, overlayClassName, sheet = false, width }: { open: boolean; onClose: () => void; children: ReactNode; labelledBy?: string; label?: string; wide?: boolean; contentClassName?: string; overlayClassName?: string; sheet?: boolean; width?: number }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const dialog = ref.current;
@@ -18,8 +19,8 @@ export default function Dialog({ open, onClose, children, labelledBy, label, wid
   }, [open]);
   if (!open) return null;
   return (
-    <dialog ref={ref} className={overlayClassName ?? "k-dialog-overlay"} aria-modal="true" aria-labelledby={labelledBy} aria-label={label} onCancel={(e) => { e.preventDefault(); onClose(); }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className={contentClassName ?? `k-dialog ${wide ? "k-dialog--wide" : ""}`}>
+    <dialog ref={ref} className={`${overlayClassName ?? "k-dialog-overlay"}${sheet ? " is-sheet" : ""}`} aria-modal="true" aria-labelledby={labelledBy} aria-label={label} onCancel={(e) => { e.preventDefault(); onClose(); }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className={`${contentClassName ?? `k-dialog ${wide ? "k-dialog--wide" : ""}`}${sheet ? " k-dialog--sheet" : ""}`} style={width ? { maxWidth: width } : undefined}>
         {children}
       </div>
     </dialog>

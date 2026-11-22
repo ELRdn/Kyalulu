@@ -10,8 +10,8 @@ export async function labRequest<T>(path: string, init?: RequestInit): Promise<T
 }
 
 export type CreatorKind = "persona" | "world";
-export type CreatorDocument = { display_name: string; description: string; traits: string; rules: string; cast?: CastMember[]; rpg?: RPGOptions | null };
-export type CreatorItem = CreatorDocument & { id: string; revision: number; kind: CreatorKind; created_at: string };
+export type CreatorDocument = { display_name: string; call_name?: string; description: string; traits: string; rules: string; cast?: CastMember[]; rpg?: RPGOptions | null };
+export type CreatorItem = CreatorDocument & { id: string; asset_id?: string; revision: number; kind: CreatorKind; created_at: string };
 export type BenchmarkJob = {
   id: string; status: string; created_at: string; planned_runs: number; planned_turns: number; error?: string; cancel_requested?: boolean;
   current: { model_id: string; scenario_id: string; run: number; memory: boolean; experiment_id?: string; turns_completed: number; turns_planned: number } | null;

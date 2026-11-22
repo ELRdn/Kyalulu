@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { fetchCharacters, fetchSessions, fetchWorlds, sessionTitle, type CharacterInfo, type SessionInfo, type WorldInfo } from "../lib/api";
 import { cleanPreview } from "../lib/text";
 import { moodsOf } from "../lib/moodTaxonomy";
-import { useTheme } from "../lib/theme";
 import { newSessionId } from "../lib/session";
 import Avatar from "./ui/Avatar";
 import Icon, { type IconName } from "./ui/Icon";
@@ -19,7 +18,6 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
   const language = useLanguage(), en = language === 'en';
   const administrative = useAdministrative();
   const navigate = useNavigate();
-  const { theme, toggle } = useTheme();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const [characters, setCharacters] = useState<CharacterInfo[]>([]);
@@ -91,23 +89,12 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
       if (to === '/studio' && !administrative) continue;
       list.push({ id: `p:${to}`, group: en ? 'Navigate' : '移動', label: en ? english : ja, keywords: `${ja} ${english} ${kw}`, leading: icon(name), run: go(to) });
     }
-    list.push({
-      id: "a:theme",
-      group: en ? 'Actions' : '操作',
-      label: theme === "dark" ? (en ? 'Switch to light mode' : 'ライトモードに切り替える') : (en ? 'Switch to dark mode' : 'ダークモードに切り替える'),
-      keywords: "theme dark light テーマ ダーク ライト",
-      leading: icon(theme === "dark" ? "sun" : "moon"),
-      run: () => {
-        toggle();
-        onClose();
-      },
-    });
     list.push({ id: "a:new", group: en ? 'Actions' : '操作', label: en ? 'Start a new chat' : '新しいチャットをはじめる', keywords: "new chat 新規 チャット", leading: icon("plus"), run: () => { onClose(); navigate(`/chats/${encodeURIComponent(newSessionId())}`); } });
 
     if (!q) return list;
     const needle = q.toLowerCase();
     return list.filter((i) => i.id === "search" || i.keywords.toLowerCase().includes(needle));
-  }, [query, characters, sessions, worlds, theme, toggle, navigate, onClose, administrative, language]);
+  }, [query, characters, sessions, worlds, navigate, onClose, administrative, language]);
 
   useEffect(() => setActive(0), [query]);
   useEffect(() => {

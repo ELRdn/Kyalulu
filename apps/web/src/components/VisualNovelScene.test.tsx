@@ -30,12 +30,12 @@ function nodes(tree: ReactNode, match: (node: ReactElement<any>) => boolean): Re
 }
 function navigation(tree: ReactNode, previous: boolean) {
   const label = fixture.language === 'en' ? previous ? 'Previous scene' : 'Next scene' : previous ? '前のシーン' : '次のシーン';
-  const control = nodes(tree, node => node.props.children === label && typeof node.props.onClick === 'function')[0];
+  const control = nodes(tree, node => node.props['aria-label'] === label && typeof node.props.onClick === 'function')[0];
   expect(control).toBeDefined(); return control;
 }
 const content = (tree: ReactNode) => nodes(tree, node => node.type === MessageContent)[0];
 const props: Parameters<typeof VisualNovelScene>[0] = {
-  name: 'キャラの原名', streaming: true, cloud: true,
+  name: 'キャラの原名', streaming: true,
   messages: [
     { role: 'assistant', content: '最初の原文。First scene.', reasoning_summary: '最初の原要約' },
     { role: 'user', content: '利用者の原文。' },
@@ -60,7 +60,7 @@ it('localizes the empty region, story title and navigation through live JA/EN ch
     fixture.language = language;
     const tree = VisualNovelScene({ ...props, messages: [] }), html = renderToStaticMarkup(tree);
     expect(tree.props['aria-label']).toBe(language === 'en' ? 'Visual novel' : 'ビジュアルノベル表示');
-    expect(html).toContain(language === 'en' ? 'Story with キャラの原名' : 'キャラの原名との物語');
+    expect(html).toContain('<span class="k-vn-scene__name">キャラの原名</span>');
     expect(html).toContain(language === 'en' ? 'Scenes appear here after the first reply.' : '最初の返事が届くと、ここにシーンを表示します。');
     expect(html).toContain('0 / 0');
     expect(navigation(tree, true).props.disabled).toBe(true); expect(navigation(tree, false).props.disabled).toBe(true);

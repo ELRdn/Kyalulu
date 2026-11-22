@@ -55,3 +55,24 @@ async def test_invalid_creator_and_paths_rejected(isolated):
         assert (await client.get("/api/creator/world/created_bad@1")).status_code == 404
         assert (await client.put("/api/chat/settings", json={"session_id": "bad", "world_id": "created_bad@1"})).status_code == 400
         assert (await client.post("/api/prompt/compile", json={"persona_id": "../worlds/beast_world"})).status_code in (400, 500)
+
+
+async def test_call_name_reaches_the_prompt_and_delete_keeps_pinned_conversations(isolated):
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        made = (await client.post("/api/creator/persona", json={"display_name": "ゆう", "call_name": "ご主人様", "traits": "紅茶が好き"})).json()
+        assert made["call_name"] == "ご主人様"
+        assert "ご主人様" in compile_prompt(persona_id=made["id"]).system_prompt
+        exported = (await client.get(f"/api/creator/persona/{made['id']}/export")).json()["document"]
+        assert exported["call_name"] == "ご主人様"
+        unused = (await client.post("/api/creator/persona", json={"display_name": "未使用"})).json()
+        assert "call_name" not in (await client.get(f"/api/creator/persona/{unused['id']}/export")).json()["document"]
+        assert (await client.put("/api/chat/settings", json={"session_id": "pinned", "persona_id": made["id"]})).status_code == 200
+        for item in (made, unused):
+            assert (await client.delete(f"/api/creator/persona/{item['id']}")).status_code == 200
+        listed = {x["id"] for x in (await client.get("/api/creator/persona")).json()["items"]}
+        assert made["id"] not in listed and unused["id"] not in listed
+        assert made["id"] not in {x["id"] for x in (await client.get("/api/personas")).json()["personas"]}
+        assert "ご主人様" in compile_prompt(persona_id=made["id"]).system_prompt
+        assert (await client.get(f"/api/creator/persona/{unused['id']}")).status_code == 404
+        assert (await client.put(f"/api/creator/persona/{made['id']}", json={"display_name": "x"})).status_code in (400, 404, 409, 422)
+        assert (await client.delete(f"/api/creator/persona/{made['id']}")).status_code == 404

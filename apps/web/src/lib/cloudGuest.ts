@@ -3,8 +3,8 @@ import { fetchCharacters, fetchSessions, fetchWorlds } from './api';
 type Access = { cloud_mode?: boolean; authenticated: boolean };
 export const isCloudGuest = (access: Access) => access.cloud_mode === true && !access.authenticated;
 // The tab roots render a guest view with the login sheet instead of the full-screen login (docs/MOBILE_UX_SPEC.md §5.4-5.7).
-export const guestReadableRoute = (path: string) => ['/', '/discover', '/published', '/chats', '/create', '/profile'].includes(path) ||
-  /^\/(?:characters|works|authors|published)\/[^/]+$/.test(path);
+export const guestReadableRoute = (path: string) => ['/', '/discover', '/published', '/chats', '/create', '/profile', '/profile/advanced'].includes(path) ||
+  /^\/(?:characters|works|authors|published|profile\/legal)\/[^/]+$/.test(path);
 // Top-level segments of the routes in App.tsx (same list as APP_ROUTES in runtime/python/api/mobile.py).
 const APP_SEGMENTS = new Set(['', 'discover', 'published', 'publications', 'works', 'authors', 'chats', 'characters',
   'create', 'research', 'profile', 'migration', 'studio', 'status']);
@@ -40,3 +40,6 @@ export function consumeLoginReturn(fallback = '/') {
 export function clearLoginReturn() {
   try { sessionStorage.removeItem(RETURN_KEY); } catch { /* Storage may be disabled. */ }
 }
+
+/** A character's first line, held across the login redirect. */
+export const PENDING_START = 'kyalulu-pending-start';

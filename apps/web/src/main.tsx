@@ -3,7 +3,6 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter, HashRouter } from "react-router-dom";
 import App from "./App";
 import "./index.css";
-import { ThemeProvider } from "./lib/theme";
 import RuntimeGate from "./components/RuntimeGate";
 import AppErrorBoundary from './components/AppErrorBoundary';
 import MobileAppStatus from './components/MobileAppStatus';
@@ -22,10 +21,10 @@ const Router = hashRouting ? HashRouter : BrowserRouter;
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <AppErrorBoundary><ThemeProvider>
+    <AppErrorBoundary>
       <Router>
         <div className="k-pwa-root"><MobileAppStatus local={executionTarget()==='device'} quiet /><UnifiedEntry><RemoteSetup entry={remoteEntry}><RemoteBanner /><RuntimeGate><App /></RuntimeGate></RemoteSetup></UnifiedEntry></div>
       </Router>
-    </ThemeProvider></AppErrorBoundary>
+    </AppErrorBoundary>
   </React.StrictMode>,
 );

@@ -33,8 +33,8 @@ class OpenRouterTariff(Tariff):
 
 
 OPENROUTER_TARIFFS = {
-    or_provider.DEEPSEEK: OpenRouterTariff(version="or-inferencenet-ds-v4.1-flash-2026-10-12",
-        input_miss=77, input_hit=77, output=660),
+    or_provider.DEEPSEEK: OpenRouterTariff(version="or-inferencenet-ds-v4.1-flash-2026-11-10",
+        input_miss=103, input_hit=103, output=660),
 }
 OPENROUTER_ROUTE_TARIFFS = {key: OpenRouterTariff(
     version=f"or-{key}-{choice.get('observed_at', '2026-10-11')}",

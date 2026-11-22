@@ -5,3 +5,8 @@
 .k-model-selector__details summary { cursor: pointer; color: var(--text-secondary); }
 .k-model-selector__details[open] summary { margin-bottom: 8px; }
 .k-model-selector__details > div + div { margin-top: 6px; }
+
+.k-model-selector--compact { gap: 6px; }
+.k-model-selector--compact > label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.k-model-selector--compact .k-input { height: 23px; min-height: 0; padding: 0 22px 0 0; border: 0; border-radius: 0; font-size: 15px; font-weight: 700; line-height: 23px; color: var(--text-primary); appearance: none; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%239a95aa' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 7l4.5 4.5L13.5 7'/%3E%3C/svg%3E") right center / 18px no-repeat; }
+.k-model-selector--compact .k-model-selector__info { gap: 4px; line-height: 18px; color: var(--text-muted); }

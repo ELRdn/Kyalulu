@@ -90,6 +90,9 @@ def _resolve_placeholder(key: str, char: dict | None, persona: dict | None, worl
             if fk.lower() == field.lower():
                 return str(fv) if fv is not None else ""
         return ""
+    if lk == "persona.call_line":
+        call = (persona or {}).get("call_name", "")
+        return f"呼ばれ方: キャラ側に呼び方の設定がなければ、USERを「{call}」と呼ぶ。" if call else ""
     if lk.startswith("persona."):
         field = k.split(".", 1)[1]
         for fk, fv in (persona or {}).items():
@@ -297,6 +300,9 @@ def compile_prompt(
             sections["character"] = c_text
     if persona:
         p_text = persona.get("traits") or persona.get("description") or ""
+        if persona.get("call_name"):
+            # The character's own form of address wins when the card defines one.
+            p_text = f"{p_text.strip()}\n呼ばれ方: {persona['call_name']}（キャラ側に呼び方の設定があればそちらを優先）".strip()
         if p_text:
             parts.append(f"# Persona (USER): {persona.get('display_name', persona_id)}\n{p_text.strip()}")
             sections["persona"] = p_text.strip()

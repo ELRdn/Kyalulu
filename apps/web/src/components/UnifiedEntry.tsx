@@ -8,13 +8,26 @@ import { useConfirm } from './ui/Dialog';
 import './unified.css';
 
 const choices: {key:'genres'|'moods'|'activities';ja:string;en:string;options:[string,string,string][]}[] = [
-  {key:'genres',ja:'好きなジャンル',en:'Your genres',options:[['school','学園','School'],['fantasy','異世界','Fantasy'],['night','夜のひととき','Night']]},
-  {key:'moods',ja:'キャラの雰囲気',en:'Character style',options:[['cool','クール','Cool'],['sweet','甘々','Sweet'],['tsundere','ツンデレ','Tsundere'],['polite','礼儀正しい','Polite'],['mysterious','ミステリアス','Mysterious']]},
-  {key:'activities',ja:'楽しみ方',en:'Your moments',options:[['healing','癒し','Comfort'],['smart','知的な会話','Thoughtful chats'],['fantasy','冒険','Adventure']]},
+  {key:'genres',ja:'好きなジャンル',en:'Your genres',options:[['school','学園','School'],['fantasy','ファンタジー','Fantasy'],['日常','日常','Everyday'],['恋愛','恋愛','Romance'],['ミステリー','ミステリー','Mystery'],['ホラー','ホラー','Horror'],['SF','SF','Sci-fi']]},
+  {key:'moods',ja:'好きな雰囲気',en:'Character style',options:[['cool','クール','Cool'],['healing','癒し','Comfort'],['sweet','甘々','Sweet'],['tsundere','ツンデレ','Tsundere'],['onee-san','お姉さん','Big sister'],['年下','年下','Younger']]},
+  {key:'activities',ja:'やりたいこと',en:'Your moments',options:[['雑談','雑談','Small talk'],['相談','相談','Advice'],['冒険','冒険','Adventure'],['ロールプレイ','ロールプレイ','Roleplay']]},
 ];
 
-export function Interests({onDone}:{onDone:()=>void}) {
-  const owner=useDeviceOwner();return <InterestChoices key={owner} owner={owner} onDone={onDone}/>;
+export function Interests({onDone,page=false}:{onDone:()=>void;page?:boolean}) {
+  const owner=useDeviceOwner();return page?<InterestPage key={owner} owner={owner} onDone={onDone}/>:<InterestChoices key={owner} owner={owner} onDone={onDone}/>;
+}
+/** 32: every choice on one page, saved explicitly (first-run onboarding keeps the three steps). */
+function InterestPage({owner,onDone}:{owner:string;onDone:()=>void}) {
+  const [draft,setDraft]=useState(preferences),language=useLanguage(),en=language==='en';
+  const save=()=>{if(owner!==deviceOwner())return;savePreferences({...preferences(),genres:draft.genres,moods:draft.moods,activities:draft.activities});onDone();};
+  return <section className="k-interests k-interests--page" lang={language} aria-label={en?'Your interests':'好みの設定'}>
+    <p className="k-interests__hint">{en?'Used for suggestions. You can change these any time.':'おすすめに使います。あとでいつでも変えられます。'}</p>
+    {choices.map(group=><fieldset key={group.key} className="k-interests__set"><legend>{en?group.en:group.ja}</legend>
+      <div className="k-interests__chips">{group.options.map(([key,ja,english])=><label key={key} className="k-interests__chip">
+        <input type="checkbox" checked={draft[group.key].includes(key)} onChange={e=>setDraft({...draft,[group.key]:e.target.checked?[...draft[group.key],key]:draft[group.key].filter(v=>v!==key)})}/>{en?english:ja}
+      </label>)}</div></fieldset>)}
+    <Button size="lg" onClick={save}>{en?'Save':'保存'}</Button>
+  </section>;
 }
 function InterestChoices({owner,onDone}:{owner:string;onDone:()=>void}) {
   const [step,setStep]=useState(0),[draft,setDraft]=useState(preferences);
@@ -31,7 +44,8 @@ function InterestChoices({owner,onDone}:{owner:string;onDone:()=>void}) {
   </section>;
 }
 
-export function ExecutionPicker() {
+/** `segment` is design 29's three-way control; the entry form keeps the compact select. */
+export function ExecutionPicker({segment=false}:{segment?:boolean}={}) {
   const language=useLanguage(),target=useExecutionTarget(),busy=useGenerationBusy(),t=labels[language];
   const pending=usePendingConversation(),en=language==='en';
   const [dialog,confirm]=useConfirm();
@@ -41,6 +55,13 @@ export function ExecutionPicker() {
     if(await confirm({title:cloud?(language==='ja'?'Cloudをブラウザーで開きますか？':'Open Cloud in your browser?'):(language==='ja'?'実行先を切り替えますか？':'Switch execution target?'),
       description:cloud?(language==='ja'?'https://app.kyalulu.com/ を別画面で開きます。保存済みの会話と下書きはこのPCに残り、認証情報も転送しません。':'Open https://app.kyalulu.com/ separately. Saved conversations and drafts stay on this PC. No sign-in information is transferred.'):(language==='ja'?'保存済みの会話と下書きは元の場所に残ります。会話を自動転送しません。':'Saved conversations and drafts stay in their original location. Nothing is transferred automatically.'),confirmLabel:t.next,cancelLabel:en?'Cancel':'キャンセル'})&&!generationBusy()) switchTarget(next);
   };
+  const options=(['cloud','device','pc',...(hasLocalRuntime()?['local']:[])] as ExecutionTarget[]);
+  const recovery=pending!==null&&<p role="status">{pending?<Link to={`/chats/${encodeURIComponent(pending)}`}>{en?'Check send result':'送信結果を確認'}</Link>:(en?'Draft recovery could not be read. Check browser storage before switching.':'下書きの復旧記録を読み込めません。切り替える前にブラウザーの保存領域を確認してください。')}</p>;
+  if(segment)return <section className="k-set k-execution-segment">{dialog}
+    <div><h2 className="k-set__title">{t.target}</h2><p className="k-set__desc">{en?'Where replies are generated. Conversations do not move automatically when you switch.':'会話をどこで生成するか。切り替えても会話は自動で移りません。'}</p></div>
+    <div className="k-segment" role="radiogroup" aria-label={t.target}>{options.map(v=><button type="button" key={v} role="radio" aria-checked={target===v} className={target===v?'is-active':''} disabled={busy} onClick={()=>{if(v!==target)void choose(v);}}>{t[v]}</button>)}</div>
+    {hasLocalRuntime()&&target==='cloud'&&<Button disabled={busy} onClick={()=>choose('cloud')}>{language==='ja'?'Cloudを開く':'Open Cloud'}</Button>}
+    {recovery}</section>;
   return <div className="k-execution-picker">{dialog}<label>{t.target}
     <select aria-label={t.target} value={target} disabled={busy} onChange={e=>choose(e.target.value as ExecutionTarget)}>
       {(['cloud','device','pc',...(hasLocalRuntime()?['local']:[])] as ExecutionTarget[]).map(v=><option key={v} value={v}>{t[v]}</option>)}
@@ -50,17 +71,17 @@ export function ExecutionPicker() {
 
 export default function UnifiedEntry({children}:{children:ReactNode}) {
   const language=useLanguage(),[draft,setDraft]=useState(preferences),[stage,setStage]=useState<'legal'|'ready'>(()=>preferences().accepted?'ready':'legal');
-  const [busy,setBusy]=useState(false),[error,setError]=useState<''|'eligibility'|'guardian'|'scope'>('');
+  const [busy,setBusy]=useState(false),[error,setError]=useState<''|'eligibility'|'guardian'|'scope'>(''),[guardian,setGuardian]=useState(false);
   const target=useExecutionTarget(),hostedCloud=hasLocalRuntime()&&target==='cloud';
   // Cloud asks for region, age and consent in the login sheet (docs/MOBILE_UX_SPEC.md §2-3); other targets still use this form.
   if((!isUnifiedEntry()||stage==='ready'||target==='cloud')&&!hostedCloud)return <>{children}</>;
-  const en=language==='en',t=labels[language];
+  const en=language==='en',t=labels[language],teen=!hasLocalRuntime()&&draft.age>=13&&draft.age<18;
   return <main className="k-unified-entry" lang={language}><header><img src="/mascot/v2/face-default.webp" alt="" width={56} height={56}/><h1>Kyalulu</h1></header>
     <ExecutionPicker/>
     {hostedCloud?<p>{en?'Cloud runs at app.kyalulu.com. Open Cloud or select another execution target.':'Cloudは app.kyalulu.com で利用します。Cloudを開くか、別の実行先を選んでください。'}</p>:<form onSubmit={async e=>{
       e.preventDefault();if(busy)return;const owner=deviceOwner();setBusy(true);setError('');
       try {
-        const response=await cloudFetch(hasLocalRuntime()?'/api/local/eligibility':'/api/cloud/app/eligibility',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({country:draft.country,age:draft.age})});
+        const response=await cloudFetch(hasLocalRuntime()?'/api/local/eligibility':'/api/cloud/app/eligibility',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(teen?{country:draft.country,age:draft.age,guardian_consent:guardian}:{country:draft.country,age:draft.age})});
         const result=await response.json();if(!response.ok)throw result?.error;
         if(owner!==deviceOwner())throw Error('Account changed');
         if(typeof result?.ticket!=='string'||!result.ticket||result.ticket.length>4000||result.country!==draft.country||!['adult','teen'].includes(result.age_band)||typeof result.policy!=='string'||!result.policy)throw Error('Invalid eligibility response');
@@ -73,6 +94,7 @@ export default function UnifiedEntry({children}:{children:ReactNode}) {
       <label>{t.language}<select aria-label={t.language} disabled={busy} value={language} onChange={e=>savePreferences({...preferences(),language:e.target.value as AppPreferences['language']})}><option value="ja">日本語</option><option value="en">English</option></select></label>
       <label>{en?'Country / region (ISO code)':'居住国・地域（ISOコード）'}<input disabled={busy} value={draft.country} onChange={e=>setDraft({...draft,country:e.target.value.toUpperCase()})} pattern="[A-Z]{2}" minLength={2} maxLength={2} placeholder="JP" required autoComplete="country"/></label>
       <label>{en?'Age':'年齢'}<input disabled={busy} type="number" min={13} max={120} value={draft.age||''} onChange={e=>setDraft({...draft,age:e.target.valueAsNumber})} required/></label>
+      {teen&&<label className="k-unified-check"><input disabled={busy} type="checkbox" checked={guardian} onChange={e=>setGuardian(e.target.checked)} required/>{en?"I have a parent or guardian's consent.":'保護者の同意を得ています。'}</label>}
       <label className="k-unified-check"><input disabled={busy} type="checkbox" required/>{en?'I agree to the terms and privacy policy.':'利用規約・プライバシーポリシーに同意します。'}</label>
       <p><a href="https://kyalulu.com/terms" target="_blank" rel="noreferrer">{en?'Terms':'利用規約'}</a> · <a href="https://kyalulu.com/privacy" target="_blank" rel="noreferrer">{en?'Privacy':'プライバシー'}</a></p>
       {error&&<p role="alert">{error==='scope'?(en?'The account changed. Review these details and try again.':'アカウントが切り替わりました。内容を確認して再試行してください。'):error==='guardian'?(en?'Verified guardian consent is required for this age group. Access stays closed until that confirmation is available.':'この年齢区分には確認済みの保護者同意が必要です。確認手段の提供まで利用できません。'):(en?'This region or age group is not enabled. Please try again after its requirements are verified.':'この地域・年齢区分の提供条件を確認できません。条件の確認後に再試行してください。')}</p>}<Button type="submit" disabled={busy}>{busy?(en?'Checking':'確認中'):t.next}</Button>

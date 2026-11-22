@@ -18,3 +18,33 @@
 .k-lab table { border-collapse: collapse; width: 100%; font-size: 12px; }
 .k-lab td, .k-lab th { padding: 8px; text-align: left; border-bottom: 1px solid var(--border); }
 @media (max-width: 640px) { .k-lab-columns, .k-lab-fields { grid-template-columns: minmax(0, 1fr); } }
+
+/* Personas & worlds (designs 31 / 31b) */
+.k-me-sub.k-lab { max-width: 640px; display: grid; gap: 14px; }
+.k-me-sub.k-lab .k-me-sub__head .k-lab-head-save { margin-left: auto; min-height: 36px; padding: 0 16px; border-radius: 18px; }
+.k-seg { display: flex; gap: 4px; padding: 4px; border-radius: 14px; background: var(--bg-surface); }
+.k-seg button { flex: 1; min-height: 38px; border: 0; border-radius: 10px; background: none; color: var(--text-muted); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
+.k-seg button[aria-pressed=true] { background: var(--bg-surface-soft); color: var(--text-primary); font-weight: 700; }
+.k-lab-hint, .k-lab-version { margin: 0; font-size: 13px; color: var(--text-muted); }
+.k-lab-notice { margin: 0; font-size: 13px; color: var(--text-secondary); }
+.k-lab-row { min-height: 72px; padding: 14px 16px; }
+.k-lab-row__avatar { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; border-radius: 50%; background: var(--bg-surface-soft); color: var(--accent-primary); font-size: 16px; font-weight: 700; }
+.k-lab-row .k-set-row__sub { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.k-lab-row .k-set-row__text { min-width: 0; flex: 1; }
+.k-lab-row .k-set-row__label { font-weight: 700; }
+.k-lab-hint { font-weight: 400; }
+.k-lab-head-save { font-size: 14px; }
+.k-lab-new { width: 100%; min-height: 44px; border-radius: 22px; }
+.k-me-sub.k-lab .k-lab-form label { font-weight: 700; }
+.k-me-sub.k-lab .k-lab-form input:not([type=checkbox]):not([type=file]), .k-me-sub.k-lab .k-lab-form textarea { min-height: 48px; padding: 11px 14px; border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--bg-surface); font-size: 14px; font-weight: 400; }
+.k-lab-badge { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 10px; background: var(--accent-fill); color: #fff; font-size: 11px; font-weight: 700; vertical-align: 2px; }
+.k-lab .k-lab-danger, .k-lab .k-lab-danger .k-set-row__label { color: var(--danger); }
+
+/* P34, 31b */
+.k-me-sub.k-lab .k-lab-form { gap: 14px; }
+.k-me-sub.k-lab .k-lab-form input:not([type=checkbox]):not([type=file]), .k-me-sub.k-lab .k-lab-form textarea { font-size: 15px; font-weight: 400; }
+.k-me-sub.k-lab .k-lab-form input:not([type=checkbox]):not([type=file]) { min-height: 47px; }
+.k-lab-req { margin-left: 6px; color: var(--accent-secondary); font-size: 11px; font-weight: 700; }
+.k-lab-more { display: grid; gap: 12px; }
+.k-lab-more summary { color: var(--text-muted); font-size: 13px; cursor: pointer; }
+.k-me-sub.k-lab .k-lab-form textarea[rows="4"] { height: 110px; }

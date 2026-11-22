@@ -54,7 +54,7 @@ it('uses k-input, exposes loading, and retains saved revisions without firing ch
   expect(html).not.toContain('追加できる');
   expect(html).toContain('選択済み（読込中・版1）');
   expect(html).toContain('選択済みの知識（版2・読込中）');
-  expect(select(tree, '会話の生成プリセット').props).toMatchObject({ className: 'k-input', disabled: true, value: 'preset' });
+  expect(select(tree, '会話の生成プリセット').props).toMatchObject({ disabled: true, value: 'preset' });
   expect(select(tree, '表情').props).toMatchObject({ className: 'k-input', disabled: false, value: 'smile' });
   expect(html).not.toMatch(/<details[^>]*\bopen=/);
   expect(p.onChange).not.toHaveBeenCalled();

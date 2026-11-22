@@ -68,7 +68,7 @@ async def test_pinned_route_and_actual_decimal_cost(tmp_path, model):
         assert payload["provider"]["allow_fallbacks"] is False
         assert payload["provider"]["data_collection"] == "deny"
         assert payload["provider"]["require_parameters"] is True
-        assert payload["provider"]["max_price"] == {"prompt": 0.077, "completion": 0.66}
+        assert payload["provider"]["max_price"] == {"prompt": 0.103, "completion": 0.66}
         assert payload["reasoning"] == {"enabled": False}
         assert payload["response_format"] == {"type": "json_object"}
         assert "models" not in payload and "tools" not in payload
