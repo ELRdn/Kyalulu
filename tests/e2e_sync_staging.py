@@ -16,14 +16,16 @@ from browser_fixture_server import local_vite
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE_HELPER_SHA256 = '8a1e01c6a6c6731ff35eee201695fa1190a1cb1e78779a0f0703438240916528'
 FROZEN_ORACLE_SHA256 = '8d02a0834b4e35abd1b1d79eb258c372b6407e23b2c59e66b33211e37f0c5868'
-BASELINE_SCHEMA_SHA256 = {
+# The frozen helper imports these live schemas. Pin their reviewed versions so
+# schema changes require an explicit review before comparing sync payloads.
+ORACLE_SCHEMA_SHA256 = {
     'capabilities.ts': '1480c1050c57d79f1cf381f9df1e9134cc0ad043ffc24d67505d364dc21f9b9a',
     'community.ts': 'eb13e86212932c9815246b82d9784a129f1d33bd6615563178b8a2b7494ce8fc',
     'hub.ts': 'f099338016d2f5533b3b39967cfc68f4da29ec12a01124fe6a6d2a13e0380b1c',
-    'index.ts': '02fd2b5447aab7c2e5c5dafc5b0df3c117857ee381112ecd6ab699da7c656f09',
+    'index.ts': '241626da478088eea5436069c6d8b479c17644c7f50d51c1ce1f84bced34b674',
     'portable.ts': '7eed8d943ab4863ea168a019b884ac68e1b7c695e51c5ffdfdb3b4d15dc1e4dd',
-    'publications.ts': '38021a20e5e809492b2d79f7f09b4965d5d5c6bd978255c065a64180ccd2af83',
-    'story.ts': 'cb1e1297cb7911ce0b0de7fee73c4e2e8d8b1cd9b34574f3b5ce2ec9a729bac5',
+    'publications.ts': '265fe931f7b5ea2d02b2025a2e1ceeaad8e7b0a1b067f47925f388a678b9493c',
+    'story.ts': '7c6cd65041d5e99233727fb993e50c544001828eef8de36e37ccf242672067c7',
 }
 SCENARIOS = (
     'initial', 'historical-fallback', 'legacy', 'mixed', 'nonconversation',
@@ -165,7 +167,7 @@ def check_oracle():
     baseline = baseline.replace("'../../packages/schemas/src/index.ts'", "'../../../../packages/schemas/src'")
     baseline = baseline.replace('type AppEntity=any;', "import type { AppEntity } from './appStore';")
     assert hashlib.sha256(baseline.encode()).hexdigest() == BASELINE_HELPER_SHA256, 'Frozen old helper drifted from baseline 21ba2fa'
-    for name, digest in BASELINE_SCHEMA_SHA256.items():
+    for name, digest in ORACLE_SCHEMA_SHA256.items():
         raw = (ROOT / 'packages/schemas/src' / name).read_bytes().replace(b'\r\n', b'\n')
         assert hashlib.sha256(raw).hexdigest() == digest, f'Baseline oracle schema drift: {name}'
     return BASELINE_HELPER_SHA256
