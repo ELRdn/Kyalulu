@@ -1,7 +1,7 @@
 import { connectionScope } from './remoteStore';
 import { useEffect, useRef, useState } from "react";
 import { cancelGeneration, fetchGeneration, fetchRecoveryHistory, type ChatMessage } from "./api";
-import { ChatRecovery, RecoveryCheck, reconcileGeneration, generationOutcome, type ChatDraft } from "./chatRecovery";
+import { ChatRecovery, RecoveryCheck, reconcileGeneration, generationOutcome, type ChatDraft, type GenerationStatus } from "./chatRecovery";
 import { useLanguage } from './appContext';
 import { friendlyMessage } from './errors';
 import type { ConfirmOptions } from '../components/ui/Dialog';
@@ -19,7 +19,7 @@ const notices = {
 };
 type RecoveryNotice = { kind: keyof typeof notices.ja; detail?: string };
 
-export function useChatRecovery(sessionId: string, onHistory: (messages: (ChatMessage & { model_id?: string })[]) => void,
+export function useChatRecovery(sessionId: string, onHistory: (messages: (ChatMessage & { model_id?: string })[], status: GenerationStatus) => void,
   confirm:(options:ConfirmOptions)=>Promise<boolean>) {
   const language = useLanguage();
   const identity=useRef(connectionScope()).current;
@@ -75,12 +75,12 @@ export function useChatRecovery(sessionId: string, onHistory: (messages: (ChatMe
       const resolved = await reconcileGeneration(store, fetchGeneration,
         (sid,status) => fetchRecoveryHistory(sid,status,AbortSignal.timeout(15000)), () => alive.current&&identity===connectionScope(), persistDirtyDraft);
       if (!resolved) return;
-      const { outcome, history, value: next } = resolved;
+      const { outcome, history, status, value: next } = resolved;
       if (outcome === "pending") {
-        setNotice({ kind: resolved.status?.legacy_recovery_revision===undefined?'pending':'legacy' });
+        setNotice({ kind: status.legacy_recovery_revision===undefined?'pending':'legacy' });
         return;
       }
-      historyCallback.current(history!);
+      historyCallback.current(history!, status);
       apply(next);
       dirtyDraft.current = false;
       setStorageError(null);
@@ -106,7 +106,12 @@ export function useChatRecovery(sessionId: string, onHistory: (messages: (ChatMe
       if (!pending) return;
       const status=await fetchGeneration(pending.id,sessionId);
       if(!alive.current||identity!==connectionScope()||store.read().pending?.id!==pending.id)return;
-      generationOutcome(status,pending,sessionId);
+      // A lost POST has no server row yet. Explicit cancellation can fence its ID;
+      // normal reconciliation still needs proof of a terminal outcome before unlocking.
+      const missing = status.status === 'not_found' && status.generation_id === pending.id &&
+        status.session_id === sessionId && status.assistant_id === null && status.user_id === null &&
+        status.legacy_recovery_revision === undefined;
+      if (!missing) generationOutcome(status,pending,sessionId);
       const revision=status.legacy_recovery_revision;
       if(revision!==undefined){
         const en=language==='en';

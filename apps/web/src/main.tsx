@@ -10,13 +10,16 @@ import RemoteSetup, { RemoteBanner } from './components/RemoteSetup';
 import { takePairing } from './lib/remotePairing';
 import UnifiedEntry from './components/UnifiedEntry';
 import { executionTarget, isDesktop } from './lib/appContext';
+import { legacyPath } from './lib/legacyPath';
 
 const remoteEntry = takePairing();
 
 // Electron (app://) と /device/ シェルにはSPAフォールバックがないため、ハッシュ経路を残す。
 const hashRouting = isDesktop() || location.pathname.startsWith('/device/');
 // 旧URL・PWAのstart_url・サーバーのリダイレクト（/#/profile 等）をパスへ読み替える。
-if (!hashRouting && location.hash.startsWith('#/')) history.replaceState(null, '', location.hash.slice(1));
+if (!hashRouting && location.hash.startsWith('#/')) {
+  history.replaceState(null, '', legacyPath(location.hash, location.origin) ?? location.pathname + location.search);
+}
 const Router = hashRouting ? HashRouter : BrowserRouter;
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

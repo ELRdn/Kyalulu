@@ -1,0 +1,16 @@
+.online-character {
+  color-scheme: dark;
+  font-family: system-ui, sans-serif;
+  line-height: 1.65;
+}
+body { margin: 0; }
+.online-character { max-width: 42rem; margin: 0 auto; padding: 1.25rem; }
+.online-character article > img { display: block; width: min(100%, 24rem); aspect-ratio: 1; object-fit: cover; border-radius: 1rem; }
+.online-character a { color: inherit; text-underline-offset: .2em; }
+.online-character a:focus-visible { outline: 3px solid currentColor; outline-offset: 4px; }
+.online-character form { display: flex; flex-wrap: wrap; align-items: end; gap: .75rem; margin-bottom: 1rem; }
+.online-character label { flex: 1 1 16rem; }
+.online-character :is(input, button) { box-sizing: border-box; padding: .65rem; font: inherit; border-radius: .5rem; }
+.online-character input { display: block; width: 100%; }
+.online-character button { cursor: pointer; }
+.online-recovery nav { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }

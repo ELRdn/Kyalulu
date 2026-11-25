@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kyalulu の実行経路と Next.js 移行判断</title>
+<style>
+:root{color-scheme:light;--ink:#211d35;--muted:#5b5469;--line:#d6d0dc;--violet:#553c88;--wash:#f2edf9}*{box-sizing:border-box}
+body{margin:0;background:#faf9f6;color:var(--ink);font:16px/1.75 "Yu Gothic UI",Meiryo,sans-serif}main{max-width:1080px;margin:auto;padding:clamp(22px,5vw,64px)}
+h1,h2,h3{line-height:1.35;text-wrap:balance}h1{font-size:clamp(30px,5vw,54px);margin:.25em 0}h2{font-size:clamp(22px,3vw,32px);margin:0 0 .7em}h3{margin:.25em 0}section{border-top:1px solid var(--line);padding:32px 0 12px;margin-top:24px}small,footer{color:var(--muted)}a{color:var(--violet);text-underline-offset:3px}
+.intro{font-size:1.15em;max-width:48em}.hub{background:var(--ink);color:white;padding:16px 18px;text-align:center;border-radius:8px}.arrow{text-align:center;color:var(--violet);font-size:1.25em;line-height:1.4}.routes{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.lane{background:white;border:1px solid var(--line);border-top:5px solid var(--violet);padding:14px;border-radius:5px}.lane:nth-child(2){border-top-color:#28735b}.lane:nth-child(3){border-top-color:#985313}.lane:nth-child(4){border-top-color:#326693}.lane p{margin:.55em 0}.lane strong{display:block}.foot{color:var(--muted);font-size:.92em}
+.flow{display:flex;align-items:stretch;gap:8px;list-style:none;padding:0}.flow li{flex:1;background:var(--wash);border-radius:6px;padding:12px;position:relative}.flow li+li:before{content:'›';position:absolute;left:-8px;top:35%;color:var(--violet)}.flow b{display:block}
+details{border-bottom:1px solid var(--line);padding:10px 0}summary{cursor:pointer;font-weight:650;color:var(--violet)}table{border-collapse:collapse;width:100%}th,td{text-align:left;vertical-align:top;padding:10px 8px;border-bottom:1px solid var(--line)}thead{background:var(--wash)}td:first-child{font-weight:600}code{font-size:.92em;overflow-wrap:anywhere}footer{margin-top:30px}
+.delivery{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media(max-width:760px){.routes{grid-template-columns:1fr 1fr}.flow{display:grid;grid-template-columns:1fr}.flow li+li:before{display:none}.flow li{padding:9px 13px}th,td{padding:7px 4px}table{font-size:.92em}}@media(max-width:460px){.routes{grid-template-columns:1fr}}@media print{body{background:white;font-size:10pt}main{max-width:none;padding:0}.lane,.flow li,tr{break-inside:avoid}details>*{display:block!important}}
+</style>
+<main>
+<header><small>技術調査　2026年11月23日</small><h1>Kyalulu はどこで動くのか</h1>
+<p class="intro">同じチャット画面から、生成と保存を4つの実行先に振り分ける。今後の Web 開発と利用体験を優先するなら、オンライン版全体の画面基盤に Next.js を段階採用する案を推す。端末内・PC の配布方式と生成 Runtime は別の判断になる。</p></header>
+<section aria-labelledby="candidate-delivery"><h2 id="candidate-delivery">Next.js 候補の配信構成</h2>
+<p>ローカルで復旧まで確認した候補はビルド <code>0-IOFsF8GbV3PmxZBvOOQ</code>。Caddy が従来と同じオリジンでリクエストを受け、画面・API・配布ファイルを振り分ける。</p>
+<div class="hub"><strong>ブラウザ</strong> → HTTPS → <strong>Caddy</strong><br>画面の種類と配信対象のグループで振り分ける</div>
+<div class="arrow" aria-hidden="true">↓</div>
+<div class="routes delivery">
+<article class="lane"><h3>オンライン画面</h3><p>キャラ詳細、チャット、プロフィール、制作などの URL を Next.js App Router が扱う。配信スイッチで対象の画面を従来版に戻せる。</p><strong>公開キャラ情報</strong>Next.js が公開対象の公式キャラを FastAPI から1件取得し、紹介・タイトル・OGPを初期HTMLに入れる。</article>
+<article class="lane"><h3>API と認証</h3><p><code>/api/*</code> と <code>/auth/callback</code> は FastAPI へ。認証、生成、会話保存、見積もり、精算の判定を行う。</p><strong>チャット</strong>ブラウザが実行先に対応する通信経路を選び、必要に応じて生成IDで復旧する。</article>
+<article class="lane"><h3>端末と配布ファイル</h3><p><code>/device/</code> と <code>/migration/</code> は Next.js で生成した専用HTMLを FastAPI の静的配信から渡す。</p><strong>PWA</strong>Service Worker が端末用HTMLと資産を保持する。切り戻しでは既存タブ用の資産と復旧用Workerも配信する。</article>
+</div>
+<p class="foot">ローカルでは段階配信と切り戻しを確認済み。画面用のJavaScriptを読み込めない場合は、同じURLを再読み込みできる。チャットでは保持した下書きから続けられる。配信先のステージングとスマホ実機での受け入れが残る。 <a href="online-nextjs-verification.md#recover-shared-online-screens-when-their-javascript-fails-to-load">検証記録</a></p>
+<table><caption>モカの会話開始にかかる秒数（Vite → Next.js）</caption><thead><tr><th scope="col">区間</th><th scope="col">即送信</th><th scope="col">約0.6秒下書き</th><th scope="col">約2.6秒下書き</th></tr></thead><tbody>
+<tr><th scope="row">キャラページで入力できるまで</th><td>5.99 → 1.74</td><td>6.40 → 1.77</td><td>5.87 → 1.79</td></tr>
+<tr><th scope="row">送信後にチャットで入力できるまで</th><td>1.50 → 2.41</td><td>1.40 → 2.38</td><td>1.31 → 2.09</td></tr>
+<tr><th scope="row">送信から最初の返信が見えるまで</th><td>3.64 → 4.28</td><td>3.34 → 4.27</td><td>3.26 → 4.08</td></tr>
+<tr><th scope="row">入口から入力・送信から返信の待ち時間の合計</th><td>9.56 → 6.10</td><td>9.77 → 6.08</td><td>9.14 → 5.89</td></tr>
+</tbody></table>
+<p class="foot">ビルド 0-IOFsF8GbV3PmxZBvOOQ。固定応答のモデル、393 × 852のChromium、80 ms遅延で、条件ごとにログイン済み各16件の中央値。表から下書き時間を除いた。合計は各試行の二つの待ち時間を足した値の中央値。<a href="online-nextjs-verification.md#compare-the-opening-delivery-candidate-directly-with-vite">計測条件と再現手順</a></p>
+<p>Next.jsでは、どの条件でもキャラページの入力開始と待ち時間の合計が短くなった。送信後に入力できるまでと初回返信までは、どの条件でもViteのほうが速かった。先読みが間に合わない場合は、会話画面の起動に必要なRuntimeの取得時間が改善対象になる。</p>
+<p>新候補では会話作成API自身のアカウント照合とCaddyの配信先通知を使い、条件を満たす送信の通信を1往復減らした。同じNext.jsビルドの即送信比較では、チャットで入力できるまでの中央値が2.94秒から2.46秒になった。<a href="online-nextjs-verification.md#confirm-delivery-on-the-atomic-conversation-opening-response">新経路の比較と復旧手順</a></p>
+<p>ログイン画面と実行先選択を必要時に読み込む別案では、チャット起動用のJavaScriptが約26 KB減った。即送信から初回返信までは順番を変えた2回の比較で0.34秒と1.22秒延びたため、採用候補は上記のビルドを維持した。<a href="online-nextjs-verification.md#compare-loading-sign-in-and-execution-controls-on-demand">軽量化案の比較条件と結果</a></p>
+</section>
+<section><h2>画面からモデルまで</h2>
+<div class="hub"><strong>React 19 の共通画面</strong>　Web・PWA・Electron<br>実行先・利用権限の確認 → チャット画面</div>
+<div class="arrow" aria-hidden="true">↓</div><div class="hub"><code>apiFetch('/api/chat/stream')</code> が選択中の実行先を読む</div><div class="arrow" aria-hidden="true">↓</div>
+<div class="routes">
+<article class="lane"><h3>Cloud</h3><small>cloud</small><p>同一オリジンの HTTPS<br>↓<br>Cloud FastAPI<br>↓<br>設定された外部モデルAPI</p><strong>保存先</strong>運営サーバーの利用者別 SQLite</article>
+<article class="lane"><h3>この端末</h3><small>device</small><p>ブラウザ内の deviceFetch<br>↓<br>Web Worker<br>↓<br>GGUF または ONNX</p><strong>保存先</strong>会話は IndexedDB、モデルファイルは OPFS</article>
+<article class="lane"><h3>このPC</h3><small>local</small><p>localhost または Electron の API 転送<br>↓<br>PC の FastAPI<br>↓<br>選択したモデル接続先</p><strong>保存先</strong>PC の SQLite</article>
+<article class="lane"><h3>自分のPC</h3><small>pc</small><p>ペアリング済み端末<br>↓<br>暗号化 WebSocket Relay<br>↓<br>所有者の PC の Runtime</p><strong>保存先</strong>接続先 PC の SQLite</article>
+</div><p class="foot">PC のモデル接続先には LM Studio・Ollama・外部 API 等がある。実行先が PC でも、選んだプロバイダーによって推論場所は異なる。同期やコミュニティは別の API 経路を持つ。</p>
+<details><summary>起動・配布の違い</summary><p>Vite は Web の HTML・JS・CSS をビルドする。統合版では Worker、WASM、オフライン用の配布ファイル一覧も作る。通常の Web はパスで、Electron と <code>/device/</code> はハッシュで画面を切り替える。旧 Mobile は別のエントリを持つ。Electron は共通の Web エントリを読み、製品版の <code>app://kyalulu</code> からローカル API を転送する。npm ランチャーはネイティブ版 Web を含むローカル Runtime をループバックで起動する。</p><p>統合 Cloud の配布構成例は、Caddy → Uvicorn の FastAPI。ビルド済み Web と Python をコンテナに同梱する。LP と日英のガイドは別の静的サイトで、ガイド生成時にサイトマップや検索用データも作る。</p></details>
+<details><summary>データと同期の境界</summary><p>Cloud は Supabase Auth で認証し、Python がセッションから利用者を決める。運営用 <code>control.db</code> はアカウント・課金などを、<code>tenants/&lt;owner&gt;/data.db</code> は利用者ごとの会話などを扱う。ブラウザでは表示設定や未確定の送信情報に localStorage も使う。Service Worker のキャッシュはビルド時に指定したシェルと資産用で、会話履歴はそこに入らない。</p><p>端末での生成とアカウント同期は別々の操作。同期の許可と対象データの保存方針を確認し、変更を outbox に記録して要求 ID と改訂番号を付ける。競合・削除・再開を扱うため、単純なクラウド上書きとは異なる動作になる。</p></details>
+</section>
+<section><h2>Cloud で「送信」を押したあと</h2>
+<h3>公式キャラページから会話を作る場合</h3>
+<ol class="flow"><li><b>送信元の確認</b>Cloudのアカウントと配信対象を確かめる。</li><li><b>会話の保存</b>FastAPIが設定と挨拶を保存し、履歴の版を返す。</li><li><b>チャットを開く</b>App Routerが遷移。アカウント確認を経て履歴を読む。</li><li><b>最初のメッセージ</b>保存した下書きと履歴の版を使い、見積もりと生成に進む。</li></ol>
+<h3>会話でメッセージを送るたびに</h3>
+<ol class="flow"><li><b>① 送信準備</b>生成 ID を確保。保存済み履歴を使う場合は版を確認。</li><li><b>② 見積もり</b>経路と上限額を取得。追加同意が必要なら画面で確認。</li><li><b>③ 生成</b>予約してキューへ。設定、状態、記憶、履歴から入力を作り、モデルを呼ぶ。</li><li><b>④ 検証・保存</b>本文と状態更新を検証し、成功したターンを保存。料金を精算。</li><li><b>⑤ 表示</b>SSE で進捗を通知し、成功時の done で確定本文を表示。</li></ol>
+<p>③〜④の進捗通知は生成中に届く。モデルが最初のトークンを返した時刻と、ユーザーが最初の本文を見る時刻は違う。PC の Python 経路は暫定本文と再試行時のリセットを返せる。現行の統合 Device は Worker の差分を内部で集め、進捗を返し、解析・保存後に本文を確定する。</p>
+<details><summary>チャットを速くしたい場合に見る計測値</summary><p>クライアントは履歴照会、見積もり取得、同意待ち、送信後の初本文・完了を個別に記録する。Cloud 側にはキュー、生成、保存の所要時間もある。同意操作の待ち時間を分け、同じモデル・会話条件で調べると改善箇所を選べる。実行中に接続が切れた場合は、保存した生成 ID で状態と履歴を照合する。</p></details>
+</section>
+<section><h2>公開ページで起きていること</h2>
+<p>手元の Cloud は <code>/discover</code> と対象の公式一般向け <code>/characters/:id</code> に、本文・タイトル・canonical・OGP を含む HTML を返す実装。起動後に React が本文を描き直す。作品・作者ページは React の画面と API を持つが、この Python の HTML 生成対象には含まれない。</p>
+<table><thead><tr><th>公開 URL</th><th>未ログインでの HTML 取得結果</th></tr></thead><tbody>
+<tr><td>app.kyalulu.com/ および /device/</td><td>200。HTTP ヘッダーと HTML の両方で noindex。</td></tr>
+<tr><td>app.kyalulu.com/discover および /published</td><td>直接 GET で 404。公開入口までの配信と手元の実装に差がある。原因の特定には配信版・プロキシ設定の確認が要る。</td></tr>
+<tr><td>kyalulu.com/docs/</td><td>200。HTML に見出し、OGP、index,follow。</td></tr></tbody></table>
+</section>
+<section><h2>Next.js の採否を決める条件</h2>
+<table><thead><tr><th>選択肢</th><th>得られるもの</th><th>判断</th></tr></thead><tbody>
+<tr><td>Vite ＋ FastAPI を継続</td><td>共通画面、オフライン、デスクトップの配布を維持。少数の公開ページは既存の Python HTML 生成を拡張できる。</td><td>画面の取得処理やルート定義の整理を少ない変更で進める対案。</td></tr>
+<tr><td>公開面に Next.js を追加</td><td>作品ごとのメタデータ、サーバーレンダリング、静的生成や再検証を React 側でまとめられる。</td><td>一般公開の作品が増え、検索・SNS経由の流入が重要になる場合の候補。</td></tr>
+<tr><td>オンライン版全体の画面を Next.js に移行</td><td>一覧から個別ページ・ログイン・チャットまで同じルーターで管理できる。公開データはサーバー、会話入力・生成の復旧・端末 API はクライアントで扱う。</td><td>今後の開発の主軸に推奨。送信後のUXと実機・配信先の確認を本番切り替えの条件にする。</td></tr>
+<tr><td>全配布版・Python Runtime まで書き換え</td><td>言語やフレームワークをそろえても、SQLite・推論・課金・暗号化中継・オフライン配布の動作は引き続き実装・運用する。</td><td>一括移行は推奨しない。端末版のシェル共通化はオフライン起動と任意の会話 ID の復元を実証して判断する。</td></tr></tbody></table>
+<p>共通のキャラ詳細画面ではキャラ一覧・世界一覧・セッション一覧をまとめて取得する。Next.js の公式キャラ個別ルートでは公開紹介に必要な1件を先に描画し、個人設定や履歴は後から読み込む。作品と作者の個別ページにも、初期本文と共有メタデータで同じ取得結果を使う構成を導入した。<a href="../../apps/online/app/_public/catalog.tsx">作品・作者ページの共通処理</a> · <a href="../../apps/web/src/lib/cloudGuest.ts">カタログ取得</a></p>
+<p>公開面を試すなら、まず一般向けの公式キャラ詳細を1種類選ぶ。直接アクセス・JS 実行前の本文・SNS プレビュー・会話開始までの導線を比較する。ユーザー投稿に広げる段階で、公開取り下げ時のキャッシュ無効化と、ログイン状態で表示が変わるデータの扱いも確認する。</p>
+<p>静的エクスポートを使えば Next.js の常駐サーバーは不要。ただしリクエストごとの描画や ISR（公開後の段階的な再生成）は使えず、動的な ID はビルド時に列挙する必要がある。これらが必要ならサーバー実行環境とキャッシュ更新の運用が増える。</p>
+</section>
+<footer>対象は main 4f24140 と作業ツリー。公開確認は 2026-11-23 に Accept: text/html を指定した未ログイン GET。稼働コミット・配信設定・ログイン後の生成速度は未確認。<br>
+実装の入口：<a href="../../apps/web/src/lib/transport.ts">実行先分岐</a> · <a href="../../apps/web/src/lib/api.ts">送信</a> · <a href="../../runtime/python/api/chat.py">PC 生成</a> · <a href="../../runtime/python/cloud/generation.py">Cloud 生成</a> · <a href="../../apps/web/src/lib/deviceApi.ts">端末生成</a> · <a href="../../runtime/python/cloud/public_pages.py">公開 HTML</a> · <a href="https://nextjs.org/docs/app/guides/static-exports">Next.js 静的出力の仕様</a></footer>
+</main></html>

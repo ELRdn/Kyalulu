@@ -1,5 +1,5 @@
 /** Secrets live in IndexedDB, never URL queries or localStorage. */
-import {isCloud,cloudOwner} from './cloudMode';
+import {isCloud,cloudOwner,cloudConnectionScope} from './cloudMode';
 import { executionTarget, deviceOwner, generationBusy } from './appContext';
 export type RemoteDevice = {
   id: string; ownerId: string; hostId: string; deviceId: string;
@@ -10,7 +10,7 @@ let selected: RemoteDevice | null = null;
 export function activeRemote() { return selected; }
 export function connectionScope() {
   const target = executionTarget();
-  return target === 'device' ? `device:${deviceOwner()}` : selected && target === 'pc' ? `remote:${selected.relay}:${selected.ownerId}:${selected.hostId}` : isCloud() ? `cloud:${window.location.origin}:${cloudOwner()}` : window.location.origin;
+  return target === 'device' ? `device:${deviceOwner()}` : selected && target === 'pc' ? `remote:${selected.relay}:${selected.ownerId}:${selected.hostId}` : isCloud() ? cloudConnectionScope(window.location.origin, cloudOwner()) : window.location.origin;
 }
 export function scopedKey(key: string) {
   return selected || isCloud() || executionTarget() === 'device' ? `${key}:${encodeURIComponent(connectionScope())}` : key;
@@ -51,6 +51,7 @@ export function selectRemote(device: RemoteDevice | null) {
   // Reload tears down all old requests/components. Never reuse another host's view state.
   if (device) { localStorage.setItem('kyalulu-active-remote', device.id); localStorage.setItem('kyalulu-execution-target', 'pc'); }
   else localStorage.removeItem('kyalulu-active-remote');
+  if (typeof document !== 'undefined' && document.documentElement.dataset.kyaluluFrontend === 'next') { location.assign('/chats'); return; }
   location.hash = '/chats';
   location.reload();
 }

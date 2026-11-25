@@ -1,5 +1,7 @@
 import type { PortableAsset } from './library';
 
+export const assetUrl = (id?: string | null) => id ? `/api/library/assets/${id}` : undefined;
+
 export type PlayableAsset = { src: string; kind: 'image' | 'audio' | 'video' };
 /** Only owned Runtime assets are fetched automatically; imported URLs remain inert. */
 export function playableAsset(asset: PortableAsset): PlayableAsset | null {

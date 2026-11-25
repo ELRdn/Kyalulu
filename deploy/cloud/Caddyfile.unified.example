@@ -18,9 +18,125 @@
     @main {
         not path /device /device/ /device/index.html /migration /migration/ /migration/index.html /assets/runtime.worker-*.js
     }
-    header @main Content-Security-Policy "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://{$RELAY_DOMAIN} wss://{$RELAY_DOMAIN}; worker-src 'self' blob:; manifest-src 'self'; media-src 'self' blob:; base-uri 'none'; form-action 'self'; frame-src 'none'; frame-ancestors 'none'; object-src 'none'"
     @private path /.env* /.git/* /config.json
     respond @private 404
-    # Proxy API, callback, source offer and static files without rewriting Host or Origin.
-    reverse_proxy {$CLOUD_UPSTREAM:kyalulu-cloud-runtime:8000}
+    # Buckets affect UI delivery only. First visits use the old UI during enrollment.
+    map {http.request.uuid} {online_bucket} {
+        ~^0 pilot
+        ~^[123] beta
+        default stable
+    }
+    @enroll {
+        method GET
+        header Accept *text/html*
+        not header Cookie *__Host-kyalulu-bucket=*
+        expression `"{$ONLINE_COHORT:all}" in ["pilot", "quarter"]`
+    }
+    header @enroll +Set-Cookie "__Host-kyalulu-bucket={online_bucket}; Path=/; Max-Age=7776000; HttpOnly; Secure; SameSite=Lax"
+    @cohort_document {
+        header Accept *text/html*
+        expression `"{$ONLINE_COHORT:all}" in ["pilot", "quarter"]`
+    }
+    header @cohort_document >Cache-Control "private, no-store"
+    @eligible expression `"{$ONLINE_COHORT:all}" == "all" || ("{$ONLINE_COHORT:all}" in ["pilot", "quarter"] && {http.request.cookie.__Host-kyalulu-bucket} == "pilot") || ("{$ONLINE_COHORT:all}" == "quarter" && {http.request.cookie.__Host-kyalulu-bucket} == "beta")`
+    vars @eligible online_eligible yes
+    # Opt-in switches are independent so already-open pages retain their chunks on rollback.
+    @next_character {
+        vars online_eligible yes
+        path /characters/mocha_sfw
+        # The legacy client consumes this one-time handoff. A query also bypasses the old SW cache.
+        not query start=*
+        expression `"{$ONLINE_CHARACTER:off}" == "on"`
+    }
+    @next_assets {
+        path /_next/static/* /_next/image
+        expression `"{$ONLINE_ASSETS:off}" == "on" && ("{$ONLINE_PACKAGED_ASSETS:off}" != "on" || {http.request.uri.path} == "/_next/image")`
+    }
+    # The page matchers below come from scripts/sync_online_route_groups.py.
+    @next_chats {
+        vars online_eligible yes
+        path_regexp ^(/chats|/chats/[^/]+)/?$
+        expression `"{$ONLINE_CHATS:off}" == "on"`
+    }
+    @chat_delivery {
+        vars online_eligible yes
+        path /api/mobile/status
+        expression `"{$ONLINE_CHATS:off}" == "on"`
+    }
+    header @chat_delivery X-Kyalulu-Next-Chats 1
+    @next_pages {
+        vars online_eligible yes
+        path_regexp ^(/profile|/profile/[^/]+|/profile/legal/[^/]+|/create|/create/settings|/publications|/studio|/research|/research/benchmarks|/status)/?$
+        expression `"{$ONLINE_PAGES:off}" == "on"`
+    }
+    @page_delivery {
+        vars online_eligible yes
+        path /api/mobile/status
+        expression `"{$ONLINE_PAGES:off}" == "on"`
+    }
+    header @page_delivery X-Kyalulu-Next-Pages 1
+    @next_browse {
+        vars online_eligible yes
+        path_regexp ^(/discover|/published|/published/[^/]+|/characters/[^/]+|/works/[^/]+|/authors/[^/]+)/?$
+        expression `"{$ONLINE_BROWSE:off}" == "on"`
+    }
+    @browse_delivery {
+        vars online_eligible yes
+        path /api/mobile/status
+        expression `"{$ONLINE_BROWSE:off}" == "on"`
+    }
+    header @browse_delivery X-Kyalulu-Next-Browse 1
+    @opening_delivery {
+        vars online_eligible yes
+        path /api/mobile/status /api/chat/settings/opening
+        expression `"{$ONLINE_BROWSE:off}" == "on" && "{$ONLINE_CHATS:off}" == "on"`
+    }
+    header @opening_delivery X-Kyalulu-Next-Opening 1
+    # Old worker precache fetches the root with Accept: */* and verifies its exact Vite shell hash.
+    @next_entry {
+        vars online_eligible yes
+        path / /login
+        expression `"{$ONLINE_ENTRY:off}" == "on" && ({http.request.uri.path} == "/login" || {http.request.header.Accept}.contains("text/html") || {http.request.header.RSC} == "1")`
+    }
+    @entry_delivery {
+        vars online_eligible yes
+        path /api/mobile/status
+        expression `"{$ONLINE_ENTRY:off}" == "on"`
+    }
+    header @entry_delivery X-Kyalulu-Next-Entry 1
+    handle @next_entry {
+        reverse_proxy {$ONLINE_UPSTREAM:127.0.0.1:3000}
+    }
+    handle @next_browse {
+        reverse_proxy {$ONLINE_UPSTREAM:127.0.0.1:3000}
+    }
+    handle @next_pages {
+        reverse_proxy {$ONLINE_UPSTREAM:127.0.0.1:3000}
+    }
+    handle @next_chats {
+        reverse_proxy {$ONLINE_UPSTREAM:127.0.0.1:3000}
+    }
+    handle @next_character {
+        # Next emits the per-response CSP nonce used by the hydration scripts.
+        reverse_proxy {$ONLINE_UPSTREAM:127.0.0.1:3000}
+    }
+    handle @next_assets {
+        reverse_proxy {$ONLINE_UPSTREAM:127.0.0.1:3000}
+    }
+    # The final document fallback uses Next's 404. Assets, APIs and special
+    # documents always retain their assigned delivery and isolation policies.
+    @next_unknown {
+        method GET HEAD
+        vars online_eligible yes
+        path_regexp ^/[^.]*$
+        not path / /login /api /api/* /auth /auth/* /device /device/* /migration /migration/* /offline /offline/* /_next/* /assets/* /runtime/*
+        expression `"{$ONLINE_FALLBACK:off}" == "on" && "{$ONLINE_ENTRY:off}" == "on" && "{$ONLINE_BROWSE:off}" == "on" && "{$ONLINE_CHATS:off}" == "on" && "{$ONLINE_PAGES:off}" == "on" && ({http.request.header.Accept}.contains("text/html") || {http.request.header.RSC} == "1")`
+    }
+    handle @next_unknown {
+        reverse_proxy {$ONLINE_UPSTREAM:127.0.0.1:3000}
+    }
+    handle {
+        header @main Content-Security-Policy "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://{$RELAY_DOMAIN} wss://{$RELAY_DOMAIN}; worker-src 'self' blob:; manifest-src 'self'; media-src 'self' blob:; base-uri 'none'; form-action 'self'; frame-src 'none'; frame-ancestors 'none'; object-src 'none'"
+        reverse_proxy {$CLOUD_UPSTREAM:kyalulu-cloud-runtime:8000}
+    }
 }

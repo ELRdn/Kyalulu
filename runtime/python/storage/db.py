@@ -1,6 +1,6 @@
 """SQLite 初期化・マイグレーション (軽量版)"""
 
-from python.storage.context import get_db_path
+from python.storage.context import CURRENT_STORAGE, get_db_path
 import aiosqlite
 import os
 from pathlib import Path
@@ -173,6 +173,8 @@ CREATE TABLE IF NOT EXISTS unified_local_links (
 """
 
 
+CLOUD_SCHEMA_DDL = "BEGIN IMMEDIATE;\n" + DDL
+
 # M3/M6/M7 マイグレーション
 MIGRATIONS = [
     "ALTER TABLE session_settings ADD COLUMN character_id TEXT",
@@ -190,12 +192,28 @@ MIGRATIONS = [
 ]
 
 
+def database_identity(path: Path) -> tuple[int, int] | None:
+    try:
+        stat = path.stat()
+    except FileNotFoundError:
+        return None
+    return stat.st_dev, stat.st_ino
+
+
 async def init_db() -> None:
     """DB初期化（存在しなければ作成）+ 軽量マイグレーション"""
-    get_db_path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
-    async with aiosqlite.connect(get_db_path(DB_PATH)) as db:
-        await db.executescript(DDL)
-        await db.commit()
+    path = get_db_path(DB_PATH)
+    context = CURRENT_STORAGE.get()
+    # Hosted requests carry the identity that passed the owner-locked initialization.
+    # A replaced database or an unavailable inode keeps the usual migration path.
+    initialized = context.initialized_db if context else None
+    if initialized and initialized[1] and initialized == database_identity(path):
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(path) as db:
+        # Commit the hosted schema and its migrations together. Autocommit would
+        # sync the database once per statement during concurrent tenant startup.
+        await db.executescript(CLOUD_SCHEMA_DDL if context else DDL)
         # マイグレーション（列が無ければ追加、あれば無視）
         for sql in MIGRATIONS:
             try:

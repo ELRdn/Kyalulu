@@ -5,7 +5,7 @@ import json
 import re
 import time
 from contextlib import asynccontextmanager
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from uuid import uuid4
 from urllib.parse import urlsplit
 from fastapi import FastAPI, Request
@@ -23,13 +23,16 @@ from .contracts import PLANS
 from .generation import CloudGenerations, CloudChat
 from .queue import GenerationQueue
 from .safety import declared_sfw
-from .store import CloudStore, CloudError, digest, fingerprint
+from .store import CloudStore, CloudError, digest, fingerprint, run_attached_transaction
 from .sync import SyncService, export_snapshot, validate_snapshot, TABLES
 from .transfers import Transfers, SYNC_IMAGE_BYTES
 from .router import backend_block, public_route, require_current_consent
 from .router import public_routes
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+HASHED_ONLINE_ASSET = re.compile(
+    r"/_next/static/(?:chunks|css)/(?:[^/]+/)*(?:[^/]+[.-])?[0-9a-f]{16}\.(?:js|css)"
+)
 
 
 def create_app(config=None, *, transport=None, ad_provider=None):
@@ -37,7 +40,7 @@ def create_app(config=None, *, transport=None, ad_provider=None):
     store = CloudStore(config)
     profiles = AccountProfile(store)
     auth, sync, backups = SupabaseAuth(config, store, transport), SyncService(store), Backups(store)
-    locks, initialized = {}, set()
+    locks, initialized = {}, {}
     jobs = CloudGenerations(store, GenerationQueue(), sync, locks, transport)
     billing = StripeBilling(store, backups, transport)
     transfers = Transfers(store, sync)
@@ -92,12 +95,18 @@ def create_app(config=None, *, transport=None, ad_provider=None):
         return JSONResponse({"error": "cloud_unavailable"}, status_code=503)
 
     async def ensure(owner):
-        if owner not in initialized:
-            async with locks.setdefault(owner, asyncio.Lock()):
-                if owner not in initialized:
-                    await storage.init_db()
-                    await generations.recover_interrupted()
-                    initialized.add(owner)
+        path = get_db_path(storage.DB_PATH)
+        current = storage.database_identity(path)
+        if current is not None and initialized.get(owner) == current:
+            return current
+        async with locks.setdefault(owner, asyncio.Lock()):
+            current = storage.database_identity(path)
+            if current is None or initialized.get(owner) != current:
+                await storage.init_db()
+                await generations.recover_interrupted()
+                current = storage.database_identity(path)
+                initialized[owner] = current
+            return current
 
     async def pending():
         import aiosqlite
@@ -141,7 +150,9 @@ def create_app(config=None, *, transport=None, ad_provider=None):
                 "/api/cloud/billing/webhook",
                 "/api/cloud/app/rewards/webhook",
                 "/api/cloud/app/eligibility",
-            }
+            } or (request.method == "GET" and re.fullmatch(
+                r"/api/cloud/public/characters/[a-z0-9][a-z0-9_-]{0,79}", request.url.path
+            ) is not None)
             try:
                 if request.headers.get("host") != urlsplit(config.origin).netloc:
                     raise CloudError("invalid_host", 400)
@@ -183,8 +194,15 @@ def create_app(config=None, *, transport=None, ad_provider=None):
                             for k, v in message.get("headers", [])
                             if k.lower() != b"cache-control"
                         ]
+                        if request.url.path.startswith('/api/'):
+                            cache = b"no-store"
+                        elif message["status"] in {200, 206, 304} and HASHED_ONLINE_ASSET.fullmatch(request.url.path):
+                            # Packaged and retained chunk names identify immutable bytes.
+                            cache = b"private, max-age=31536000, immutable"
+                        else:
+                            cache = b"no-store, no-transform"
                         headers += [
-                            (b"cache-control", b"no-store" if request.url.path.startswith('/api/') else b"no-store, no-transform"),
+                            (b"cache-control", cache),
                             (b"x-content-type-options", b"nosniff"),
                             (b"referrer-policy", b"no-referrer"),
                         ]
@@ -226,7 +244,8 @@ def create_app(config=None, *, transport=None, ad_provider=None):
                     expected_owner = request.headers.get('x-kyalulu-owner')
                     sync_scope = request.url.path.startswith(('/api/cloud/app/sync', '/api/cloud/app/runtime-consent', '/api/cloud/app/entities/'))
                     bootstrap = request.url.path == '/api/cloud/app/sync/device' and request.method == 'GET' and getattr(request.state, 'app_sync_device', None)
-                    if (sync_scope and not bootstrap or expected_owner is not None) and expected_owner != owner:
+                    opening = request.url.path == '/api/chat/settings/opening'
+                    if (sync_scope and not bootstrap or opening or expected_owner is not None) and expected_owner != owner:
                         raise CloudError('sync_account_changed', 403)
                     publication_withdrawal = request.method == 'DELETE' and re.fullmatch(r'/api/cloud/app/publications/[^/]+', request.url.path) is not None
                     if config.unified_enabled and not publication_withdrawal and (
@@ -238,7 +257,8 @@ def create_app(config=None, *, transport=None, ad_provider=None):
                     context.directory.mkdir(parents=True, exist_ok=True)
                     scope.setdefault("state", {})["owner"] = owner
                     with storage_context(context):
-                        await ensure(owner)
+                        initialized_db = await ensure(owner)
+                    with storage_context(replace(context, initialized_db=initialized_db)):
                         return await self.app(scope, buffered, private_send)
                 return await self.app(scope, buffered, private_send)
             except CloudError as exc:
@@ -359,6 +379,15 @@ def create_app(config=None, *, transport=None, ad_provider=None):
         body = await community_body(request)
         return await community_call(request,community.report,body.get("work_id"),body.get("reason"))
 
+    @app.get("/api/cloud/public/characters/{character_id}")
+    async def public_character(character_id: str, opening: bool = False):
+        from python.cloud.public_pages import official_character
+
+        card = official_character(character_id, include_opening=opening)
+        if card is None:
+            raise CloudError("character_not_found", 404)
+        return card
+
     @app.get("/source.tar.gz")
     async def corresponding_source():
         import os
@@ -387,6 +416,7 @@ def create_app(config=None, *, transport=None, ad_provider=None):
             "remote_mode": False,
             "authenticated": authenticated,
             "owner_scope": owner,
+            "atomic_chat_opening": True,
             "administrative": False,
             "sfw": True,
             "safety_screening": False,
@@ -522,9 +552,9 @@ def create_app(config=None, *, transport=None, ad_provider=None):
         return {"configured": bool(key)}
 
     @app.post("/api/cloud/quotes")
-    async def quote(body: CloudChat, request: Request):
+    async def quote(body: CloudChat, request: Request, resolve_history: bool = False):
         async with locks.setdefault(request.state.owner, asyncio.Lock()):
-            return await jobs.quote(request.state.owner, body)
+            return await jobs.quote(request.state.owner, body, resolve_history=resolve_history)
 
     async def start(body, request):
         owner = request.state.owner
@@ -810,12 +840,15 @@ def create_app(config=None, *, transport=None, ad_provider=None):
     async def restore(backup_id: str, request: Request):
         async with locks.setdefault(request.state.owner, asyncio.Lock()):
             await pending()
-            initialized.discard(request.state.owner)
-            backups.restore(request.state.owner, backup_id, get_db_path(storage.DB_PATH))
-            await storage.init_db()
-            initialized.add(request.state.owner)
-            sync.bump(request.state.owner)
-            return {"ok": True, **sync.revision(request.state.owner)}
+            owner = request.state.owner
+            path = get_db_path(storage.DB_PATH)
+            initialized.pop(owner, None)
+            backups.restore(owner, backup_id, path)
+            with storage_context(CloudStorageContext.for_owner(config.root / "tenants", owner)):
+                await storage.init_db()
+            initialized[owner] = storage.database_identity(path)
+            sync.bump(owner)
+            return {"ok": True, **sync.revision(owner)}
 
     @app.post("/api/cloud/billing/checkout")
     async def checkout(request: Request):
@@ -845,6 +878,7 @@ def create_app(config=None, *, transport=None, ad_provider=None):
         "/chat/sessions/{session_id}/branch",
         "/chat/sessions/{session_id}/data",
         "/chat/settings",
+        "/chat/settings/opening",
         "/chat/history",
         "/chat/history/{msg_id}",
         "/chat/sessions",
@@ -955,9 +989,7 @@ def create_app(config=None, *, transport=None, ad_provider=None):
                         if request.method != "DELETE":
                             await screen(owner, value)
                             # Screen compiled references as well as the submitted settings.
-                            if request.url.path.endswith(
-                                "/chat/settings"
-                            ) or request.url.path.endswith("/prompt/compile"):
+                            if route_path in {"/chat/settings", "/chat/settings/opening", "/prompt/compile"}:
                                 from python.core.prompt_compiler import compile_prompt
 
                                 compiled = compile_prompt(
@@ -988,15 +1020,17 @@ def create_app(config=None, *, transport=None, ad_provider=None):
                         if route_path == "/chat/sessions/{session_id}/data" and request.method == "DELETE":
                             from python.storage import conversation
                             try:
-                                response = JSONResponse(await conversation.purge(
+                                result = await run_attached_transaction(conversation.purge(
                                     request.path_params["session_id"], cloud_revision=(store.path, owner, store.encrypt('{}'))))
+                                response = JSONResponse(result)
                             except generations.Conflict as exc:
                                 raise CloudError("stop_generation_before_delete", 409) from exc
                         else:
                             response = await handler(request)
-                        if response.status_code < 400:
-                            if route_path != "/chat/sessions/{session_id}/data":
-                                sync.bump(owner)
+                        if response.status_code < 400 and route_path != "/chat/sessions/{session_id}/data":
+                            # A successful retry also publishes the workspace revision if
+                            # the previous request stopped after committing the tenant DB.
+                            sync.bump(owner)
                 if response.status_code >= 500:
                     return JSONResponse({"error": "cloud_unavailable"}, status_code=503)
                 return response
@@ -1024,6 +1058,8 @@ def create_app(config=None, *, transport=None, ad_provider=None):
                 if path in {document, document + '/', document + '/index.html'} and not (config.web_dist / document / 'index.html').is_file():
                     raise CloudError(document + '_shell_not_built', 503)
             response = await static.get_response(path, request.scope)
+            if path.startswith('_next/static/'):
+                return response
             if response.status_code == 200 and (page := render(path, (config.web_dist / 'index.html').read_text(encoding='utf-8'), config.origin)):
                 return HTMLResponse(page, headers={'Cache-Control': response.headers['Cache-Control']})
             return response

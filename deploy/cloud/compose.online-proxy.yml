@@ -1,0 +1,15 @@
+# Add to the existing Relay project after installing the unified APP site block.
+services:
+  caddy:
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Set the canonical app hostname}
+      ONLINE_UPSTREAM: kyalulu-online:3000
+      ONLINE_COHORT: ${ONLINE_COHORT:-pilot}
+      ONLINE_ASSETS: ${ONLINE_ASSETS:-off}
+      ONLINE_PACKAGED_ASSETS: ${ONLINE_PACKAGED_ASSETS:-on}
+      ONLINE_CHARACTER: ${ONLINE_CHARACTER:-off}
+      ONLINE_ENTRY: ${ONLINE_ENTRY:-off}
+      ONLINE_BROWSE: ${ONLINE_BROWSE:-off}
+      ONLINE_CHATS: ${ONLINE_CHATS:-off}
+      ONLINE_PAGES: ${ONLINE_PAGES:-off}
+      ONLINE_FALLBACK: ${ONLINE_FALLBACK:-off}

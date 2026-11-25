@@ -61,7 +61,7 @@ vi.mock('./NativeSyncSettings', () => ({ default: () => null }));
 vi.mock('./RemoteHostSettings', () => ({ default: () => null }));
 vi.mock('./RemoteSetup', () => ({ RemoteConnections: () => null }));
 vi.mock('./CreditOptions', () => ({ default: () => null, AdBanner: () => null }));
-vi.mock('./SessionPolicy', () => ({ UnifiedSync: () => null }));
+vi.mock('./UnifiedSync', () => ({ default: () => null }));
 vi.mock('../lib/hubs', () => ({ hubItems: fixture.hub, hubDetail: fixture.hub, previewUrl: fixture.preview }));
 
 const characters = [{ id: 'hero', display_name: 'Hero', description: 'Original description', tags: ['butler', 'formal'] },

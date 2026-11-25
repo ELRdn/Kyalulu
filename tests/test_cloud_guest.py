@@ -30,6 +30,64 @@ def client(app):
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://cloud.test")
 
 
+async def test_only_hashed_next_assets_can_be_reused(isolated):
+    web = isolated / "built"
+    chunk = "_next/static/chunks/app/chats/page-12d624d4f851b009.js"
+    stylesheet = "_next/static/css/1b5d0134cc93cdf1.css"
+    stable = "_next/static/chunks/runtime.js"
+    for path in (chunk, stylesheet, stable, "index.html", "404.html", "sw.js"):
+        target = web / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("Example static response", encoding="utf-8")
+    app = create_app(replace(config(isolated), web_dist=web))
+    policy = "private, max-age=31536000, immutable"
+    async with client(app) as c:
+        for path in (chunk, stylesheet):
+            response = await c.get("/" + path)
+            assert response.status_code == 200 and response.headers["cache-control"] == policy
+            validated = await c.get("/" + path, headers={"If-None-Match": response.headers["etag"]})
+            assert validated.status_code == 304 and validated.headers["cache-control"] == policy
+        for path in (stable, "sw.js", "index.html", "_next/static/chunks/missing-12d624d4f851b009.js"):
+            response = await c.get("/" + path)
+            assert "no-store" in response.headers["cache-control"]
+        assert (await c.get("/api/mobile/status")).headers["cache-control"] == "no-store"
+
+
+async def test_official_character_link_reads_one_public_card(isolated, monkeypatch):
+    from python.cloud import public_pages
+
+    directory = isolated / "official"
+    directory.mkdir()
+    monkeypatch.setattr(public_pages, "CHAR_DIR", directory)
+    public = directory / "mocha.yaml"
+    public.write_text(
+        "id: mocha\nofficial: true\nnsfw: false\ndisplay_name: Mocha\nnotes: INTERNAL\n"
+        "intro: Hello\nalternate_greetings: [Welcome]\nrecommended_generation: {temperature: 0.65, top_p: 0.8}\n",
+        encoding="utf-8",
+    )
+    (directory / "hidden.yaml").write_text("id: hidden\nofficial: true\nnsfw: true\n", encoding="utf-8")
+    (directory / "private.yaml").write_text("id: private\nofficial: false\nnsfw: false\n", encoding="utf-8")
+    app = hosted(isolated)
+    async with client(app) as c:
+        c.cookies.set(SESSION_COOKIE, "expired-fixture")
+        response = await c.get("/api/cloud/public/characters/mocha")
+        assert response.status_code == 200
+        assert response.json() == {"id": "mocha", "display_name": "Mocha", "description": None,
+                                   "portrait_url": None, "hook": None}
+        assert response.headers["cache-control"] == "no-store"
+        opening = await c.get("/api/cloud/public/characters/mocha?opening=true")
+        assert opening.json() == {**response.json(), "opening": {
+            "id": "mocha", "intro": "Hello", "alternate_greetings": ["Welcome"],
+            "recommended_generation": {"temperature": 0.65},
+        }}
+        assert opening.headers["cache-control"] == "no-store"
+        for name in ("hidden", "private", "missing", "lib_unused"):
+            assert (await c.get("/api/cloud/public/characters/" + name + "?opening=true")).status_code == 404
+        public.write_text("id: mocha\nofficial: true\nnsfw: true\n", encoding="utf-8")
+        assert (await c.get("/api/cloud/public/characters/mocha")).status_code == 404
+    assert not (app.state.store.config.root / "tenants").exists()
+
+
 async def test_guest_catalog_is_sfw_and_never_opens_private_storage(isolated, monkeypatch):
     from python.core import prompt_compiler
     app = hosted(isolated)

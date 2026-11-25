@@ -1,6 +1,6 @@
 import { connectionScope } from '../lib/remoteStore';
 import { chatCompletedAnalytics, chatReopenedAnalytics } from '../lib/analytics';
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   fetchHistory,
@@ -40,9 +40,9 @@ import {
   sessionTitle,
 } from "../lib/api";
 import ModelSelector from "../components/ModelSelector";
-import PortableSessionControls from '../components/PortableSessionControls';
-import { fetchLibraryItem, assetUrl, type LibraryItem, type LibraryBinding } from '../lib/library';
-import MessageContent, { Narration, UserText } from "../components/MessageContent";
+import type { LibraryItem, LibraryBinding } from '../lib/library';
+import { assetUrl } from '../lib/media';
+import { MessageLayout, Narration, UserText, type MessageContentProps } from '../components/MessageLayout';
 import ReasoningSummary from '../components/ReasoningSummary';
 import KyaluluWaiting, { REPLY_WAIT_LABEL } from '../components/KyaluluWaiting';
 import Icon from "../components/ui/Icon";
@@ -72,19 +72,19 @@ import { useMediaQuery } from "../lib/useMediaQuery";
 import Switch from "../components/ui/Switch";
 import { NARRATION_STYLES, extractNarrationStyle, applyNarrationStyle } from "../lib/narrationStyle";
 import { useChatRecovery } from "../lib/useChatRecovery";
+import { takeChatFirstSend, type FirstSend } from "../lib/chatFirstSend";
 import { useAdministrative, useRuntimeAccess } from "../components/RuntimeGate";
 import CloudRouteControls, {defaultCloudRoute,type CloudRouteChoice} from '../components/CloudRouteControls';
 import { useCapabilities } from '../lib/capabilities';
 import { branchSession, deleteSessionData, eraseConversationConfirm } from '../lib/api';
 import CloudQuoteConfirmation, { useQuoteConfirmation } from '../components/CloudQuoteConfirmation';
 import type { CloudQuote } from '../lib/quoteConsent';
+import { cloudOwner } from '../lib/cloudMode';
 import { setGenerationBusy, executionTarget, useLanguage } from '../lib/appContext';
 import { AdBanner } from '../components/CreditOptions';
-import SessionPolicy from '../components/SessionPolicy';
 import ConversationContext from '../components/ConversationContext';
 import PortableMedia from '../components/PortableMedia';
 import StoryRuntime from '../components/StoryRuntime';
-import VisualNovelScene from '../components/VisualNovelScene';
 import { SavedDiagnostics } from '../components/SavedDiagnostics';
 import FirstChatTutorial, { useFirstChatTutorial, type TutorialReceipt } from '../components/FirstChatTutorial';
 import type { GenerationProgress } from '../../../../packages/schemas/src';
@@ -92,6 +92,23 @@ import type { ClientTimings } from '../lib/clientTimings';
 import "./activeChat.css";
 
 type DebugData = Awaited<ReturnType<typeof fetchChatDebug>>;
+
+const MarkdownView = lazy(() => import('../components/MarkdownView'));
+const VisualNovelScene = lazy(() => import('../components/VisualNovelScene'));
+const PortableSessionControls = lazy(() => import('../components/PortableSessionControls'));
+const SessionPolicy = lazy(() => import('../components/SessionPolicy'));
+
+function DeferredMarkdown(props: MessageContentProps) {
+  return <Suspense fallback={<p className="md-view" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+    {props.content}{props.isStreaming && props.content ? ' ▍' : ''}
+  </p>}>
+    <MarkdownView {...props} />
+  </Suspense>;
+}
+
+function MessageContent(props: MessageContentProps) {
+  return <MessageLayout {...props} Markdown={DeferredMarkdown} />;
+}
 
 function settingsSnapshot(settings: SessionSettings) {
   return JSON.stringify([settings.session_id, settings.system_prompt, settings.temperature,
@@ -176,6 +193,7 @@ function ActiveChatSession() {
   const [networkOnline, setOnline] = useState(() => navigator.onLine !== false);
   const online = executionTarget() === 'device' || networkOnline;
   const [error, setError] = useState<string | null>(null);
+  const [openingConflict, setOpeningConflict] = useState(false);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const editingRef=useRef<number|null>(null);
   editingRef.current=editingIdx;
@@ -188,7 +206,9 @@ function ActiveChatSession() {
   const [intro, setIntro] = useState("");
   const [libraryBinding, setLibraryBinding] = useState<LibraryBinding | null>(null);
   const [portableCharacter, setPortableCharacter] = useState<LibraryItem | null>(null);
-  const [portableOpen, setPortableOpen] = useState(false);
+  // The mobile sheet keeps its contents mounted for the close animation.
+  // Defer loading those contents until the sheet is first opened.
+  const [portableOpen, setPortableOpen] = useState<boolean | null>(null);
   const [characters, setCharacters] = useState<CharacterInfo[]>([]);
   const [personas, setPersonas] = useState<PersonaInfo[]>([]);
   const [worlds, setWorlds] = useState<WorldInfo[]>([]);
@@ -259,12 +279,17 @@ function ActiveChatSession() {
   const sessionGenRef = useRef(0);
   const activeSessionRef = useRef(sessionId);
   activeSessionRef.current = sessionId;
-  const recovery = useChatRecovery(sessionId, history => {
+  const recovery = useChatRecovery(sessionId, (history, status) => {
     requestEpochRef.current += 1;
     stopRef.current?.();
     stopRef.current = null;
     sendingRef.current = false;
     setStreaming(false);
+    if (status.status === 'completed' && status.generation_id === generationIdRef.current) {
+      const sendError = failedSend.current;
+      failedSend.current = null;
+      setError(current => current === sendError ? null : current);
+    }
     if(executionTarget()==='device')void loadHistory(sessionId);
     else{setMessages(history.filter(m => m.role !== "system"));setBaselineModel(conversationModel(history));setHistoryReady(true);}
     void loadSessions();
@@ -273,7 +298,10 @@ function ActiveChatSession() {
   const setInput = recovery.change;
   const mutationLocked = streaming || recovery.unresolved || sessionAction;
   useEffect(() => { setGenerationBusy(mutationLocked); return () => setGenerationBusy(false); }, [mutationLocked]);
-  const mutationBlocked = () => !mountedRef.current || sendingRef.current || sessionActionRef.current || historyBusyRef.current || recovery.blocked();
+  const sessionTarget = useRef(executionTarget()).current;
+  const sessionScope = useRef(connectionScope()).current;
+  const sameDestination = () => sessionTarget === executionTarget() && sessionScope === connectionScope();
+  const mutationBlocked = () => !mountedRef.current || !sameDestination() || sendingRef.current || sessionActionRef.current || historyBusyRef.current || recovery.blocked();
 
 
   const activeCharacter = characters.find((c: any) => c.id === characterId) as any;
@@ -291,7 +319,9 @@ function ActiveChatSession() {
   useEffect(() => {
     let active = true;
     setPortableCharacter(null);
-    if (characterId?.startsWith('lib_')) fetchLibraryItem(characterId, libraryBinding?.character?.revision).then(item => {
+    if (characterId?.startsWith('lib_')) import('../lib/library').then(({ fetchLibraryItem }) =>
+      fetchLibraryItem(characterId, libraryBinding?.character?.revision)
+    ).then(item => {
       if (active) setPortableCharacter(item);
     }).catch(e => { if (active) setError(String(e)); });
     return () => { active = false; };
@@ -577,19 +607,6 @@ function ActiveChatSession() {
   }, []);
 
   useEffect(() => {
-    loadSessions();
-    loadPresets();
-    loadCatalog();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    loadPresets();
-    loadCatalog();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showNsfw]);
-
-  useEffect(() => {
     // セッション切替時: 進行中のストリームを中断し、古い非同期結果を無効化
     sessionGenRef.current += 1;
     requestEpochRef.current += 1;
@@ -610,6 +627,17 @@ function ActiveChatSession() {
     loadSettings(sessionId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
+
+  useEffect(() => {
+    loadSessions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    loadPresets();
+    loadCatalog();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showNsfw]);
 
   // 自動保存：設定変更から800ms後にDBへ永続化（セッション世代で古い保存を無効化）
   useEffect(() => {
@@ -777,7 +805,7 @@ function ActiveChatSession() {
     }
   };
 
-  const send = async (regenerateId?: number, request?: string, advance = false) => {
+  const send = async (regenerateId?: number, request?: string, advance = false, openingRevision?: string) => {
     if(historyPage?.next)return;
     if (mutationBlocked() || commandRunning || !online) return;
     const submittedDraft = input;
@@ -794,12 +822,17 @@ function ActiveChatSession() {
       ? messages.slice(0, -1)
       : [...messages, { role: "user", content: text }];
     if (next.at(-1)?.role !== "user") return;
+    const settings: SessionSettings = { session_id: sessionId, system_prompt: systemPrompt, temperature,
+      character_id: characterId, persona_id: personaId, world_id: worldId, intro, library_binding: libraryBinding };
+    const savedOpening = cloud_mode && capabilities.features.stored_context && settingsSnapshot(settings) === savedSettingsRef.current
+      ? openingRevision : undefined;
     sendingRef.current = true;
     dispatchedRef.current = false; generationIdRef.current = null;
     const epoch = ++requestEpochRef.current;
     const gen = sessionGenRef.current;
-    const current = () => epoch === requestEpochRef.current && gen === sessionGenRef.current;
+    const current = () => epoch === requestEpochRef.current && gen === sessionGenRef.current && sameDestination();
     const replaced = regenerateId ? messages.at(-1)?.content ?? "" : "";
+    failedSend.current = null;
     setError(null);
     setSuggestions(null);
     setStreaming(true);
@@ -809,8 +842,7 @@ function ActiveChatSession() {
     if (!regenerateId) setMessages([...next, { role: "assistant", content: "" }]);
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     try {
-      await saveSettings({ session_id: sessionId, system_prompt: systemPrompt, temperature,
-          character_id: characterId, persona_id: personaId, world_id: worldId, intro, library_binding: libraryBinding });
+      if (!savedOpening) await saveSettings(settings);
     } catch (e) {
       if (current()) {
         setError(`設定保存に失敗したため送信しませんでした: ${String(e)}`);
@@ -838,7 +870,8 @@ function ActiveChatSession() {
     if (cloud_mode) setCloudRoute({...cloudRoute,contributor_training_consent:false});
     stopRef.current = streamChat(modelId, next,
       { session_id: sessionId, generation_id: generationId, temperature, regenerate_message_id: regenerateId, allow_nsfw: showNsfw,
-        ...(cloud_mode && capabilities.features.stored_context ? { context_mode: 'stored' as const } : {}),
+        ...(cloud_mode && capabilities.features.stored_context ? { context_mode: 'stored' as const,
+          quoteResolvesHistory: capabilities.features.quote_resolves_history, history_revision: savedOpening } : {}),
         ...(cloud_mode && modelId==='cloud-standard' ? submittedCloudRoute : {}),
         // 「注文して作り直す」はこの1回の生成だけに指示を足す（保存される設定は変えない）
         system_prompt: request ? `${systemPrompt.trim()}\n\n# この返事だけの注文\n${request}`.trim() : systemPrompt }, {
@@ -867,6 +900,13 @@ function ActiveChatSession() {
         onError: (e, details) => {
           if (!current()) return;
           sendingRef.current = false; setStreaming(false); setProgress(null); stopRef.current = null;
+          if (savedOpening && details?.rejected && details.code === 'history_revision_conflict') {
+            setMessages(previous);
+            settingsLoadedRef.current = false;
+            setSettingsReady(false);
+            setOpeningConflict(true);
+            return;
+          }
           failedSend.current = e;
           setError(e);
           if (details?.rejected) setMessages(previous);
@@ -899,16 +939,43 @@ function ActiveChatSession() {
   };
   // A first reply picked on the character page (possibly before login) is sent once the chat is ready (docs/MOBILE_UX_SPEC.md §2).
   const location = useLocation();
-  const queuedSend = useRef<string | null>(typeof location.state?.send === 'string' && location.state.send.trim() ? location.state.send : null);
+  const legacyFirstLine = useRef<string | null>(
+    cloud_mode && typeof location.state?.send === 'string' && !location.state.sendOwner ? location.state.send : null,
+  );
+  const queuedSend = useRef<FirstSend | null>(
+    typeof location.state?.send === 'string' && location.state.send.trim() &&
+    (cloud_mode ? !!cloudOwner() && location.state.sendOwner === cloudOwner() : !location.state.sendOwner)
+      ? { text: location.state.send } : null,
+  );
+  const readChatFirstSend = useRef(false);
   useEffect(() => {
     if (!queuedSend.current) return;
-    setInput(queuedSend.current);
+    setInput(queuedSend.current.text);
     navigate(location.pathname, { replace: true, state: null });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!queuedSend.current || input !== queuedSend.current || streaming || !modelAvailable || !settingsReady || !historyReady || !capabilities) return;
+    const text = legacyFirstLine.current;
+    // An older browser left no owner in its navigation entry. Only the account
+    // that can list this session may recover the text. Leave another owner's
+    // entry untouched and recover as an editable draft without replaying a POST.
+    if (!text || !historyReady || !settingsReady || recovery.unresolved || input ||
+        !sameDestination() || !sessions.some(row => row.session_id === sessionId)) return;
+    legacyFirstLine.current = null;
+    if (!messages.some(row => row.role === 'user' && row.content === text)) setInput(text);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [historyReady, settingsReady, recovery.unresolved, input, sessions, sessionId, messages, navigate, location.pathname]);
+  useEffect(() => {
+    if (!readChatFirstSend.current && historyReady && cloud_mode && sessionTarget === 'cloud' && cloudOwner() && sameDestination()) {
+      readChatFirstSend.current = true;
+      const first = takeChatFirstSend(sessionScope, sessionId, input);
+      if (!queuedSend.current && first && !recovery.unresolved && !historyPage?.previous && !messages.some(message => message.role === 'user')) {
+        queuedSend.current = first;
+      }
+    }
+    const first = queuedSend.current;
+    if (!first || input !== first.text || streaming || !modelAvailable || !settingsReady || !historyReady || !capabilities) return;
     queuedSend.current = null;
-    void send();
+    void send(undefined, undefined, false, first.historyRevision);
   });
 
   const submitDirective = () => {
@@ -939,7 +1006,10 @@ function ActiveChatSession() {
     }
   };
 
-  const friendly = error ? friendlyError(error, language) : null;
+  const friendly: ReturnType<typeof friendlyError> | null = openingConflict ? { message: en
+    ? 'The conversation changed before sending. Reload to review it. Your draft is saved.'
+    : '送信前に会話が更新されました。再読み込みして内容を確認してください。下書きは保存されています。' }
+    : error ? friendlyError(error, language) : null;
   const knownSessions = sessions.filter((s) => s.count > 0 || s.session_id === "default" || s.session_id === sessionId);
   const railNeedle = railQuery.trim().toLowerCase();
   const railSessions = railNeedle ? knownSessions.filter((s) => `${sessionTitle(s, 'ja')} ${sessionTitle(s, 'en')} ${cleanPreview(s.last_preview, 300)}`.toLowerCase().includes(railNeedle)) : knownSessions;
@@ -965,7 +1035,7 @@ function ActiveChatSession() {
       setCharacterId(null);
     }
   };
-  const presetPanel = <div className="k-preset-panel">
+  const presetPanel = portableOpen !== null && <div className="k-preset-panel">
     <div className="k-preset-panel__head">
       <IconButton label={en ? 'Back' : '戻る'} size="sm" onClick={() => setPortableOpen(false)}><Icon name="back" size={22} /></IconButton>
       <h2 id="k-preset-title">{en ? 'Character & preset' : 'キャラ・プリセット'}</h2>
@@ -980,7 +1050,9 @@ function ActiveChatSession() {
         </div>
       </section>
       {capabilities?.model_selection==='cloud-routes'&&<CloudRouteControls key={sessionId} currentModel={currentModel} value={cloudRoute} onChange={setCloudRoute} disabled={mutationLocked || !settingsReady}/>}
-      <PortableSessionControls value={libraryBinding} characterId={characterId} character={portableCharacter} allowNsfw={showNsfw} onChange={setLibraryBinding} onTemperature={setTemperature} systemPrompt={systemPrompt} onSystemPrompt={setSystemPrompt} />
+      <Suspense fallback={<p role="status">{en ? 'Loading presets…' : 'プリセットを読み込んでいます…'}</p>}>
+        <PortableSessionControls value={libraryBinding} characterId={characterId} character={portableCharacter} allowNsfw={showNsfw} onChange={setLibraryBinding} onTemperature={setTemperature} systemPrompt={systemPrompt} onSystemPrompt={setSystemPrompt} />
+      </Suspense>
       <Link to="/create?edit=new&kind=profile" className="k-btn k-btn--secondary k-btn--md k-preset-panel__create"><Icon name="plus" size={16} /> {en ? 'Create a preset' : 'プリセットを作る'}</Link>
       <label className="k-preset-temp">
         <span className="k-preset-temp__head"><span>{en ? 'Reply freedom' : '返事の自由さ'}</span><span>{temperature.toFixed(1)}</span></span>
@@ -1025,11 +1097,13 @@ function ActiveChatSession() {
           <button ref={tutorialButtonRef} type="button" className="k-chip" aria-expanded={tutorial.open}
             onClick={() => { tutorial.reopen(); setTutorialFocusRequest(value => value + 1); if (!panelDocked) ctxPanel.setOpen(false); }}>{en ? 'First chat guide' : '初トークの案内'}</button>
           <button type="button" className="k-chip" aria-pressed={visualNovel} onClick={() => { setVisualNovel(value => !value); if (!panelDocked) ctxPanel.setOpen(false); }}>{visualNovel ? (en ? 'Show chat history' : '会話履歴を表示') : (en ? 'Visual novel' : 'VN表示')}</button>
-          <button type="button" className="k-chip" aria-pressed={portableOpen} onClick={() => { setPortableOpen((v) => !v); if (!panelDocked) ctxPanel.setOpen(false); }}>{en ? 'Character & preset' : 'キャラ・プリセット'}</button>
+          <button type="button" className="k-chip" aria-pressed={portableOpen === true} onClick={() => { setPortableOpen((v) => !v); if (!panelDocked) ctxPanel.setOpen(false); }}>{en ? 'Character & preset' : 'キャラ・プリセット'}</button>
         </div>
       </>}
       tech={<>
-        <SessionPolicy sessionId={sessionId} model={currentModel?.display_name??modelId??''} disabled={mutationLocked}/>
+        {(panelDocked || ctxPanel.open) && <Suspense fallback={<span role="status">{en ? 'Loading save status…' : '保存先を確認中…'}</span>}>
+          <SessionPolicy sessionId={sessionId} model={currentModel?.display_name??modelId??''} disabled={mutationLocked} cloudRuntime={capabilities?.mode === 'cloud'}/>
+        </Suspense>}
         {lastQuote && !quote && <div className="k-session-policy k-session-policy--quote" aria-label={en ? 'Current destination and credit cap' : '今回の送信先と消費上限'}>
           <span className="k-kv"><span>{en ? 'Destination' : '送信先'}</span><span>{lastQuote.route.display_name} · {lastQuote.route.upstream || lastQuote.route.provider}{lastQuote.route.upstream && (en ? ` (via ${lastQuote.route.provider})` : `（${lastQuote.route.provider}経由）`)}</span></span>
           <span className="k-kv"><span>{en ? 'Cap this time' : '今回の上限'}</span><span>{lastQuote.max_credits.toLocaleString()} K-Credits</span></span>
@@ -1167,7 +1241,9 @@ function ActiveChatSession() {
             {historyPage.next&&<span role="status">{en?'Return to latest before sending. Your draft is kept.':'送信するには「最新」へ戻ってね。下書きは保持されます。'}</span>}
           </nav>}
           {historyLoading&&<p role="status" className="k-context-note">{en?'Loading saved history…':'保存済みの履歴を読み込んでいます…'}</p>}
-          {visualNovel && <VisualNovelScene name={headerName} portrait={portrait} onExit={() => setVisualNovel(false)} onBack={() => navigate('/chats')} messages={messages} streaming={streaming} assets={capabilities?.features.media_playback ? portableCharacter?.document.assets ?? [] : []} />}
+          {visualNovel && <Suspense fallback={<p role="status">{en ? 'Loading visual novel view…' : 'VN表示を読み込んでいます…'}</p>}>
+            <VisualNovelScene name={headerName} portrait={portrait} onExit={() => setVisualNovel(false)} onBack={() => navigate('/chats')} messages={messages} streaming={streaming} assets={capabilities?.features.media_playback ? portableCharacter?.document.assets ?? [] : []} />
+          </Suspense>}
           <div className="k-chat-messages__inner" hidden={visualNovel}>
             {messages.length === 0 && settingsReady && historyReady && !historyLoading && (
               <div className="k-chat-welcome">
@@ -1247,7 +1323,7 @@ function ActiveChatSession() {
           </div>
         </div>
 
-        {friendly && error === failedSend.current && (
+        {friendly && !openingConflict && error === failedSend.current && (
           <div className="k-chat-failed" role="alert">
             <p className="k-chat-failed__action">{en ? '(The reply did not quite reach you.)' : '（返事がうまく届かなかったみたい）'}</p>
             {input.trim() && !streaming && (
@@ -1256,9 +1332,12 @@ function ActiveChatSession() {
           </div>
         )}
         {friendly && (
-          <div className="k-chat-error" role={error === failedSend.current ? undefined : "alert"}>
+          <div className="k-chat-error" role={openingConflict || error !== failedSend.current ? "alert" : undefined}>
             <Icon name="info" size={15} />
             <span className="k-chat-error__text">{friendly.message}</span>
+            {openingConflict && <Button size="sm" variant="secondary" onClick={() => window.location.reload()}>
+              {en ? 'Reload conversation' : '会話を再読み込み'}
+            </Button>}
             {friendly.action && (
               <Link to={friendly.action.to} className="k-chat-error__action">
                 {friendly.action.label}
@@ -1378,8 +1457,8 @@ function ActiveChatSession() {
       )}
 
       {phone
-        ? <Sheet open={portableOpen} onClose={() => setPortableOpen(false)} side="right" width="100vw" label={en ? 'Character & preset' : 'キャラ・プリセット'}>{presetPanel}</Sheet>
-        : <Dialog open={portableOpen} onClose={() => setPortableOpen(false)} labelledBy="k-preset-title" width={480} wide>{presetPanel}</Dialog>}
+        ? <Sheet open={portableOpen === true} onClose={() => setPortableOpen(false)} side="right" width="100vw" label={en ? 'Character & preset' : 'キャラ・プリセット'}>{presetPanel}</Sheet>
+        : <Dialog open={portableOpen === true} onClose={() => setPortableOpen(false)} labelledBy="k-preset-title" width={480} wide>{presetPanel}</Dialog>}
       {/* Studio: モデル選択/プリセット/Inspector（researcherのみ、Consumer UIから視覚的に分離） */}
       <Sheet open={researcher && studioOpen} onClose={() => setStudioOpen(false)} side="right" width="min(420px, 92vw)" topOffset={60}>
         <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
@@ -1438,7 +1517,7 @@ function ActiveChatSession() {
             <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)" }}>キャラクター</label>
             <select value={characterId ?? ""} onChange={async e => {
               const id = e.target.value || null; const epoch = sessionGenRef.current;
-              try { const item = id?.startsWith('lib_') ? await fetchLibraryItem(id) : null;
+              try { const item = id?.startsWith('lib_') ? await (await import('../lib/library')).fetchLibraryItem(id) : null;
                 if (epoch !== sessionGenRef.current) return;
                 setCharacterId(id); setLibraryBinding({ character: item ? { id: item.id, revision: item.revision } : null, profile: null, lorebooks: [], expression_asset_id: null });
                 const temp = item?.document.profile.settings.temperature; if (typeof temp === 'number') setTemperature(temp);

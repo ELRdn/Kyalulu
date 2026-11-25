@@ -5,6 +5,7 @@ export const CapabilitiesSchema = z.object({
   safety_screening: z.boolean().optional(), credit_reservation: z.boolean().optional(),
   features: z.object({
     regenerate: z.boolean(), suggestions: z.boolean(), stored_context: z.boolean(),
+    quote_resolves_history: z.boolean().optional(),
     progress: z.boolean(), branch: z.boolean(), permanent_delete: z.boolean(),
     summaries: z.boolean(), world_memory: z.boolean(), story_rules: z.boolean(),
     community: z.boolean(), media_playback: z.boolean(), media_generation: z.boolean(),

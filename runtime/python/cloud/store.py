@@ -4,8 +4,9 @@ All admission and settlement use BEGIN IMMEDIATE. No network await occurs inside
 transactions. Uncertain work retains its worst-case provider cost on restart.
 """
 
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import datetime, timezone, timedelta
+import asyncio
 import hashlib
 import json
 import secrets
@@ -20,6 +21,19 @@ class CloudError(ValueError):
     def __init__(self, code, status=400):
         self.code, self.status = code, status
         super().__init__(code)
+
+
+async def run_attached_transaction(operation):
+    """Let an attached transaction commit while the request loop waits on SQLite."""
+    worker = asyncio.create_task(asyncio.to_thread(asyncio.run, operation))
+    while True:
+        try:
+            return await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            # Once the write starts, wait for SQLite's durable outcome before releasing
+            # the owner lock or settling the charge.
+            if worker.done():
+                return worker.result()
 
 
 def period(now=None):
@@ -112,9 +126,9 @@ class CloudStore:
     def transaction(self):
         db = sqlite3.connect(self.path, timeout=15)
         db.row_factory = sqlite3.Row
-        db.execute("PRAGMA foreign_keys=ON")
-        db.execute("BEGIN IMMEDIATE")
         try:
+            db.execute("PRAGMA foreign_keys=ON")
+            db.execute("BEGIN IMMEDIATE")
             yield db
             db.commit()
         except BaseException:
@@ -122,6 +136,14 @@ class CloudStore:
             raise
         finally:
             db.close()
+
+    @contextmanager
+    def read(self):
+        """Read committed data without taking SQLite's writer lock."""
+        uri = self.path.absolute().as_uri() + "?mode=ro"
+        with closing(sqlite3.connect(uri, uri=True, timeout=15)) as db:
+            db.row_factory = sqlite3.Row
+            yield db
 
     def encrypt(self, value):
         return self.cipher.encrypt(value.encode()).decode()
@@ -131,7 +153,8 @@ class CloudStore:
 
     def account(self, owner, *, consent=None, enroll=False):
         owner = str(UUID(owner))
-        with self.transaction() as db:
+        connect = self.transaction if consent else self.read
+        with connect() as db:
             if consent:
                 is_new = not db.execute("SELECT 1 FROM accounts WHERE id=?", (owner,)).fetchone()
                 if is_new:

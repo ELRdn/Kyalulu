@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { type CharacterInfo, type WorldInfo } from "../lib/api";
+import { fetchCharacters, fetchWorlds, type CharacterInfo, type WorldInfo } from "../lib/api";
 import { Input } from "../components/ui/Input";
 import CharacterCard from "../components/ui/CharacterCard";
 import WorldCard from "../components/ui/WorldCard";
@@ -13,7 +13,7 @@ import { useAdultContent } from "../lib/adult";
 import { useDocumentTitle } from "../lib/title";
 import "./pages.css";
 import { useRuntimeAccess } from '../components/RuntimeGate';
-import { fetchBrowseCatalog, isCloudGuest } from '../lib/cloudGuest';
+import { isCloudGuest } from '../lib/cloudGuest';
 import { friendlyMessage } from '../lib/errors';
 import { useLanguage } from '../lib/appContext';
 
@@ -37,7 +37,7 @@ export default function Discover() {
 
   useEffect(() => {
     let active = true; setLoading(true); setLoadError(null);
-    fetchBrowseCatalog(guest, adult)
+    Promise.all([fetchCharacters(adult), fetchWorlds()])
       .then(([c, w]) => {
         if (!active) return;
         setCharacters(c);

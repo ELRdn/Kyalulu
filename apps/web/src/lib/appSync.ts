@@ -340,22 +340,30 @@ async function synchronize(owner:string) {
     }
     if(!await getMeta(key(owner,'consent'))){report({phase:'off',pending:batch?.changes.length??0,error:''},owner);return;}
     let uploadBlocked='';
-    const download=async()=>{
+    const download=async(unsettled?:Batch)=>{
       uploadBlocked='';
+      const pendingConversations=new Set(unsettled?.changes.filter(change=>change.kind==='conversation'&&!change.deleted).map(change=>change.id));
+      let cursor=await getMeta<number>(key(owner,'cursor'))??0;
+      let replayFrom:number|undefined;
       let more=true;
       while(more) {
-        const cursor=await getMeta<number>(key(owner,'cursor'))??0;
         if(!await getMeta(key(owner,'consent')))return;
         const result=await request(owner,'?cursor='+cursor);current();
         if(!Array.isArray(result.changes)||!Number.isSafeInteger(result.cursor)||result.cursor<cursor)throw Error('Invalid sync cursor');
-        await receiveSyncPage(owner,result.changes,result.cursor);
+        // A lost upload response can expose the server-created fork on this pull.
+        // The acknowledgment binds its message IDs. Replay deferred forks after
+        // settlement while still receiving tombstones before any new upload.
+        const ready=result.changes.filter((change:any)=>change.deleted||change.kind!=='conversation'||!pendingConversations.has(change.payload?.branch_of));
+        if(ready.length!==result.changes.length)replayFrom??=cursor;
+        await receiveSyncPage(owner,ready,replayFrom??result.cursor);
         await clearIncoming(owner);
         if(result.upload_blocked)uploadBlocked=String(result.upload_blocked);
         more=result.has_more===true;
         if(more&&result.cursor===cursor)throw Error('Sync cursor did not advance');
+        cursor=result.cursor;
       }
     };
-    await download();current();
+    await download(batch);current();
     batch=await getMeta<Batch>(key(owner,'outbox'));
     if(!batch)batch=await stageSyncBatch(owner);
     if(batch) {
@@ -377,6 +385,10 @@ async function synchronize(owner:string) {
           if(consent.result!==true||owner!==deviceOwner()||generationBusy()||queued.result?.request_id!==pending.request_id
             ||!sameOutboxSource(queued.result,fixedBatch)){tx.abort();return;}
           const required=new Set<string>(result.changes.map((ack:Ack)=>ack.source_id??ack.id));
+          for(const ack of result.changes)if(ack.branched){
+            if(required.has(ack.id))throw Error('Branch identity conflict');
+            required.add(ack.id);
+          }
           selectSyncHeaders(tx,owner,required,(records,identities,number)=>{
             let index=0;
             const next=()=>{
@@ -398,9 +410,8 @@ async function synchronize(owner:string) {
                   acknowledgeConversation(tx,header,ack.revision,header.revision!==pending.revisions[source],ack.lineage,next);return;
                 }
                 if(ack.branched){
-                  if(identities.has(ack.id)||records.has(ack.id))throw Error('Branch identity conflict');
                   if(!Number.isSafeInteger(number)||number<0)throw Error('Invalid message sequence');
-                  acknowledgeBranch(tx,header,ack,pending,()=>++number,target=>{records.set(target.id,target);next();});return;
+                  acknowledgeBranch(tx,header,ack,pending,()=>++number,target=>{records.set(target.id,target);next();},records.get(ack.id));return;
                 }
                 restoreEntity(tx,header,local=>{
                   try{

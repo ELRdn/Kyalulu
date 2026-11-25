@@ -1,5 +1,8 @@
 import { lazy, Suspense, useEffect, type ReactNode } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
+import AdminPage from './components/AdminPage';
+import { onlineRouteGroup } from './lib/onlineRoutes';
+import { readLoginReturn } from './lib/cloudGuest';
 import AppShell from "./layout/AppShell";
 import Home from "./pages/Home";
 import Discover from "./pages/Discover";
@@ -9,9 +12,9 @@ import CharacterEntry from "./pages/CharacterEntry";
 import Profile from "./pages/Profile";
 import Legal from "./pages/Legal";
 import NotFound from "./pages/NotFound";
-import { useAdministrative, useRuntimeAccess } from './components/RuntimeGate';
+import { useRuntimeAccess } from './components/RuntimeGate';
 import { subscribeAppAnalyticsPageView, syncAppAnalytics } from './lib/analytics';
-import { useLanguage, useExecutionTarget, useDeviceOwner } from './lib/appContext';
+import { useExecutionTarget, useDeviceOwner } from './lib/appContext';
 
 // 制作・検証向けの画面は初回表示に不要なので分割して遅延読み込みする
 const Create = lazy(() => import("./pages/Create"));
@@ -28,18 +31,25 @@ const Published = lazy(() => import('./pages/Published'));
 const PublishedDetail = lazy(() => import('./pages/Published').then(module=>({default:module.PublishedDetail})));
 
 const deferred = (node: ReactNode) => <Suspense fallback={<div className="k-page" aria-busy="true" />}>{node}</Suspense>;
-function AdminPage({ children }: { children: ReactNode }) {
-  const en = useLanguage() === 'en';
-  return useAdministrative() ? children : <div className="k-page"><h1>{en ? 'This feature requires PC management access' : 'サーバー側で管理する機能です'}</h1><p>{en ? 'Open model management, diagnostics and comparison experiments on the PC running the server. Character creation and conversations are available on this device.' : 'モデルの管理・診断・比較実験は、サーバーを実行しているPCで開いてください。この端末ではキャラの作成と会話を楽しめます。'}</p></div>;
-}
-
 export default function App() {
   const location = useLocation();
-  const { cloud_mode } = useRuntimeAccess();
+  const { cloud_mode, authenticated, onlineRoutes } = useRuntimeAccess();
   const target = useExecutionTarget();
   const owner = useDeviceOwner();
   useEffect(() => { syncAppAnalytics(); }, [cloud_mode]);
   useEffect(() => subscribeAppAnalyticsPageView(location.key, location.pathname), [location.key, location.pathname, cloud_mode]);
+  const group = onlineRouteGroup(location.pathname);
+  const returning = location.pathname === '/' && ((authenticated && readLoginReturn() !== '/') || new URLSearchParams(location.search).has('login_error'));
+  const nextPage = !returning && target === 'cloud' && group && onlineRoutes?.has(group);
+  useEffect(() => {
+    if (!nextPage) return;
+    // An installed cache-first worker owns the exact root. A query takes the first
+    // online visit to the network while keeping its precached shell usable offline.
+    if (window.location.pathname === '/' && !window.location.search && navigator.serviceWorker?.controller) {
+      window.location.replace('/?kyalulu-entry=online');
+    } else window.location.reload();
+  }, [nextPage]);
+  if (nextPage) return <div className="k-page" aria-busy="true" />;
   return (
     <>
     <Routes>

@@ -8,7 +8,7 @@ def capabilities(*, cloud=False, community=False, media=False):
     return {
         "schema_version": 1, "mode": "cloud" if cloud else "local",
         "features": {"regenerate": True, "suggestions": not cloud,
-            "stored_context": True, "progress": cloud, "branch": True,
+            "stored_context": True, "quote_resolves_history": cloud, "progress": cloud, "branch": True,
             "permanent_delete": True, "summaries": True, "world_memory": True,
             "story_rules": True, "community": community,
             "media_playback": media or not cloud, "media_generation": False},

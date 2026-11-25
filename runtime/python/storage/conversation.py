@@ -39,14 +39,21 @@ async def _summaries(db, session_id):
     return [_summary(row) for row in rows]
 
 
-async def _revision(db, session_id):
+async def _context_snapshot(db, session_id):
     settings = await (await db.execute("SELECT system_prompt,temperature,character_id,persona_id,world_id,intro,library_binding "
                                       "FROM session_settings WHERE session_id IN (?, '__global__') ORDER BY CASE WHEN session_id=? THEN 0 ELSE 1 END LIMIT 1",
                                       (session_id, session_id))).fetchone()
     state = await (await db.execute("SELECT state_json FROM runtime_states WHERE session_id=?", (session_id,))).fetchone()
-    payload = [await _history(db, session_id), await _summaries(db, session_id),
-               list(settings) if settings else None, state[0] if state else None]
-    return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+    history = await _history(db, session_id)
+    summaries = await _summaries(db, session_id)
+    payload = [history, summaries, list(settings) if settings else None, state[0] if state else None]
+    revision = hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+    return revision, history, summaries
+
+
+async def _revision(db, session_id):
+    revision, _, _ = await _context_snapshot(db, session_id)
+    return revision
 
 
 async def revision(session_id: str) -> str:
@@ -60,7 +67,8 @@ async def context(session_id: str) -> dict:
     async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
         await db.execute("BEGIN")
         scope = await (await db.execute("SELECT scope FROM session_scopes WHERE session_id=?", (session_id,))).fetchone()
-        return {"history_revision": await _revision(db, session_id), "summaries": await _summaries(db, session_id),
+        revision, _, summaries = await _context_snapshot(db, session_id)
+        return {"history_revision": revision, "summaries": summaries,
                 **({"scope": scope[0]} if scope else {}),
                 "summary_policy": {"chapter_messages": CHAPTER_MESSAGES, "arc_chapters": ARC_CHAPTERS,
                                    "method": "extractive", "additional_api_cost": 0}}
@@ -117,14 +125,18 @@ async def _put_extract(db, sid, kind, ordinal, ids, text):
 
 async def resolve_messages(session_id: str, messages: list[dict], regenerate_message_id: int | None = None,
                            history_revision: str | None = None) -> list[dict]:
+    resolved, _ = await resolve_messages_with_revision(session_id, messages, regenerate_message_id, history_revision)
+    return resolved
+
+
+async def resolve_messages_with_revision(session_id: str, messages: list[dict], regenerate_message_id: int | None,
+                                         history_revision: str | None, *, capture_revision=False) -> tuple[list[dict], str]:
     await storage.init_db()
     async with aiosqlite.connect(get_db_path(storage.DB_PATH)) as db:
         await db.execute("BEGIN")
-        current = await _revision(db, session_id)
-        if history_revision is None or history_revision != current:
+        current, history, summaries = await _context_snapshot(db, session_id)
+        if history_revision != current and not (capture_revision and history_revision is None):
             raise generations.Conflict("history changed; reload conversation context before generation")
-        history = await _history(db, session_id)
-        summaries = await _summaries(db, session_id)
     if not messages or messages[-1].get("role") != "user":
         raise ValueError("stored context requires the latest user message")
     if regenerate_message_id is not None:
@@ -150,7 +162,7 @@ async def resolve_messages(session_id: str, messages: list[dict], regenerate_mes
     resolved = selected + [{"role": m["role"], "content": m["content"]} for m in remaining] + [messages[-1]]
     if len(json.dumps(resolved, ensure_ascii=False).encode()) > CONTEXT_BYTES:
         raise ValueError("stored conversation exceeds context budget; edit summaries or explicitly branch")
-    return resolved
+    return resolved, current
 
 
 async def edit_summary(session_id, summary_id, text, expected_revision):

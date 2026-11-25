@@ -15,7 +15,7 @@ from python.providers.deepseek import DeepSeekProvider
 from .contracts import ROUTES, TARIFF
 from .meter import CostMeter, MeteredProvider, call_bound, MAX_OUTPUT
 from .safety import declared_sfw
-from .store import CloudError, fingerprint
+from .store import CloudError, fingerprint, run_attached_transaction
 from .router import (GO_TARIFFS, select_model, operator_provider, public_route,
                      require_current_consent, OPENROUTER_TARIFFS, or_provider)
 from .router import OPENROUTER_ROUTE_TARIFFS
@@ -76,7 +76,7 @@ class CloudGenerations:
         self.tasks = {}
         self.progress = {}
 
-    async def prepare(self, owner, req):
+    async def prepare(self, owner, req, *, capture_history_revision=False):
         if not self.store.config.inference_enabled:
             raise CloudError("inference_awaiting_acceptance", 503)
         if req.model_id not in ROUTES:
@@ -92,15 +92,20 @@ class CloudGenerations:
         from python.storage import conversation
         messages = [m.model_dump() for m in req.messages]
         if getattr(req, "context_mode", "client") == "stored":
-            if not req.history_revision:
+            if not req.history_revision and not (capture_history_revision and req.history_revision is None):
                 raise CloudError("history_revision_required", 409)
             try:
-                messages = await conversation.resolve_messages(req.session_id, messages,
-                    req.regenerate_message_id, req.history_revision)
+                messages, revision = await conversation.resolve_messages_with_revision(
+                    req.session_id, messages, req.regenerate_message_id, req.history_revision,
+                    capture_revision=capture_history_revision,
+                )
             except generations.Conflict as exc:
                 raise CloudError("history_revision_conflict", 409) from exc
             except ValueError as exc:
                 raise CloudError("stored_context_budget_exceeded", 413) from exc
+            # Fingerprint the captured revision exactly as the subsequent generation request will carry it.
+            if req.history_revision is None:
+                req = req.model_copy(update={"history_revision": revision})
         settings = await _load_settings(req.session_id)
         compiled = compile_prompt(
             character_id=settings.character_id,
@@ -238,14 +243,16 @@ class CloudGenerations:
             "character_name": _session_identity(settings)["character_name"] or "",
         }
 
-    async def quote(self, owner, req):
-        prepared = await self.prepare(owner, req)
+    async def quote(self, owner, req, *, resolve_history=False):
+        prepared = await self.prepare(owner, req, capture_history_revision=resolve_history)
         q = self.store.quote(
             owner, prepared["hash"], prepared["credits"], prepared["cost"], req.model_id,
             provider_tariff=prepared["tariff"].version,
         )
         return {
             "quote_id": q,
+            **({"history_revision": prepared["body"]["history_revision"]}
+               if resolve_history and req.context_mode == "stored" else {}),
             "max_credits": prepared["credits"],
             "max_cost_usd": str(Decimal(prepared["cost"]) / 1_000_000_000),
             "expires_in": 120,
@@ -416,7 +423,7 @@ class CloudGenerations:
                 if req.regenerate_message_id:
                     result["replace_message_id"] = req.regenerate_message_id
                 result.setdefault("telemetry", {})["cloud_stages_ms"] = stages
-                result = await generations.finish(
+                result = await run_attached_transaction(generations.finish(
                     req.generation_id,
                     result,
                     req.messages[-1].model_dump(),
@@ -426,7 +433,7 @@ class CloudGenerations:
                     evidence_text=req.messages[-1].content,
                     cloud_revision=(self.store.path, owner),
                     settings_snapshot=prepared['settings_snapshot'],
-                )
+                ))
                 stages["save"] = round((time.perf_counter()-previous)*1000, 2)
                 result.setdefault("telemetry", {})["cloud_stages_ms"] = stages
         except (Exception, asyncio.CancelledError) as exc:

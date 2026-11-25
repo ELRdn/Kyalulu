@@ -10,15 +10,8 @@ import { ChatContextSchema, GenerationProgressSchema, type GenerationProgress } 
 import { cloudEpoch } from './cloudMode';
 import { validCloudQuote, type CloudQuote, type QuoteConfirmation } from './quoteConsent';
 import { recordClientTimings, readClientTimings, type ClientTimings } from './clientTimings';
-/** Preserve server diagnostics while rejecting every failed HTTP response. */
-async function checkedJson(r: Response) {
-  if (!r.ok) {
-    const body = await r.json().catch(() => null);
-    const detail = body?.error ?? body?.detail ?? body?.output;
-    throw Object.assign(new Error(typeof detail === "string" ? detail : detail ? JSON.stringify(detail) : `HTTP ${r.status}`), { status: r.status });
-  }
-  return r.json();
-}
+import { checkedJson } from './apiJson';
+import { injectSessionIntro, saveSessionSettings } from './sessionSetup';
 /** API クライアント - Milestone 2 */
 
 export type ModelInfo = {
@@ -306,21 +299,11 @@ export async function fetchSettings(sessionId: string): Promise<SessionSettings>
 }
 
 export async function injectIntro(sessionId: string): Promise<{ injected: boolean; intro?: string }> {
-  const r = await fetch(`/api/chat/intro/inject?session_id=${encodeURIComponent(sessionId)}`, { method: "POST" });
-  const j = await checkedJson(r);
-  return j;
+  return injectSessionIntro(fetch, sessionId);
 }
 
 export async function saveSettings(s: SessionSettings): Promise<void> {
-  const r = await fetch("/api/chat/settings", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(s),
-  });
-  if (!r.ok) {
-    const j = await r.json().catch(() => ({}));
-    throw new Error(j.error || `HTTP ${r.status}`);
-  }
+  await saveSessionSettings(fetch, s);
 }
 
 export type CharacterInfo = { official?: boolean; id: string; display_name: string; version: string; description: string; hook?: string; opening_replies?: string[]; intro?: string; difficulty?: string; tags?: string[]; portrait_url?: string | null; library_revision?: number; alternate_greetings?: string[]; recommended_generation?: Record<string, unknown> };
@@ -557,7 +540,7 @@ export async function cancelGeneration(generationId: string, sessionId: string, 
 export function streamChat(
   model_id: string,
   messages: ChatMessage[],
-  opts: { temperature?: number | null; system_prompt?: string | null; session_id?: string; generation_id?: string; regenerate_message_id?: number; allow_nsfw?: boolean; route_profile?:'auto'|'structured'|'contributor';contributor_training_consent?:boolean; provider_training_consent?:boolean; context_mode?: 'stored'; history_revision?: string } = {},
+  opts: { temperature?: number | null; system_prompt?: string | null; session_id?: string; generation_id?: string; regenerate_message_id?: number; allow_nsfw?: boolean; route_profile?:'auto'|'structured'|'contributor';contributor_training_consent?:boolean; provider_training_consent?:boolean; context_mode?: 'stored'; history_revision?: string; quoteResolvesHistory?: boolean } = {},
   handlers: {
     onToken: (t: string) => void;
     onMeta?: (m: unknown) => void;
@@ -568,7 +551,7 @@ export function streamChat(
     onTiming?: (timings: ClientTimings) => void;
     onReset?: (full: string) => void;
     onDone?: (full: string, result?: GenerationResult) => void;
-    onError?: (e: string, details?: { rejected: boolean }) => void;
+    onError?: (e: string, details?: { rejected: boolean; code?: string }) => void;
     /** Durable bookkeeping even if an auth gate has just unmounted the caller. */
     onRejected?: () => void;
   },
@@ -577,12 +560,14 @@ export function streamChat(
   let rejected = false;
   const cloud = isCloud();
   const identity = cloudEpoch();
-  const stillCurrent = () => !controller.signal.aborted && (!cloud || cloudEpoch() === identity);
+  const target = executionTarget();
+  const stillCurrent = () => !controller.signal.aborted && target === executionTarget() && (!cloud || cloudEpoch() === identity);
   const timings: ClientTimings = { context_fetch_ms: null, quote_fetch_ms: null, quote_consent_ms: null, post_to_first_body_ms: null, post_to_full_ms: null };
   let postAt = 0;
   const firstBody = (body: string) => { if (body && timings.post_to_first_body_ms === null) timings.post_to_first_body_ms = performance.now() - postAt; };
   (async () => {
-    const request = { model_id, messages: messages.map(({ role, content }) => ({ role, content })), ...opts, generation_id: opts.generation_id ?? crypto.randomUUID(), stream: true };
+    const { quoteResolvesHistory, ...generationOptions } = opts;
+    const request = { model_id, messages: messages.map(({ role, content }) => ({ role, content })), ...generationOptions, generation_id: opts.generation_id ?? crypto.randomUUID(), stream: true };
     const reportTiming = () => {
       if (cloudEpoch() !== identity) return;
       recordClientTimings(request.generation_id, timings);
@@ -593,22 +578,33 @@ export function streamChat(
       // Provider training consent comes only from this send's confirmed quote.
       delete request.provider_training_consent;
       try {
+        const resolveHistory = opts.context_mode === 'stored' && quoteResolvesHistory === true && opts.history_revision === undefined;
         if (opts.context_mode === 'stored') {
-          const start = performance.now();
-          const context = await fetchChatContext(opts.session_id ?? 'default', controller.signal);
-          timings.context_fetch_ms = performance.now() - start;
-          reportTiming();
-          if (!stillCurrent()) throw Error('送信を取り消しました。');
           const latest = messages.at(-1);
           if (!latest || latest.role !== 'user') throw Error('送信する発言を確認できません。');
-          request.messages = [{ role: latest.role, content: latest.content }]; request.history_revision = context.history_revision;
+          request.messages = [{ role: latest.role, content: latest.content }];
+          if (!resolveHistory && request.history_revision === undefined) {
+            const start = performance.now();
+            const context = await fetchChatContext(opts.session_id ?? 'default', controller.signal);
+            timings.context_fetch_ms = performance.now() - start;
+            reportTiming();
+            if (!stillCurrent()) throw Error('送信を取り消しました。');
+            request.history_revision = context.history_revision;
+          }
         }
         const quoteStart = performance.now();
-        const preview = await cloudJson('quotes', {method:'POST',body:JSON.stringify(request),signal:controller.signal});
+        const preview = await cloudJson(resolveHistory ? 'quotes?resolve_history=true' : 'quotes', {
+          method: 'POST', body: JSON.stringify(request), signal: controller.signal,
+        });
         timings.quote_fetch_ms = performance.now() - quoteStart;
         reportTiming();
         if (!validCloudQuote(preview)) throw Error('見積もりを確認できません。');
         if (!stillCurrent()) throw Error('送信を取り消しました。');
+        if (resolveHistory) {
+          const revision: unknown = (preview as { history_revision?: unknown }).history_revision;
+          if (typeof revision !== 'string' || !/^[a-f0-9]{64}$/.test(revision)) throw Error('会話の履歴を確認できません。');
+          request.history_revision = revision;
+        }
         const expiresAt = Date.now() + (preview.expires_in ?? 120) * 1000;
         handlers.onQuote?.(preview);
         if (preview.route.training_consent_required === true) {
@@ -633,8 +629,12 @@ export function streamChat(
     if (!response.ok || !response.body) {
       rejected = [400, 401, 403, 422].includes(response.status);
       if (rejected) handlers.onRejected?.();
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.error ?? `HTTP ${response.status}`);
+      const error = await response.json().catch(() => null) ?? {};
+      if (response.status === 409 && error.code === 'history_revision_conflict') {
+        rejected = true;
+        handlers.onRejected?.();
+      }
+      throw Object.assign(Error(error.error ?? `HTTP ${response.status}`), { code: error.code });
     }
     const reader = response.body.getReader();
     const text = new TextDecoder();
@@ -667,7 +667,11 @@ export function streamChat(
       }
       if (!terminal) throw new Error("応答の途中で接続が終了しました。再送は自動実行しません。");
     } finally { await reader.cancel().catch(() => {}); }
-  })().catch(e => { if (stillCurrent()) handlers.onError?.(String(e), { rejected }); });
+  })().catch(e => {
+    if (!stillCurrent()) return;
+    const details = typeof e?.code === 'string' ? { rejected, code: e.code } : { rejected };
+    handlers.onError?.(String(e), details);
+  });
   return () => controller.abort();
 }
 

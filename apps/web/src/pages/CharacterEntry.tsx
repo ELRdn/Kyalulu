@@ -1,7 +1,7 @@
 import { useMediaQuery } from '../lib/useMediaQuery';
 import { RuntimeImage } from '../components/RuntimeMedia';
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams, Link } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate, useParams, Link } from "react-router-dom";
 import { type CharacterInfo, type SessionInfo, type WorldInfo } from "../lib/api";
 import Button from "../components/ui/Button";
 import EmptyState from "../components/ui/EmptyState";
@@ -21,15 +21,14 @@ import "./characterEntry.css";
 import { useRuntimeAccess } from '../components/RuntimeGate';
 import { fetchBrowseCatalog, isCloudGuest, PENDING_START } from '../lib/cloudGuest';
 import CloudLogin from '../components/CloudLogin';
-import { useLanguage } from '../lib/appContext';
+import { executionTarget, useLanguage } from '../lib/appContext';
+import { cloudOwner } from '../lib/cloudMode';
+import { characterSessionOptions, readCharacterDraft, readPendingStart as readPending, saveCharacterDraft, takeCharacterHandoff, type CharacterOpening } from '../lib/characterHandoff';
 
 type Character = CharacterInfo & { nsfw?: boolean; species?: string; age?: string; personality?: string; speaking_style?: string; portrait_urls?: string[] };
 
 // Survives the OAuth round trip so the same chat starts after login (docs/MOBILE_UX_SPEC.md §2).
 const PENDING = PENDING_START;
-const readPending = (): { character: string; text: string } | null => {
-  try { const value = JSON.parse(sessionStorage.getItem(PENDING) ?? 'null'); return typeof value?.character === 'string' && typeof value.text === 'string' ? value : null; } catch { return null; }
-};
 
 /** 最初の一文をキャッチコピー、残りを紹介文として分ける */
 function splitDescription(text: string): [string, string] {
@@ -38,11 +37,18 @@ function splitDescription(text: string): [string, string] {
   return m ? [m[1], m[2].trim()] : [t, ""];
 }
 
-export default function CharacterEntry() {
+export default function CharacterEntry({ opening }: { opening?: CharacterOpening } = {}) {
   const language = useLanguage(), en = language === 'en';
-  const guest = isCloudGuest(useRuntimeAccess());
+  const access = useRuntimeAccess();
+  const guest = isCloudGuest(access);
+  const draftScope = access.cloud_mode && executionTarget() === 'cloud' ? (guest ? 'guest' : cloudOwner()) : undefined;
   const { characterId } = useParams<{ characterId: string }>();
+  const { search } = useLocation();
   const navigate = useNavigate();
+  const transfer = new URLSearchParams(search).get('start');
+  const [profileTransfer, showProfileFor] = useState<string | null>(null);
+  const handoffOpening = transfer && transfer !== profileTransfer && draftScope && !guest && opening?.id === characterId
+    ? opening : undefined;
   const [characters, setCharacters] = useState<Character[]>([]);
   const [worlds, setWorlds] = useState<WorldInfo[]>([]);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
@@ -62,6 +68,7 @@ export default function CharacterEntry() {
   const saved = useSavedCharacters();
 
   useEffect(() => {
+    if (handoffOpening) return;
     let active = true;
     setLoading(true);
     setLoadError(null);
@@ -75,43 +82,91 @@ export default function CharacterEntry() {
       .catch((cause) => { if (active) setLoadError({ cause }); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [reload, guest]);
+  }, [reload, guest, handoffOpening]);
 
   useEffect(() => {
     setGreetingIndex(0);
     setDetailsOpen(false);
-    setDraft('');
     setRepliesOpen(true);
   }, [characterId]);
 
-  const character = characters.find((c) => c.id === characterId);
-
-  const start = async (text = '') => {
-    if (!character) return;
-    if (guest) {
-      try { sessionStorage.setItem(PENDING, JSON.stringify({ character: character.id, text })); } catch { /* Login still works; the pick is lost. */ }
-      setLoginOpen(true);
-      return;
+  useEffect(() => {
+    let saved = '';
+    if (characterId && draftScope) {
+      try { saved = readCharacterDraft(characterId, draftScope); } catch { /* Draft storage is optional. */ }
     }
+    setDraft(saved);
+  }, [characterId, draftScope]);
+
+  function editDraft(value: string) {
+    setDraft(value);
+    if (characterId && draftScope) {
+      try { saveCharacterDraft(characterId, draftScope, value); } catch { /* Continue composing in memory. */ }
+    }
+  }
+
+  const character = characters.find((c) => c.id === characterId);
+  const startInFlight = useRef(false);
+
+  const start = async (text = '', draftOwner?: string, selected: CharacterOpening | undefined = character) => {
+    if (!selected || startInFlight.current) return false;
+    if (guest) {
+      try { sessionStorage.setItem(PENDING, JSON.stringify({ character: selected.id, text,
+        ...(draftOwner === 'guest' && { publicDraft: true }) })); } catch { /* Login still works; the pick is lost. */ }
+      setLoginOpen(true);
+      return true;
+    }
+    startInFlight.current = true;
     setStarting(true);
     setError(null);
     try {
-      const temperature = character.recommended_generation?.temperature;
-      const intro = [character.intro ?? "", ...(character.alternate_greetings ?? [])].filter((g) => g.trim())[greetingIndex] ?? "";
-      const sessionId = await startNewSession({ characterId: character.id, intro, temperature: typeof temperature === "number" ? temperature : undefined });
-      navigate(`/chats/${encodeURIComponent(sessionId)}`, { state: text ? { send: text } : undefined });
+      const ownerAtStart = access.cloud_mode ? cloudOwner() : '';
+      const sessionId = await startNewSession(characterSessionOptions(selected, selected === opening ? 0 : greetingIndex));
+      if (ownerAtStart && ownerAtStart !== cloudOwner()) {
+        startInFlight.current = false;
+        setStarting(false);
+        return false;
+      }
+      if (draftOwner) {
+        try {
+          if (readCharacterDraft(selected.id, draftOwner).trim() === text) saveCharacterDraft(selected.id, draftOwner, '');
+        } catch { /* The session is already created. Keep the existing draft if storage is unavailable. */ }
+      }
+      navigate(`/chats/${encodeURIComponent(sessionId)}`, {
+        state: text ? { send: text, ...(ownerAtStart && { sendOwner: ownerAtStart, nextChat: access.onlineRoutes?.has('chats') }) } : undefined,
+      });
+      return true;
     } catch (e) {
+      startInFlight.current = false;
       setError({ cause: e });
       setStarting(false);
+      return false;
     }
   };
   // Back from login: start the chat the guest asked for, once.
   useEffect(() => {
+    const selected = handoffOpening ?? character;
+    if (!selected || !access.cloud_mode || executionTarget() !== 'cloud' || startInFlight.current) return;
+    if (transfer) {
+      let text: string | null = null;
+      const owner = guest ? 'guest' : cloudOwner();
+      try {
+        text = takeCharacterHandoff(transfer, selected.id, owner);
+      } catch { /* A storage failure must never start a session. */ }
+      if (text !== null) {
+        setDraft(text);
+        void start(text, owner, selected).then(started => {
+          if (!started && handoffOpening) showProfileFor(transfer);
+        });
+      } else if (handoffOpening) showProfileFor(transfer);
+      return;
+    }
     const pending = readPending();
     if (guest || !character || pending?.character !== character.id) return;
     sessionStorage.removeItem(PENDING);
-    void start(pending.text);
-  }, [guest, character?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    setDraft(pending.text);
+    void start(pending.text, pending.publicDraft ? 'guest' : undefined);
+  }, [guest, character?.id, access.cloud_mode, transfer, handoffOpening, draftScope]); // eslint-disable-line react-hooks/exhaustive-deps
   useDocumentTitle(loading ? null : loadError ? (en ? 'Could not load character' : 'キャラクターを読み込めませんでした') : character?.display_name ?? (en ? 'Character not found' : 'キャラクターが見つかりません'));
 
   const recommendations = useMemo(() => {
@@ -125,7 +180,7 @@ export default function CharacterEntry() {
       .map((x) => x.c);
   }, [characters, character, adult]);
 
-  if (loading) {
+  if (loading || handoffOpening) {
     return (
       <div className="k-plot" aria-busy="true">
         <div className="k-plot-hero k-skeleton-card" />
@@ -266,8 +321,8 @@ export default function CharacterEntry() {
         )}
 
         <div className="k-plot-cta">
-          <form className="k-plot-composer" onSubmit={(e) => { e.preventDefault(); void start(draft.trim()); }}>
-            <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={phone ? (en ? 'Message' : 'メッセージ') : en ? `Say something to ${shortName}` : `${shortName}に話しかける`} aria-label={en ? 'First message' : '最初のメッセージ'} disabled={starting} />
+          <form className="k-plot-composer" onSubmit={(e) => { e.preventDefault(); void start(draft.trim(), draftScope); }}>
+            <input value={draft} onChange={(e) => editDraft(e.target.value)} placeholder={phone ? (en ? 'Message' : 'メッセージ') : en ? `Say something to ${shortName}` : `${shortName}に話しかける`} aria-label={en ? 'First message' : '最初のメッセージ'} disabled={starting} />
             <button type="submit" className="k-plot-cta__main" disabled={starting} aria-label={starting ? (en ? 'Preparing…' : '準備中…') : (en ? 'Start conversation' : '会話をはじめる')}><Icon name="arrowUp" size={20} strokeWidth={2.2} /></button>
           </form>
           {replies.length > 0 && repliesOpen && (

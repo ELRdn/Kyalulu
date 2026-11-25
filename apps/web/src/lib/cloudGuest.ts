@@ -42,4 +42,4 @@ export function clearLoginReturn() {
 }
 
 /** A character's first line, held across the login redirect. */
-export const PENDING_START = 'kyalulu-pending-start';
+export { PENDING_START } from './characterHandoff';

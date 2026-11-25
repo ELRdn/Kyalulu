@@ -3,6 +3,7 @@ import { cloudEpoch, isCloud } from './cloudMode';
 import { LibraryItemSchema, ImportPreviewSchema, PortableAssetSchema } from '../../../../packages/schemas/src/portable';
 import type { LibraryItem, ImportCommit, PortableDocument } from '../../../../packages/schemas/src/portable';
 export * from '../../../../packages/schemas/src/portable';
+export { assetUrl } from './media';
 
 export async function libraryRequest(url: string, init?: RequestInit) {
   const epoch = isCloud() ? cloudEpoch() : null;
@@ -43,4 +44,3 @@ export async function uploadAsset(file: File, options?: { rights_confirmed: bool
   if (options) body.set('rights_confirmed', String(options.rights_confirmed));
   return PortableAssetSchema.parse(await libraryRequest('/api/library/assets', { method: 'POST', body }));
 }
-export const assetUrl = (id?: string | null) => id ? `/api/library/assets/${id}` : undefined;

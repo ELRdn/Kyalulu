@@ -53,7 +53,7 @@ export default function SessionRow({
           <Icon name="pin" size={18} />
           <span>{pinned ? (en ? 'Unpin' : '解除') : (en ? 'Pin' : 'ピン留め')}</span>
         </button>
-        {onDelete && <button type="button" className="k-session-row__pin k-session-row__delete" aria-label={en ? `Delete the conversation with ${name}` : `${name}との会話を削除`} onClick={onDelete}>
+        {onDelete && <button type="button" className="k-session-row__pin k-session-row__delete" aria-label={en ? `Delete the conversation with ${name}` : `${name}との会話を削除`} title={en ? 'Delete' : '削除'} onClick={onDelete}>
           <Icon name="trash" size={18} />
           <span>{en ? 'Delete' : '削除'}</span>
         </button>}</div>

@@ -229,7 +229,7 @@ class SupabaseAuth:
     async def _owner(self, token, session_hash):
         if not token or len(token) > 256:
             raise CloudError("authentication_required", 401)
-        with self.store.transaction() as db:
+        with self.store.read() as db:
             row = db.execute("SELECT * FROM sessions WHERE hash=?", (session_hash,)).fetchone()
         if not row:
             raise CloudError("authentication_required", 401)

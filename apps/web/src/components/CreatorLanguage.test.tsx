@@ -10,7 +10,7 @@ const fixture=vi.hoisted(()=>({language:'en',story:true,states:[] as unknown[],n
 vi.mock('react',async original=>({...await original<typeof import('react')>(),useEffect:vi.fn(),useRef:(value:unknown)=>({current:value}),
   useState:(initial:unknown)=>{const index=fixture.next++;return [fixture.states[index]??(typeof initial==='function'?initial():initial),
     (value:unknown)=>fixture.updates.push({index,value})];}}));
-vi.mock('../lib/appContext',()=>({useLanguage:()=>fixture.language}));
+vi.mock('../lib/appContext',()=>({useLanguage:()=>fixture.language,deviceOwner:()=>'guest'}));
 vi.mock('../lib/capabilities',()=>({useCapabilities:()=>({capabilities:{features:{story_rules:fixture.story}}})}));
 vi.mock('../lib/title',()=>({useDocumentTitle:vi.fn()}));
 vi.mock('../lib/lab',()=>({labRequest:fixture.lab}));

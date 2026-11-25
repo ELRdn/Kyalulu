@@ -1,9 +1,13 @@
 """Rejected OpenRouter responses retain operator bills; all traffic is mocked."""
 
 import asyncio
+from contextlib import closing
 import json
+import sqlite3
+from threading import Event, Timer
 from uuid import uuid4
 
+import aiosqlite
 import httpx
 import pytest
 
@@ -11,12 +15,58 @@ from python.cloud.app import create_app
 from python.cloud.auth import SESSION_COOKIE, provider_consent_version
 from python.cloud.config import CloudConfig
 from python.cloud.generation import CloudChat
-from python.cloud.store import CloudError, CloudStore
+from python.cloud.store import CloudError, CloudStore, run_attached_transaction
 from python.cloud.meter import CostMeter, MeteredProvider, call_bound
 from python.cloud.router import OPENROUTER_TARIFFS
 from python.providers.openrouter import DEEPSEEK, OpenRouterProvider
 from python.storage import db as storage
 from python.storage.context import CloudStorageContext, storage_context
+
+
+@pytest.mark.asyncio
+async def test_attached_write_finishes_while_control_writer_waits_and_caller_is_cancelled(tmp_path):
+    control = tmp_path / "control.db"
+    tenant = tmp_path / "tenant.db"
+    for path in (control, tenant):
+        with closing(sqlite3.connect(path)) as db:
+            db.execute("CREATE TABLE commits(id INTEGER PRIMARY KEY)")
+
+    has_lock, release = Event(), Event()
+
+    async def commit():
+        async with aiosqlite.connect(tenant) as db:
+            await db.execute("ATTACH DATABASE ? AS control", (str(control),))
+            await db.execute("BEGIN IMMEDIATE")
+            await db.execute("INSERT INTO main.commits VALUES (1)")
+            await db.execute("INSERT INTO control.commits VALUES (1)")
+            has_lock.set()
+            assert await asyncio.to_thread(release.wait, 3)
+            await db.commit()
+        return "committed"
+
+    task = asyncio.create_task(run_attached_transaction(commit()))
+    try:
+        assert await asyncio.to_thread(has_lock.wait, 3)
+        for _ in range(2):
+            task.cancel()
+            await asyncio.sleep(0)
+            assert not task.done()
+        # Release the commit from outside the request loop while a synchronous
+        # control-plane write waits for the same SQLite writer lock.
+        timer = Timer(.05, release.set)
+        timer.start()
+        try:
+            with closing(sqlite3.connect(control, timeout=1)) as writer:
+                writer.execute("BEGIN IMMEDIATE")
+                assert writer.execute("SELECT id FROM commits").fetchall() == [(1,)]
+        finally:
+            timer.cancel()
+        assert await task == "committed"
+        with closing(sqlite3.connect(tenant)) as db:
+            assert db.execute("SELECT id FROM commits").fetchall() == [(1,)]
+    finally:
+        release.set()
+        await asyncio.gather(task, return_exceptions=True)
 
 
 @pytest.mark.asyncio

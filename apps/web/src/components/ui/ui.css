@@ -358,14 +358,15 @@ dialog.k-dialog-overlay::backdrop, dialog.k-cmd-overlay::backdrop { background: 
 }
 .k-session-row__pin.is-pinned { background: var(--bg-surface-soft); color: var(--accent-primary); }
 .k-session-row__pin:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
-/* With a mouse there is no swipe: the action floats in on hover. */
+/* Reserve separate hit targets for the conversation and its desktop actions. */
 @media (hover: hover) {
   .k-session-row { overflow: visible; }
   .k-session-row:hover { background: var(--bg-hover); }
-  .k-session-row__link { padding: 12px; }
-  .k-session-row__actions { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); padding: 0; opacity: 0; transition: opacity 0.12s ease; }
-  .k-session-row:hover .k-session-row__actions, .k-session-row__actions:focus-within { opacity: 1; }
-  .k-session-row__pin { width: auto; height: 36px; grid-auto-flow: column; gap: 6px; padding: 0 12px; border-radius: 18px; }
+  .k-session-row__link { flex: 1 1 0; min-width: 0; padding: 12px; }
+  .k-session-row__actions { align-self: center; padding: 0 4px; opacity: 0; transition: opacity 0.12s ease; pointer-events: none; }
+  .k-session-row:hover .k-session-row__actions, .k-session-row__actions:focus-within { opacity: 1; pointer-events: auto; }
+  .k-session-row__pin { width: 36px; height: 36px; padding: 0; border-radius: 18px; }
+  .k-session-row__pin span { display: none; }
 }
 
 /* --- Messages: character left / user right / narration as prose --- */

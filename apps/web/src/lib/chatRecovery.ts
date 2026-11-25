@@ -89,5 +89,5 @@ export async function reconcileGeneration<T extends { id?: number }>(
     throw new Error("保存された返信を履歴で確認できません。");
   }
   beforeSettle();
-  return { outcome, history, value: store.settle(pending.id, outcome === "committed") };
+  return { outcome, history, status: result, value: store.settle(pending.id, outcome === "committed") };
 }

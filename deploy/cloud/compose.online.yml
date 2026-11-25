@@ -1,0 +1,23 @@
+# Use alongside the Cloud and VPS definitions for an authorized release.
+services:
+  online:
+    image: ${KYALULU_ONLINE_IMAGE:?Set the matching versioned Next image}
+    environment:
+      KYALULU_PUBLIC_ORIGIN: ${KYALULU_CLOUD_ORIGIN:?Set the canonical HTTPS app origin}
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /srv/apps/online/.next/cache:uid=1000,gid=1000
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks:
+      relay_proxy:
+        aliases: [kyalulu-online]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: none

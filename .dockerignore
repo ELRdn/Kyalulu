@@ -16,6 +16,7 @@
 **/*.key
 **/*.pem
 **/dist
+**/.next
 models/*
 !models/example-le.yaml
 !models/example-lmstudio.yaml

@@ -1,0 +1,24 @@
+{
+  "entry": ["/", "/login"],
+  "chats": ["/chats", "/chats/:sessionId"],
+  "browse": [
+    "/discover",
+    "/published",
+    "/published/:publicationId",
+    "/characters/:characterId",
+    "/works/:workId",
+    "/authors/:authorId"
+  ],
+  "pages": [
+    "/profile",
+    "/profile/:section",
+    "/profile/legal/:doc",
+    "/create",
+    "/create/settings",
+    "/publications",
+    "/studio",
+    "/research",
+    "/research/benchmarks",
+    "/status"
+  ]
+}

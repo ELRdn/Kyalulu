@@ -6,10 +6,37 @@ import re
 from functools import cache
 from html import escape
 from urllib.parse import quote
+import yaml
 
 from python.core.prompt_compiler import CHAR_DIR, list_available
 
 _HEAD = re.compile(r'\s*<(?:title>[^<]*</title|meta (?:name="description"|property="og:[a-z]+")[^>]*)>')
+
+
+def official_character(character_id: str, *, include_opening: bool = False) -> dict | None:
+    """Read one distributable card without resolving user-library references."""
+    if not re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,79}', character_id):
+        return None
+    file = CHAR_DIR / (character_id + '.yaml')
+    if file.resolve().parent != CHAR_DIR.resolve() or not file.is_file():
+        return None
+    data = yaml.safe_load(file.read_text(encoding='utf-8'))
+    if (not isinstance(data, dict) or data.get('id') != character_id
+            or data.get('official') is not True or data.get('nsfw') is not False):
+        return None
+    card = {field: data.get(field) for field in ('id', 'display_name', 'description', 'portrait_url', 'hook')}
+    if include_opening:
+        alternates = data.get('alternate_greetings')
+        recommended = data.get('recommended_generation')
+        temperature = recommended.get('temperature') if isinstance(recommended, dict) else None
+        card['opening'] = {
+            'id': character_id,
+            'intro': data['intro'] if isinstance(data.get('intro'), str) else '',
+            'alternate_greetings': [g for g in alternates if isinstance(g, str)] if isinstance(alternates, list) else [],
+        }
+        if type(temperature) in (int, float) and 0 <= temperature <= 2:
+            card['opening']['recommended_generation'] = {'temperature': temperature}
+    return card
 
 
 @cache

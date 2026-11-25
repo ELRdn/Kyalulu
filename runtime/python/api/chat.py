@@ -9,7 +9,7 @@ from typing import List, Literal
 
 import anyio
 from fastapi import APIRouter, Request, Query, Path as PathParam, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel, Field
 
@@ -64,6 +64,19 @@ class SessionSettings(BaseModel):
     library_binding: LibraryBinding | None = None
 
 
+class OpeningSettings(SessionSettings):
+    session_id: str = Field(pattern=r"^chat_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+    character_id: str = Field(min_length=1)
+    intro: str = Field(min_length=1, max_length=10000)
+
+
+async def _insert_intro(db, sid: str, intro: str) -> None:
+    await db.execute(
+        "INSERT INTO chat_history (session_id, role, content, model_id) VALUES (?, 'assistant', ?, 'intro')",
+        (sid, intro),
+    )
+
+
 async def _save_settings(
     session_id: str,
     system_prompt: str | None,
@@ -78,7 +91,8 @@ async def _save_settings(
     _has_intro: bool = False,
     library_binding: LibraryBinding | None = None,
     _has_binding: bool = False,
-) -> None:
+    initialize_opening: bool = False,
+) -> tuple[bool, str | None]:
     """設定をupsert（部分更新対応）"""
     await init_db()
     sid = session_id or "default"
@@ -120,10 +134,24 @@ async def _save_settings(
         intro_val = intro_val[:10000]
     if sp is not None and len(sp) > 10000:
         sp = sp[:10000]
+    values = (sp or "", temp, char_id, per_id, w_id, intro_val or "")
     async with aiosqlite.connect(get_db_path(DB_PATH)) as db:
         await db.execute("BEGIN IMMEDIATE")
         try:
             await conversation._assert_idle(db, sid)
+            if initialize_opening:
+                saved = await (await db.execute(
+                    "SELECT system_prompt,temperature,character_id,persona_id,world_id,intro,library_binding "
+                    "FROM session_settings WHERE session_id=?", (sid,),
+                )).fetchone()
+                messages = await db.execute_fetchall(
+                    "SELECT role,content,model_id FROM chat_history WHERE session_id=? ORDER BY id LIMIT 2", (sid,),
+                )
+                if saved or messages:
+                    if (saved and saved[:-1] == values and messages == [("assistant", intro_val, "intro")]
+                            and LibraryBinding.model_validate_json(saved[-1] or "{}") == LibraryBinding.model_validate(binding)):
+                        return False, await conversation._revision(db, sid)
+                    raise HTTPException(409, "conversation opening already exists")
             await memories.session_scope({"session_id": sid, "character_id": char_id, "persona_id": per_id,
                                           "world_id": w_id, "library_binding": binding}, db=db)
         except generations.Conflict as exc:
@@ -143,9 +171,14 @@ async def _save_settings(
                 library_binding=excluded.library_binding,
                 updated_at=datetime('now')
             """,
-            (sid, sp or "", temp, char_id, per_id, w_id, intro_val or "", json.dumps(binding)),
+            (sid, *values, json.dumps(binding)),
         )
+        opening_revision = None
+        if initialize_opening:
+            await _insert_intro(db, sid, values[-1])
+            opening_revision = await conversation._revision(db, sid)
         await db.commit()
+    return True, opening_revision
 
 
 async def _load_settings(session_id: str) -> SessionSettings:
@@ -235,14 +268,8 @@ async def get_settings(session_id: str = "default"):
     return s.model_dump()
 
 
-@router.put("/chat/settings")
-async def put_settings(body: SessionSettings):
-    """セッション設定を保存（upsert）"""
-    if len(body.system_prompt or "") > 10000:
-        return JSONResponse(status_code=400, content={"error": "system_prompt too long (max 10000)"})
-    if len(body.intro or "") > 10000:
-        return JSONResponse(status_code=400, content={"error": "intro too long (max 10000)"})
-    await _save_settings(
+async def _put_settings(body: SessionSettings, *, initialize_opening: bool = False) -> tuple[bool, str | None]:
+    return await _save_settings(
         body.session_id,
         body.system_prompt,
         body.temperature,
@@ -256,9 +283,29 @@ async def put_settings(body: SessionSettings):
         _has_intro="intro" in body.model_fields_set,
         library_binding=body.library_binding,
         _has_binding='library_binding' in body.model_fields_set,
+        initialize_opening=initialize_opening,
     )
+
+
+@router.put("/chat/settings")
+async def put_settings(body: SessionSettings):
+    """セッション設定を保存（upsert）"""
+    if len(body.system_prompt or "") > 10000:
+        return JSONResponse(status_code=400, content={"error": "system_prompt too long (max 10000)"})
+    if len(body.intro or "") > 10000:
+        return JSONResponse(status_code=400, content={"error": "intro too long (max 10000)"})
+    await _put_settings(body)
     s = await _load_settings(body.session_id)
     return {"ok": True, **s.model_dump()}
+
+
+@router.put("/chat/settings/opening")
+async def put_opening(body: OpeningSettings):
+    if len(body.system_prompt) > 10000 or not body.intro.strip():
+        raise HTTPException(400, "invalid conversation opening")
+    created, revision = await _put_settings(body, initialize_opening=True)
+    assert revision is not None
+    return Response(status_code=201 if created else 204, headers={"X-Kyalulu-History-Revision": revision})
 
 
 @router.post("/chat/intro/inject")
@@ -293,7 +340,7 @@ async def inject_intro(session_id: str = "default"):
                 return {"ok": True, "injected": False, "reason": "already injected"}
             return {'ok': True, 'injected': False, 'reason': 'conversation already started'}
         # history が空 or まだintroが未注入なら追加（モデルは intro）
-        await db.execute("INSERT INTO chat_history (session_id, role, content, model_id) VALUES (?, ?, ?, ?)", (session_id, "assistant", intro, "intro"))
+        await _insert_intro(db, session_id, intro)
         await db.commit()
         return {"ok": True, "injected": True, "intro": intro}
 

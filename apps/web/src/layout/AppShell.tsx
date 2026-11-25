@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import NavItem from "../components/ui/NavItem";
 import Icon, { type IconName } from "../components/ui/Icon";
-import CommandPalette from "../components/CommandPalette";
+import Dialog from "../components/ui/Dialog";
 import { useDisplayName, useProfileExtras } from "../lib/profile";
 import { useAccountProfile } from '../lib/accountProfile';
 import "./shell.css";
@@ -10,7 +10,9 @@ import { useRuntimeAccess } from '../components/RuntimeGate';
 import { isCloudGuest } from '../lib/cloudGuest';
 import CreditOptions, { AdBanner } from '../components/CreditOptions';
 import { labels, useLanguage } from '../lib/appContext';
-import { UnifiedSync } from '../components/SessionPolicy';
+import UnifiedSync from '../components/UnifiedSync';
+
+const CommandPalette = lazy(() => import('../components/CommandPalette'));
 
 // Same five tabs, names and order in the sidebar and the bottom bar (docs/MOBILE_UX_SPEC.md §4).
 const NAV: { to: string; icon: IconName }[] = [
@@ -125,7 +127,11 @@ export default function AppShell() {
       </nav>
       </div>
 
-      {guest ? null : <CommandPalette open={paletteOpen} onClose={closePalette} />}
+      {!guest && paletteOpen && <Suspense fallback={
+        <Dialog open onClose={closePalette} label={en ? 'Search' : '検索'}><p role="status">{en ? 'Loading search…' : '検索を読み込んでいます…'}</p></Dialog>
+      }>
+        <CommandPalette open onClose={closePalette} />
+      </Suspense>}
       <CreditOptions/>
       <UnifiedSync/>
     </div>

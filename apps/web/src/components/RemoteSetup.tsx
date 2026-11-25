@@ -27,7 +27,9 @@ export function RemoteConnections() {
   </section>;
 }
 
-export default function RemoteSetup({ entry, children }: { entry: { invitation?: PairingLink; error?: string }; children: ReactNode }) {
+export default function RemoteSetup({ entry, children, onDismiss }: {
+  entry: { invitation?: PairingLink; error?: string }; children: ReactNode; onDismiss?: () => void;
+}) {
   const language=useLanguage(),en=language==='en';
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(entry.error || '');
@@ -58,6 +60,7 @@ export default function RemoteSetup({ entry, children }: { entry: { invitation?:
     </form>}
     {paired && <section className="k-connection"><h2>{en?'Registered successfully':'登録できました'}</h2><Button onClick={() => { try { selectRemote(paired); } catch (error) { setError(String(error)); } }}>{en?'Open conversations':'会話を開く'}</Button></section>}
     {error && <p role="alert">{friendlyMessage(error,language)}</p>}
+    {onDismiss && <Button variant="ghost" disabled={busy} onClick={onDismiss}>{en?'Close':'閉じる'}</Button>}
     {!busy && <RemoteConnections />}
   </div></main>;
 }

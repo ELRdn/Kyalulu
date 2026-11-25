@@ -22,6 +22,58 @@ it('uses server revision and only the latest user message in both quote and gene
   expect(JSON.parse(fetch.mock.calls[2][1].body)).toMatchObject({ history_revision: 'r7', generation_id: 'g', quote_id: 'q' });
   expect(confirm).not.toHaveBeenCalled();
 });
+it('uses the quote-captured revision without the context request when advertised', async () => {
+  setCloud(true);
+  const revision = 'a'.repeat(64);
+  const fetch = vi.fn().mockResolvedValueOnce(Response.json({ ...preview, history_revision: revision }))
+    .mockResolvedValueOnce(new Response('event: done\ndata: {"full":"safe"}\n\n'));
+  vi.stubGlobal('fetch', fetch);
+  await new Promise<void>((resolve, reject) => streamChat('cloud', [{ role: 'user', content: 'old' }, { role: 'user', content: 'new' }], {
+    context_mode: 'stored', quoteResolvesHistory: true, generation_id: 'g',
+  }, { onToken: vi.fn(), onDone: () => resolve(), onError: error => reject(Error(error)) }));
+  expect(fetch.mock.calls.map(call => call[0])).toEqual(['/api/cloud/quotes?resolve_history=true', '/api/chat/stream']);
+  const quoteBody = JSON.parse(fetch.mock.calls[0][1].body);
+  expect(quoteBody.messages).toEqual([{ role: 'user', content: 'new' }]);
+  expect(quoteBody).not.toHaveProperty('history_revision');
+  expect(quoteBody).not.toHaveProperty('quoteResolvesHistory');
+  expect(JSON.parse(fetch.mock.calls[1][1].body)).toMatchObject({ history_revision: revision, quote_id: 'q', generation_id: 'g' });
+});
+it('uses the committed opening revision for both quote and generation', async () => {
+  setCloud(true);
+  const revision = 'c'.repeat(64);
+  const fetch = vi.fn().mockResolvedValueOnce(Response.json(preview))
+    .mockResolvedValueOnce(new Response('event: done\ndata: {"full":"safe"}\n\n'));
+  vi.stubGlobal('fetch', fetch);
+  await new Promise<void>((resolve, reject) => streamChat('cloud', [{ role: 'user', content: 'new' }], {
+    context_mode: 'stored', quoteResolvesHistory: true, history_revision: revision,
+  }, { onToken: vi.fn(), onDone: () => resolve(), onError: error => reject(Error(error)) }));
+  expect(fetch.mock.calls.map(call => call[0])).toEqual(['/api/cloud/quotes', '/api/chat/stream']);
+  expect(fetch.mock.calls.map(([, init]) => JSON.parse(init.body).history_revision)).toEqual([revision, revision]);
+});
+it('treats a confirmed stale generation revision as rejected without dispatching again', async () => {
+  setCloud(true);
+  const fetch = vi.fn().mockResolvedValueOnce(Response.json(preview))
+    .mockResolvedValueOnce(Response.json({ error: 'history_revision_conflict', code: 'history_revision_conflict' }, { status: 409 }));
+  vi.stubGlobal('fetch', fetch);
+  const rejected = vi.fn();
+  const result = await new Promise(resolve => streamChat('cloud', [{ role: 'user', content: 'new' }], {
+    context_mode: 'stored', history_revision: 'c'.repeat(64),
+  }, { onToken: vi.fn(), onRejected: rejected, onError: (_error, detail) => resolve(detail) }));
+  expect(result).toEqual({ rejected: true, code: 'history_revision_conflict' });
+  expect(rejected).toHaveBeenCalledOnce();
+  expect(fetch).toHaveBeenCalledTimes(2);
+});
+it.each([undefined, 'not-a-revision'])('keeps the draft when the capture-enabled quote has invalid revision %s', async revision => {
+  setCloud(true);
+  const fetch = vi.fn().mockResolvedValueOnce(Response.json({ ...preview, history_revision: revision }));
+  vi.stubGlobal('fetch', fetch);
+  const rejected = vi.fn();
+  await new Promise<void>(resolve => streamChat('cloud', [{ role: 'user', content: 'new' }], {
+    context_mode: 'stored', quoteResolvesHistory: true,
+  }, { onToken: vi.fn(), onRejected: rejected, onError: () => resolve() }));
+  expect(fetch).toHaveBeenCalledOnce();
+  expect(rejected).toHaveBeenCalledOnce();
+});
 it('fails closed for training-required quotes without a confirmation handler', async () => {
   setCloud(true); const fetch = vi.fn().mockResolvedValue(Response.json({ ...preview, route: { ...preview.route, training_consent_required: true } })); vi.stubGlobal('fetch', fetch);
   const rejected = vi.fn();

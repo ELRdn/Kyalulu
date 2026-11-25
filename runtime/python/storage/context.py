@@ -11,6 +11,7 @@ from uuid import UUID
 class CloudStorageContext:
     owner_id: str
     directory: Path
+    initialized_db: tuple[int, int] | None = None
 
     @classmethod
     def for_owner(cls, root: Path, owner_id: str):

@@ -1,14 +1,15 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { connectionScope } from './remoteStore';
 import { ChatRecovery } from './chatRecovery';
+import { selectedExecutionTarget, TARGET_STORAGE_KEY, type ExecutionTarget } from './executionPreference';
 
-export type ExecutionTarget = 'cloud' | 'device' | 'pc' | 'local';
+export type { ExecutionTarget } from './executionPreference';
 export type StoragePolicy = 'sync' | 'local';
 export type Language = 'ja' | 'en';
 export type AppPreferences = { version: 1; language: Language; country: string; age: number;
   accepted: boolean; genres: string[]; moods: string[]; activities: string[]; favorites: string[]; dismissed: string[] };
 const EVENT = 'kyalulu-app-context';
-const MODE = 'kyalulu-execution-target';
+const MODE = TARGET_STORAGE_KEY;
 const PREFS = 'kyalulu-app-preferences-v1';
 const OWNER = 'kyalulu-app-owner';
 export const isDesktop = () => typeof window !== 'undefined' && ('electronAPI' in window || /Electron\//.test(navigator.userAgent));
@@ -17,10 +18,7 @@ export const isUnifiedEntry = () => typeof location !== 'undefined' &&
   (['unified','native'].includes(import.meta.env.MODE) || import.meta.env.VITE_UNIFIED_APP === '1' || /^(app|mobile)\.kyalulu\.com$/.test(location.hostname) || location.pathname.startsWith('/device/'));
 function read(key: string) { try { return localStorage.getItem(key); } catch { return null; } }
 export function executionTarget(): ExecutionTarget {
-  if (typeof location !== 'undefined' && location.pathname.startsWith('/device/')) return 'device';
-  const value = read(MODE);
-  return value === 'cloud' || value === 'device' || value === 'pc' || value === 'local' ? value
-    : read('kyalulu-active-remote') ? 'pc' : isUnifiedEntry() && !hasLocalRuntime() ? 'cloud' : 'local';
+  return selectedExecutionTarget(isUnifiedEntry() && !hasLocalRuntime() ? 'cloud' : 'local');
 }
 export function deviceOwner() { return read(OWNER) || 'guest'; }
 export function rememberOwner(owner: string) {

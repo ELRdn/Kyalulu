@@ -224,7 +224,7 @@ async def check(args):
                     await popup.get_by_role('status').filter(has_text='統合アプリで内容を確認').wait_for()
                     await target.get_by_label('表示言語', exact=True).select_option('en')
                     await target.get_by_role('button', name='Import', exact=True).wait_for()
-                    assert await target.evaluate('document.documentElement.dataset.theme') == args.theme
+                    assert await target.evaluate('document.documentElement.dataset.theme') == 'dark'
                     assert await target.evaluate('document.documentElement.scrollWidth<=innerWidth')
                     await target.screenshot(path=str(args.output / 'preview-english.png'), full_page=True, animations='disabled')
                     await target.get_by_label('Language', exact=True).select_option('ja')
@@ -284,7 +284,7 @@ async def check(args):
                     corrupt = args.output / 'corrupt-migration.json'
                     corrupt.write_text(json.dumps({**envelope, 'sha256': '0' * 64}), encoding='utf-8')
                     await target.get_by_label('移行用ファイル', exact=True).set_input_files(str(corrupt))
-                    await target.get_by_role('alert').filter(has_text='SHA-256 mismatch').wait_for()
+                    await target.get_by_role('alert').filter(has_text='移行データのサイズまたはSHA-256が一致しません。').wait_for()
                     assert await target_state(target) == imported
                     await expect(target.get_by_role('button', name='取り込む', exact=True)).to_have_count(0)
                     await target.get_by_label('移行用ファイル', exact=True).set_input_files(str(export))

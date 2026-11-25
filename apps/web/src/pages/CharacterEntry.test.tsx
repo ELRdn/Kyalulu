@@ -13,6 +13,7 @@ vi.mock('react', async importOriginal => ({ ...await importOriginal<typeof impor
   useState: (initial: unknown) => [fixture.states[fixture.next++] ?? (typeof initial === 'function' ? initial() : initial), vi.fn()],
 }));
 vi.mock('react-router-dom', () => ({ useNavigate: () => fixture.navigate, useParams: () => ({ characterId: fixture.id }),
+  useLocation: () => ({ search: '' }),
   Link: ({ to, children, ...props }: any) => <a href={to} {...props}>{children}</a>,
 }));
 vi.mock('../lib/appContext', () => ({ useLanguage: () => fixture.language }));
@@ -26,11 +27,11 @@ vi.mock('../lib/cloudGuest', () => ({ PENDING_START: 'kyalulu-pending-start', is
 vi.mock('../components/RuntimeMedia', () => ({ RuntimeImage: ({ src, alt, ...props }: any) => <img src={src} alt={alt} {...props} /> }));
 vi.mock('../components/ScenePreview', () => ({ default: ({ content }: { content: string }) => <div>{content}</div> }));
 
-// State order: characters, worlds, sessions, loading, error, loadError, reload, starting, greeting,
+// State order: profile-transfer fallback, characters, worlds, sessions, loading, error, loadError, reload, starting, greeting,
 // detailsOpen, detailsTab, loginOpen, draft, repliesOpen. The details sheet opens on its profile tab.
 function view() {
   fixture.next = 0;
-  fixture.states = [fixture.characters, fixture.worlds, fixture.sessions, false, fixture.error,
+  fixture.states = [null, fixture.characters, fixture.worlds, fixture.sessions, false, fixture.error,
     fixture.loadError, 0, false, 1, true, 'profile', false, '', true];
   return CharacterEntry();
 }

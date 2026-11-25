@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import base64
 import json
+import sqlite3
 import time
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
@@ -22,6 +23,39 @@ def config(tmp_path, **kwargs):
         private_test=True, allowed_emails=("owner@example.test",), signup_limit=1,
         trial_credits=0, monthly_subsidy_jpy=0, test_budget_nano=100_000_000,
         test_prior_cost_nano=49_548_721), **kwargs)
+
+
+@pytest.mark.asyncio
+async def test_status_reads_committed_session_while_control_writer_is_open(tmp_path):
+    cfg = config(tmp_path / "data # fixture")
+    app = create_app(cfg, transport=httpx.MockTransport(
+        lambda request: pytest.fail(f"Fresh session unexpectedly contacted {request.url.host}"),
+    ))
+    store = CloudStore(cfg)
+    owner = str(uuid4())
+    store.account(owner, consent=provider_consent_version(cfg))
+    SupabaseAuth(cfg, store).save("browser", owner, {
+        "access_token": "fixture", "refresh_token": "fixture", "expires_in": 3600,
+    })
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=cfg.origin,
+                                 cookies={SESSION_COOKIE: "browser"}) as client:
+        writer = sqlite3.connect(store.path)
+        try:
+            writer.execute("BEGIN IMMEDIATE")
+            writer.execute("UPDATE accounts SET suspended=1 WHERE id=?", (owner,))
+            response = await client.get("/api/mobile/status")
+            assert response.status_code == 200
+            assert response.json()["owner_scope"] == owner
+            writer.commit()
+        finally:
+            writer.close()
+
+        response = await client.get("/api/mobile/status")
+        assert response.status_code == 200
+        assert response.json()["authenticated"] is False
+        assert response.json()["owner_scope"] is None
+        with store.transaction() as db:
+            assert db.execute("SELECT 1 FROM sessions WHERE hash=?", (digest("browser"),)).fetchone() is None
 
 
 @pytest.mark.asyncio

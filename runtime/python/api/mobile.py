@@ -559,7 +559,7 @@ async def mobile_models():
 
 
 # Top-level segments of the routes in apps/web/src/App.tsx; keep in sync.
-APP_ROUTES = frozenset({'', 'discover', 'published', 'publications', 'works', 'authors', 'chats', 'characters',
+APP_ROUTES = frozenset({'', 'login', 'discover', 'published', 'publications', 'works', 'authors', 'chats', 'characters',
                         'create', 'research', 'profile', 'migration', 'studio', 'status'})
 
 
@@ -578,17 +578,17 @@ class WebDist(StaticFiles):
             raise HTTPException(404)
         document = next((name for name in ('device', 'migration')
                          if path in {name, name + '/', name + '/index.html'}), None)
+        navigation = (not document and path.split('/')[0] not in {'device', 'migration'}
+                      and not Path(path).suffix and "text/html" in Request(scope).headers.get("accept", ""))
         try:
             response = await super().get_response(document + '/index.html' if document else path, scope)
         except HTTPException as exc:
-            if (
-                exc.status_code != 404
-                or document
-                or path.split('/')[0] in {'device', 'migration'}
-                or Path(path).suffix
-                or "text/html" not in Request(scope).headers.get("accept", "")
-            ):
+            if exc.status_code != 404 or not navigation:
                 raise
+            response = None
+        # The unified build includes 404.html, so Starlette returns a response
+        # for a missing file. Other distributions raise HTTPException instead.
+        if navigation and (response is None or response.status_code == 404):
             response = await super().get_response("index.html", scope)
             # The shell still renders its NotFound page; crawlers get the real status.
             if path.split('/')[0] not in APP_ROUTES:

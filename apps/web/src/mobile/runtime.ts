@@ -17,7 +17,14 @@ export class MobileRuntime {
   private idle(){if(this.pending.size||this.active)throw Error('処理中です。停止してから操作してください。');}
   private ensure() {
     if(!this.worker) {
-      this.worker=new Worker(new URL('./runtime.worker.ts',import.meta.url),{type:'module'});
+      if (import.meta.env.KYALULU_PACKAGED_WORKER) {
+        // The Next offline release pairs this document with the verified unified worker and WASM.
+        const path = document.querySelector<HTMLMetaElement>('meta[name="kyalulu-inference-worker"]')?.content;
+        if (!path || !/^\/assets\/runtime\.worker-[\w-]+\.js$/.test(path)) throw Error('端末用の推論ファイルを確認できません。');
+        this.worker = new Worker(path, { type: 'module' });
+      } else {
+        this.worker = new Worker(new URL('./runtime.worker.ts', import.meta.url), { type: 'module' });
+      }
       this.worker.onmessage=({data}:MessageEvent<Event>)=>{
         const p=this.pending.get(data.id);if(!p)return;
         if(data.type==='error'){this.pending.delete(data.id);p.reject(new Error(data.error));}

@@ -2,7 +2,8 @@ import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { createHash } from "node:crypto";
 import { readFile, writeFile, mkdir, readdir, copyFile, unlink } from "node:fs/promises";
-import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
+import { realpathSync } from 'node:fs';
+import { preparedSdkEntry } from './build/preparedSdk';
 import { createRequire } from 'node:module';
 import { gzipSync } from 'node:zlib';
 import { resolve, dirname } from "node:path";
@@ -10,56 +11,12 @@ import { fileURLToPath } from 'node:url';
 
 const wasmWork = fileURLToPath(new URL('../../.artifacts/mobile-wasm/', import.meta.url));
 
-function preparedSdk(required: boolean) {
-  const entry = resolve(wasmWork, 'sdk/index.js');
-  if (required) {
-    try {
-      if (lstatSync(wasmWork).isSymbolicLink() || lstatSync(resolve(wasmWork, 'sdk-build.json')).isSymbolicLink()) throw Error('Linked SDK manifest');
-      const record = JSON.parse(readFileSync(resolve(wasmWork, 'sdk-build.json'), 'utf8'));
-      const checked = (name: string, digest: unknown) => {
-        if (!/^[a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)*$/.test(name) || name.split('/').some(part => part === '.' || part === '..')) throw Error('Invalid SDK path');
-        if (typeof digest !== 'string' || !/^[a-f0-9]{64}$/.test(digest)) throw Error('Invalid SDK digest');
-        let path = wasmWork;
-        for (const part of name.split('/')) {
-          path = resolve(path, part);
-          if (lstatSync(path).isSymbolicLink()) throw Error('Linked SDK input');
-        }
-        const bytes = readFileSync(path);
-        if (createHash('sha256').update(bytes).digest('hex') !== digest) throw Error(`SDK hash mismatch: ${name}`);
-        return bytes;
-      };
-      if (record.llama_revision !== '46ca246de9bb1c35269722a6240d37d9dfd79cad') throw Error('SDK source revision mismatch');
-      for (const name of ['index.js', 'wllama.js', 'wllama.d.ts', 'package.json', 'LICENCE']) {
-        if (!Object.hasOwn(record.sdk_files, name)) throw Error(`Missing SDK file: ${name}`);
-      }
-      const emitted = (directory = 'sdk'): string[] => readdirSync(resolve(wasmWork, directory), { withFileTypes: true }).flatMap(entry => {
-        if (entry.isSymbolicLink()) throw Error('Linked SDK output');
-        const name = `${directory}/${entry.name}`;
-        return entry.isDirectory() ? emitted(name) : [name.slice(4)];
-      });
-      if (emitted().sort().join() !== Object.keys(record.sdk_files).sort().join()) throw Error('SDK output manifest is incomplete');
-      for (const [name, digest] of Object.entries(record.sdk_files)) checked(`sdk/${name}`, digest);
-      const assets = ['standard/wllama.js', 'standard/wllama.wasm', 'compat/wllama.js', 'compat/wllama.wasm'];
-      if (Object.keys(record.runtime_assets).sort().join() !== assets.sort().join()) throw Error('Both runtime variants are required');
-      for (const name of assets) {
-        const bytes = checked(`build-${name}`, record.runtime_assets[name]);
-        // shortcut: wire markers reject stale binaries; they do not prove real model token counts.
-        if (name.endsWith('.wasm') && (!bytes.subarray(0, 4).equals(Buffer.from('\0asm')) || !bytes.includes('ctok_req') || !bytes.includes('ctok_res'))) throw Error('Native chat-count capability missing');
-        if (name.endsWith('.wasm') && bytes.includes('countProbe')) throw Error('Diagnostic count probes cannot be bundled');
-      }
-    } catch (error) {
-      throw new Error('Matched native chat-count SDK/WASM required. From the repository root run: python scripts/mobile_wasm/prepare.py && bash scripts/mobile_wasm/build.sh && python scripts/mobile_wasm/build_sdk.py', { cause: error });
-    }
-  }
-  return existsSync(entry) ? [{ find: /^@wllama\/wllama$/, replacement: entry }] : [];
-}
-
 const mobilePolicy = "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://huggingface.co https://*.huggingface.co https://*.hf.co; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'";
 
 const migrationPolicy = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; object-src 'none'";
 
 // Explicit build-time allowlist: never glob public/ or cache runtime responses.
-function shellPrecache(mobile = false, device = false): Plugin {
+function shellPrecache(mobile = false, device = false, relay = ''): Plugin {
   const runtime = mobile || device;
   let root: string;
   let outDir: string;
@@ -172,7 +129,8 @@ function shellPrecache(mobile = false, device = false): Plugin {
       ].sort();
       const hash = createHash("sha256");
       const template = await readFile(resolve(root, "public/sw.js"), "utf8");
-      hash.update(template);
+      const worker = relay ? `const BUILD_RELAY_ORIGIN = ${JSON.stringify(relay)};\n${template}` : template;
+      hash.update(worker);
       // Cached worker headers affect isolation; delivery-policy changes need a fresh cache.
       if (runtime) hash.update(await readFile(resolve(outDir, '_headers')));
       const integrity: Record<string, string> = {};
@@ -181,7 +139,7 @@ function shellPrecache(mobile = false, device = false): Plugin {
         hash.update(file); hash.update(content);
         integrity[file] = originalIntegrity[file] ?? `sha256-${createHash("sha256").update(content).digest("base64")}`;
       }
-      await writeFile(resolve(outDir, "sw.js"), template
+      await writeFile(resolve(outDir, "sw.js"), worker
         .replace("/* BUILD_FILES */ []", JSON.stringify(files))
         .replace("/* BUILD_INTEGRITY */ {}", JSON.stringify(integrity))
         .replace("/* BUILD_COMPRESSED */ {}", JSON.stringify(compressed))
@@ -192,20 +150,21 @@ function shellPrecache(mobile = false, device = false): Plugin {
 
 export default defineConfig(({ mode, command }) => {
   const unified = mode === 'unified' || mode === 'native';
+  const relay = process.env.VITE_RELAY_ORIGIN ?? '';
   if (command === 'build' && unified) {
-    const relay = process.env.VITE_RELAY_ORIGIN ?? '';
     const parsed = URL.canParse(relay) ? new URL(relay) : null;
     if (!parsed || parsed.protocol !== 'https:' || parsed.origin !== relay || parsed.username || parsed.password) {
       throw new Error('Set VITE_RELAY_ORIGIN to the exact HTTPS Relay origin before building the unified app.');
     }
   }
+  const sdk = preparedSdkEntry(wasmWork, command === 'build' && (unified || mode === 'mobile'));
   return {
   // History routes need root-absolute assets; the mobile Pages shell stays relative.
   base: mode === 'mobile' ? "./" : "/",
-  resolve: { alias: preparedSdk(command === 'build' && (unified || mode === 'mobile')) },
+  resolve: { alias: sdk ? [{ find: /^@wllama\/wllama$/, replacement: sdk }] : [] },
   plugins: [react(), ...(mode === 'mobile' ? [{ name: 'kyalulu-mobile-entry', transformIndexHtml: { order: 'pre' as const, handler: (html: string) => html.replace('/src/main.tsx', '/src/mobile/main.tsx').replace('<title>Kyalulu — キャラクターと物語をつむぐ場所</title>', '<title>Kyalulu Mobile — スマホで動くキャラクターAI</title>') } }] : []),
     ...(mode === 'native' ? [{ name: 'kyalulu-native-entry', transformIndexHtml: { order: 'pre' as const, handler: (html: string) => html.replace('<head>', '<head><meta name="kyalulu-ui" content="native">') } }] : []),
-    shellPrecache(mode === 'mobile', unified)],
+    shellPrecache(mode === 'mobile', unified, mode === 'unified' ? relay : '')],
   worker: { format: 'es' },
   build: { rollupOptions: { input: mode==='mobile'||unified?{main:resolve('index.html'),migration:resolve('migration/index.html')}:resolve('index.html') } },
   server: {

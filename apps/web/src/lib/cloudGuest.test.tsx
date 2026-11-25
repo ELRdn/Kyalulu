@@ -59,6 +59,15 @@ it('preserves the selected work across OAuth redirect and consumes it once', () 
   expect(consumeLoginReturn()).toBe('/');
   rememberLoginReturn(target); clearLoginReturn(); expect(readLoginReturn()).toBe('/');
 });
+it('waits for the saved login return before mounting the home page', () => {
+  const home = () => renderToStaticMarkup(<MemoryRouter initialEntries={['/']}><CloudRouteChoice authenticated><span>home-page</span></CloudRouteChoice></MemoryRouter>);
+  expect(home()).toContain('home-page');
+  rememberLoginReturn('/characters/mocha');
+  const html = home();
+  expect(html).toContain('role="status"');
+  expect(html).not.toContain('home-page');
+  expect(readLoginReturn()).toBe('/characters/mocha');
+});
 it('retains the selected work when OAuth fails and requires a login retry', () => {
   rememberLoginReturn('/works/selected');
   const html = renderToStaticMarkup(<MemoryRouter initialEntries={['/?login_error=login_cancelled']}><CloudRouteChoice authenticated={false}><span>public-page</span></CloudRouteChoice></MemoryRouter>);

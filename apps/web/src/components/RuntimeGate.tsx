@@ -1,6 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { apiFetch } from '../lib/transport';
-import ConnectionSettings from './ConnectionSettings';
 import Button from './ui/Button';
 import './connection.css';
 import { activeRemote, connectionScope } from '../lib/remoteStore';
@@ -13,8 +12,12 @@ import { loginPath } from '../lib/cloudGuest';
 import { rememberOwner, clearDeviceOwner, useLanguage } from '../lib/appContext';
 import { friendlyMessage } from '../lib/errors';
 import { ExecutionPicker } from './UnifiedEntry';
+import type { OnlineRouteGroup } from '../lib/onlineRoutes';
 
-type Access = { remote_mode: boolean; authenticated: boolean; administrative?: boolean; device_name?: string; cloud_mode?: boolean };
+const ConnectionSettings = lazy(() => import('./ConnectionSettings'));
+
+type Access = { remote_mode: boolean; authenticated: boolean; administrative?: boolean; device_name?: string;
+  cloud_mode?: boolean; onlineRoutes?: ReadonlySet<OnlineRouteGroup> };
 const AccessContext = createContext<Access>({ remote_mode: false, authenticated: true });
 export const useRuntimeAccess = () => useContext(AccessContext);
 export function useAdministrative() { const access = useRuntimeAccess(); return access.administrative ?? !access.remote_mode; }
@@ -37,13 +40,14 @@ async function readResponse(response: Response) {
   return body;
 }
 
-export default function RuntimeGate({ children }: { children: ReactNode }) {
+export default function RuntimeGate({ children, pending }: { children: ReactNode; pending?: ReactNode }) {
   const language=useLanguage(),en=language==='en';
   const route = useLocation();
   const navigate = useNavigate();
   const returnRoute = useRef(route.pathname + route.search);
   returnRoute.current = route.pathname + route.search;
   const [access, setAccess] = useState<Access | null>(null);
+  const delivery = useRef<Set<OnlineRouteGroup> | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
   const [code, setCode] = useState('');
@@ -54,7 +58,8 @@ export default function RuntimeGate({ children }: { children: ReactNode }) {
     const attempt = ++epoch.current;
     setBusy(true);
     try {
-      const result = await readResponse(await apiFetch('/api/mobile/status', { signal: AbortSignal.timeout(10000) }));
+      const response = await apiFetch('/api/mobile/status', { signal: AbortSignal.timeout(10000) });
+      const result = await readResponse(response);
       if (typeof result.remote_mode !== 'boolean' || typeof result.authenticated !== 'boolean') throw new Error('サーバーの応答を確認できません。Kyaluluのバージョンを確認してください。');
       if (!mounted.current || attempt!==epoch.current) return;
       if (result.cloud_mode && result.authenticated && (typeof result.owner_scope !== 'string' || !result.owner_scope.trim())) {
@@ -66,7 +71,18 @@ export default function RuntimeGate({ children }: { children: ReactNode }) {
       if (result.cloud_mode && result.authenticated) rememberOwner(result.owner_scope);
       else if (result.cloud_mode) clearDeviceOwner();
       if (result.cloud_mode && result.authenticated) void refreshAccountProfile();
-      if (mounted.current && attempt === epoch.current) { setAccess(result); setError(''); }
+      if (mounted.current && attempt === epoch.current) {
+        // Pin delivery for the life of the app shell, including focus/reconnect checks.
+        if (delivery.current === null && result.cloud_mode === true) {
+          delivery.current = new Set();
+          if (response.headers.get('X-Kyalulu-Next-Chats') === '1') delivery.current.add('chats');
+          if (response.headers.get('X-Kyalulu-Next-Pages') === '1') delivery.current.add('pages');
+          if (response.headers.get('X-Kyalulu-Next-Browse') === '1') delivery.current.add('browse');
+          if (response.headers.get('X-Kyalulu-Next-Entry') === '1') delivery.current.add('entry');
+        }
+        setAccess({ ...result, onlineRoutes: result.cloud_mode ? delivery.current : undefined });
+        setError('');
+      }
     } catch {
       if (mounted.current && attempt === epoch.current) setError('サーバーに接続できません。PC・サーバーの起動とネットワークを確認してください。');
     } finally { if (mounted.current && attempt === epoch.current) setBusy(false); }
@@ -99,6 +115,7 @@ export default function RuntimeGate({ children }: { children: ReactNode }) {
   };
   if (access?.cloud_mode) return <AccessContext.Provider key={connectionScope()} value={access}><CloudRouteChoice authenticated={access.authenticated}>{children}</CloudRouteChoice></AccessContext.Provider>;
   if (access?.authenticated) return <AccessContext.Provider key={connectionScope()} value={access}>{children}</AccessContext.Provider>;
+  if (!access && busy && !error && pending != null) return <>{pending}</>;
   return <main className="k-connect-screen"><div className="k-connect-screen__body">
     <div className="k-connect-screen__brand">Kyalulu ✦</div><ExecutionPicker/>
     <h1>{access ? (en?'Your conversations on this device.':'いつもの会話を、この端末で。') : (en?'Connect to the conversation server':'会話のサーバーに接続')}</h1>
@@ -113,7 +130,9 @@ export default function RuntimeGate({ children }: { children: ReactNode }) {
       </form>}
       {!access && <Button type="button" onClick={() => void check()} disabled={busy}>{busy ? (en?'Checking connection…':'接続を確認中…') : (en?'Retry connection':'もう一度接続する')}</Button>}
     </section>
-    {!busy && <ConnectionSettings />}
+    {!busy && <Suspense fallback={<p role="status">{en ? 'Loading connection settings…' : '接続設定を読み込んでいます…'}</p>}>
+      <ConnectionSettings />
+    </Suspense>}
   </div></main>;
 }
 

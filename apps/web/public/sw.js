@@ -72,6 +72,17 @@ self.addEventListener("fetch", (event) => {
   // identify a screen, not a different shell resource.
   url.hash = "";
   if (request.method !== "GET" || url.origin !== self.location.origin || url.search || request.headers.has("authorization") || request.headers.has("range")) return;
+  // An installed Next release must follow the current proxy assignment on an
+  // online launch. Cache only the prebuilt offline entry, never a live response.
+  if (url.href === ROOT && FILES.includes("offline/index.html")) {
+    if (request.mode === "navigate") {
+      event.respondWith(fetch(request).catch(async () => {
+        const cache = await caches.open(CACHE);
+        return (await cache.match(new URL("offline/", ROOT).href)) || Response.error();
+      }));
+    }
+    return;
+  }
   // Only the hash-router document and exact build outputs are eligible.
   // API calls, private media, avatars, conversations, external fonts and unknown
   // URLs go directly to the network and never enter Cache Storage.

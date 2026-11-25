@@ -4,6 +4,7 @@ let epoch = 0;
 const listeners = new Set<() => void>();
 export const subscribeCloudIdentity = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 const changed = () => { ++epoch; listeners.forEach(listener => listener()); };
+export const cloudConnectionScope = (origin: string, owner: string) => `cloud:${origin}:${owner}`;
 export const isCloud = () => hosted;
 export const cloudOwner = () => owner;
 export const cloudEpoch = () => epoch;

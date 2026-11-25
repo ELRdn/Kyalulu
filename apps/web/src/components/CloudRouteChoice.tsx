@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import CloudLogin from './CloudLogin';
 import { clearLoginReturn, consumeLoginReturn, guestReadableRoute, PENDING_START, readLoginReturn, rememberLoginReturn, safeLoginReturn, unknownRoute } from '../lib/cloudGuest';
@@ -9,6 +9,8 @@ export default function CloudRouteChoice({ authenticated, children }: { authenti
   const en=useLanguage()==='en';
   const location = useLocation();
   const navigate = useNavigate();
+  const [leavingHome, setLeavingHome] = useState(false);
+  const home = location.pathname === '/';
   const params = new URLSearchParams(location.search);
   const login = location.pathname === '/login' || params.has('login_error');
   const gated = !guestReadableRoute(location.pathname) && !unknownRoute(location.pathname);
@@ -16,19 +18,24 @@ export default function CloudRouteChoice({ authenticated, children }: { authenti
   // A failed OAuth return comes back as a dialog over the page the login started from.
   const failure = authenticated ? null : params.get('login_error');
   const returnPath = returnTo.split('?')[0];
+  const returningFromHome = authenticated && home && (leavingHome || readLoginReturn() !== '/');
   useEffect(() => {
     if (failure && location.pathname === '/' && returnPath !== '/' && guestReadableRoute(returnPath)) {
       navigate(`${returnTo}${returnTo.includes('?') ? '&' : '?'}login_error=${encodeURIComponent(failure)}`, { replace: true });
     }
   }, [failure, returnPath, returnTo, location.pathname, navigate]);
   useEffect(() => {
-    if (authenticated && (login || location.pathname === '/')) {
+    if (!authenticated || !home) setLeavingHome(false);
+    if (authenticated && (login || home)) {
       const target = consumeLoginReturn(returnTo);
-      if (login || target !== '/') navigate(target, { replace: true });
+      if (login || target !== '/') {
+        if (home && target !== '/') setLeavingHome(true);
+        navigate(target, { replace: true });
+      }
     } else if (!authenticated && !login && gated) {
       rememberLoginReturn(returnTo);
     }
-  }, [authenticated, login, gated, location.pathname, returnTo, navigate]);
+  }, [authenticated, login, gated, home, location.pathname, returnTo, navigate]);
   if (failure && guestReadableRoute(location.pathname)) {
     const dismiss = () => {
       clearLoginReturn();
@@ -38,7 +45,7 @@ export default function CloudRouteChoice({ authenticated, children }: { authenti
     };
     return <>{children}<CloudLogin returnTo={returnTo} onClose={dismiss} /></>;
   }
-  if (login || (!authenticated && gated)) {
+  if (login || returningFromHome || (!authenticated && gated)) {
     return authenticated ? <p role="status">{en?'Returning to your previous page…':'元の画面へ戻っています…'}</p> : <CloudLogin returnTo={returnTo} />;
   }
   return children;

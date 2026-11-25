@@ -26,10 +26,10 @@ export function parsePairing(encoded: string, now = Date.now()): PairingLink {
   return value;
 }
 /** Call before mounting the router. Even malformed fragments are immediately erased. */
-export function takePairing(): { invitation?: PairingLink; error?: string } {
+export function takePairing(replacementHash = '#/chats'): { invitation?: PairingLink; error?: string } {
   if (!location.hash.startsWith('#remote=')) return {};
   const encoded = location.hash.slice(8);
-  history.replaceState(null, '', `${location.pathname}${location.search}#/chats`);
+  history.replaceState(history.state, '', location.pathname + location.search + replacementHash);
   try { return { invitation: parsePairing(encoded) }; }
   catch (error) { return { error: error instanceof Error ? error.message : '登録用QRが無効です。' }; }
 }

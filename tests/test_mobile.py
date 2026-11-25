@@ -282,14 +282,17 @@ async def test_paired_mock_chat_stream_history_and_models(app, isolated, monkeyp
 
 
 @pytest.mark.asyncio
-async def test_static_same_origin_spa_api_and_sw_headers(tmp_path):
+@pytest.mark.parametrize("built_error_document", [False, True])
+async def test_static_same_origin_spa_api_and_sw_headers(tmp_path, built_error_document):
     (tmp_path / "index.html").write_text("<html>app</html>")
+    if built_error_document:
+        (tmp_path / "404.html").write_text("<html>Not found</html>")
     (tmp_path / "sw.js").write_text("// service worker")
     (tmp_path / "main.js").write_text("// built asset")
     (tmp_path / ".env").write_text("never serve")
     app = make_app(mobile.Config(True, ORIGIN), tmp_path)
     async with client(app) as remote:
-        for path in ("/", "/chats/session"):
+        for path in ("/", "/discover", "/published", "/characters/mocha_sfw", "/login", "/chats/session"):
             response = await remote.get(path, headers={"Accept": "text/html"})
             assert response.status_code == 200 and "<html>app" in response.text
         unknown = await remote.get("/no-such-page", headers={"Accept": "text/html"})
